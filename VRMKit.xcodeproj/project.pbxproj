@@ -17,6 +17,9 @@
 		24CF7F9F2144088A007A5C6C /* GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F9E2144088A007A5C6C /* GLTF.swift */; };
 		24CF7FA121440D7E007A5C6C /* Vector3.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FA021440D7E007A5C6C /* Vector3.swift */; };
 		24CF7FA321440D9A007A5C6C /* Vector4.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FA221440D9A007A5C6C /* Vector4.swift */; };
+		24CF7FA5214410B4007A5C6C /* Matrix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FA4214410B4007A5C6C /* Matrix.swift */; };
+		24CF7FA721441238007A5C6C /* Camera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FA621441238007A5C6C /* Camera.swift */; };
+		24CF7FA921441253007A5C6C /* Image.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FA821441253007A5C6C /* Image.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +46,9 @@
 		24CF7F9E2144088A007A5C6C /* GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GLTF.swift; sourceTree = "<group>"; };
 		24CF7FA021440D7E007A5C6C /* Vector3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vector3.swift; sourceTree = "<group>"; };
 		24CF7FA221440D9A007A5C6C /* Vector4.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vector4.swift; sourceTree = "<group>"; };
+		24CF7FA4214410B4007A5C6C /* Matrix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Matrix.swift; sourceTree = "<group>"; };
+		24CF7FA621441238007A5C6C /* Camera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Camera.swift; sourceTree = "<group>"; };
+		24CF7FA821441253007A5C6C /* Image.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Image.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -111,6 +117,9 @@
 				24CF7F9A21440488007A5C6C /* Color4.swift */,
 				24CF7FA021440D7E007A5C6C /* Vector3.swift */,
 				24CF7FA221440D9A007A5C6C /* Vector4.swift */,
+				24CF7FA4214410B4007A5C6C /* Matrix.swift */,
+				24CF7FA621441238007A5C6C /* Camera.swift */,
+				24CF7FA821441253007A5C6C /* Image.swift */,
 			);
 			path = VRM;
 			sourceTree = "<group>";
@@ -225,9 +234,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				24CF7F9B21440488007A5C6C /* Color4.swift in Sources */,
+				24CF7FA921441253007A5C6C /* Image.swift in Sources */,
 				24CF7F9F2144088A007A5C6C /* GLTF.swift in Sources */,
+				24CF7FA5214410B4007A5C6C /* Matrix.swift in Sources */,
 				24CF7FA121440D7E007A5C6C /* Vector3.swift in Sources */,
 				24CF7FA321440D9A007A5C6C /* Vector4.swift in Sources */,
+				24CF7FA721441238007A5C6C /* Camera.swift in Sources */,
 				24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
