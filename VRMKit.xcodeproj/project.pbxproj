@@ -26,6 +26,9 @@
 		24CF7FB1214412CD007A5C6C /* Node.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB0214412CD007A5C6C /* Node.swift */; };
 		24CF7FB3214419B0007A5C6C /* Mesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB2214419B0007A5C6C /* Mesh.swift */; };
 		24CF7FB621441B00007A5C6C /* CodableDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB521441B00007A5C6C /* CodableDictionary.swift */; };
+		24CF7FB821441B89007A5C6C /* Material.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB721441B89007A5C6C /* Material.swift */; };
+		24CF7FBA21441BCA007A5C6C /* TextureInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB921441BCA007A5C6C /* TextureInfo.swift */; };
+		24CF7FBC21441C64007A5C6C /* Color3.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FBB21441C64007A5C6C /* Color3.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +64,9 @@
 		24CF7FB0214412CD007A5C6C /* Node.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Node.swift; sourceTree = "<group>"; };
 		24CF7FB2214419B0007A5C6C /* Mesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mesh.swift; sourceTree = "<group>"; };
 		24CF7FB521441B00007A5C6C /* CodableDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodableDictionary.swift; sourceTree = "<group>"; };
+		24CF7FB721441B89007A5C6C /* Material.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Material.swift; sourceTree = "<group>"; };
+		24CF7FB921441BCA007A5C6C /* TextureInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextureInfo.swift; sourceTree = "<group>"; };
+		24CF7FBB21441C64007A5C6C /* Color3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Color3.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -127,9 +133,10 @@
 			children = (
 				24CF7F9E2144088A007A5C6C /* GLTF.swift */,
 				24CF7F962143F0A8007A5C6C /* Extensions.swift */,
-				24CF7F9A21440488007A5C6C /* Color4.swift */,
 				24CF7FA021440D7E007A5C6C /* Vector3.swift */,
 				24CF7FA221440D9A007A5C6C /* Vector4.swift */,
+				24CF7FBB21441C64007A5C6C /* Color3.swift */,
+				24CF7F9A21440488007A5C6C /* Color4.swift */,
 				24CF7FA4214410B4007A5C6C /* Matrix.swift */,
 				24CF7FA621441238007A5C6C /* Camera.swift */,
 				24CF7FA821441253007A5C6C /* Image.swift */,
@@ -138,6 +145,8 @@
 				24CF7FAE2144129B007A5C6C /* Texture.swift */,
 				24CF7FB0214412CD007A5C6C /* Node.swift */,
 				24CF7FB2214419B0007A5C6C /* Mesh.swift */,
+				24CF7FB721441B89007A5C6C /* Material.swift */,
+				24CF7FB921441BCA007A5C6C /* TextureInfo.swift */,
 			);
 			path = VRM;
 			sourceTree = "<group>";
@@ -262,13 +271,16 @@
 				24CF7F9B21440488007A5C6C /* Color4.swift in Sources */,
 				24CF7FB3214419B0007A5C6C /* Mesh.swift in Sources */,
 				24CF7FA921441253007A5C6C /* Image.swift in Sources */,
+				24CF7FBC21441C64007A5C6C /* Color3.swift in Sources */,
 				24CF7F9F2144088A007A5C6C /* GLTF.swift in Sources */,
 				24CF7FB1214412CD007A5C6C /* Node.swift in Sources */,
 				24CF7FA5214410B4007A5C6C /* Matrix.swift in Sources */,
 				24CF7FAD21441288007A5C6C /* Skin.swift in Sources */,
 				24CF7FA121440D7E007A5C6C /* Vector3.swift in Sources */,
 				24CF7FAF2144129B007A5C6C /* Texture.swift in Sources */,
+				24CF7FBA21441BCA007A5C6C /* TextureInfo.swift in Sources */,
 				24CF7FA321440D9A007A5C6C /* Vector4.swift in Sources */,
+				24CF7FB821441B89007A5C6C /* Material.swift in Sources */,
 				24CF7FB621441B00007A5C6C /* CodableDictionary.swift in Sources */,
 				24CF7FA721441238007A5C6C /* Camera.swift in Sources */,
 				24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */,
