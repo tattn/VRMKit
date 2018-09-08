@@ -11,6 +11,8 @@ import Foundation
 public struct VRM {
     public let gltf: BinaryGLTF
     public let meta: Meta
+    public let version: String
+    public let materialProperties: [MaterialProperty]
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
@@ -21,6 +23,8 @@ public struct VRM {
 
         let decoder = DictionaryDecoder()
         meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
+        version = try vrm["version"] as? String ??? .keyNotFound("version")
+        materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
     }
 }
 
@@ -41,5 +45,16 @@ extension VRM {
 
         public let licenseName: String
         public let otherLicenseUrl: String
+    }
+
+    public struct MaterialProperty: Codable {
+        public let name: String
+        public let shader: String
+        public let renderQueue: Int
+        public let floatProperties: GLTF.Extensions
+        public let keywordMap: [String: Bool]
+        public let tagMap: [String: String]
+        public let textureProperties: [String: Int]
+        public let vectorProperties: GLTF.Extensions
     }
 }
