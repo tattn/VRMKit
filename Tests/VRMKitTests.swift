@@ -60,4 +60,14 @@ class VRMTests: XCTestCase {
         XCTAssertEqual(vrm.humanoid.humanBones[0].node, 3)
         XCTAssertEqual(vrm.humanoid.humanBones[0].useDefaultValues, true)
     }
+
+    func testBlendShapeMaster() {
+        let target = vrm.blendShapeMaster.blendShapeGroups[1]
+        XCTAssertEqual(target.binds[0].index, 0)
+        XCTAssertEqual(target.binds[0].mesh, 3)
+        XCTAssertEqual(target.binds[0].weight, 100)
+        XCTAssertTrue(target.materialValues.isEmpty)
+        XCTAssertEqual(target.name, "A")
+        XCTAssertEqual(target.presetName, "a")
+    }
 }
