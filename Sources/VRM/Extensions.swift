@@ -10,15 +10,17 @@ import Foundation
 
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#specifying-extensions
 
-public struct Extensions {
-    public let value: Any
+extension GLTF {
+    public struct Extensions {
+        public let value: Any
 
-    public init(_ value: Any) {
-        self.value = value
+        public init(_ value: Any) {
+            self.value = value
+        }
     }
 }
 
-extension Extensions: Decodable {
+extension GLTF.Extensions: Decodable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
@@ -34,9 +36,9 @@ extension Extensions: Decodable {
             self.init(double)
         } else if let string = try? container.decode(String.self) {
             self.init(string)
-        } else if let array = try? container.decode([Extensions].self) {
+        } else if let array = try? container.decode([GLTF.Extensions].self) {
             self.init(array.map { $0.value })
-        } else if let dictionary = try? container.decode([String: Extensions].self) {
+        } else if let dictionary = try? container.decode([String: GLTF.Extensions].self) {
             self.init(dictionary.mapValues { $0.value })
         } else {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "failed to decode")
@@ -44,7 +46,7 @@ extension Extensions: Decodable {
     }
 }
 
-extension Extensions: Encodable {
+extension GLTF.Extensions: Encodable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
 
@@ -84,9 +86,9 @@ extension Extensions: Encodable {
         case let url as URL:
             try container.encode(url)
         case let array as [Any]:
-            try container.encode(array.map(Extensions.init))
+            try container.encode(array.map(GLTF.Extensions.init))
         case let dictionary as [String: Any]:
-            try container.encode(dictionary.mapValues(Extensions.init))
+            try container.encode(dictionary.mapValues(GLTF.Extensions.init))
         default:
             throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: container.codingPath, debugDescription: "failed to encode"))
         }

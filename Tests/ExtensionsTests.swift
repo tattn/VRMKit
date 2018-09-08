@@ -39,9 +39,9 @@ class ExtensionsTests: XCTestCase {
     }
 
     private func encodeAndDecode<T: Equatable>(_ expectedValue: T) {
-        let extensions = Extensions(expectedValue)
+        let extensions = GLTF.Extensions(expectedValue)
         let data = try! jsonEncoder.encode(extensions)
-        let decodedValue = try! jsonDecoder.decode(Extensions.self, from: data)
+        let decodedValue = try! jsonDecoder.decode(GLTF.Extensions.self, from: data)
         XCTAssertEqual(decodedValue.value as! T, expectedValue)
     }
 }
