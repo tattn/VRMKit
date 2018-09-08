@@ -51,3 +51,9 @@ public struct GLTF: Codable {
         case extras
     }
 }
+
+extension GLTF {
+    public enum Version: UInt32 {
+        case two = 2
+    }
+}

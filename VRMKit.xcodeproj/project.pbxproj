@@ -35,6 +35,11 @@
 		24CF7FC421441DCE007A5C6C /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FC321441DCE007A5C6C /* Animation.swift */; };
 		24CF7FC621441DFD007A5C6C /* Accessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FC521441DFD007A5C6C /* Accessor.swift */; };
 		24CF7FC821441E6F007A5C6C /* Sampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FC721441E6F007A5C6C /* Sampler.swift */; };
+		24CF7FCA21441F6E007A5C6C /* BinaryGLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FC921441F6E007A5C6C /* BinaryGLTF.swift */; };
+		24CF7FCC21441FD8007A5C6C /* GlobalFunction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FCB21441FD8007A5C6C /* GlobalFunction.swift */; };
+		24CF7FCE21442010007A5C6C /* VRMError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FCD21442010007A5C6C /* VRMError.swift */; };
+		24CF7FD0214420AA007A5C6C /* BinaryGLTFTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */; };
+		24CF7FD221442111007A5C6C /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 24CF7FD121442111007A5C6C /* AliciaSolid.vrm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -79,6 +84,11 @@
 		24CF7FC321441DCE007A5C6C /* Animation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Animation.swift; sourceTree = "<group>"; };
 		24CF7FC521441DFD007A5C6C /* Accessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Accessor.swift; sourceTree = "<group>"; };
 		24CF7FC721441E6F007A5C6C /* Sampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sampler.swift; sourceTree = "<group>"; };
+		24CF7FC921441F6E007A5C6C /* BinaryGLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BinaryGLTF.swift; sourceTree = "<group>"; };
+		24CF7FCB21441FD8007A5C6C /* GlobalFunction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalFunction.swift; sourceTree = "<group>"; };
+		24CF7FCD21442010007A5C6C /* VRMError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMError.swift; sourceTree = "<group>"; };
+		24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BinaryGLTFTests.swift; sourceTree = "<group>"; };
+		24CF7FD121442111007A5C6C /* AliciaSolid.vrm */ = {isa = PBXFileReference; lastKnownFileType = file; path = AliciaSolid.vrm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,6 +131,8 @@
 		24CF7F7D2143EEDB007A5C6C /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				24CF7FC921441F6E007A5C6C /* BinaryGLTF.swift */,
+				24CF7FCD21442010007A5C6C /* VRMError.swift */,
 				24CF7F952143F075007A5C6C /* VRM */,
 				24CF7FB421441AED007A5C6C /* Extensions */,
 				24CF7F7E2143EEDB007A5C6C /* VRMKit.h */,
@@ -132,10 +144,12 @@
 		24CF7F882143EEDB007A5C6C /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				24CF7FD32144211F007A5C6C /* Resources */,
 				24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */,
 				24CF7F8B2143EEDB007A5C6C /* Info.plist */,
 				24CF7F982143F496007A5C6C /* ExtensionsTests.swift */,
 				24CF7F9C2144055A007A5C6C /* Color4Tests.swift */,
+				24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -172,9 +186,18 @@
 		24CF7FB421441AED007A5C6C /* Extensions */ = {
 			isa = PBXGroup;
 			children = (
+				24CF7FCB21441FD8007A5C6C /* GlobalFunction.swift */,
 				24CF7FB521441B00007A5C6C /* CodableDictionary.swift */,
 			);
 			path = Extensions;
+			sourceTree = "<group>";
+		};
+		24CF7FD32144211F007A5C6C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				24CF7FD121442111007A5C6C /* AliciaSolid.vrm */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -276,6 +299,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				24CF7FD221442111007A5C6C /* AliciaSolid.vrm in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -291,6 +315,7 @@
 				24CF7FC221441DAE007A5C6C /* Asset.swift in Sources */,
 				24CF7FA921441253007A5C6C /* Image.swift in Sources */,
 				24CF7FBC21441C64007A5C6C /* Color3.swift in Sources */,
+				24CF7FCA21441F6E007A5C6C /* BinaryGLTF.swift in Sources */,
 				24CF7FC021441D89007A5C6C /* Buffer.swift in Sources */,
 				24CF7FC621441DFD007A5C6C /* Accessor.swift in Sources */,
 				24CF7F9F2144088A007A5C6C /* GLTF.swift in Sources */,
@@ -298,6 +323,7 @@
 				24CF7FA5214410B4007A5C6C /* Matrix.swift in Sources */,
 				24CF7FAD21441288007A5C6C /* Skin.swift in Sources */,
 				24CF7FBE21441D73007A5C6C /* BufferView.swift in Sources */,
+				24CF7FCC21441FD8007A5C6C /* GlobalFunction.swift in Sources */,
 				24CF7FA121440D7E007A5C6C /* Vector3.swift in Sources */,
 				24CF7FAF2144129B007A5C6C /* Texture.swift in Sources */,
 				24CF7FBA21441BCA007A5C6C /* TextureInfo.swift in Sources */,
@@ -306,6 +332,7 @@
 				24CF7FB621441B00007A5C6C /* CodableDictionary.swift in Sources */,
 				24CF7FA721441238007A5C6C /* Camera.swift in Sources */,
 				24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */,
+				24CF7FCE21442010007A5C6C /* VRMError.swift in Sources */,
 				24CF7FC421441DCE007A5C6C /* Animation.swift in Sources */,
 				24CF7FC821441E6F007A5C6C /* Sampler.swift in Sources */,
 				24CF7FAB21441276007A5C6C /* Scene.swift in Sources */,
@@ -317,6 +344,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */,
+				24CF7FD0214420AA007A5C6C /* BinaryGLTFTests.swift in Sources */,
 				24CF7F992143F496007A5C6C /* ExtensionsTests.swift in Sources */,
 				24CF7F9D2144055A007A5C6C /* Color4Tests.swift in Sources */,
 			);
