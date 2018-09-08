@@ -40,6 +40,7 @@
 		24CF7FCE21442010007A5C6C /* VRMError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FCD21442010007A5C6C /* VRMError.swift */; };
 		24CF7FD0214420AA007A5C6C /* BinaryGLTFTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */; };
 		24CF7FD221442111007A5C6C /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 24CF7FD121442111007A5C6C /* AliciaSolid.vrm */; };
+		24CF7FD521442444007A5C6C /* Resources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FD421442444007A5C6C /* Resources.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,6 +90,7 @@
 		24CF7FCD21442010007A5C6C /* VRMError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMError.swift; sourceTree = "<group>"; };
 		24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BinaryGLTFTests.swift; sourceTree = "<group>"; };
 		24CF7FD121442111007A5C6C /* AliciaSolid.vrm */ = {isa = PBXFileReference; lastKnownFileType = file; path = AliciaSolid.vrm; sourceTree = "<group>"; };
+		24CF7FD421442444007A5C6C /* Resources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Resources.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -144,12 +146,13 @@
 		24CF7F882143EEDB007A5C6C /* Tests */ = {
 			isa = PBXGroup;
 			children = (
-				24CF7FD32144211F007A5C6C /* Resources */,
 				24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */,
 				24CF7F8B2143EEDB007A5C6C /* Info.plist */,
 				24CF7F982143F496007A5C6C /* ExtensionsTests.swift */,
 				24CF7F9C2144055A007A5C6C /* Color4Tests.swift */,
 				24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */,
+				24CF7FD421442444007A5C6C /* Resources.swift */,
+				24CF7FD32144211F007A5C6C /* Resources */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -343,6 +346,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				24CF7FD521442444007A5C6C /* Resources.swift in Sources */,
 				24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */,
 				24CF7FD0214420AA007A5C6C /* BinaryGLTFTests.swift in Sources */,
 				24CF7F992143F496007A5C6C /* ExtensionsTests.swift in Sources */,
