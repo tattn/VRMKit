@@ -13,6 +13,7 @@ public struct VRM {
     public let meta: Meta
     public let version: String
     public let materialProperties: [MaterialProperty]
+    public let humanoid: Humanoid
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
@@ -25,6 +26,7 @@ public struct VRM {
         meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
         version = try vrm["version"] as? String ??? .keyNotFound("version")
         materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
+        humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
     }
 }
 
@@ -56,5 +58,39 @@ extension VRM {
         public let tagMap: [String: String]
         public let textureProperties: [String: Int]
         public let vectorProperties: GLTF.Extensions
+    }
+
+    public struct Humanoid: Codable {
+        public let armStretch: Double
+        public let feetSpacing: Double
+        public let hasTranslationDoF: Bool
+        public let legStretch: Double
+        public let lowerArmTwist: Double
+        public let lowerLegTwist: Double
+        public let upperArmTwist: Double
+        public let upperLegTwist: Double
+        public let humanBones: [HumanBone]
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            func decodeDouble(key: CodingKeys) throws -> Double {
+                return try (try? container.decode(Double.self, forKey: key)) ?? Double(try container.decode(Int.self, forKey: key))
+            }
+            armStretch = try decodeDouble(key: .armStretch)
+            feetSpacing = try decodeDouble(key: .feetSpacing)
+            hasTranslationDoF = try container.decode(Bool.self, forKey: .hasTranslationDoF)
+            legStretch = try decodeDouble(key: .legStretch)
+            lowerArmTwist = try decodeDouble(key: .lowerArmTwist)
+            lowerLegTwist = try decodeDouble(key: .lowerLegTwist)
+            upperArmTwist = try decodeDouble(key: .upperArmTwist)
+            upperLegTwist = try decodeDouble(key: .upperLegTwist)
+            humanBones = try container.decode([HumanBone].self, forKey: .humanBones)
+        }
+
+        public struct HumanBone: Codable {
+            public let bone: String
+            public let node: Int
+            public let useDefaultValues: Bool
+        }
     }
 }

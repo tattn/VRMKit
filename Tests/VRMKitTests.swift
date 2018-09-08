@@ -46,4 +46,18 @@ class VRMTests: XCTestCase {
         XCTAssertEqual(target.textureProperties, ["_MainTex": 3])
         XCTAssertTrue((target.vectorProperties.value as! [AnyHashable : Any]).isEmpty)
     }
+
+    func testHumanoid() {
+        XCTAssertEqual(vrm.humanoid.armStretch, 0.05)
+        XCTAssertEqual(vrm.humanoid.feetSpacing, 0)
+        XCTAssertEqual(vrm.humanoid.hasTranslationDoF, false)
+        XCTAssertEqual(vrm.humanoid.legStretch, 0.05)
+        XCTAssertEqual(vrm.humanoid.lowerArmTwist, 0.5)
+        XCTAssertEqual(vrm.humanoid.lowerLegTwist, 0.5)
+        XCTAssertEqual(vrm.humanoid.upperArmTwist, 0.5)
+        XCTAssertEqual(vrm.humanoid.upperLegTwist, 0.5)
+        XCTAssertEqual(vrm.humanoid.humanBones[0].bone, "hips")
+        XCTAssertEqual(vrm.humanoid.humanBones[0].node, 3)
+        XCTAssertEqual(vrm.humanoid.humanBones[0].useDefaultValues, true)
+    }
 }
