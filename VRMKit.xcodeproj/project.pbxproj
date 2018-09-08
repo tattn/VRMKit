@@ -29,6 +29,11 @@
 		24CF7FB821441B89007A5C6C /* Material.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB721441B89007A5C6C /* Material.swift */; };
 		24CF7FBA21441BCA007A5C6C /* TextureInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB921441BCA007A5C6C /* TextureInfo.swift */; };
 		24CF7FBC21441C64007A5C6C /* Color3.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FBB21441C64007A5C6C /* Color3.swift */; };
+		24CF7FBE21441D73007A5C6C /* BufferView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FBD21441D73007A5C6C /* BufferView.swift */; };
+		24CF7FC021441D89007A5C6C /* Buffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FBF21441D89007A5C6C /* Buffer.swift */; };
+		24CF7FC221441DAE007A5C6C /* Asset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FC121441DAE007A5C6C /* Asset.swift */; };
+		24CF7FC421441DCE007A5C6C /* Animation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FC321441DCE007A5C6C /* Animation.swift */; };
+		24CF7FC621441DFD007A5C6C /* Accessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FC521441DFD007A5C6C /* Accessor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +72,11 @@
 		24CF7FB721441B89007A5C6C /* Material.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Material.swift; sourceTree = "<group>"; };
 		24CF7FB921441BCA007A5C6C /* TextureInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextureInfo.swift; sourceTree = "<group>"; };
 		24CF7FBB21441C64007A5C6C /* Color3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Color3.swift; sourceTree = "<group>"; };
+		24CF7FBD21441D73007A5C6C /* BufferView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BufferView.swift; sourceTree = "<group>"; };
+		24CF7FBF21441D89007A5C6C /* Buffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Buffer.swift; sourceTree = "<group>"; };
+		24CF7FC121441DAE007A5C6C /* Asset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Asset.swift; sourceTree = "<group>"; };
+		24CF7FC321441DCE007A5C6C /* Animation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Animation.swift; sourceTree = "<group>"; };
+		24CF7FC521441DFD007A5C6C /* Accessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Accessor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -147,6 +157,11 @@
 				24CF7FB2214419B0007A5C6C /* Mesh.swift */,
 				24CF7FB721441B89007A5C6C /* Material.swift */,
 				24CF7FB921441BCA007A5C6C /* TextureInfo.swift */,
+				24CF7FBF21441D89007A5C6C /* Buffer.swift */,
+				24CF7FBD21441D73007A5C6C /* BufferView.swift */,
+				24CF7FC121441DAE007A5C6C /* Asset.swift */,
+				24CF7FC321441DCE007A5C6C /* Animation.swift */,
+				24CF7FC521441DFD007A5C6C /* Accessor.swift */,
 			);
 			path = VRM;
 			sourceTree = "<group>";
@@ -270,12 +285,16 @@
 			files = (
 				24CF7F9B21440488007A5C6C /* Color4.swift in Sources */,
 				24CF7FB3214419B0007A5C6C /* Mesh.swift in Sources */,
+				24CF7FC221441DAE007A5C6C /* Asset.swift in Sources */,
 				24CF7FA921441253007A5C6C /* Image.swift in Sources */,
 				24CF7FBC21441C64007A5C6C /* Color3.swift in Sources */,
+				24CF7FC021441D89007A5C6C /* Buffer.swift in Sources */,
+				24CF7FC621441DFD007A5C6C /* Accessor.swift in Sources */,
 				24CF7F9F2144088A007A5C6C /* GLTF.swift in Sources */,
 				24CF7FB1214412CD007A5C6C /* Node.swift in Sources */,
 				24CF7FA5214410B4007A5C6C /* Matrix.swift in Sources */,
 				24CF7FAD21441288007A5C6C /* Skin.swift in Sources */,
+				24CF7FBE21441D73007A5C6C /* BufferView.swift in Sources */,
 				24CF7FA121440D7E007A5C6C /* Vector3.swift in Sources */,
 				24CF7FAF2144129B007A5C6C /* Texture.swift in Sources */,
 				24CF7FBA21441BCA007A5C6C /* TextureInfo.swift in Sources */,
@@ -284,6 +303,7 @@
 				24CF7FB621441B00007A5C6C /* CodableDictionary.swift in Sources */,
 				24CF7FA721441238007A5C6C /* Camera.swift in Sources */,
 				24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */,
+				24CF7FC421441DCE007A5C6C /* Animation.swift in Sources */,
 				24CF7FAB21441276007A5C6C /* Scene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
