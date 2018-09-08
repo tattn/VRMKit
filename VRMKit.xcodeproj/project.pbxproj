@@ -23,6 +23,9 @@
 		24CF7FAB21441276007A5C6C /* Scene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FAA21441276007A5C6C /* Scene.swift */; };
 		24CF7FAD21441288007A5C6C /* Skin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FAC21441288007A5C6C /* Skin.swift */; };
 		24CF7FAF2144129B007A5C6C /* Texture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FAE2144129B007A5C6C /* Texture.swift */; };
+		24CF7FB1214412CD007A5C6C /* Node.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB0214412CD007A5C6C /* Node.swift */; };
+		24CF7FB3214419B0007A5C6C /* Mesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB2214419B0007A5C6C /* Mesh.swift */; };
+		24CF7FB621441B00007A5C6C /* CodableDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FB521441B00007A5C6C /* CodableDictionary.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +58,9 @@
 		24CF7FAA21441276007A5C6C /* Scene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scene.swift; sourceTree = "<group>"; };
 		24CF7FAC21441288007A5C6C /* Skin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skin.swift; sourceTree = "<group>"; };
 		24CF7FAE2144129B007A5C6C /* Texture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Texture.swift; sourceTree = "<group>"; };
+		24CF7FB0214412CD007A5C6C /* Node.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Node.swift; sourceTree = "<group>"; };
+		24CF7FB2214419B0007A5C6C /* Mesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mesh.swift; sourceTree = "<group>"; };
+		24CF7FB521441B00007A5C6C /* CodableDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodableDictionary.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,6 +104,7 @@
 			isa = PBXGroup;
 			children = (
 				24CF7F952143F075007A5C6C /* VRM */,
+				24CF7FB421441AED007A5C6C /* Extensions */,
 				24CF7F7E2143EEDB007A5C6C /* VRMKit.h */,
 				24CF7F7F2143EEDB007A5C6C /* Info.plist */,
 			);
@@ -129,8 +136,18 @@
 				24CF7FAA21441276007A5C6C /* Scene.swift */,
 				24CF7FAC21441288007A5C6C /* Skin.swift */,
 				24CF7FAE2144129B007A5C6C /* Texture.swift */,
+				24CF7FB0214412CD007A5C6C /* Node.swift */,
+				24CF7FB2214419B0007A5C6C /* Mesh.swift */,
 			);
 			path = VRM;
+			sourceTree = "<group>";
+		};
+		24CF7FB421441AED007A5C6C /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				24CF7FB521441B00007A5C6C /* CodableDictionary.swift */,
+			);
+			path = Extensions;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -243,13 +260,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				24CF7F9B21440488007A5C6C /* Color4.swift in Sources */,
+				24CF7FB3214419B0007A5C6C /* Mesh.swift in Sources */,
 				24CF7FA921441253007A5C6C /* Image.swift in Sources */,
 				24CF7F9F2144088A007A5C6C /* GLTF.swift in Sources */,
+				24CF7FB1214412CD007A5C6C /* Node.swift in Sources */,
 				24CF7FA5214410B4007A5C6C /* Matrix.swift in Sources */,
 				24CF7FAD21441288007A5C6C /* Skin.swift in Sources */,
 				24CF7FA121440D7E007A5C6C /* Vector3.swift in Sources */,
 				24CF7FAF2144129B007A5C6C /* Texture.swift in Sources */,
 				24CF7FA321440D9A007A5C6C /* Vector4.swift in Sources */,
+				24CF7FB621441B00007A5C6C /* CodableDictionary.swift in Sources */,
 				24CF7FA721441238007A5C6C /* Camera.swift in Sources */,
 				24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */,
 				24CF7FAB21441276007A5C6C /* Scene.swift in Sources */,
