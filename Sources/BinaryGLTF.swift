@@ -26,7 +26,7 @@ public struct BinaryGLTF {
 }
 
 extension BinaryGLTF {
-    public init(from data: Data) throws {
+    public init(data: Data) throws {
         var offset = MemoryLayout<UInt32>.size // skip `magic`
         let rawVersion: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
         guard let version = GLTF.Version(rawValue: rawVersion), version == .two else {

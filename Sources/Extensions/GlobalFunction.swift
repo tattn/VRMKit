@@ -17,3 +17,11 @@ func read(_ data: Data, offset: inout Int, size: Int) -> Data {
     defer { offset += size }
     return data.subdata(in: offset..<(offset+size))
 }
+
+infix operator ???
+
+func ???<T>(lhs: T?,
+            error: @autoclosure () -> VRMError) throws -> T {
+    guard let value = lhs else { throw error() }
+    return value
+}

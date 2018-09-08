@@ -16,7 +16,7 @@ class BinaryGLTFTests: XCTestCase {
     }
     
     func testLoadVRM() {
-        let binaryGltf = try! BinaryGLTF(from: Resources.aliciaSolid.data)
+        let binaryGltf = try! BinaryGLTF(data: Resources.aliciaSolid.data)
         let json = binaryGltf.jsonData
         XCTAssertEqual(json.asset.generator, "UniGLTF")
         XCTAssertEqual(json.asset.version, "2.0")
