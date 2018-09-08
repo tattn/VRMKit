@@ -10,6 +10,8 @@
 		24CF7F852143EEDB007A5C6C /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
 		24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */; };
 		24CF7F8C2143EEDB007A5C6C /* VRMKit.h in Headers */ = {isa = PBXBuildFile; fileRef = 24CF7F7E2143EEDB007A5C6C /* VRMKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F962143F0A8007A5C6C /* Extensions.swift */; };
+		24CF7F992143F496007A5C6C /* ExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F982143F496007A5C6C /* ExtensionsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,6 +31,8 @@
 		24CF7F842143EEDB007A5C6C /* VRMKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VRMKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMKitTests.swift; sourceTree = "<group>"; };
 		24CF7F8B2143EEDB007A5C6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		24CF7F962143F0A8007A5C6C /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
+		24CF7F982143F496007A5C6C /* ExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +75,7 @@
 		24CF7F7D2143EEDB007A5C6C /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				24CF7F952143F075007A5C6C /* VRM */,
 				24CF7F7E2143EEDB007A5C6C /* VRMKit.h */,
 				24CF7F7F2143EEDB007A5C6C /* Info.plist */,
 			);
@@ -82,8 +87,17 @@
 			children = (
 				24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */,
 				24CF7F8B2143EEDB007A5C6C /* Info.plist */,
+				24CF7F982143F496007A5C6C /* ExtensionsTests.swift */,
 			);
 			path = Tests;
+			sourceTree = "<group>";
+		};
+		24CF7F952143F075007A5C6C /* VRM */ = {
+			isa = PBXGroup;
+			children = (
+				24CF7F962143F0A8007A5C6C /* Extensions.swift */,
+			);
+			path = VRM;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -148,6 +162,7 @@
 				TargetAttributes = {
 					24CF7F7A2143EEDB007A5C6C = {
 						CreatedOnToolsVersion = 9.4.1;
+						LastSwiftMigration = 0940;
 					};
 					24CF7F832143EEDB007A5C6C = {
 						CreatedOnToolsVersion = 9.4.1;
@@ -194,6 +209,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -202,6 +218,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */,
+				24CF7F992143F496007A5C6C /* ExtensionsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -339,6 +356,7 @@
 		24CF7F902143EEDB007A5C6C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "";
 				CODE_SIGN_STYLE = Automatic;
 				DEFINES_MODULE = YES;
@@ -355,6 +373,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMKit;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
 				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 4.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -363,6 +382,7 @@
 		24CF7F912143EEDB007A5C6C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "";
 				CODE_SIGN_STYLE = Automatic;
 				DEFINES_MODULE = YES;
@@ -387,6 +407,7 @@
 		24CF7F932143EEDB007A5C6C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				INFOPLIST_FILE = Tests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -404,6 +425,7 @@
 		24CF7F942143EEDB007A5C6C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				INFOPLIST_FILE = Tests/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
