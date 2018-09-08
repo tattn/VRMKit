@@ -20,6 +20,9 @@
 		24CF7FA5214410B4007A5C6C /* Matrix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FA4214410B4007A5C6C /* Matrix.swift */; };
 		24CF7FA721441238007A5C6C /* Camera.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FA621441238007A5C6C /* Camera.swift */; };
 		24CF7FA921441253007A5C6C /* Image.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FA821441253007A5C6C /* Image.swift */; };
+		24CF7FAB21441276007A5C6C /* Scene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FAA21441276007A5C6C /* Scene.swift */; };
+		24CF7FAD21441288007A5C6C /* Skin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FAC21441288007A5C6C /* Skin.swift */; };
+		24CF7FAF2144129B007A5C6C /* Texture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FAE2144129B007A5C6C /* Texture.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +52,9 @@
 		24CF7FA4214410B4007A5C6C /* Matrix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Matrix.swift; sourceTree = "<group>"; };
 		24CF7FA621441238007A5C6C /* Camera.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Camera.swift; sourceTree = "<group>"; };
 		24CF7FA821441253007A5C6C /* Image.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Image.swift; sourceTree = "<group>"; };
+		24CF7FAA21441276007A5C6C /* Scene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scene.swift; sourceTree = "<group>"; };
+		24CF7FAC21441288007A5C6C /* Skin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skin.swift; sourceTree = "<group>"; };
+		24CF7FAE2144129B007A5C6C /* Texture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Texture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -120,6 +126,9 @@
 				24CF7FA4214410B4007A5C6C /* Matrix.swift */,
 				24CF7FA621441238007A5C6C /* Camera.swift */,
 				24CF7FA821441253007A5C6C /* Image.swift */,
+				24CF7FAA21441276007A5C6C /* Scene.swift */,
+				24CF7FAC21441288007A5C6C /* Skin.swift */,
+				24CF7FAE2144129B007A5C6C /* Texture.swift */,
 			);
 			path = VRM;
 			sourceTree = "<group>";
@@ -237,10 +246,13 @@
 				24CF7FA921441253007A5C6C /* Image.swift in Sources */,
 				24CF7F9F2144088A007A5C6C /* GLTF.swift in Sources */,
 				24CF7FA5214410B4007A5C6C /* Matrix.swift in Sources */,
+				24CF7FAD21441288007A5C6C /* Skin.swift in Sources */,
 				24CF7FA121440D7E007A5C6C /* Vector3.swift in Sources */,
+				24CF7FAF2144129B007A5C6C /* Texture.swift in Sources */,
 				24CF7FA321440D9A007A5C6C /* Vector4.swift in Sources */,
 				24CF7FA721441238007A5C6C /* Camera.swift in Sources */,
 				24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */,
+				24CF7FAB21441276007A5C6C /* Scene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
