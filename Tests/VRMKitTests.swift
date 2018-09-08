@@ -79,4 +79,19 @@ class VRMTests: XCTestCase {
         XCTAssertEqual(vrm.firstPerson.meshAnnotations[0].firstPersonFlag, "Auto")
         XCTAssertEqual(vrm.firstPerson.meshAnnotations[0].mesh, 0)
     }
+
+    func testSecondaryAnimation() {
+        let target = vrm.secondaryAnimation.boneGroups[0]
+        XCTAssertEqual(target.bones, [41, 49, 57, 59, 61])
+        XCTAssertEqual(target.center, -1)
+        XCTAssertEqual(target.colliderGroups, [2, 1, 0, 3, 5, 4, 6])
+        XCTAssertEqual(target.comment, "")
+        XCTAssertEqual(target.dragForce, 0.4)
+        XCTAssertEqual(target.gravityDir.x, 0.0)
+        XCTAssertEqual(target.gravityDir.y, -1.0)
+        XCTAssertEqual(target.gravityDir.z, 0.0)
+        XCTAssertEqual(target.gravityPower, 0.0)
+        XCTAssertEqual(target.hitRadius, 0.01)
+        XCTAssertEqual(target.stiffiness, 0.65)
+    }
 }

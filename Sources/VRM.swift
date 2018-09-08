@@ -16,6 +16,7 @@ public struct VRM {
     public let humanoid: Humanoid
     public let blendShapeMaster: BlendShapeMaster
     public let firstPerson: FirstPerson
+    public let secondaryAnimation: SecondaryAnimation
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
@@ -31,6 +32,7 @@ public struct VRM {
         humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
         blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
         firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
+        secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
     }
 }
 
@@ -119,20 +121,49 @@ extension VRM {
 
     public struct FirstPerson: Codable {
         public let firstPersonBone: Int
-        public let firstPersonBoneOffset: FirstPersonBoneOffset
+        public let firstPersonBoneOffset: Vector3
         public let meshAnnotations: [MeshAnnotation]
-        public struct FirstPersonBoneOffset: Codable {
-            public let x, y, z: Double
-            public init(from decoder: Decoder) throws {
-                let container = try decoder.container(keyedBy: CodingKeys.self)
-                x = try decodeDouble(key: .x, container: container)
-                y = try decodeDouble(key: .y, container: container)
-                z = try decodeDouble(key: .z, container: container)
-            }
-        }
         public struct MeshAnnotation: Codable {
             public let firstPersonFlag: String
             public let mesh: Int
+        }
+    }
+
+    public struct SecondaryAnimation: Codable {
+        public let boneGroups: [BoneGroup]
+        public struct BoneGroup: Codable {
+            public let bones: [Int]
+            public let center: Int
+            public let colliderGroups: [Int]
+            public let comment: String
+            public let dragForce: Double
+            public let gravityDir: Vector3
+            public let gravityPower: Double
+            public let hitRadius: Double
+            public let stiffiness: Double
+
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                bones = try container.decode([Int].self, forKey: .bones)
+                center = try container.decode(Int.self, forKey: .center)
+                colliderGroups = try container.decode([Int].self, forKey: .colliderGroups)
+                comment = try container.decode(String.self, forKey: .comment)
+                dragForce = try decodeDouble(key: .dragForce, container: container)
+                gravityDir = try container.decode(Vector3.self, forKey: .gravityDir)
+                gravityPower = try decodeDouble(key: .gravityPower, container: container)
+                hitRadius = try decodeDouble(key: .hitRadius, container: container)
+                stiffiness = try decodeDouble(key: .stiffiness, container: container)
+            }
+        }
+    }
+
+    public struct Vector3: Codable {
+        public let x, y, z: Double
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            x = try decodeDouble(key: .x, container: container)
+            y = try decodeDouble(key: .y, container: container)
+            z = try decodeDouble(key: .z, container: container)
         }
     }
 }
