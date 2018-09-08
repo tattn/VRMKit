@@ -15,6 +15,7 @@ public struct VRM {
     public let materialProperties: [MaterialProperty]
     public let humanoid: Humanoid
     public let blendShapeMaster: BlendShapeMaster
+    public let firstPerson: FirstPerson
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
@@ -29,6 +30,7 @@ public struct VRM {
         materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
         humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
         blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
+        firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
     }
 }
 
@@ -112,6 +114,25 @@ extension VRM {
                     weight = try decodeDouble(key: .weight, container: container)
                 }
             }
+        }
+    }
+
+    public struct FirstPerson: Codable {
+        public let firstPersonBone: Int
+        public let firstPersonBoneOffset: FirstPersonBoneOffset
+        public let meshAnnotations: [MeshAnnotation]
+        public struct FirstPersonBoneOffset: Codable {
+            public let x, y, z: Double
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                x = try decodeDouble(key: .x, container: container)
+                y = try decodeDouble(key: .y, container: container)
+                z = try decodeDouble(key: .z, container: container)
+            }
+        }
+        public struct MeshAnnotation: Codable {
+            public let firstPersonFlag: String
+            public let mesh: Int
         }
     }
 }

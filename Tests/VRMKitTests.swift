@@ -70,4 +70,13 @@ class VRMTests: XCTestCase {
         XCTAssertEqual(target.name, "A")
         XCTAssertEqual(target.presetName, "a")
     }
+
+    func testFirstPerson() {
+        XCTAssertEqual(vrm.firstPerson.firstPersonBone, 36)
+        XCTAssertEqual(vrm.firstPerson.firstPersonBoneOffset.x, 0)
+        XCTAssertEqual(vrm.firstPerson.firstPersonBoneOffset.y, 0.06)
+        XCTAssertEqual(vrm.firstPerson.firstPersonBoneOffset.z, 0)
+        XCTAssertEqual(vrm.firstPerson.meshAnnotations[0].firstPersonFlag, "Auto")
+        XCTAssertEqual(vrm.firstPerson.meshAnnotations[0].mesh, 0)
+    }
 }
