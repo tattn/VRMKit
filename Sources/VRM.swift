@@ -59,11 +59,11 @@ extension VRM {
         public let name: String
         public let shader: String
         public let renderQueue: Int
-        public let floatProperties: GLTF.Extensions
+        public let floatProperties: CodableAny
         public let keywordMap: [String: Bool]
         public let tagMap: [String: String]
         public let textureProperties: [String: Int]
-        public let vectorProperties: GLTF.Extensions
+        public let vectorProperties: CodableAny
     }
 
     public struct Humanoid: Codable {
@@ -101,7 +101,7 @@ extension VRM {
         public let blendShapeGroups: [BlendShapeGroup]
         public struct BlendShapeGroup: Codable {
             public let binds: [Bind]
-            public let materialValues: [GLTF.Extensions]
+            public let materialValues: [CodableAny]
             public let name: String
             public let presetName: String
             public struct Bind: Codable {

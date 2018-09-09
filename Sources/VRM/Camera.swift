@@ -16,16 +16,16 @@ extension GLTF {
         public let perspective: Perspective?
         public let type: Type
         public let name: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         public struct Orthographic: Codable {
             let xmag: Float
             let ymag: Float
             let zfar: Float
             let znear: Float
-            let extensions: Extensions?
-            let extras: Extensions?
+            let extensions: CodableAny?
+            let extras: CodableAny?
         }
 
         public struct Perspective: Codable {
@@ -33,8 +33,8 @@ extension GLTF {
             let yfov: Float
             let zfar: Float?
             let znear: Float
-            let extensions: Extensions?
-            let extras: Extensions?
+            let extensions: CodableAny?
+            let extras: CodableAny?
         }
 
         public enum `Type`: String, Codable {

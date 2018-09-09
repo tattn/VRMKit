@@ -24,8 +24,8 @@ extension GLTF {
         public let min: [Float]?
         public let sparse: Sparse?
         public let name: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         private enum CodingKeys: String, CodingKey {
             case bufferView
@@ -68,16 +68,16 @@ extension GLTF.Accessor {
         public let count: Int
         public let indices: Indices
         public let values: Values
-        public let extensions: GLTF.Extensions?
-        public let extras: GLTF.Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         public struct Indices: Codable {
             public let bufferView: Int
             let _byteOffset: Int?
             public var byteOffset: Int { return _byteOffset ?? 0 }
             public let componentType: ComponentType
-            public let extensions: GLTF.Extensions?
-            public let extras: GLTF.Extensions?
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
             private enum CodingKeys: String, CodingKey {
                 case bufferView
                 case _byteOffset = "byteOffset"
@@ -91,8 +91,8 @@ extension GLTF.Accessor {
             public let bufferView: Int
             let _byteOffset: Int?
             public var byteOffset: Int { return _byteOffset ?? 0 }
-            public let extensions: GLTF.Extensions?
-            public let extras: GLTF.Extensions?
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
             private enum CodingKeys: String, CodingKey {
                 case bufferView
                 case _byteOffset = "byteOffset"

@@ -1,26 +1,22 @@
 //
-//  Extensions.swift
-//  VRMKit
+//  CodableAny.swift
+//  MoreCodable
 //
-//  Created by Tatsuya Tanaka on 20180908.
+//  Created by Tatsuya Tanaka on 20180909.
 //  Copyright © 2018年 tattn. All rights reserved.
 //
 
 import Foundation
 
-// https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#specifying-extensions
+public struct CodableAny {
+    public let value: Any
 
-extension GLTF {
-    public struct Extensions {
-        public let value: Any
-
-        public init(_ value: Any) {
-            self.value = value
-        }
+    public init(_ value: Any) {
+        self.value = value
     }
 }
 
-extension GLTF.Extensions: Decodable {
+extension CodableAny: Decodable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
@@ -36,22 +32,25 @@ extension GLTF.Extensions: Decodable {
             self.init(double)
         } else if let string = try? container.decode(String.self) {
             self.init(string)
-        } else if let array = try? container.decode([GLTF.Extensions].self) {
+        } else if let array = try? container.decode([CodableAny].self) {
             self.init(array.map { $0.value })
-        } else if let dictionary = try? container.decode([String: GLTF.Extensions].self) {
+        } else if let dictionary = try? container.decode([String: CodableAny].self) {
             self.init(dictionary.mapValues { $0.value })
         } else {
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "failed to decode")
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "This type is not supported."
+            )
         }
     }
 }
 
-extension GLTF.Extensions: Encodable {
+extension CodableAny: Encodable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
 
         switch value {
-        case is Void:
+        case is Void, Optional<Any>.none:
             try container.encodeNil()
         case let bool as Bool:
             try container.encode(bool)
@@ -86,11 +85,14 @@ extension GLTF.Extensions: Encodable {
         case let url as URL:
             try container.encode(url)
         case let array as [Any]:
-            try container.encode(array.map(GLTF.Extensions.init))
+            try container.encode(array.map(CodableAny.init))
         case let dictionary as [String: Any]:
-            try container.encode(dictionary.mapValues(GLTF.Extensions.init))
+            try container.encode(dictionary.mapValues(CodableAny.init))
         default:
-            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: container.codingPath, debugDescription: "failed to encode"))
+            throw EncodingError.invalidValue(value, EncodingError.Context(
+                codingPath: container.codingPath,
+                debugDescription: "\(type(of: value)) type is not supported."
+            ))
         }
     }
 }

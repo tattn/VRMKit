@@ -19,8 +19,8 @@ extension GLTF {
         public let byteStride: Int?
         public let target: Int?
         public let name: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
         private enum CodingKeys: String, CodingKey {
             case buffer
             case _byteOffset = "byteOffset"

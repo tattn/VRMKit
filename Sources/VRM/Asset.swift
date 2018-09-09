@@ -16,7 +16,7 @@ extension GLTF {
         public let generator: String?
         public let version: String
         public let minVersion: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
     }
 }

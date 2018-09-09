@@ -15,20 +15,20 @@ extension GLTF {
         public let channels: [Channel]
         public let samplers: [Sampler]
         public let name: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         public struct Channel: Codable {
             let sampler: Int
             let target: Target
-            let extensions: Extensions?
-            let extras: Extensions?
+            let extensions: CodableAny?
+            let extras: CodableAny?
 
             public struct Target: Codable {
                 let node: Int?
                 let path: String
-                let extensions: Extensions?
-                let extras: Extensions?
+                let extensions: CodableAny?
+                let extras: CodableAny?
             }
         }
 
@@ -37,8 +37,8 @@ extension GLTF {
             let _interpolation: Interpolation?
             var interpolation: Interpolation { return _interpolation ?? .LINEAR }
             let output: Int
-            let extensions: Extensions?
-            let extras: Extensions?
+            let extensions: CodableAny?
+            let extras: CodableAny?
             private enum CodingKeys: String, CodingKey {
                 case input
                 case _interpolation = "interpolation"

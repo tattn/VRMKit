@@ -15,7 +15,7 @@ extension GLTF {
         public let uri: String?
         public let byteLength: Int
         public let name: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
     }
 }

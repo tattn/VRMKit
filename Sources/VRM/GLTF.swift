@@ -27,8 +27,8 @@ public struct GLTF: Codable {
     public let scenes: [Scene]?
     public let skins: [Skin]?
     public let textures: [Texture]?
-    public let extensions: Extensions?
-    public let extras: Extensions?
+    public let extensions: CodableAny?
+    public let extras: CodableAny?
     private enum CodingKeys: String, CodingKey {
         case extensionsUsed
         case extensionsRequired

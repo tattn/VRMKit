@@ -13,8 +13,8 @@ import Foundation
 extension GLTF {
     public struct Material: Codable {
         public let name: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
         public let pbrMetallicRoughness: PbrMetallicRoughness?
         public let normalTexture: NormalTextureInfo?
         public let occlusionTexture: OcclusionTextureInfo?
@@ -50,8 +50,8 @@ extension GLTF {
             let _roughnessFactor: Float?
             public var roughnessFactor: Float { return _roughnessFactor ?? 1 }
             public let metallicRoughnessTexture: TextureInfo?
-            public let extensions: Extensions?
-            public let extras: Extensions?
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
             private enum CodingKeys: String, CodingKey {
                 case _baseColorFactor = "baseColorFactor"
                 case baseColorTexture
@@ -69,8 +69,8 @@ extension GLTF {
             public var texCoord: Int { return _texCoord ?? 0 }
             let _scale: Float?
             public var scale: Float { return _scale ?? 1 }
-            public let extensions: Extensions?
-            public let extras: Extensions?
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
             private enum CodingKeys: String, CodingKey {
                 case index
                 case _texCoord = "texCoord"
@@ -86,8 +86,8 @@ extension GLTF {
             public var texCoord: Int { return _texCoord ?? 0 }
             let _strength: Float?
             public var strength: Float { return _strength ?? 1 }
-            public let extensions: Extensions?
-            public let extras: Extensions?
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
             private enum CodingKeys: String, CodingKey {
                 case index
                 case _texCoord = "texCoord"

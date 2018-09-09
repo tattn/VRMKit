@@ -15,8 +15,8 @@ extension GLTF {
         public let primitives: [Primitive]
         public let weights: [Float]?
         public let name: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         public struct Primitive: Codable {
             public let attributes: CodableDictionary<AttributeKey, Int>
@@ -25,8 +25,8 @@ extension GLTF {
             let _mode: Mode?
             public var mode: Mode { return _mode ?? .TRIANGLES }
             public let targets: [[String: TargetValue]]?
-            public let extensions: Extensions?
-            public let extras: Extensions?
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
             private enum CodingKeys: String, CodingKey {
                 case attributes
                 case indices
@@ -47,7 +47,7 @@ extension GLTF {
                 case TRIANGLE_FAN
             }
 
-            public enum AttributeKey: String, CodingKey {
+            public enum AttributeKey: String, Codable, CodingKey {
                 case POSITION
                 case NORMAL
                 case TANGENT

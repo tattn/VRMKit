@@ -16,7 +16,7 @@ extension GLTF {
         public let skeleton: Int?
         public let joints: [Int]
         public let name: String?
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
     }
 }

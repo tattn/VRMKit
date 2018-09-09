@@ -15,8 +15,8 @@ extension GLTF {
         public let index: Int
         let _texCoord: Int?
         public var texCoord: Int { return _texCoord ?? 0 }
-        public let extensions: Extensions?
-        public let extras: Extensions?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
         private enum CodingKeys: String, CodingKey {
             case index
             case _texCoord = "texCoord"

@@ -10,8 +10,7 @@
 		24CF7F852143EEDB007A5C6C /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
 		24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */; };
 		24CF7F8C2143EEDB007A5C6C /* VRMKit.h in Headers */ = {isa = PBXBuildFile; fileRef = 24CF7F7E2143EEDB007A5C6C /* VRMKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F962143F0A8007A5C6C /* Extensions.swift */; };
-		24CF7F992143F496007A5C6C /* ExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F982143F496007A5C6C /* ExtensionsTests.swift */; };
+		24CF7F972143F0A8007A5C6C /* CodableAny.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F962143F0A8007A5C6C /* CodableAny.swift */; };
 		24CF7F9B21440488007A5C6C /* Color4.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F9A21440488007A5C6C /* Color4.swift */; };
 		24CF7F9D2144055A007A5C6C /* Color4Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F9C2144055A007A5C6C /* Color4Tests.swift */; };
 		24CF7F9F2144088A007A5C6C /* GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F9E2144088A007A5C6C /* GLTF.swift */; };
@@ -65,8 +64,7 @@
 		24CF7F842143EEDB007A5C6C /* VRMKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VRMKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMKitTests.swift; sourceTree = "<group>"; };
 		24CF7F8B2143EEDB007A5C6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		24CF7F962143F0A8007A5C6C /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
-		24CF7F982143F496007A5C6C /* ExtensionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionsTests.swift; sourceTree = "<group>"; };
+		24CF7F962143F0A8007A5C6C /* CodableAny.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodableAny.swift; sourceTree = "<group>"; };
 		24CF7F9A21440488007A5C6C /* Color4.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Color4.swift; sourceTree = "<group>"; };
 		24CF7F9C2144055A007A5C6C /* Color4Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Color4Tests.swift; sourceTree = "<group>"; };
 		24CF7F9E2144088A007A5C6C /* GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GLTF.swift; sourceTree = "<group>"; };
@@ -101,6 +99,7 @@
 		24CF7FDD2144300F007A5C6C /* Storage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage.swift; sourceTree = "<group>"; };
 		24CF7FDF2144306A007A5C6C /* InternalFunction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InternalFunction.swift; sourceTree = "<group>"; };
 		24CF7FE121443087007A5C6C /* AnyCodingKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyCodingKey.swift; sourceTree = "<group>"; };
+		24CF7FEB21451253007A5C6C /* LICENSE */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,7 +157,6 @@
 			isa = PBXGroup;
 			children = (
 				24CF7F8B2143EEDB007A5C6C /* Info.plist */,
-				24CF7F982143F496007A5C6C /* ExtensionsTests.swift */,
 				24CF7F9C2144055A007A5C6C /* Color4Tests.swift */,
 				24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */,
 				24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */,
@@ -172,7 +170,6 @@
 			isa = PBXGroup;
 			children = (
 				24CF7F9E2144088A007A5C6C /* GLTF.swift */,
-				24CF7F962143F0A8007A5C6C /* Extensions.swift */,
 				24CF7FA021440D7E007A5C6C /* Vector3.swift */,
 				24CF7FA221440D9A007A5C6C /* Vector4.swift */,
 				24CF7FBB21441C64007A5C6C /* Color3.swift */,
@@ -202,7 +199,6 @@
 			children = (
 				24CF7FDC21442F14007A5C6C /* MoreCodable */,
 				24CF7FCB21441FD8007A5C6C /* GlobalFunction.swift */,
-				24CF7FB521441B00007A5C6C /* CodableDictionary.swift */,
 			);
 			path = Extensions;
 			sourceTree = "<group>";
@@ -222,6 +218,9 @@
 				24CF7FDD2144300F007A5C6C /* Storage.swift */,
 				24CF7FDF2144306A007A5C6C /* InternalFunction.swift */,
 				24CF7FE121443087007A5C6C /* AnyCodingKey.swift */,
+				24CF7FB521441B00007A5C6C /* CodableDictionary.swift */,
+				24CF7F962143F0A8007A5C6C /* CodableAny.swift */,
+				24CF7FEB21451253007A5C6C /* LICENSE */,
 			);
 			path = MoreCodable;
 			sourceTree = "<group>";
@@ -360,7 +359,7 @@
 				24CF7FB821441B89007A5C6C /* Material.swift in Sources */,
 				24CF7FB621441B00007A5C6C /* CodableDictionary.swift in Sources */,
 				24CF7FA721441238007A5C6C /* Camera.swift in Sources */,
-				24CF7F972143F0A8007A5C6C /* Extensions.swift in Sources */,
+				24CF7F972143F0A8007A5C6C /* CodableAny.swift in Sources */,
 				24CF7FCE21442010007A5C6C /* VRMError.swift in Sources */,
 				24CF7FC421441DCE007A5C6C /* Animation.swift in Sources */,
 				24CF7FC821441E6F007A5C6C /* Sampler.swift in Sources */,
@@ -377,7 +376,6 @@
 				24CF7FD521442444007A5C6C /* Resources.swift in Sources */,
 				24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */,
 				24CF7FD0214420AA007A5C6C /* BinaryGLTFTests.swift in Sources */,
-				24CF7F992143F496007A5C6C /* ExtensionsTests.swift in Sources */,
 				24CF7F9D2144055A007A5C6C /* Color4Tests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
