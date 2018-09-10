@@ -7,6 +7,40 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2457259C2146EF99003AA5D7 /* VRMSceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 245725932146EF99003AA5D7 /* VRMSceneKit.framework */; };
+		245725A12146EF99003AA5D7 /* VRMSceneKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725A02146EF99003AA5D7 /* VRMSceneKitTests.swift */; };
+		245725A32146EF99003AA5D7 /* VRMSceneKit.h in Headers */ = {isa = PBXBuildFile; fileRef = 245725952146EF99003AA5D7 /* VRMSceneKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		245725AC2146F059003AA5D7 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 24CF7FD121442111007A5C6C /* AliciaSolid.vrm */; };
+		245725AE2146F09C003AA5D7 /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
+		245725B02146F0BC003AA5D7 /* VRMSceneLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725AF2146F0BC003AA5D7 /* VRMSceneLoader.swift */; };
+		245725B22146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B12146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift */; };
+		245725B52146F129003AA5D7 /* VRMScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B42146F129003AA5D7 /* VRMScene.swift */; };
+		245725B82146F165003AA5D7 /* GLTF2SCN.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B72146F165003AA5D7 /* GLTF2SCN.swift */; };
+		245725BA2146F185003AA5D7 /* SCNCamera+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B92146F185003AA5D7 /* SCNCamera+GLTF.swift */; };
+		245725BC2146F19D003AA5D7 /* UIImage+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725BB2146F19D003AA5D7 /* UIImage+GLTF.swift */; };
+		245725BE2146F1BB003AA5D7 /* SCNMaterialProperty+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725BD2146F1BB003AA5D7 /* SCNMaterialProperty+GLTF.swift */; };
+		245725C02146F1D7003AA5D7 /* SCNMaterial+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725BF2146F1D7003AA5D7 /* SCNMaterial+GLTF.swift */; };
+		245725C22146F1EE003AA5D7 /* Data+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725C12146F1EE003AA5D7 /* Data+GLTF.swift */; };
+		245725C42146F207003AA5D7 /* SCNGeometryElement+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725C32146F207003AA5D7 /* SCNGeometryElement+GLTF.swift */; };
+		245725C62146F224003AA5D7 /* SCNGeometrySource+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725C52146F224003AA5D7 /* SCNGeometrySource+GLTF.swift */; };
+		245725C82146F240003AA5D7 /* SCNNode+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725C72146F240003AA5D7 /* SCNNode+GLTF.swift */; };
+		245725CC2146F28B003AA5D7 /* GlobalFunction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725CB2146F28B003AA5D7 /* GlobalFunction.swift */; };
+		245725CE2146F2B4003AA5D7 /* SceneKit+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725CD2146F2B4003AA5D7 /* SceneKit+.swift */; };
+		245725D22146F323003AA5D7 /* Collection+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725D12146F323003AA5D7 /* Collection+.swift */; };
+		245725DA2146F47A003AA5D7 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725D92146F47A003AA5D7 /* AppDelegate.swift */; };
+		245725DC2146F47A003AA5D7 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725DB2146F47A003AA5D7 /* ViewController.swift */; };
+		245725DF2146F47B003AA5D7 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 245725DD2146F47B003AA5D7 /* Main.storyboard */; };
+		245725E12146F47D003AA5D7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 245725E02146F47D003AA5D7 /* Assets.xcassets */; };
+		245725E42146F47D003AA5D7 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 245725E22146F47D003AA5D7 /* LaunchScreen.storyboard */; };
+		245725E92146F496003AA5D7 /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
+		245725EA2146F496003AA5D7 /* VRMKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		245725ED2146F496003AA5D7 /* VRMSceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 245725932146EF99003AA5D7 /* VRMSceneKit.framework */; };
+		245725EE2146F496003AA5D7 /* VRMSceneKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 245725932146EF99003AA5D7 /* VRMSceneKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		245725F22146F4E3003AA5D7 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 24CF7FD121442111007A5C6C /* AliciaSolid.vrm */; };
+		245725F42146F5E6003AA5D7 /* VRMLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725F32146F5E6003AA5D7 /* VRMLoader.swift */; };
+		245725F72146FAC1003AA5D7 /* VRMSceneLoader+convenience.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725F52146FABE003AA5D7 /* VRMSceneLoader+convenience.swift */; };
+		245725F921481887003AA5D7 /* VRMError+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725F821481886003AA5D7 /* VRMError+.swift */; };
+		245725FB21481FF9003AA5D7 /* GLTF+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725FA21481FF9003AA5D7 /* GLTF+.swift */; };
 		24CF7F852143EEDB007A5C6C /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
 		24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */; };
 		24CF7F8C2143EEDB007A5C6C /* VRMKit.h in Headers */ = {isa = PBXBuildFile; fileRef = 24CF7F7E2143EEDB007A5C6C /* VRMKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -48,6 +82,27 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		2457259D2146EF99003AA5D7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 24CF7F722143EEDB007A5C6C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 245725922146EF99003AA5D7;
+			remoteInfo = VRMSceneKit;
+		};
+		245725EB2146F496003AA5D7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 24CF7F722143EEDB007A5C6C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 24CF7F7A2143EEDB007A5C6C;
+			remoteInfo = VRMKit;
+		};
+		245725EF2146F496003AA5D7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 24CF7F722143EEDB007A5C6C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 245725922146EF99003AA5D7;
+			remoteInfo = VRMSceneKit;
+		};
 		24CF7F862143EEDB007A5C6C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 24CF7F722143EEDB007A5C6C /* Project object */;
@@ -57,7 +112,54 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		245725F12146F496003AA5D7 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				245725EE2146F496003AA5D7 /* VRMSceneKit.framework in Embed Frameworks */,
+				245725EA2146F496003AA5D7 /* VRMKit.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		245725932146EF99003AA5D7 /* VRMSceneKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = VRMSceneKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		245725952146EF99003AA5D7 /* VRMSceneKit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VRMSceneKit.h; sourceTree = "<group>"; };
+		245725962146EF99003AA5D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		2457259B2146EF99003AA5D7 /* VRMSceneKitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VRMSceneKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		245725A02146EF99003AA5D7 /* VRMSceneKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMSceneKitTests.swift; sourceTree = "<group>"; };
+		245725A22146EF99003AA5D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		245725AF2146F0BC003AA5D7 /* VRMSceneLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMSceneLoader.swift; sourceTree = "<group>"; };
+		245725B12146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VRMSceneLoader+SceneData.swift"; sourceTree = "<group>"; };
+		245725B42146F129003AA5D7 /* VRMScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMScene.swift; sourceTree = "<group>"; };
+		245725B72146F165003AA5D7 /* GLTF2SCN.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GLTF2SCN.swift; sourceTree = "<group>"; };
+		245725B92146F185003AA5D7 /* SCNCamera+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNCamera+GLTF.swift"; sourceTree = "<group>"; };
+		245725BB2146F19D003AA5D7 /* UIImage+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIImage+GLTF.swift"; sourceTree = "<group>"; };
+		245725BD2146F1BB003AA5D7 /* SCNMaterialProperty+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNMaterialProperty+GLTF.swift"; sourceTree = "<group>"; };
+		245725BF2146F1D7003AA5D7 /* SCNMaterial+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNMaterial+GLTF.swift"; sourceTree = "<group>"; };
+		245725C12146F1EE003AA5D7 /* Data+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data+GLTF.swift"; sourceTree = "<group>"; };
+		245725C32146F207003AA5D7 /* SCNGeometryElement+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNGeometryElement+GLTF.swift"; sourceTree = "<group>"; };
+		245725C52146F224003AA5D7 /* SCNGeometrySource+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNGeometrySource+GLTF.swift"; sourceTree = "<group>"; };
+		245725C72146F240003AA5D7 /* SCNNode+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNNode+GLTF.swift"; sourceTree = "<group>"; };
+		245725CB2146F28B003AA5D7 /* GlobalFunction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalFunction.swift; sourceTree = "<group>"; };
+		245725CD2146F2B4003AA5D7 /* SceneKit+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SceneKit+.swift"; sourceTree = "<group>"; };
+		245725D12146F323003AA5D7 /* Collection+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Collection+.swift"; sourceTree = "<group>"; };
+		245725D72146F47A003AA5D7 /* VRMExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VRMExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		245725D92146F47A003AA5D7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		245725DB2146F47A003AA5D7 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		245725DE2146F47B003AA5D7 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		245725E02146F47D003AA5D7 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		245725E32146F47D003AA5D7 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		245725E52146F47D003AA5D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		245725F32146F5E6003AA5D7 /* VRMLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMLoader.swift; sourceTree = "<group>"; };
+		245725F52146FABE003AA5D7 /* VRMSceneLoader+convenience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VRMSceneLoader+convenience.swift"; sourceTree = "<group>"; };
+		245725F821481886003AA5D7 /* VRMError+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VRMError+.swift"; sourceTree = "<group>"; };
+		245725FA21481FF9003AA5D7 /* GLTF+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GLTF+.swift"; sourceTree = "<group>"; };
 		24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = VRMKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		24CF7F7E2143EEDB007A5C6C /* VRMKit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VRMKit.h; sourceTree = "<group>"; };
 		24CF7F7F2143EEDB007A5C6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -103,6 +205,31 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		2457258F2146EF99003AA5D7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				245725AE2146F09C003AA5D7 /* VRMKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		245725982146EF99003AA5D7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2457259C2146EF99003AA5D7 /* VRMSceneKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		245725D42146F47A003AA5D7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				245725ED2146F496003AA5D7 /* VRMSceneKit.framework in Frameworks */,
+				245725E92146F496003AA5D7 /* VRMKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		24CF7F772143EEDB007A5C6C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -121,12 +248,120 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		245725942146EF99003AA5D7 /* VRMSceneKit */ = {
+			isa = PBXGroup;
+			children = (
+				245725AF2146F0BC003AA5D7 /* VRMSceneLoader.swift */,
+				245725F52146FABE003AA5D7 /* VRMSceneLoader+convenience.swift */,
+				245725B12146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift */,
+				245725B32146F11B003AA5D7 /* CustomType */,
+				245725B62146F14C003AA5D7 /* GLTF2SCN */,
+				245725CA2146F27F003AA5D7 /* Extensions */,
+				245725952146EF99003AA5D7 /* VRMSceneKit.h */,
+				245725962146EF99003AA5D7 /* Info.plist */,
+			);
+			path = VRMSceneKit;
+			sourceTree = "<group>";
+		};
+		2457259F2146EF99003AA5D7 /* VRMSceneKit */ = {
+			isa = PBXGroup;
+			children = (
+				245725A02146EF99003AA5D7 /* VRMSceneKitTests.swift */,
+				245725A22146EF99003AA5D7 /* Info.plist */,
+			);
+			path = VRMSceneKit;
+			sourceTree = "<group>";
+		};
+		245725AA2146EFC1003AA5D7 /* VRMKit */ = {
+			isa = PBXGroup;
+			children = (
+				245725F32146F5E6003AA5D7 /* VRMLoader.swift */,
+				24CF7FC921441F6E007A5C6C /* BinaryGLTF.swift */,
+				24CF7FCD21442010007A5C6C /* VRMError.swift */,
+				24CF7F952143F075007A5C6C /* VRM */,
+				24CF7FB421441AED007A5C6C /* Extensions */,
+				24CF7F7E2143EEDB007A5C6C /* VRMKit.h */,
+				24CF7F7F2143EEDB007A5C6C /* Info.plist */,
+			);
+			path = VRMKit;
+			sourceTree = "<group>";
+		};
+		245725AB2146EFEE003AA5D7 /* VRMKit */ = {
+			isa = PBXGroup;
+			children = (
+				24CF7F8B2143EEDB007A5C6C /* Info.plist */,
+				24CF7F9C2144055A007A5C6C /* Color4Tests.swift */,
+				24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */,
+				24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */,
+				24CF7FD421442444007A5C6C /* Resources.swift */,
+			);
+			path = VRMKit;
+			sourceTree = "<group>";
+		};
+		245725AD2146F09C003AA5D7 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		245725B32146F11B003AA5D7 /* CustomType */ = {
+			isa = PBXGroup;
+			children = (
+				245725B42146F129003AA5D7 /* VRMScene.swift */,
+			);
+			path = CustomType;
+			sourceTree = "<group>";
+		};
+		245725B62146F14C003AA5D7 /* GLTF2SCN */ = {
+			isa = PBXGroup;
+			children = (
+				245725B72146F165003AA5D7 /* GLTF2SCN.swift */,
+				245725B92146F185003AA5D7 /* SCNCamera+GLTF.swift */,
+				245725BB2146F19D003AA5D7 /* UIImage+GLTF.swift */,
+				245725BD2146F1BB003AA5D7 /* SCNMaterialProperty+GLTF.swift */,
+				245725BF2146F1D7003AA5D7 /* SCNMaterial+GLTF.swift */,
+				245725C12146F1EE003AA5D7 /* Data+GLTF.swift */,
+				245725C32146F207003AA5D7 /* SCNGeometryElement+GLTF.swift */,
+				245725C52146F224003AA5D7 /* SCNGeometrySource+GLTF.swift */,
+				245725C72146F240003AA5D7 /* SCNNode+GLTF.swift */,
+			);
+			path = GLTF2SCN;
+			sourceTree = "<group>";
+		};
+		245725CA2146F27F003AA5D7 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				245725CB2146F28B003AA5D7 /* GlobalFunction.swift */,
+				245725CD2146F2B4003AA5D7 /* SceneKit+.swift */,
+				245725D12146F323003AA5D7 /* Collection+.swift */,
+				245725F821481886003AA5D7 /* VRMError+.swift */,
+				245725FA21481FF9003AA5D7 /* GLTF+.swift */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
+		245725D82146F47A003AA5D7 /* Example */ = {
+			isa = PBXGroup;
+			children = (
+				245725D92146F47A003AA5D7 /* AppDelegate.swift */,
+				245725DB2146F47A003AA5D7 /* ViewController.swift */,
+				245725DD2146F47B003AA5D7 /* Main.storyboard */,
+				245725E02146F47D003AA5D7 /* Assets.xcassets */,
+				245725E22146F47D003AA5D7 /* LaunchScreen.storyboard */,
+				245725E52146F47D003AA5D7 /* Info.plist */,
+			);
+			path = Example;
+			sourceTree = "<group>";
+		};
 		24CF7F712143EEDB007A5C6C = {
 			isa = PBXGroup;
 			children = (
 				24CF7F7D2143EEDB007A5C6C /* Sources */,
 				24CF7F882143EEDB007A5C6C /* Tests */,
+				245725D82146F47A003AA5D7 /* Example */,
 				24CF7F7C2143EEDB007A5C6C /* Products */,
+				245725AD2146F09C003AA5D7 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -135,6 +370,9 @@
 			children = (
 				24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */,
 				24CF7F842143EEDB007A5C6C /* VRMKitTests.xctest */,
+				245725932146EF99003AA5D7 /* VRMSceneKit.framework */,
+				2457259B2146EF99003AA5D7 /* VRMSceneKitTests.xctest */,
+				245725D72146F47A003AA5D7 /* VRMExample.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -142,13 +380,8 @@
 		24CF7F7D2143EEDB007A5C6C /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				24CF7FC921441F6E007A5C6C /* BinaryGLTF.swift */,
-				24CF7FD6214425AD007A5C6C /* VRM.swift */,
-				24CF7FCD21442010007A5C6C /* VRMError.swift */,
-				24CF7F952143F075007A5C6C /* VRM */,
-				24CF7FB421441AED007A5C6C /* Extensions */,
-				24CF7F7E2143EEDB007A5C6C /* VRMKit.h */,
-				24CF7F7F2143EEDB007A5C6C /* Info.plist */,
+				245725AA2146EFC1003AA5D7 /* VRMKit */,
+				245725942146EF99003AA5D7 /* VRMSceneKit */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -156,11 +389,8 @@
 		24CF7F882143EEDB007A5C6C /* Tests */ = {
 			isa = PBXGroup;
 			children = (
-				24CF7F8B2143EEDB007A5C6C /* Info.plist */,
-				24CF7F9C2144055A007A5C6C /* Color4Tests.swift */,
-				24CF7FCF214420AA007A5C6C /* BinaryGLTFTests.swift */,
-				24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */,
-				24CF7FD421442444007A5C6C /* Resources.swift */,
+				245725AB2146EFEE003AA5D7 /* VRMKit */,
+				2457259F2146EF99003AA5D7 /* VRMSceneKit */,
 				24CF7FD32144211F007A5C6C /* Resources */,
 			);
 			path = Tests;
@@ -169,6 +399,7 @@
 		24CF7F952143F075007A5C6C /* VRM */ = {
 			isa = PBXGroup;
 			children = (
+				24CF7FD6214425AD007A5C6C /* VRM.swift */,
 				24CF7F9E2144088A007A5C6C /* GLTF.swift */,
 				24CF7FA021440D7E007A5C6C /* Vector3.swift */,
 				24CF7FA221440D9A007A5C6C /* Vector4.swift */,
@@ -228,6 +459,14 @@
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
+		245725902146EF99003AA5D7 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				245725A32146EF99003AA5D7 /* VRMSceneKit.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		24CF7F782143EEDB007A5C6C /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -239,6 +478,62 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
+		245725922146EF99003AA5D7 /* VRMSceneKit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 245725A82146EF99003AA5D7 /* Build configuration list for PBXNativeTarget "VRMSceneKit" */;
+			buildPhases = (
+				2457258E2146EF99003AA5D7 /* Sources */,
+				2457258F2146EF99003AA5D7 /* Frameworks */,
+				245725902146EF99003AA5D7 /* Headers */,
+				245725912146EF99003AA5D7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VRMSceneKit;
+			productName = VRMSceneKit;
+			productReference = 245725932146EF99003AA5D7 /* VRMSceneKit.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		2457259A2146EF99003AA5D7 /* VRMSceneKitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 245725A92146EF99003AA5D7 /* Build configuration list for PBXNativeTarget "VRMSceneKitTests" */;
+			buildPhases = (
+				245725972146EF99003AA5D7 /* Sources */,
+				245725982146EF99003AA5D7 /* Frameworks */,
+				245725992146EF99003AA5D7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2457259E2146EF99003AA5D7 /* PBXTargetDependency */,
+			);
+			name = VRMSceneKitTests;
+			productName = VRMSceneKitTests;
+			productReference = 2457259B2146EF99003AA5D7 /* VRMSceneKitTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		245725D62146F47A003AA5D7 /* VRMExample */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 245725E62146F47D003AA5D7 /* Build configuration list for PBXNativeTarget "VRMExample" */;
+			buildPhases = (
+				245725D32146F47A003AA5D7 /* Sources */,
+				245725D42146F47A003AA5D7 /* Frameworks */,
+				245725D52146F47A003AA5D7 /* Resources */,
+				245725F12146F496003AA5D7 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				245725EC2146F496003AA5D7 /* PBXTargetDependency */,
+				245725F02146F496003AA5D7 /* PBXTargetDependency */,
+			);
+			name = VRMExample;
+			productName = VRMExample;
+			productReference = 245725D72146F47A003AA5D7 /* VRMExample.app */;
+			productType = "com.apple.product-type.application";
+		};
 		24CF7F7A2143EEDB007A5C6C /* VRMKit */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 24CF7F8F2143EEDB007A5C6C /* Build configuration list for PBXNativeTarget "VRMKit" */;
@@ -285,6 +580,16 @@
 				LastUpgradeCheck = 0940;
 				ORGANIZATIONNAME = tattn;
 				TargetAttributes = {
+					245725922146EF99003AA5D7 = {
+						CreatedOnToolsVersion = 9.4.1;
+						LastSwiftMigration = 0940;
+					};
+					2457259A2146EF99003AA5D7 = {
+						CreatedOnToolsVersion = 9.4.1;
+					};
+					245725D62146F47A003AA5D7 = {
+						CreatedOnToolsVersion = 9.4.1;
+					};
 					24CF7F7A2143EEDB007A5C6C = {
 						CreatedOnToolsVersion = 9.4.1;
 						LastSwiftMigration = 0940;
@@ -300,6 +605,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				Base,
 			);
 			mainGroup = 24CF7F712143EEDB007A5C6C;
 			productRefGroup = 24CF7F7C2143EEDB007A5C6C /* Products */;
@@ -308,11 +614,40 @@
 			targets = (
 				24CF7F7A2143EEDB007A5C6C /* VRMKit */,
 				24CF7F832143EEDB007A5C6C /* VRMKitTests */,
+				245725922146EF99003AA5D7 /* VRMSceneKit */,
+				2457259A2146EF99003AA5D7 /* VRMSceneKitTests */,
+				245725D62146F47A003AA5D7 /* VRMExample */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		245725912146EF99003AA5D7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		245725992146EF99003AA5D7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				245725AC2146F059003AA5D7 /* AliciaSolid.vrm in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		245725D52146F47A003AA5D7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				245725F22146F4E3003AA5D7 /* AliciaSolid.vrm in Resources */,
+				245725E42146F47D003AA5D7 /* LaunchScreen.storyboard in Resources */,
+				245725E12146F47D003AA5D7 /* Assets.xcassets in Resources */,
+				245725DF2146F47B003AA5D7 /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		24CF7F792143EEDB007A5C6C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -331,6 +666,48 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		2457258E2146EF99003AA5D7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				245725C42146F207003AA5D7 /* SCNGeometryElement+GLTF.swift in Sources */,
+				245725BA2146F185003AA5D7 /* SCNCamera+GLTF.swift in Sources */,
+				245725FB21481FF9003AA5D7 /* GLTF+.swift in Sources */,
+				245725B82146F165003AA5D7 /* GLTF2SCN.swift in Sources */,
+				245725F921481887003AA5D7 /* VRMError+.swift in Sources */,
+				245725D22146F323003AA5D7 /* Collection+.swift in Sources */,
+				245725CE2146F2B4003AA5D7 /* SceneKit+.swift in Sources */,
+				245725C82146F240003AA5D7 /* SCNNode+GLTF.swift in Sources */,
+				245725BE2146F1BB003AA5D7 /* SCNMaterialProperty+GLTF.swift in Sources */,
+				245725B22146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift in Sources */,
+				245725C22146F1EE003AA5D7 /* Data+GLTF.swift in Sources */,
+				245725CC2146F28B003AA5D7 /* GlobalFunction.swift in Sources */,
+				245725F72146FAC1003AA5D7 /* VRMSceneLoader+convenience.swift in Sources */,
+				245725C02146F1D7003AA5D7 /* SCNMaterial+GLTF.swift in Sources */,
+				245725B02146F0BC003AA5D7 /* VRMSceneLoader.swift in Sources */,
+				245725BC2146F19D003AA5D7 /* UIImage+GLTF.swift in Sources */,
+				245725B52146F129003AA5D7 /* VRMScene.swift in Sources */,
+				245725C62146F224003AA5D7 /* SCNGeometrySource+GLTF.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		245725972146EF99003AA5D7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				245725A12146EF99003AA5D7 /* VRMSceneKitTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		245725D32146F47A003AA5D7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				245725DC2146F47A003AA5D7 /* ViewController.swift in Sources */,
+				245725DA2146F47A003AA5D7 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		24CF7F762143EEDB007A5C6C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -357,6 +734,7 @@
 				24CF7FBA21441BCA007A5C6C /* TextureInfo.swift in Sources */,
 				24CF7FA321440D9A007A5C6C /* Vector4.swift in Sources */,
 				24CF7FB821441B89007A5C6C /* Material.swift in Sources */,
+				245725F42146F5E6003AA5D7 /* VRMLoader.swift in Sources */,
 				24CF7FB621441B00007A5C6C /* CodableDictionary.swift in Sources */,
 				24CF7FA721441238007A5C6C /* Camera.swift in Sources */,
 				24CF7F972143F0A8007A5C6C /* CodableAny.swift in Sources */,
@@ -383,6 +761,21 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2457259E2146EF99003AA5D7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 245725922146EF99003AA5D7 /* VRMSceneKit */;
+			targetProxy = 2457259D2146EF99003AA5D7 /* PBXContainerItemProxy */;
+		};
+		245725EC2146F496003AA5D7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 24CF7F7A2143EEDB007A5C6C /* VRMKit */;
+			targetProxy = 245725EB2146F496003AA5D7 /* PBXContainerItemProxy */;
+		};
+		245725F02146F496003AA5D7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 245725922146EF99003AA5D7 /* VRMSceneKit */;
+			targetProxy = 245725EF2146F496003AA5D7 /* PBXContainerItemProxy */;
+		};
 		24CF7F872143EEDB007A5C6C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 24CF7F7A2143EEDB007A5C6C /* VRMKit */;
@@ -390,7 +783,153 @@
 		};
 /* End PBXTargetDependency section */
 
+/* Begin PBXVariantGroup section */
+		245725DD2146F47B003AA5D7 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				245725DE2146F47B003AA5D7 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		245725E22146F47D003AA5D7 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				245725E32146F47D003AA5D7 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin XCBuildConfiguration section */
+		245725A42146EF99003AA5D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_STYLE = Automatic;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				INFOPLIST_FILE = Sources/VRMSceneKit/Info.plist;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMSceneKit;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 4.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		245725A52146EF99003AA5D7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_STYLE = Automatic;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				INFOPLIST_FILE = Sources/VRMSceneKit/Info.plist;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMSceneKit;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 4.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		245725A62146EF99003AA5D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Tests/VRMSceneKit/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMSceneKitTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 4.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		245725A72146EF99003AA5D7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Tests/VRMSceneKit/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMSceneKitTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 4.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		245725E72146F47D003AA5D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Example/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMExample;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 4.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		245725E82146F47D003AA5D7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Example/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMExample;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 4.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		24CF7F8D2143EEDB007A5C6C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -521,8 +1060,9 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INFOPLIST_FILE = Sources/Info.plist;
+				INFOPLIST_FILE = Sources/VRMKit/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -547,8 +1087,9 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				INFOPLIST_FILE = Sources/Info.plist;
+				INFOPLIST_FILE = Sources/VRMKit/Info.plist;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 10.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -567,7 +1108,7 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				INFOPLIST_FILE = Tests/Info.plist;
+				INFOPLIST_FILE = Tests/VRMKit/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -585,7 +1126,7 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				INFOPLIST_FILE = Tests/Info.plist;
+				INFOPLIST_FILE = Tests/VRMKit/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -601,6 +1142,33 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		245725A82146EF99003AA5D7 /* Build configuration list for PBXNativeTarget "VRMSceneKit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				245725A42146EF99003AA5D7 /* Debug */,
+				245725A52146EF99003AA5D7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		245725A92146EF99003AA5D7 /* Build configuration list for PBXNativeTarget "VRMSceneKitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				245725A62146EF99003AA5D7 /* Debug */,
+				245725A72146EF99003AA5D7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		245725E62146F47D003AA5D7 /* Build configuration list for PBXNativeTarget "VRMExample" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				245725E72146F47D003AA5D7 /* Debug */,
+				245725E82146F47D003AA5D7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		24CF7F752143EEDB007A5C6C /* Build configuration list for PBXProject "VRMKit" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

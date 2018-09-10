@@ -15,7 +15,7 @@ extension GLTF {
         public let camera: Int?
         public let children: [Int]?
         public let skin: Int?
-        let _matrix: Matrix?
+        public let _matrix: Matrix?
         public var matrix: Matrix {
             return self._matrix ?? .identity
         }
