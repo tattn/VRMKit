@@ -20,21 +20,21 @@ extension GLTF {
         public let extras: CodableAny?
 
         public struct Orthographic: Codable {
-            let xmag: Float
-            let ymag: Float
-            let zfar: Float
-            let znear: Float
-            let extensions: CodableAny?
-            let extras: CodableAny?
+            public let xmag: Float
+            public let ymag: Float
+            public let zfar: Float
+            public let znear: Float
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
         }
 
         public struct Perspective: Codable {
-            let aspectRatio: Float?
-            let yfov: Float
-            let zfar: Float?
-            let znear: Float
-            let extensions: CodableAny?
-            let extras: CodableAny?
+            public let aspectRatio: Float?
+            public let yfov: Float
+            public let zfar: Float?
+            public let znear: Float
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
         }
 
         public enum `Type`: String, Codable {
