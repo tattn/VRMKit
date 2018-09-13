@@ -39,7 +39,10 @@ github "tattn/VRMKit"
 
 ## CocoaPods
 
-not yet...
+```ruby
+pod 'VRMKit'
+pod 'VRMSceneKit' # for rendering
+```
 
 # Usage
 
