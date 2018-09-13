@@ -19,6 +19,6 @@ VRMKit can read VRM metadata and show the 3D models.
 
   s.source_files = 'Sources/VRMKit/**/*'
   
-  s.public_header_files = 'Sources/VRMKit//**/*.h'
+  s.public_header_files = 'Sources/VRMKit/**/*.h'
   s.frameworks = 'Foundation'
 end
