@@ -64,6 +64,7 @@ vrm.gltf.jsonData.nodes[0].name
 
 ```swift
 import VRMKit
+import VRMSceneKit
 
 @IBOutlet weak var sceneView: SCNView!
 
