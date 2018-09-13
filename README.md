@@ -16,6 +16,7 @@
 
 <br />
 
+<img src="https://github.com/tattn/VRMKit/raw/master/docs/demo.jpg" width="300px" alt="demo" />
 
 ## Features
 
@@ -86,6 +87,7 @@ sceneView.scene = scene
 - [ ] CocoaPods support
 - [ ] VRM shaders support
 - [ ] Improve rendering quality
+- [ ] Animation support
 - [ ] VRM editing function
 
 
