@@ -38,7 +38,7 @@ extension BinaryGLTF {
         let chunk0Length: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
         let chunk0Type: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
         guard ChunkType(rawValue: chunk0Type) == .json else {
-            throw VRMError.notSupportedChankType(chunk0Type)
+            throw VRMError.notSupportedChunkType(chunk0Type)
         }
         let jsonData = read(data, offset: &offset, size: Int(chunk0Length))
         let decoder = JSONDecoder()
@@ -48,7 +48,7 @@ extension BinaryGLTF {
             let chunk1Length: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
             let chunk1Type: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
             guard ChunkType(rawValue: chunk1Type) == .bin else {
-                throw VRMError.notSupportedChankType(chunk1Type)
+                throw VRMError.notSupportedChunkType(chunk1Type)
             }
             binaryBuffer = read(data, offset: &offset, size: Int(chunk1Length)) as Data
         } else {
