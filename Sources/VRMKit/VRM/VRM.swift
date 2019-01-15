@@ -11,7 +11,7 @@ import Foundation
 public struct VRM {
     public let gltf: BinaryGLTF
     public let meta: Meta
-    public let version: String
+    public let version: String?
     public let materialProperties: [MaterialProperty]
     public let humanoid: Humanoid
     public let blendShapeMaster: BlendShapeMaster
@@ -27,7 +27,7 @@ public struct VRM {
 
         let decoder = DictionaryDecoder()
         meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
-        version = try vrm["version"] as? String ??? .keyNotFound("version")
+        version = vrm["version"] as? String
         materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
         humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
         blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
@@ -38,21 +38,21 @@ public struct VRM {
 
 extension VRM {
     public struct Meta: Codable {
-        public let title: String
-        public let author: String
-        public let contactInformation: String
-        public let reference: String
-        public let texture: Int
-        public let version: String
+        public let title: String?
+        public let author: String?
+        public let contactInformation: String?
+        public let reference: String?
+        public let texture: Int?
+        public let version: String?
 
-        public let allowedUserName: String
-        public let violentUssageName: String
-        public let sexualUssageName: String
-        public let commercialUssageName: String
-        public let otherPermissionUrl: String
+        public let allowedUserName: String?
+        public let violentUssageName: String?
+        public let sexualUssageName: String?
+        public let commercialUssageName: String?
+        public let otherPermissionUrl: String?
 
-        public let licenseName: String
-        public let otherLicenseUrl: String
+        public let licenseName: String?
+        public let otherLicenseUrl: String?
     }
 
     public struct MaterialProperty: Codable {
