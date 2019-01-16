@@ -100,8 +100,8 @@ extension VRM {
     public struct BlendShapeMaster: Codable {
         public let blendShapeGroups: [BlendShapeGroup]
         public struct BlendShapeGroup: Codable {
-            public let binds: [Bind]
-            public let materialValues: [CodableAny]
+            public let binds: [Bind]?
+            public let materialValues: [CodableAny]?
             public let name: String
             public let presetName: String
             public struct Bind: Codable {
@@ -135,7 +135,7 @@ extension VRM {
             public let bones: [Int]
             public let center: Int
             public let colliderGroups: [Int]
-            public let comment: String
+            public let comment: String?
             public let dragForce: Double
             public let gravityDir: Vector3
             public let gravityPower: Double
@@ -147,7 +147,7 @@ extension VRM {
                 bones = try container.decode([Int].self, forKey: .bones)
                 center = try container.decode(Int.self, forKey: .center)
                 colliderGroups = try container.decode([Int].self, forKey: .colliderGroups)
-                comment = try container.decode(String.self, forKey: .comment)
+                comment = try? container.decode(String.self, forKey: .comment)
                 dragForce = try decodeDouble(key: .dragForce, container: container)
                 gravityDir = try container.decode(Vector3.self, forKey: .gravityDir)
                 gravityPower = try decodeDouble(key: .gravityPower, container: container)

@@ -14,7 +14,7 @@ enum Resources {
     var data: Data {
         switch self {
         case .aliciaSolid:
-            let url = Bundle(for: BinaryGLTFTests.self).url(forResource: "AliciaSolid", withExtension: "vrm")!
+            let url = Bundle(for: BinaryGLTFTests.self).url(forResource: "Gab", withExtension: "vrm")!
             return try! Data(contentsOf: url)
         }
     }
