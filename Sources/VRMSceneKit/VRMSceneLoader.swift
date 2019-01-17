@@ -65,7 +65,8 @@ open class VRMSceneLoader {
     }
 
     func attributes(_ attributes: [GLTF.Mesh.Primitive.AttributeKey: Int]) throws -> [SCNGeometrySource] {
-        return try attributes.map { attribute, index in
+        return try attributes.compactMap { attribute, index in
+            guard attribute != .COLOR_0 else { return nil } // FIXME
             if let cache = try scnData.load(\.accessors, index: index) as? SCNGeometrySource { return cache }
             let gltfAccessor = try gltf.load(\.accessors, keyName: "accessors")[index]
             let geometrySource = try SCNGeometrySource(accessor: gltfAccessor, semantic: semantic(of: attribute), loader: self)
