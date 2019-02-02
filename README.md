@@ -52,7 +52,7 @@ pod 'VRMSceneKit' # for rendering
 import VRMKit
 
 let vrm = try VRMLoader().load(named: "model.vrm")
-// let vrm = try VRMLoader().load(withUrl: URL(string: "/path/to/model.vrm"))
+// let vrm = try VRMLoader().load(withUrl: URL(string: "/path/to/model.vrm")!)
 // let vrm = try VRMLoader().load(withData: data)
 
 // VRM meta data
