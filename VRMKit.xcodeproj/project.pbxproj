@@ -13,7 +13,7 @@
 		245725AC2146F059003AA5D7 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 24CF7FD121442111007A5C6C /* AliciaSolid.vrm */; };
 		245725AE2146F09C003AA5D7 /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
 		245725B02146F0BC003AA5D7 /* VRMSceneLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725AF2146F0BC003AA5D7 /* VRMSceneLoader.swift */; };
-		245725B22146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B12146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift */; };
+		245725B22146F0F2003AA5D7 /* SceneData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B12146F0F2003AA5D7 /* SceneData.swift */; };
 		245725B52146F129003AA5D7 /* VRMScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B42146F129003AA5D7 /* VRMScene.swift */; };
 		245725B82146F165003AA5D7 /* GLTF2SCN.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B72146F165003AA5D7 /* GLTF2SCN.swift */; };
 		245725BA2146F185003AA5D7 /* SCNCamera+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B92146F185003AA5D7 /* SCNCamera+GLTF.swift */; };
@@ -135,7 +135,7 @@
 		245725A02146EF99003AA5D7 /* VRMSceneKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMSceneKitTests.swift; sourceTree = "<group>"; };
 		245725A22146EF99003AA5D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		245725AF2146F0BC003AA5D7 /* VRMSceneLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMSceneLoader.swift; sourceTree = "<group>"; };
-		245725B12146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VRMSceneLoader+SceneData.swift"; sourceTree = "<group>"; };
+		245725B12146F0F2003AA5D7 /* SceneData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneData.swift; sourceTree = "<group>"; };
 		245725B42146F129003AA5D7 /* VRMScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMScene.swift; sourceTree = "<group>"; };
 		245725B72146F165003AA5D7 /* GLTF2SCN.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GLTF2SCN.swift; sourceTree = "<group>"; };
 		245725B92146F185003AA5D7 /* SCNCamera+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNCamera+GLTF.swift"; sourceTree = "<group>"; };
@@ -253,7 +253,7 @@
 			children = (
 				245725AF2146F0BC003AA5D7 /* VRMSceneLoader.swift */,
 				245725F52146FABE003AA5D7 /* VRMSceneLoader+convenience.swift */,
-				245725B12146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift */,
+				245725B12146F0F2003AA5D7 /* SceneData.swift */,
 				245725B32146F11B003AA5D7 /* CustomType */,
 				245725B62146F14C003AA5D7 /* GLTF2SCN */,
 				245725CA2146F27F003AA5D7 /* Extensions */,
@@ -679,7 +679,7 @@
 				245725CE2146F2B4003AA5D7 /* SceneKit+.swift in Sources */,
 				245725C82146F240003AA5D7 /* SCNNode+GLTF.swift in Sources */,
 				245725BE2146F1BB003AA5D7 /* SCNMaterialProperty+GLTF.swift in Sources */,
-				245725B22146F0F2003AA5D7 /* VRMSceneLoader+SceneData.swift in Sources */,
+				245725B22146F0F2003AA5D7 /* SceneData.swift in Sources */,
 				245725C22146F1EE003AA5D7 /* Data+GLTF.swift in Sources */,
 				245725CC2146F28B003AA5D7 /* GlobalFunction.swift in Sources */,
 				245725F72146FAC1003AA5D7 /* VRMSceneLoader+convenience.swift in Sources */,

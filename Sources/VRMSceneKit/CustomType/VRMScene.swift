@@ -10,10 +10,12 @@ import SceneKit
 import VRMKit
 
 open class VRMScene: SCNScene {
-    open let vrm: VRM
+    public let vrm: VRM
+    let sceneData: SceneData
 
-    public init(vrm: VRM) {
+    init(vrm: VRM, sceneData: SceneData) {
         self.vrm = vrm
+        self.sceneData = sceneData
         super.init()
     }
 
