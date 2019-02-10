@@ -35,6 +35,7 @@ extension SCNNode {
     convenience init(mesh: GLTF.Mesh, loader: VRMSceneLoader) throws {
         self.init()
         name = mesh.name
+        var morpher: SCNMorpher?
 
         for primitive in mesh.primitives {
             let node = SCNNode()
@@ -60,8 +61,16 @@ extension SCNNode {
                     } else {
                         return [.default]
                     }
-                    }()
+                }()
                 node.geometry = geometry
+            }
+
+            if let targets = primitive.targets, !targets.isEmpty {
+                morpher = try SCNMorpher(primitiveTargets: targets, loader: loader)
+                node.morpher = morpher
+//                let path = "childNodes[0].childNodes[\(primitiveIndex)].morpher.weights[\(index)]"
+            } else {
+                node.morpher = morpher
             }
 
             addChildNode(node)

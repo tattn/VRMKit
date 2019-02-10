@@ -42,6 +42,7 @@
 		245725F921481887003AA5D7 /* VRMError+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725F821481886003AA5D7 /* VRMError+.swift */; };
 		245725FB21481FF9003AA5D7 /* GLTF+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725FA21481FF9003AA5D7 /* GLTF+.swift */; };
 		247DCEE4220FF95D00E4C87F /* BlendShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCEE3220FF95D00E4C87F /* BlendShape.swift */; };
+		248D3AA6220EBAE200D50019 /* SCNMorpher+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 248D3AA4220EBADC00D50019 /* SCNMorpher+GLTF.swift */; };
 		24CF7F852143EEDB007A5C6C /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
 		24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */; };
 		24CF7F8C2143EEDB007A5C6C /* VRMKit.h in Headers */ = {isa = PBXBuildFile; fileRef = 24CF7F7E2143EEDB007A5C6C /* VRMKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -162,6 +163,7 @@
 		245725F821481886003AA5D7 /* VRMError+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VRMError+.swift"; sourceTree = "<group>"; };
 		245725FA21481FF9003AA5D7 /* GLTF+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GLTF+.swift"; sourceTree = "<group>"; };
 		247DCEE3220FF95D00E4C87F /* BlendShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlendShape.swift; sourceTree = "<group>"; };
+		248D3AA4220EBADC00D50019 /* SCNMorpher+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNMorpher+GLTF.swift"; sourceTree = "<group>"; };
 		24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = VRMKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		24CF7F7E2143EEDB007A5C6C /* VRMKit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VRMKit.h; sourceTree = "<group>"; };
 		24CF7F7F2143EEDB007A5C6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -328,6 +330,7 @@
 				245725C32146F207003AA5D7 /* SCNGeometryElement+GLTF.swift */,
 				245725C52146F224003AA5D7 /* SCNGeometrySource+GLTF.swift */,
 				245725C72146F240003AA5D7 /* SCNNode+GLTF.swift */,
+				248D3AA4220EBADC00D50019 /* SCNMorpher+GLTF.swift */,
 			);
 			path = GLTF2SCN;
 			sourceTree = "<group>";
@@ -677,6 +680,7 @@
 				245725BA2146F185003AA5D7 /* SCNCamera+GLTF.swift in Sources */,
 				245725FB21481FF9003AA5D7 /* GLTF+.swift in Sources */,
 				245725B82146F165003AA5D7 /* GLTF2SCN.swift in Sources */,
+				248D3AA6220EBAE200D50019 /* SCNMorpher+GLTF.swift in Sources */,
 				245725F921481887003AA5D7 /* VRMError+.swift in Sources */,
 				245725D22146F323003AA5D7 /* Collection+.swift in Sources */,
 				245725CE2146F2B4003AA5D7 /* SceneKit+.swift in Sources */,

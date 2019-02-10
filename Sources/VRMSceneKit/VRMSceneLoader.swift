@@ -37,6 +37,7 @@ open class VRMSceneLoader {
             scnScene.rootNode.addChildNode(try self.node(withNodeIndex: node))
         }
         sceneData.scenes[index] = scnScene
+        scnScene.setUpBlendShapes()
         return scnScene
     }
 
