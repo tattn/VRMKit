@@ -101,9 +101,18 @@ extension VRM {
         public let blendShapeGroups: [BlendShapeGroup]
         public struct BlendShapeGroup: Codable {
             public let binds: [Bind]?
-            public let materialValues: [CodableAny]?
+            public let materialValues: [MaterialValueBind]?
             public let name: String
             public let presetName: String
+            let _isBinary: Bool?
+            public var isBinary: Bool { return _isBinary ?? false }
+            private enum CodingKeys: String, CodingKey {
+                case binds
+                case materialValues
+                case name
+                case presetName
+                case _isBinary = "isBinary"
+            }
             public struct Bind: Codable {
                 public let index: Int
                 public let mesh: Int
@@ -115,6 +124,11 @@ extension VRM {
                     mesh = try container.decode(Int.self, forKey: .mesh)
                     weight = try decodeDouble(key: .weight, container: container)
                 }
+            }
+            public struct MaterialValueBind: Codable {
+                public let materialName: String
+                public let propertyName: String
+                public let targetValue: [Double]
             }
         }
     }
