@@ -69,6 +69,7 @@ class VRMTests: XCTestCase {
         XCTAssertTrue(target.materialValues?.isEmpty == true)
         XCTAssertEqual(target.name, "A")
         XCTAssertEqual(target.presetName, "a")
+        XCTAssertEqual(target.isBinary, false)
     }
 
     func testFirstPerson() {
