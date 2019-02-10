@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'VRMSceneKit'
-  s.version          = '0.0.3'
+  s.version          = '0.1.0'
   s.summary          = 'VRM loader and VRM renderer'
 
   s.description      = <<-DESC
@@ -17,7 +17,7 @@ VRMKit can read VRM metadata and show the 3D models.
 
   s.ios.deployment_target = '10.0'
 
-  s.source_files = 'Sources/VRMSceneKit/**/*'
+  s.source_files = 'Sources/VRMSceneKit/**/*.{swift,h}'
   
   s.public_header_files = 'Sources/VRMSceneKit/**/*.h'
   s.frameworks = 'Foundation'
