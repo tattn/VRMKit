@@ -36,7 +36,7 @@ open class VRMScene: SCNScene {
                         }
                         return BlendShapeBinding(mesh: mesh, index: $0.index, weight: $0.weight)
                     } ?? []
-                return BlendShapeClip(name: "BlendShape.\(group.name)",
+                return BlendShapeClip(name: group.name,
                     preset: BlendShapePreset(name: group.presetName),
                     values: blendShapeBinding,
                     isBinary: group.isBinary)

@@ -23,10 +23,10 @@ class VRMSceneKitTests: XCTestCase {
     func testBlendShapeClips() {
         let vrmScene = loadVRM()
         XCTAssertEqual(vrmScene.blendShapeClips.count, 18)
-        let clip = vrmScene.blendShapeClips[.custom("BlendShape.><")]!
-        XCTAssertEqual(clip.name, "BlendShape.><")
+        let clip = vrmScene.blendShapeClips[.custom("><")]!
+        XCTAssertEqual(clip.name, "><")
         XCTAssertEqual(clip.preset, .unknown)
-        XCTAssertEqual(clip.key, .custom("BlendShape.><"))
+        XCTAssertEqual(clip.key, .custom("><"))
         XCTAssertEqual(clip.isBinary, false)
         XCTAssertEqual(clip.values.count, 3)
         XCTAssertEqual(clip.values[0].index, 31)
