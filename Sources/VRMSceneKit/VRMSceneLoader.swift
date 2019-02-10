@@ -12,7 +12,7 @@ import SceneKit
 import SpriteKit
 
 open class VRMSceneLoader {
-    private let vrm: VRM
+    let vrm: VRM
     private let gltf: GLTF
     private let sceneData: SceneData
 

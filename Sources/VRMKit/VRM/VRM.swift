@@ -18,6 +18,8 @@ public struct VRM {
     public let firstPerson: FirstPerson
     public let secondaryAnimation: SecondaryAnimation
 
+    public let materialPropertyNameMap: [String: MaterialProperty]
+
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
 
@@ -33,6 +35,8 @@ public struct VRM {
         blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
         firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
         secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
+
+        materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
     }
 }
 

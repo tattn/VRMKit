@@ -30,7 +30,7 @@ class ViewController: UIViewController {
             let scene = try loader.loadScene()
             setupScene(scene)
             scnView.scene = scene
-            scene.setBlendShape(value: 1.0, for: .preset(.joy))
+            scene.setBlendShape(value: 1.0, for: .custom("BlendShape.><"))
         } catch {
             print(error)
         }

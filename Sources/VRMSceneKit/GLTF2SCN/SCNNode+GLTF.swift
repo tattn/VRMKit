@@ -63,6 +63,13 @@ extension SCNNode {
                     }
                 }()
                 node.geometry = geometry
+
+                // FIXME/TODO:
+                if let name = geometry.materials[0].name,
+                    let property = loader.vrm.materialPropertyNameMap[name],
+                    property.renderQueue != -1 {
+                    node.renderingOrder = property.renderQueue
+                }
             }
 
             if let targets = primitive.targets, !targets.isEmpty {
