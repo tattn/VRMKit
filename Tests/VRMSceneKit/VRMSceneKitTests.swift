@@ -20,6 +20,15 @@ class VRMSceneKitTests: XCTestCase {
         super.tearDown()
     }
 
+    func testHumanoid() {
+        let humanoid = loadVRM().humanoid
+        XCTAssertEqual(humanoid.bones.count, 53)
+        let neckPosition = humanoid.node(for: .neck)!.position
+        XCTAssertEqual(round(neckPosition.x * 1000), 0)
+        XCTAssertEqual(round(neckPosition.y * 1000), 140)
+        XCTAssertEqual(round(neckPosition.z * 1000), 14)
+    }
+
     func testBlendShapeClips() {
         let vrmScene = loadVRM()
         XCTAssertEqual(vrmScene.blendShapeClips.count, 18)
