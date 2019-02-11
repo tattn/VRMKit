@@ -30,9 +30,9 @@ class VRMSceneKitTests: XCTestCase {
     }
 
     func testBlendShapeClips() {
-        let node = loadVRM()
-        XCTAssertEqual(node.blendShapeClips.count, 18)
-        let clip = node.blendShapeClips[.custom("><")]!
+        let clips = loadVRM().blendShapeClips
+        XCTAssertEqual(clips.count, 18)
+        let clip = clips[.custom("><")]!
         XCTAssertEqual(clip.name, "><")
         XCTAssertEqual(clip.preset, .unknown)
         XCTAssertEqual(clip.key, .custom("><"))
@@ -41,6 +41,8 @@ class VRMSceneKitTests: XCTestCase {
         XCTAssertEqual(clip.values[0].index, 31)
         XCTAssertEqual(clip.values[0].weight, 100)
         XCTAssertEqual(clip.values[0].mesh.name, "face.baked")
+        XCTAssertEqual(clips.filter({ $0.key.isPreset }).count, 13)
+        XCTAssertEqual(clips.filter({ !$0.key.isPreset }).count, 5)
     }
 
     func testBlendShape_SetAndGet() {

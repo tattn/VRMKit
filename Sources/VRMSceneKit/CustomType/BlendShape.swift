@@ -35,6 +35,12 @@ struct MaterialValueBinding {
 public enum BlendShapeKey: Hashable {
     case preset(BlendShapePreset)
     case custom(String)
+    var isPreset: Bool {
+        switch self {
+        case .preset: return true
+        case .custom: return false
+        }
+    }
 }
 
 public enum BlendShapePreset: String {
@@ -58,6 +64,15 @@ public enum BlendShapePreset: String {
     case blinkR
 
     init(name: String) {
-        self = BlendShapePreset(rawValue: name) ?? .unknown
+        self = BlendShapePreset(rawValue: name.lowerCamelized()) ?? .unknown
+    }
+}
+
+private extension String {
+    func lowerCamelized() -> String {
+        let words = lowercased().split(separator: "_").map(String.init)
+        return words.dropFirst().reduce(into: words.first ?? "", { result, word in
+            result.append(String(word.prefix(1).capitalized) + String(word.suffix(from: index(after: startIndex))))
+        })
     }
 }
