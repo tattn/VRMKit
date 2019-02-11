@@ -11,12 +11,9 @@ import SceneKit
 
 extension SCNGeometrySource {
     convenience init(accessor: GLTF.Accessor, semantic: SCNGeometrySource.Semantic, loader: VRMSceneLoader) throws {
-        let componentsPerVector = numberOfComponents(of: accessor.type)
-        let bytesPerComponent = bytes(of: accessor.componentType)
+        let (componentsPerVector, bytesPerComponent, vectorSize) = accessor.components()
 
         let (bufferView, dataStride): (Data, Int) = try {
-            let vectorSize = bytesPerComponent * componentsPerVector
-
             if let bufferViewIndex = accessor.bufferView {
                 let bufferView = try loader.bufferView(withBufferViewIndex: bufferViewIndex)
                 return (bufferView.bufferView, bufferView.stride ?? vectorSize)

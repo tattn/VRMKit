@@ -44,7 +44,8 @@ open class VRMSceneLoader {
     func node(withNodeIndex index: Int) throws -> SCNNode {
         if let cache = try sceneData.load(\.nodes, index: index) { return cache }
         let gltfNode = try gltf.load(\.nodes, keyName: "nodes")[index]
-        let scnNode = try SCNNode(node: gltfNode, loader: self)
+        let gltfSkins = try? gltf.load(\.skins, keyName: "skins")
+        let scnNode = try SCNNode(node: gltfNode, skins: gltfSkins, loader: self)
         sceneData.nodes[index] = scnNode
         return scnNode
     }
@@ -82,6 +83,24 @@ open class VRMSceneLoader {
         let geometryElement = try SCNGeometryElement(accessor: gltfAccessor, mode: mode, loader: self)
         sceneData.accessors[index] = geometryElement
         return geometryElement
+    }
+
+    func inverseBindMatrix(withAccessorIndex index: Int) throws -> [InverseBindMatrix] {
+        if let cache = try sceneData.load(\.accessors, index: index) as? [InverseBindMatrix] { return cache }
+        let gltfAccessor = try gltf.load(\.accessors, keyName: "accessors")[index]
+        let ibm = try [InverseBindMatrix](accessor: gltfAccessor, loader: self)
+        sceneData.accessors[index] = ibm
+        return ibm
+    }
+
+    func skin(withSkinIndex index: Int,
+              primitiveGeometry: SCNGeometry,
+              bones: [SCNNode],
+              boneInverseBindTransform ibm: [InverseBindMatrix]?) throws -> SCNSkinner {
+        //        if let cache = try sceneData.load(\.skins, index: index) { return cache } // FIXME:
+        let skinner = try SCNSkinner(primitiveGeometry: primitiveGeometry, bones: bones, boneInverseBindTransform: ibm)
+        sceneData.skins [index] = skinner
+        return skinner
     }
 
     func bufferView(withBufferViewIndex index: Int) throws -> (bufferView: Data, stride: Int?) {

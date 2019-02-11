@@ -10,17 +10,32 @@ import VRMKit
 import SceneKit
 
 extension SCNNode {
-    convenience init(node: GLTF.Node, loader: VRMSceneLoader) throws {
+    convenience init(node: GLTF.Node, skins: [GLTF.Skin]?, loader: VRMSceneLoader) throws {
         self.init()
         name = node.name
         camera = try node.camera.map(loader.camera)
 
         if let mesh = node.mesh {
-            addChildNode(try loader.mesh(withMeshIndex: mesh))
+            let meshNode = try loader.mesh(withMeshIndex: mesh)
+            addChildNode(meshNode)
+
+            if let skinIndex = node.skin, let skin = skins?[skinIndex] {
+                let joints = try skin.joints.map(loader.node)
+                let ibm = try skin.inverseBindMatrices.map(loader.inverseBindMatrix)
+                let skeleton = try skin.skeleton.map(loader.node)
+                for primitive in meshNode.childNodes {
+                    primitive.skinner = try? loader.skin(
+                        withSkinIndex: skinIndex,
+                        primitiveGeometry: primitive.geometry!, // swiftlint:disable:this force_unwrap
+                        bones: joints,
+                        boneInverseBindTransform: ibm)
+                    primitive.skinner?.skeleton = skeleton ?? primitive
+                }
+            }
         }
 
         if let matrix = node._matrix {
-            transform = matrix.createSCNMatrix4()
+            transform = try SCNMatrix4(matrix.values)
         } else {
             position = node.translation.createSCNVector3()
             orientation = node.rotation.createSCNVector4()

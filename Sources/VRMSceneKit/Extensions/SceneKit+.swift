@@ -78,3 +78,15 @@ extension SCNMaterial {
         return material
     }
 }
+
+extension SCNMatrix4 {
+    init(_ v: [SCNFloat]) throws {
+        guard v.count == 16 else { throw "SCNMatrix4: values.count must be 16" }
+        self.init(m11: v[0], m12: v[1], m13: v[2], m14: v[3],
+                  m21: v[4], m22: v[5], m23: v[6], m24: v[7],
+                  m31: v[8], m32: v[9], m33: v[10], m34: v[11],
+                  m41: v[12], m42: v[13], m43: v[14], m44: v[15])
+    }
+}
+
+extension String: Error {}
