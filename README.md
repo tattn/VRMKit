@@ -9,6 +9,12 @@
   <a href="https://github.com/Carthage/Carthage">
     <img src="https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat" alt="Carthage compatible" />
   </a>
+  <a href="http://cocoapods.org/pods/VRMKit">
+    <img src="https://img.shields.io/cocoapods/v/VRMKit.svg" alt="CocoaPods" />
+  </a>
+  <a href="http://cocoapods.org/pods/VRMKit">
+    <img src="https://img.shields.io/cocoapods/p/VRMKit.svg" alt="Platform" />
+  </a>
   <a href="https://developer.apple.com/swift">
     <img src="https://img.shields.io/badge/Swift-4-F16D39.svg" alt="Swift Version" />
   </a>
@@ -28,6 +34,7 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 - [x] Load VRM file
 - [x] Render VRM models on SceneKit (experimental)
 - [x] Face morphing (blend shape)
+- [x] Bone animation (skin / joint)
 
 # Requirements
 
@@ -103,11 +110,24 @@ scene.setBlendShape(value: 1.0, for: .preset(.angry))
 scene.setBlendShape(value: 1.0, for: .custom("><"))
 ```
 
+### Bone animation
+
+<img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_humanoid.png" width="200px" alt="Humanoid" />
+
+```swift
+scene.setBlendShape(value: 1.0, for: .preset(.fun))
+scene.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
+scene.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+scene.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+```
+
 # ToDo
 - [ ] VRM shaders support
 - [ ] Improve rendering quality
 - [ ] Animation support
 - [ ] VRM editing function
+- [ ] Physics support
+- [ ] GLTF renderer support
 
 # Contributing
 
