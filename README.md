@@ -86,6 +86,7 @@ import VRMSceneKit
 
 let loader = try VRMSceneLoader(named: "model.vrm")
 let scene: VRMScene = try loader.loadScene()
+let node: VRMNode = scene.vrmNode
 
 sceneView.scene = scene
 ```
@@ -95,19 +96,19 @@ sceneView.scene = scene
 <img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_joy.png" width="100px" alt="joy" />
 
 ```swift
-scene.setBlendShape(value: 1.0, for: .preset(.joy))
+node.setBlendShape(value: 1.0, for: .preset(.joy))
 ```
 
 <img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_angry.png" width="100px" alt="angry" />
 
 ```swift
-scene.setBlendShape(value: 1.0, for: .preset(.angry))
+node.setBlendShape(value: 1.0, for: .preset(.angry))
 ```
 
 <img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_><.png" width="100px" alt="><" />
 
 ```swift
-scene.setBlendShape(value: 1.0, for: .custom("><"))
+node.setBlendShape(value: 1.0, for: .custom("><"))
 ```
 
 ### Bone animation
@@ -115,10 +116,10 @@ scene.setBlendShape(value: 1.0, for: .custom("><"))
 <img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_humanoid.png" width="200px" alt="Humanoid" />
 
 ```swift
-scene.setBlendShape(value: 1.0, for: .preset(.fun))
-scene.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
-scene.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
-scene.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+node.setBlendShape(value: 1.0, for: .preset(.fun))
+node.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
+node.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+node.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
 ```
 
 # ToDo
