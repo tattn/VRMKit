@@ -32,13 +32,16 @@ open class VRMSceneLoader {
     public func loadScene(withSceneIndex index: Int) throws -> VRMScene {
         if let cache = try sceneData.load(\.scenes, index: index) { return cache }
         let gltfScene = try gltf.load(\.scenes, keyName: "scenes")[index]
-        let scnScene = VRMScene(vrm: vrm, sceneData: sceneData)
+        
+        let vrmNode = VRMNode(vrm: vrm)
         for node in gltfScene.nodes ?? [] {
-            scnScene.rootNode.addChildNode(try self.node(withNodeIndex: node))
+            vrmNode.addChildNode(try self.node(withNodeIndex: node))
         }
+        vrmNode.setUpHumanoid(nodes: sceneData.nodes)
+        vrmNode.setUpBlendShapes(meshes: sceneData.meshes)
+
+        let scnScene = VRMScene(node: vrmNode)
         sceneData.scenes[index] = scnScene
-        scnScene.setUpHumanoid()
-        scnScene.setUpBlendShapes()
         return scnScene
     }
 

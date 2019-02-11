@@ -30,10 +30,12 @@ class ViewController: UIViewController {
             let scene = try loader.loadScene()
             setupScene(scene)
             scnView.scene = scene
-            scene.setBlendShape(value: 1.0, for: .custom("><"))
-            scene.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
-            scene.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
-            scene.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+
+            let node = scene.vrmNode
+            node.setBlendShape(value: 1.0, for: .custom("><"))
+            node.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
+            node.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+            node.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
         } catch {
             print(error)
         }

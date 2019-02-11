@@ -14,7 +14,6 @@
 		245725AE2146F09C003AA5D7 /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
 		245725B02146F0BC003AA5D7 /* VRMSceneLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725AF2146F0BC003AA5D7 /* VRMSceneLoader.swift */; };
 		245725B22146F0F2003AA5D7 /* SceneData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B12146F0F2003AA5D7 /* SceneData.swift */; };
-		245725B52146F129003AA5D7 /* VRMScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B42146F129003AA5D7 /* VRMScene.swift */; };
 		245725B82146F165003AA5D7 /* GLTF2SCN.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B72146F165003AA5D7 /* GLTF2SCN.swift */; };
 		245725BA2146F185003AA5D7 /* SCNCamera+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725B92146F185003AA5D7 /* SCNCamera+GLTF.swift */; };
 		245725BC2146F19D003AA5D7 /* UIImage+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725BB2146F19D003AA5D7 /* UIImage+GLTF.swift */; };
@@ -45,6 +44,8 @@
 		247DCF3422108FE300E4C87F /* Humanoid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCF3322108FE300E4C87F /* Humanoid.swift */; };
 		247DCF36221096A600E4C87F /* InverseBindMatrix+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCF35221096A600E4C87F /* InverseBindMatrix+GLTF.swift */; };
 		247DCF382210A1F100E4C87F /* SCNSkinner+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCF372210A1F100E4C87F /* SCNSkinner+GLTF.swift */; };
+		247DCF4F22115FA000E4C87F /* VRMNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCF4E22115FA000E4C87F /* VRMNode.swift */; };
+		247DCF51221160E600E4C87F /* VRMScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCF50221160E600E4C87F /* VRMScene.swift */; };
 		248D3AA6220EBAE200D50019 /* SCNMorpher+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 248D3AA4220EBADC00D50019 /* SCNMorpher+GLTF.swift */; };
 		24CF7F852143EEDB007A5C6C /* VRMKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */; };
 		24CF7F8A2143EEDB007A5C6C /* VRMKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7F892143EEDB007A5C6C /* VRMKitTests.swift */; };
@@ -141,7 +142,6 @@
 		245725A22146EF99003AA5D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		245725AF2146F0BC003AA5D7 /* VRMSceneLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMSceneLoader.swift; sourceTree = "<group>"; };
 		245725B12146F0F2003AA5D7 /* SceneData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneData.swift; sourceTree = "<group>"; };
-		245725B42146F129003AA5D7 /* VRMScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMScene.swift; sourceTree = "<group>"; };
 		245725B72146F165003AA5D7 /* GLTF2SCN.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GLTF2SCN.swift; sourceTree = "<group>"; };
 		245725B92146F185003AA5D7 /* SCNCamera+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNCamera+GLTF.swift"; sourceTree = "<group>"; };
 		245725BB2146F19D003AA5D7 /* UIImage+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIImage+GLTF.swift"; sourceTree = "<group>"; };
@@ -169,6 +169,8 @@
 		247DCF3322108FE300E4C87F /* Humanoid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Humanoid.swift; sourceTree = "<group>"; };
 		247DCF35221096A600E4C87F /* InverseBindMatrix+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "InverseBindMatrix+GLTF.swift"; sourceTree = "<group>"; };
 		247DCF372210A1F100E4C87F /* SCNSkinner+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNSkinner+GLTF.swift"; sourceTree = "<group>"; };
+		247DCF4E22115FA000E4C87F /* VRMNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMNode.swift; sourceTree = "<group>"; };
+		247DCF50221160E600E4C87F /* VRMScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMScene.swift; sourceTree = "<group>"; };
 		248D3AA4220EBADC00D50019 /* SCNMorpher+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNMorpher+GLTF.swift"; sourceTree = "<group>"; };
 		24CF7F7B2143EEDB007A5C6C /* VRMKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = VRMKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		24CF7F7E2143EEDB007A5C6C /* VRMKit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VRMKit.h; sourceTree = "<group>"; };
@@ -318,7 +320,8 @@
 		245725B32146F11B003AA5D7 /* CustomType */ = {
 			isa = PBXGroup;
 			children = (
-				245725B42146F129003AA5D7 /* VRMScene.swift */,
+				247DCF50221160E600E4C87F /* VRMScene.swift */,
+				247DCF4E22115FA000E4C87F /* VRMNode.swift */,
 				247DCEE3220FF95D00E4C87F /* BlendShape.swift */,
 				247DCF3322108FE300E4C87F /* Humanoid.swift */,
 			);
@@ -601,6 +604,7 @@
 					};
 					2457259A2146EF99003AA5D7 = {
 						CreatedOnToolsVersion = 9.4.1;
+						LastSwiftMigration = 1010;
 					};
 					245725D62146F47A003AA5D7 = {
 						CreatedOnToolsVersion = 9.4.1;
@@ -705,9 +709,10 @@
 				245725F72146FAC1003AA5D7 /* VRMSceneLoader+convenience.swift in Sources */,
 				245725C02146F1D7003AA5D7 /* SCNMaterial+GLTF.swift in Sources */,
 				245725B02146F0BC003AA5D7 /* VRMSceneLoader.swift in Sources */,
+				247DCF4F22115FA000E4C87F /* VRMNode.swift in Sources */,
+				247DCF51221160E600E4C87F /* VRMScene.swift in Sources */,
 				247DCF382210A1F100E4C87F /* SCNSkinner+GLTF.swift in Sources */,
 				245725BC2146F19D003AA5D7 /* UIImage+GLTF.swift in Sources */,
-				245725B52146F129003AA5D7 /* VRMScene.swift in Sources */,
 				245725C62146F224003AA5D7 /* SCNGeometrySource+GLTF.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -890,7 +895,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMSceneKitTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.0;
+				SWIFT_VERSION = 4.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -908,7 +913,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMSceneKitTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 4.0;
+				SWIFT_VERSION = 4.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

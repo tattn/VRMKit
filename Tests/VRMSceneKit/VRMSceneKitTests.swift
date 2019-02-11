@@ -30,9 +30,9 @@ class VRMSceneKitTests: XCTestCase {
     }
 
     func testBlendShapeClips() {
-        let vrmScene = loadVRM()
-        XCTAssertEqual(vrmScene.blendShapeClips.count, 18)
-        let clip = vrmScene.blendShapeClips[.custom("><")]!
+        let node = loadVRM()
+        XCTAssertEqual(node.blendShapeClips.count, 18)
+        let clip = node.blendShapeClips[.custom("><")]!
         XCTAssertEqual(clip.name, "><")
         XCTAssertEqual(clip.preset, .unknown)
         XCTAssertEqual(clip.key, .custom("><"))
@@ -44,15 +44,15 @@ class VRMSceneKitTests: XCTestCase {
     }
 
     func testBlendShape_SetAndGet() {
-        let vrmScene = loadVRM()
-        vrmScene.setBlendShape(value: 0.85, for: .preset(.joy))
-        XCTAssertEqual(round(vrmScene.blendShape(for: .preset(.joy)) * 100), 85)
+        let node = loadVRM()
+        node.setBlendShape(value: 0.85, for: .preset(.joy))
+        XCTAssertEqual(round(node.blendShape(for: .preset(.joy)) * 100), 85)
     }
 
-    func loadVRM() -> VRMScene {
+    func loadVRM() -> VRMNode {
         let url = Bundle(for: VRMSceneKitTests.self).url(forResource: "AliciaSolid", withExtension: "vrm")!
         let data = try! Data(contentsOf: url)
         let loader = try! VRMSceneLoader(withData: data)
-        return try! loader.loadScene()
+        return try! loader.loadScene().vrmNode
     }
 }
