@@ -14,7 +14,8 @@ extension SCNMaterial {
     convenience init(material: GLTF.Material, loader: VRMSceneLoader) throws {
         self.init()
         name = material.name
-        lightingModel = .physicallyBased
+//        lightingModel = .physicallyBased
+        lightingModel = .constant // FIXME:
         isDoubleSided = material.doubleSided
         isLitPerPixel = false
         writesToDepthBuffer = material.alphaMode != .BLEND
