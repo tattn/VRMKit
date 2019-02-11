@@ -42,6 +42,7 @@
 		245725F921481887003AA5D7 /* VRMError+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725F821481886003AA5D7 /* VRMError+.swift */; };
 		245725FB21481FF9003AA5D7 /* GLTF+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725FA21481FF9003AA5D7 /* GLTF+.swift */; };
 		247DCEE4220FF95D00E4C87F /* BlendShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCEE3220FF95D00E4C87F /* BlendShape.swift */; };
+		247DCF3422108FE300E4C87F /* Humanoid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCF3322108FE300E4C87F /* Humanoid.swift */; };
 		247DCF36221096A600E4C87F /* InverseBindMatrix+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCF35221096A600E4C87F /* InverseBindMatrix+GLTF.swift */; };
 		247DCF382210A1F100E4C87F /* SCNSkinner+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247DCF372210A1F100E4C87F /* SCNSkinner+GLTF.swift */; };
 		248D3AA6220EBAE200D50019 /* SCNMorpher+GLTF.swift in Sources */ = {isa = PBXBuildFile; fileRef = 248D3AA4220EBADC00D50019 /* SCNMorpher+GLTF.swift */; };
@@ -165,6 +166,7 @@
 		245725F821481886003AA5D7 /* VRMError+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VRMError+.swift"; sourceTree = "<group>"; };
 		245725FA21481FF9003AA5D7 /* GLTF+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GLTF+.swift"; sourceTree = "<group>"; };
 		247DCEE3220FF95D00E4C87F /* BlendShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlendShape.swift; sourceTree = "<group>"; };
+		247DCF3322108FE300E4C87F /* Humanoid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Humanoid.swift; sourceTree = "<group>"; };
 		247DCF35221096A600E4C87F /* InverseBindMatrix+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "InverseBindMatrix+GLTF.swift"; sourceTree = "<group>"; };
 		247DCF372210A1F100E4C87F /* SCNSkinner+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNSkinner+GLTF.swift"; sourceTree = "<group>"; };
 		248D3AA4220EBADC00D50019 /* SCNMorpher+GLTF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNMorpher+GLTF.swift"; sourceTree = "<group>"; };
@@ -318,6 +320,7 @@
 			children = (
 				245725B42146F129003AA5D7 /* VRMScene.swift */,
 				247DCEE3220FF95D00E4C87F /* BlendShape.swift */,
+				247DCF3322108FE300E4C87F /* Humanoid.swift */,
 			);
 			path = CustomType;
 			sourceTree = "<group>";
@@ -692,6 +695,7 @@
 				245725D22146F323003AA5D7 /* Collection+.swift in Sources */,
 				245725CE2146F2B4003AA5D7 /* SceneKit+.swift in Sources */,
 				245725C82146F240003AA5D7 /* SCNNode+GLTF.swift in Sources */,
+				247DCF3422108FE300E4C87F /* Humanoid.swift in Sources */,
 				247DCEE4220FF95D00E4C87F /* BlendShape.swift in Sources */,
 				245725BE2146F1BB003AA5D7 /* SCNMaterialProperty+GLTF.swift in Sources */,
 				245725B22146F0F2003AA5D7 /* SceneData.swift in Sources */,

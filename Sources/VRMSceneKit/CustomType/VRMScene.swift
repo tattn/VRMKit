@@ -11,6 +11,7 @@ import VRMKit
 
 open class VRMScene: SCNScene {
     public let vrm: VRM
+    public let humanoid = Humanoid()
     let sceneData: SceneData
 
     var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
@@ -24,6 +25,10 @@ open class VRMScene: SCNScene {
     @available(*, unavailable)
     required public init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    func setUpHumanoid() {
+        humanoid.setUp(humanoid: vrm.humanoid, nodes: sceneData.nodes)
     }
 
     func setUpBlendShapes() {
