@@ -20,9 +20,12 @@ extension SCNMaterial {
         isLitPerPixel = false
         writesToDepthBuffer = material.alphaMode != .BLEND
 
+        var shader: VRM.MaterialProperty.Shader?
+
         if let name = name, let property = loader.vrm.materialPropertyNameMap[name] {
+            shader = property.vrmShader
             // FIXME/TODO: https://dwango.github.io/vrm/vrm_spec/#vrm%E3%81%8C%E6%8F%90%E4%BE%9B%E3%81%99%E3%82%8B%E3%82%B7%E3%82%A7%E3%83%BC%E3%83%80%E3%83%BC
-            if property.shader == "VRM/UnlitTransparent" {
+            if shader == .unlitTransparent {
                 blendMode = .alpha
                 writesToDepthBuffer = false
             } else if property.keywordMap["_ALPHAPREMULTIPLY_ON"] ?? false {
@@ -39,6 +42,9 @@ extension SCNMaterial {
 
             if let baseTexture = pbr.baseColorTexture {
                 try diffuse.setTextureInfo(baseTexture, loader: loader)
+                if shader == .mToon {
+                    multiply.contents = pbr.baseColorFactor.createSKColor()
+                }
             } else {
                 diffuse.contents = pbr.baseColorFactor.createSKColor()
             }

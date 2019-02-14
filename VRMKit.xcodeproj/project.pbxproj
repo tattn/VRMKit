@@ -85,6 +85,7 @@
 		24CF7FDE2144300F007A5C6C /* Storage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FDD2144300F007A5C6C /* Storage.swift */; };
 		24CF7FE02144306A007A5C6C /* InternalFunction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FDF2144306A007A5C6C /* InternalFunction.swift */; };
 		24CF7FE221443087007A5C6C /* AnyCodingKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24CF7FE121443087007A5C6C /* AnyCodingKey.swift */; };
+		24EE14952215CE1F00A14305 /* VRM+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24EE14942215CE1F00A14305 /* VRM+.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -214,6 +215,7 @@
 		24CF7FDF2144306A007A5C6C /* InternalFunction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InternalFunction.swift; sourceTree = "<group>"; };
 		24CF7FE121443087007A5C6C /* AnyCodingKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyCodingKey.swift; sourceTree = "<group>"; };
 		24CF7FEB21451253007A5C6C /* LICENSE */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		24EE14942215CE1F00A14305 /* VRM+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VRM+.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -418,6 +420,7 @@
 			isa = PBXGroup;
 			children = (
 				24CF7FD6214425AD007A5C6C /* VRM.swift */,
+				24EE14942215CE1F00A14305 /* VRM+.swift */,
 				24CF7F9E2144088A007A5C6C /* GLTF.swift */,
 				24CF7FA021440D7E007A5C6C /* Vector3.swift */,
 				24CF7FA221440D9A007A5C6C /* Vector4.swift */,
@@ -741,6 +744,7 @@
 				24CF7F9B21440488007A5C6C /* Color4.swift in Sources */,
 				24CF7FB3214419B0007A5C6C /* Mesh.swift in Sources */,
 				24CF7FD7214425AD007A5C6C /* VRM.swift in Sources */,
+				24EE14952215CE1F00A14305 /* VRM+.swift in Sources */,
 				24CF7FC221441DAE007A5C6C /* Asset.swift in Sources */,
 				24CF7FA921441253007A5C6C /* Image.swift in Sources */,
 				24CF7FBC21441C64007A5C6C /* Color3.swift in Sources */,
