@@ -1,5 +1,5 @@
 //
-//  VRM+.swift
+//  VRM+Extension.swift
 //  VRMKit
 //
 //  Created by Tatsuya Tanaka on 2019/02/15.
@@ -9,7 +9,7 @@
 import Foundation
 
 public extension VRM.MaterialProperty {
-    var vrmShader: Shader? {
+    public var vrmShader: Shader? {
         return Shader(rawValue: shader)
     }
 

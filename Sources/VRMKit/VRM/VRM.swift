@@ -40,7 +40,7 @@ public struct VRM {
     }
 }
 
-extension VRM {
+public extension VRM {
     public struct Meta: Codable {
         public let title: String?
         public let author: String?
