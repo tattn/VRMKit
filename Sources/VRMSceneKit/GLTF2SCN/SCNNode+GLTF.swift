@@ -83,7 +83,8 @@ extension SCNNode {
                 if let name = geometry.materials[0].name,
                     let property = loader.vrm.materialPropertyNameMap[name],
                     property.renderQueue != -1 {
-                    node.renderingOrder = property.renderQueue
+                    let lastRenderingOrder = childNodes.last?.renderingOrder ?? 0
+                    node.renderingOrder = lastRenderingOrder == 0 ? property.renderQueue : property.renderQueue + 1
                 }
             }
 
