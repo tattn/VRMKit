@@ -41,7 +41,7 @@ public struct VRM {
 }
 
 public extension VRM {
-    public struct Meta: Codable {
+    struct Meta: Codable {
         public let title: String?
         public let author: String?
         public let contactInformation: String?
@@ -59,7 +59,7 @@ public extension VRM {
         public let otherLicenseUrl: String?
     }
 
-    public struct MaterialProperty: Codable {
+    struct MaterialProperty: Codable {
         public let name: String
         public let shader: String
         public let renderQueue: Int
@@ -70,7 +70,7 @@ public extension VRM {
         public let vectorProperties: CodableAny
     }
 
-    public struct Humanoid: Codable {
+    struct Humanoid: Codable {
         public let armStretch: Double
         public let feetSpacing: Double
         public let hasTranslationDoF: Bool
@@ -101,7 +101,7 @@ public extension VRM {
         }
     }
 
-    public struct BlendShapeMaster: Codable {
+    struct BlendShapeMaster: Codable {
         public let blendShapeGroups: [BlendShapeGroup]
         public struct BlendShapeGroup: Codable {
             public let binds: [Bind]?
@@ -137,7 +137,7 @@ public extension VRM {
         }
     }
 
-    public struct FirstPerson: Codable {
+    struct FirstPerson: Codable {
         public let firstPersonBone: Int
         public let firstPersonBoneOffset: Vector3
         public let meshAnnotations: [MeshAnnotation]
@@ -147,7 +147,7 @@ public extension VRM {
         }
     }
 
-    public struct SecondaryAnimation: Codable {
+    struct SecondaryAnimation: Codable {
         public let boneGroups: [BoneGroup]
         public struct BoneGroup: Codable {
             public let bones: [Int]
@@ -175,7 +175,7 @@ public extension VRM {
         }
     }
 
-    public struct Vector3: Codable {
+    struct Vector3: Codable {
         public let x, y, z: Double
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)

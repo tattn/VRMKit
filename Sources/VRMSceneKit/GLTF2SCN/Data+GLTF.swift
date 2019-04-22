@@ -40,8 +40,10 @@ extension Data {
 
         var indexData = Data(capacity: dataSize)
 
-        indexData.withUnsafeMutableBytes { (dst: UnsafeMutablePointer<UInt8>) in
-            withUnsafeBytes { (src: UnsafePointer<UInt8>) in
+        indexData.withUnsafeMutableBytes { rawDst in
+            guard let dst = rawDst.bindMemory(to: UInt8.self).baseAddress else { return }
+            withUnsafeBytes { rawSrc in
+                guard let src = rawSrc.bindMemory(to: UInt8.self).baseAddress else { return }
                 for pos in 0..<count {
                     let srcPos = stride * pos + offset
                     let dstPos = size * pos

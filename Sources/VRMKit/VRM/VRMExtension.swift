@@ -9,11 +9,11 @@
 import Foundation
 
 public extension VRM.MaterialProperty {
-    public var vrmShader: Shader? {
+    var vrmShader: Shader? {
         return Shader(rawValue: shader)
     }
 
-    public enum Shader: String {
+    enum Shader: String {
         case mToon = "VRM/MToon"
         case unlitTransparent = "VRM/UnlitTransparent"
     }

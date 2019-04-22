@@ -61,6 +61,7 @@ extension SCNGeometryPrimitiveType {
         case .polygon: return count - 2
         case .triangles: return count / 3
         case .triangleStrip: return count - 2
+        @unknown default: fatalError()
         }
     }
 }
