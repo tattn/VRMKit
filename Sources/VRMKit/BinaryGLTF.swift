@@ -28,15 +28,15 @@ public struct BinaryGLTF {
 extension BinaryGLTF {
     public init(data: Data) throws {
         var offset = MemoryLayout<UInt32>.size // skip `magic`
-        let rawVersion: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+        let rawVersion: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
         guard let version = GLTF.Version(rawValue: rawVersion), version == .two else {
             throw VRMError.notSupportedVersion(rawVersion)
         }
         self.version = version
 
-        let length: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
-        let chunk0Length: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
-        let chunk0Type: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+        let length: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+        let chunk0Length: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+        let chunk0Type: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
         guard ChunkType(rawValue: chunk0Type) == .json else {
             throw VRMError.notSupportedChunkType(chunk0Type)
         }
@@ -45,8 +45,8 @@ extension BinaryGLTF {
         self.jsonData = try decoder.decode(GLTF.self, from: jsonData)
 
         if length > offset {
-            let chunk1Length: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
-            let chunk1Type: UInt32 = read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+            let chunk1Length: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+            let chunk1Type: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
             guard ChunkType(rawValue: chunk1Type) == .bin else {
                 throw VRMError.notSupportedChunkType(chunk1Type)
             }

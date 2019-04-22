@@ -8,9 +8,11 @@
 
 import Foundation
 
-func read<T>(_ data: Data, offset: inout Int, size: Int) -> T {
+func read<T>(_ data: Data, offset: inout Int, size: Int) throws -> T {
     defer { offset += size }
-    return data.subdata(in: offset..<(offset+size)).withUnsafeBytes { $0.bindMemory(to: T.self).baseAddress!.pointee }
+    return try data.subdata(in: offset..<(offset+size)).withUnsafeBytes {
+        try $0.bindMemory(to: T.self).baseAddress?.pointee ??? VRMError.dataInconsistent("failed to read data")
+    }
 }
 
 func read(_ data: Data, offset: inout Int, size: Int) -> Data {
