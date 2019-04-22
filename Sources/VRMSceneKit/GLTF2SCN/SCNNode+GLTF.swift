@@ -151,7 +151,8 @@ private extension SCNGeometrySource {
 
         var vertices: [SCNVector3] = []
         vertices.reserveCapacity(vectorCount)
-        data.withUnsafeBytes { (ptr: UnsafePointer<Float32>) in
+        data.withUnsafeBytes { rawPtr in
+            guard let ptr = rawPtr.bindMemory(to: Float32.self).baseAddress else { return }
             var index = dataOffset / bytesPerComponent
             let step = dataStride / bytesPerComponent
             for _ in 0..<vectorCount {
@@ -169,7 +170,8 @@ private extension SCNGeometryElement {
         var indices: [Int] = []
         indices.reserveCapacity(indexCount)
 
-        func createIndices<T: UnsignedInteger>(ptr: UnsafePointer<T>) {
+        func createIndices<T: UnsignedInteger>(_ type: T.Type = T.self, rawPtr: UnsafeRawBufferPointer) {
+            guard let ptr = rawPtr.bindMemory(to: T.self).baseAddress else { return }
             for i in 0..<indexCount {
                 indices.append(Int(ptr[i]))
             }
@@ -179,11 +181,11 @@ private extension SCNGeometryElement {
 
         switch bytesPerIndex {
         case MemoryLayout<UInt16>.size:
-            data.withUnsafeBytes(createIndices as Func<UInt16>)
+            data.withUnsafeBytes { createIndices(UInt16.self, rawPtr: $0) }
         case MemoryLayout<UInt32>.size:
-            data.withUnsafeBytes(createIndices as Func<UInt32>)
+            data.withUnsafeBytes { createIndices(UInt32.self, rawPtr: $0) }
         case MemoryLayout<UInt64>.size:
-            data.withUnsafeBytes(createIndices as Func<UInt64>)
+            data.withUnsafeBytes { createIndices(UInt64.self, rawPtr: $0) }
         default: ()
         }
 

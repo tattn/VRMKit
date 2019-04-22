@@ -10,7 +10,7 @@ import Foundation
 
 func read<T>(_ data: Data, offset: inout Int, size: Int) -> T {
     defer { offset += size }
-    return data.subdata(in: offset..<(offset+size)).withUnsafeBytes { $0.pointee }
+    return data.subdata(in: offset..<(offset+size)).withUnsafeBytes { $0.bindMemory(to: T.self).baseAddress!.pointee }
 }
 
 func read(_ data: Data, offset: inout Int, size: Int) -> Data {

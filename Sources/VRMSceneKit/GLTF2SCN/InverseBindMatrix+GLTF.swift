@@ -25,7 +25,8 @@ extension Array where Element == InverseBindMatrix {
         var matrices: [InverseBindMatrix] = []
         matrices.reserveCapacity(accessor.count)
 
-        try bufferView.withUnsafeBytes { (pointer: UnsafePointer<UInt8>) in
+        try bufferView.withUnsafeBytes { rawPointer in
+            guard let pointer = rawPointer.bindMemory(to: UInt8.self).baseAddress else { return }
             var ptr = pointer.advanced(by: accessor.byteOffset)
             for _ in 0..<accessor.count {
                 let rawPtr = UnsafeRawPointer(ptr)
