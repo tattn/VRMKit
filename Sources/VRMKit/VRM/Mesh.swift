@@ -22,20 +22,10 @@ extension GLTF {
             public let attributes: CodableDictionary<AttributeKey, Int>
             public let indices: Int?
             public let material: Int?
-            let _mode: Mode?
-            public var mode: Mode { return _mode ?? .TRIANGLES }
-            public let targets: [[String: TargetValue]]?
+            public let mode: Mode
+            public var targets: [[AttributeKey: Int]]?
             public let extensions: CodableAny?
             public let extras: CodableAny?
-            private enum CodingKeys: String, CodingKey {
-                case attributes
-                case indices
-                case material
-                case _mode = "mode"
-                case targets
-                case extensions
-                case extras
-            }
 
             public enum Mode: Int, Codable {
                 case POINTS
@@ -58,9 +48,34 @@ extension GLTF {
                 case WEIGHTS_0
             }
 
-            public enum TargetValue: Codable {
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                attributes = try container.decode(CodableDictionary<AttributeKey, Int>.self, forKey: .attributes)
+                indices = try container.decodeIfPresent(Int.self, forKey: .indices)
+                material = try container.decodeIfPresent(Int.self, forKey: .material)
+                mode = (try? container.decode(Mode.self, forKey: .mode)) ?? .TRIANGLES
+                targets = try container.decodeIfPresent([CodableDictionary<AttributeKey, IntOrDictionary>].self, forKey: .targets)?
+                    .map {
+                        $0.rawValue.reduce(into: [:], { (result, value) in
+                            // skip extra key (e.g. "extra": { "name": "..." })
+                            // skip -1 which means no key
+                            guard let intValue = value.value.intValue, intValue >= 0 else { return }
+                            result[value.key] = intValue
+                        })
+                    }
+                extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
+            }
+
+            private enum IntOrDictionary: Codable {
                 case dictionary([String: String])
                 case int(Int)
+                var intValue: Int? {
+                    switch self {
+                    case .dictionary: return nil
+                    case .int(let value): return value
+                    }
+                }
 
                 public func encode(to encoder: Encoder) throws {
                     switch self {
@@ -79,7 +94,8 @@ extension GLTF {
                         self = .int(try container.decode(Int.self))
                     } catch {
                         let container = try decoder.singleValueContainer()
-                        self = .dictionary(try container.decode([String: String].self))
+                        let value = try container.decode([String: String].self)
+                        self = .dictionary(value)
                     }
                 }
             }

@@ -11,12 +11,14 @@ import Foundation
 public struct VRM {
     public let gltf: BinaryGLTF
     public let meta: Meta
-    public let version: String
+    public let version: String?
     public let materialProperties: [MaterialProperty]
     public let humanoid: Humanoid
     public let blendShapeMaster: BlendShapeMaster
     public let firstPerson: FirstPerson
     public let secondaryAnimation: SecondaryAnimation
+
+    public let materialPropertyNameMap: [String: MaterialProperty]
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
@@ -27,35 +29,37 @@ public struct VRM {
 
         let decoder = DictionaryDecoder()
         meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
-        version = try vrm["version"] as? String ??? .keyNotFound("version")
+        version = vrm["version"] as? String
         materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
         humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
         blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
         firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
         secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
+
+        materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
     }
 }
 
-extension VRM {
-    public struct Meta: Codable {
-        public let title: String
-        public let author: String
-        public let contactInformation: String
-        public let reference: String
-        public let texture: Int
-        public let version: String
+public extension VRM {
+    struct Meta: Codable {
+        public let title: String?
+        public let author: String?
+        public let contactInformation: String?
+        public let reference: String?
+        public let texture: Int?
+        public let version: String?
 
-        public let allowedUserName: String
-        public let violentUssageName: String
-        public let sexualUssageName: String
-        public let commercialUssageName: String
-        public let otherPermissionUrl: String
+        public let allowedUserName: String?
+        public let violentUssageName: String?
+        public let sexualUssageName: String?
+        public let commercialUssageName: String?
+        public let otherPermissionUrl: String?
 
-        public let licenseName: String
-        public let otherLicenseUrl: String
+        public let licenseName: String?
+        public let otherLicenseUrl: String?
     }
 
-    public struct MaterialProperty: Codable {
+    struct MaterialProperty: Codable {
         public let name: String
         public let shader: String
         public let renderQueue: Int
@@ -66,7 +70,7 @@ extension VRM {
         public let vectorProperties: CodableAny
     }
 
-    public struct Humanoid: Codable {
+    struct Humanoid: Codable {
         public let armStretch: Double
         public let feetSpacing: Double
         public let hasTranslationDoF: Bool
@@ -97,13 +101,22 @@ extension VRM {
         }
     }
 
-    public struct BlendShapeMaster: Codable {
+    struct BlendShapeMaster: Codable {
         public let blendShapeGroups: [BlendShapeGroup]
         public struct BlendShapeGroup: Codable {
-            public let binds: [Bind]
-            public let materialValues: [CodableAny]
+            public let binds: [Bind]?
+            public let materialValues: [MaterialValueBind]?
             public let name: String
             public let presetName: String
+            let _isBinary: Bool?
+            public var isBinary: Bool { return _isBinary ?? false }
+            private enum CodingKeys: String, CodingKey {
+                case binds
+                case materialValues
+                case name
+                case presetName
+                case _isBinary = "isBinary"
+            }
             public struct Bind: Codable {
                 public let index: Int
                 public let mesh: Int
@@ -116,10 +129,15 @@ extension VRM {
                     weight = try decodeDouble(key: .weight, container: container)
                 }
             }
+            public struct MaterialValueBind: Codable {
+                public let materialName: String
+                public let propertyName: String
+                public let targetValue: [Double]
+            }
         }
     }
 
-    public struct FirstPerson: Codable {
+    struct FirstPerson: Codable {
         public let firstPersonBone: Int
         public let firstPersonBoneOffset: Vector3
         public let meshAnnotations: [MeshAnnotation]
@@ -129,13 +147,13 @@ extension VRM {
         }
     }
 
-    public struct SecondaryAnimation: Codable {
+    struct SecondaryAnimation: Codable {
         public let boneGroups: [BoneGroup]
         public struct BoneGroup: Codable {
             public let bones: [Int]
             public let center: Int
             public let colliderGroups: [Int]
-            public let comment: String
+            public let comment: String?
             public let dragForce: Double
             public let gravityDir: Vector3
             public let gravityPower: Double
@@ -147,7 +165,7 @@ extension VRM {
                 bones = try container.decode([Int].self, forKey: .bones)
                 center = try container.decode(Int.self, forKey: .center)
                 colliderGroups = try container.decode([Int].self, forKey: .colliderGroups)
-                comment = try container.decode(String.self, forKey: .comment)
+                comment = try? container.decode(String.self, forKey: .comment)
                 dragForce = try decodeDouble(key: .dragForce, container: container)
                 gravityDir = try container.decode(Vector3.self, forKey: .gravityDir)
                 gravityPower = try decodeDouble(key: .gravityPower, container: container)
@@ -157,7 +175,7 @@ extension VRM {
         }
     }
 
-    public struct Vector3: Codable {
+    struct Vector3: Codable {
         public let x, y, z: Double
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)

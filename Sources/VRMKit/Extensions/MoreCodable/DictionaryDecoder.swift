@@ -100,7 +100,7 @@ extension DictionaryDecoder {
             return try decoder.unbox(value, as: T.self)
         }
 
-        func decodeNil(forKey key: Key) throws -> Bool { throw decoder.notFound(key: key) }
+        func decodeNil(forKey key: Key) throws -> Bool { return !contains(key) }
         func decode(_ type: Bool.Type, forKey key: Key) throws -> Bool { return try _decode(type, forKey: key) }
         func decode(_ type: Int.Type, forKey key: Key) throws -> Int { return try _decode(type, forKey: key) }
         func decode(_ type: Int8.Type, forKey key: Key) throws -> Int8 { return try _decode(type, forKey: key) }
