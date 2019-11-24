@@ -14,15 +14,37 @@ extension SCNMaterial {
     convenience init(material: GLTF.Material, loader: VRMSceneLoader) throws {
         self.init()
         name = material.name
-        lightingModel = .physicallyBased
+//        lightingModel = .physicallyBased
+        lightingModel = .constant // FIXME:
         isDoubleSided = material.doubleSided
-        blendMode = blendMode(of: material.alphaMode)
+        isLitPerPixel = false
+        writesToDepthBuffer = material.alphaMode != .BLEND
+
+        var shader: VRM.MaterialProperty.Shader?
+
+        if let name = name, let property = loader.vrm.materialPropertyNameMap[name] {
+            shader = property.vrmShader
+            // FIXME/TODO: https://dwango.github.io/vrm/vrm_spec/#vrm%E3%81%8C%E6%8F%90%E4%BE%9B%E3%81%99%E3%82%8B%E3%82%B7%E3%82%A7%E3%83%BC%E3%83%80%E3%83%BC
+            if shader == .unlitTransparent {
+                blendMode = .alpha
+                writesToDepthBuffer = false
+            } else if property.keywordMap["_ALPHAPREMULTIPLY_ON"] ?? false {
+                blendMode = .alpha
+            } else {
+                blendMode = blendMode(of: material.alphaMode)
+            }
+        } else {
+            blendMode = blendMode(of: material.alphaMode)
+        }
 
         if let pbr = material.pbrMetallicRoughness {
             // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#metallic-roughness-material
 
             if let baseTexture = pbr.baseColorTexture {
                 try diffuse.setTextureInfo(baseTexture, loader: loader)
+                if shader == .mToon {
+                    multiply.contents = pbr.baseColorFactor.createSKColor()
+                }
             } else {
                 diffuse.contents = pbr.baseColorFactor.createSKColor()
             }
@@ -124,11 +146,11 @@ extension SCNMaterial {
     }
 
     private func blendMode(of alphaMode: GLTF.Material.AlphaMode) -> SCNBlendMode {
-        // FIXME: https://dwango.github.io/vrm/vrm_spec/#vrm%E3%81%8C%E6%8F%90%E4%BE%9B%E3%81%99%E3%82%8B%E3%82%B7%E3%82%A7%E3%83%BC%E3%83%80%E3%83%BC
+        // FIXME/TODO: https://dwango.github.io/vrm/vrm_spec/#vrm%E3%81%8C%E6%8F%90%E4%BE%9B%E3%81%99%E3%82%8B%E3%82%B7%E3%82%A7%E3%83%BC%E3%83%80%E3%83%BC
         switch alphaMode {
-        case .OPAQUE: return .alpha// .replace
-        case .BLEND: return .alpha
-        case .MASK: return .alpha // FIXME
+        case .OPAQUE: return .replace
+        case .BLEND: return .alpha // FIXME/TODO: blend shader
+        case .MASK: return .alpha // FIXME/TODO: alphaCutoff shader
         }
     }
 }

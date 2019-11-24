@@ -30,27 +30,33 @@ class ViewController: UIViewController {
             let scene = try loader.loadScene()
             setupScene(scene)
             scnView.scene = scene
+
+            let node = scene.vrmNode
+            node.setBlendShape(value: 1.0, for: .custom("><"))
+            node.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
+            node.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+            node.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
         } catch {
             print(error)
         }
     }
 
     private func setupScene(_ scene: SCNScene) {
-        let enviromentLightNode = SCNNode()
-        let enviromentLight = SCNLight()
-        enviromentLightNode.light = enviromentLight
-        enviromentLight.type = .ambient
-        enviromentLight.color = UIColor.white
-        scene.rootNode.addChildNode(enviromentLightNode)
-
-        let pointLightNode = SCNNode()
-        let pointLight = SCNLight()
-        pointLightNode.light = pointLight
-        pointLight.type = .spot
-        pointLight.color = UIColor.white
-        enviromentLight.intensity = 1000
-        enviromentLightNode.position = SCNVector3(x: 0, y: 0, z: -2)
-        scene.rootNode.addChildNode(pointLightNode)
+//        let enviromentLightNode = SCNNode()
+//        let enviromentLight = SCNLight()
+//        enviromentLightNode.light = enviromentLight
+//        enviromentLight.type = .ambient
+//        enviromentLight.color = UIColor.white
+//        scene.rootNode.addChildNode(enviromentLightNode)
+//
+//        let pointLightNode = SCNNode()
+//        let pointLight = SCNLight()
+//        pointLightNode.light = pointLight
+//        pointLight.type = .spot
+//        pointLight.color = UIColor.white
+//        enviromentLight.intensity = 1000
+//        enviromentLightNode.position = SCNVector3(x: 0, y: 0, z: -2)
+//        scene.rootNode.addChildNode(pointLightNode)
 
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()

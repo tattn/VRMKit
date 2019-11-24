@@ -10,17 +10,32 @@ import VRMKit
 import SceneKit
 
 extension SCNNode {
-    convenience init(node: GLTF.Node, loader: VRMSceneLoader) throws {
+    convenience init(node: GLTF.Node, skins: [GLTF.Skin]?, loader: VRMSceneLoader) throws {
         self.init()
         name = node.name
         camera = try node.camera.map(loader.camera)
 
         if let mesh = node.mesh {
-            addChildNode(try loader.mesh(withMeshIndex: mesh))
+            let meshNode = try loader.mesh(withMeshIndex: mesh)
+            addChildNode(meshNode)
+
+            if let skinIndex = node.skin, let skin = skins?[skinIndex] {
+                let joints = try skin.joints.map(loader.node)
+                let ibm = try skin.inverseBindMatrices.map(loader.inverseBindMatrix)
+                let skeleton = try skin.skeleton.map(loader.node)
+                for primitive in meshNode.childNodes {
+                    primitive.skinner = try? loader.skin(
+                        withSkinIndex: skinIndex,
+                        primitiveGeometry: primitive.geometry!, // swiftlint:disable:this force_unwrap
+                        bones: joints,
+                        boneInverseBindTransform: ibm)
+                    primitive.skinner?.skeleton = skeleton ?? primitive
+                }
+            }
         }
 
         if let matrix = node._matrix {
-            transform = matrix.createSCNMatrix4()
+            transform = try SCNMatrix4(matrix.values)
         } else {
             position = node.translation.createSCNVector3()
             orientation = node.rotation.createSCNVector4()
@@ -35,6 +50,7 @@ extension SCNNode {
     convenience init(mesh: GLTF.Mesh, loader: VRMSceneLoader) throws {
         self.init()
         name = mesh.name
+        var morpher: SCNMorpher?
 
         for primitive in mesh.primitives {
             let node = SCNNode()
@@ -60,8 +76,24 @@ extension SCNNode {
                     } else {
                         return [.default]
                     }
-                    }()
+                }()
                 node.geometry = geometry
+
+                // FIXME/TODO:
+                if let name = geometry.materials[0].name,
+                    let property = loader.vrm.materialPropertyNameMap[name],
+                    property.renderQueue != -1 {
+                    let lastRenderingOrder = childNodes.last?.renderingOrder ?? 0
+                    node.renderingOrder = lastRenderingOrder == 0 ? property.renderQueue : property.renderQueue + 1
+                }
+            }
+
+            if let targets = primitive.targets, !targets.isEmpty {
+                morpher = try SCNMorpher(primitiveTargets: targets, loader: loader)
+                node.morpher = morpher
+//                let path = "childNodes[0].childNodes[\(primitiveIndex)].morpher.weights[\(index)]"
+            } else {
+                node.morpher = morpher
             }
 
             addChildNode(node)
@@ -119,7 +151,8 @@ private extension SCNGeometrySource {
 
         var vertices: [SCNVector3] = []
         vertices.reserveCapacity(vectorCount)
-        data.withUnsafeBytes { (ptr: UnsafePointer<Float32>) in
+        data.withUnsafeBytes { rawPtr in
+            guard let ptr = rawPtr.bindMemory(to: Float32.self).baseAddress else { return }
             var index = dataOffset / bytesPerComponent
             let step = dataStride / bytesPerComponent
             for _ in 0..<vectorCount {
@@ -137,7 +170,8 @@ private extension SCNGeometryElement {
         var indices: [Int] = []
         indices.reserveCapacity(indexCount)
 
-        func createIndices<T: UnsignedInteger>(ptr: UnsafePointer<T>) {
+        func createIndices<T: UnsignedInteger>(_ type: T.Type = T.self, rawPtr: UnsafeRawBufferPointer) {
+            guard let ptr = rawPtr.bindMemory(to: T.self).baseAddress else { return }
             for i in 0..<indexCount {
                 indices.append(Int(ptr[i]))
             }
@@ -147,11 +181,11 @@ private extension SCNGeometryElement {
 
         switch bytesPerIndex {
         case MemoryLayout<UInt16>.size:
-            data.withUnsafeBytes(createIndices as Func<UInt16>)
+            data.withUnsafeBytes { createIndices(UInt16.self, rawPtr: $0) }
         case MemoryLayout<UInt32>.size:
-            data.withUnsafeBytes(createIndices as Func<UInt32>)
+            data.withUnsafeBytes { createIndices(UInt32.self, rawPtr: $0) }
         case MemoryLayout<UInt64>.size:
-            data.withUnsafeBytes(createIndices as Func<UInt64>)
+            data.withUnsafeBytes { createIndices(UInt64.self, rawPtr: $0) }
         default: ()
         }
 

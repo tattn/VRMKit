@@ -44,6 +44,15 @@ func bytes(of type: GLTF.Accessor.ComponentType) -> Int {
     }
 }
 
+extension GLTF.Accessor {
+    func components() -> (componentsPerVector: Int, bytesPerComponent: Int, vectorSize: Int) {
+        let componentsPerVector = numberOfComponents(of: type)
+        let bytesPerComponent = bytes(of: componentType)
+        let vectorSize = bytesPerComponent * componentsPerVector
+        return (componentsPerVector, bytesPerComponent, vectorSize)
+    }
+}
+
 extension SCNGeometryPrimitiveType {
     func primitiveCount(ofCount count: Int) -> Int {
         switch self {
@@ -52,6 +61,7 @@ extension SCNGeometryPrimitiveType {
         case .polygon: return count - 2
         case .triangles: return count / 3
         case .triangleStrip: return count - 2
+        @unknown default: fatalError()
         }
     }
 }
@@ -63,17 +73,6 @@ func primitiveTypeOf(_ mode: GLTF.Mesh.Primitive.Mode) -> SCNGeometryPrimitiveTy
     case .TRIANGLES: return .triangles
     case .TRIANGLE_STRIP: return .triangleStrip
     case .LINE_LOOP, .LINE_STRIP, .TRIANGLE_FAN: return nil // TODO
-    }
-}
-
-extension GLTF.Matrix {
-    func createSCNMatrix4() -> SCNMatrix4 {
-        let v = values
-        return SCNMatrix4(
-            m11: v[0], m12: v[1], m13: v[2], m14: v[3],
-            m21: v[4], m22: v[5], m23: v[6], m24: v[7],
-            m31: v[8], m32: v[9], m33: v[10], m34: v[11],
-            m41: v[12], m42: v[13], m43: v[14], m44: v[15])
     }
 }
 
