@@ -149,6 +149,7 @@ public extension VRM {
 
     struct SecondaryAnimation: Codable {
         public let boneGroups: [BoneGroup]
+        public let colliderGroups: [ColliderGroup]
         public struct BoneGroup: Codable {
             public let bones: [Int]
             public let center: Int
@@ -171,6 +172,16 @@ public extension VRM {
                 gravityPower = try decodeDouble(key: .gravityPower, container: container)
                 hitRadius = try decodeDouble(key: .hitRadius, container: container)
                 stiffiness = try decodeDouble(key: .stiffiness, container: container)
+            }
+        }
+        
+        public struct ColliderGroup: Codable {
+            public let node: Int
+            public let colliders: [Collider]
+            
+            public struct Collider: Codable {
+                public let offset: Vector3
+                public let radius: Double
             }
         }
     }
