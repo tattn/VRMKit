@@ -10,6 +10,7 @@ import UIKit
 import SceneKit
 import VRMKit
 import VRMSceneKit
+import GameKit
 
 class ViewController: UIViewController {
 
@@ -21,7 +22,10 @@ class ViewController: UIViewController {
             scnView.backgroundColor = UIColor.black
         }
     }
-
+    
+    let gkScene: GKScene = .init()
+    var lastUpdateTime = TimeInterval()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -30,12 +34,21 @@ class ViewController: UIViewController {
             let scene = try loader.loadScene()
             setupScene(scene)
             scnView.scene = scene
-
+            scnView.delegate = self
             let node = scene.vrmNode
             node.setBlendShape(value: 1.0, for: .custom("><"))
             node.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
             node.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
             node.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+            let component = try loader.loadComponent(vrmNode: node)
+            let entity = GKEntity()
+            entity.addComponent(component)
+            gkScene.addEntity(entity)
+            
+            node.runAction(SCNAction.repeatForever(SCNAction.sequence([
+                SCNAction.rotateBy(x: 0, y: -0.5, z: 0, duration: 0.5),
+                SCNAction.rotateBy(x: 0, y: 0.5, z: 0, duration: 0.5),
+            ])))
         } catch {
             print(error)
         }
@@ -67,3 +80,13 @@ class ViewController: UIViewController {
     }
 }
 
+extension ViewController: SCNSceneRendererDelegate {
+    func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+        if lastUpdateTime == 0 {
+            lastUpdateTime = time
+        }
+        let deltaTime: TimeInterval = time - lastUpdateTime
+        lastUpdateTime = time
+        gkScene.entities.forEach({ $0.update(deltaTime: deltaTime) })
+    }
+}

@@ -53,6 +53,14 @@ extension SCNVector3 {
     mutating func normalize() {
         self = normalized
     }
+    
+    var magnitude: SCNFloat {
+        SCNFloat(simd.length(self.toSimd))
+    }
+    
+    var magnitudeSquared: SCNFloat {
+        SCNFloat(simd.length_squared(self.toSimd))
+    }
 }
 
 func cross(_ left: SCNVector3, _ right: SCNVector3) -> SCNVector3 {
@@ -65,6 +73,10 @@ func normal(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3) -> SCNVector3 
     let n = cross(e1, e2)
 
     return n.normalized
+}
+
+func dot(_ left: SCNVector3, _ right: SCNVector3) -> SCNFloat {
+    SCNFloat(simd.dot(left.toSimd, right.toSimd))
 }
 
 extension SCNMaterial {
@@ -86,6 +98,54 @@ extension SCNMatrix4 {
                   m21: v[4], m22: v[5], m23: v[6], m24: v[7],
                   m31: v[8], m32: v[9], m33: v[10], m34: v[11],
                   m41: v[12], m42: v[13], m43: v[14], m44: v[15])
+    }
+    
+    static func * (_ left: SCNMatrix4, _ value: SCNVector3) -> SCNVector3 {
+        let vector3: SCNVector3 = SCNVector3(
+            (left.m11 *  value.x +  left.m12 *  value.y +  left.m13 *  value.z) + left.m14,
+            (left.m21 *  value.x +  left.m22 *  value.y +  left.m23 *  value.z) + left.m24,
+            (left.m31 *  value.x +  left.m32 *  value.y +  left.m33 *  value.z) + left.m34
+        )
+        let num: Float = 1.0 / ( ( left.m41 *  value.x +  left.m42 *  value.y +  left.m43 *  value.z) + left.m44)
+        return vector3 * num
+    }
+    
+    static func * (_ left: SCNMatrix4, right: SCNMatrix4) -> SCNMatrix4 {
+        SCNMatrix4Mult(left, right)
+    }
+
+    var inverted: SCNMatrix4 {
+        SCNMatrix4Invert(self)
+    }
+}
+
+extension SCNQuaternion {
+    static let identity: SCNQuaternion = SCNQuaternion(0, 0, 0, 1)
+    
+    init(from: SCNVector3, to: SCNVector3) {
+        let fromNormal = from.normalized, toNormal = to.normalized
+        let dotProduct = dot(fromNormal, toNormal)
+        if dotProduct >= 1.0 {
+            self = SCNQuaternion.identity
+        } else if dotProduct < (-1.0 + SCNFloat.leastNormalMagnitude) {
+            self = GLKQuaternionMakeWithAngleAndVector3Axis(Float.pi, .init(v: (0, 1, 0))).toSCN
+        } else {
+            let s = sqrt((1.0 + dotProduct) * 2.0)
+            let xyz = cross(fromNormal, toNormal) / s
+            self = SCNQuaternion(xyz.x, xyz.y, xyz.z, (s * 0.5))
+        }
+    }
+    
+    static func * (_ left: SCNQuaternion, _ right: SCNQuaternion) -> SCNQuaternion {
+        GLKQuaternionMultiply(left.toGLK, right.toGLK).toSCN
+    }
+    
+    static func * (_ left: SCNQuaternion, _ right: SCNVector3) -> SCNVector3 {
+        GLKQuaternionRotateVector3(left.toGLK, right.toGLK).toSCN
+    }
+    
+    mutating func normalize() {
+        self = GLKQuaternionNormalize(self.toGLK).toSCN
     }
 }
 
