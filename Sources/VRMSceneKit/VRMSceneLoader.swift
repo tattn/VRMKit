@@ -52,6 +52,12 @@ open class VRMSceneLoader {
         return component
     }
 
+    public func loadThumbnail() throws -> UIImage? {
+        guard let textureIndex = vrm.meta.texture else { return nil }
+        if let cache = try sceneData.load(\.images, index: textureIndex) { return cache }
+        return try image(withImageIndex: textureIndex)
+    }
+
     func node(withNodeIndex index: Int) throws -> SCNNode {
         if let cache = try sceneData.load(\.nodes, index: index) { return cache }
         let gltfNode = try gltf.load(\.nodes, keyName: "nodes")[index]
