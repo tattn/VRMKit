@@ -45,7 +45,6 @@ open class VRMSceneLoader {
         return scnScene
     }
     
-    @available(iOS 11.0, *)
     public func loadComponent(vrmNode: VRMNode) throws -> VRMNodeComponent {
         let component = VRMNodeComponent(node: vrmNode)
         try component.setUpSpringBones(loader: self)
