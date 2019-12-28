@@ -27,7 +27,7 @@ final class VRMSpringBone {
     
     private var initialLocalRotationMap: [SCNNode : SCNQuaternion] = [:]
     private let colliderGroups: [VRMSpringBoneColliderGroup]
-    private var verlet: [SpringBoneLogic] = []
+    private var verlet: [VRMSpringBoneLogic] = []
     private var colliderList: [SphereCollider] = []
     
     init(center: SCNNode,
@@ -68,15 +68,15 @@ final class VRMSpringBone {
     
     private func setupRecursive(_ center: SCNNode, _ parent: SCNNode) {
         if parent.utx.childCount == 0 {
-            let delta = parent.position - parent.parent!.position
-            let childPosition = parent.position + delta.normalized * 0.07
-            let logic = VRMSpringBone.SpringBoneLogic(center: center, node: parent, localChildPosition: parent.utx.worldToLocalMatrix.multiplyPoint(childPosition))
+            let delta = parent.utx.position - parent.parent!.utx.position
+            let childPosition = parent.utx.position + delta.normalized * 0.07
+            let logic = VRMSpringBoneLogic(center: center, node: parent, localChildPosition: parent.utx.worldToLocalMatrix.multiplyPoint(childPosition))
             self.verlet.append(logic)
         } else {
             let firstChild = parent.childNodes.first!
             let localPosition = firstChild.utx.localPosition
             let scale = firstChild.utx.lossyScale
-            let logic = VRMSpringBone.SpringBoneLogic(center: center, node: parent, localChildPosition: SCNVector3(
+            let logic = VRMSpringBoneLogic(center: center, node: parent, localChildPosition: SCNVector3(
                 localPosition.x * scale.x,
                 localPosition.y * scale.y,
                 localPosition.z * scale.z
@@ -129,7 +129,7 @@ final class VRMSpringBone {
 }
 
 extension VRMSpringBone {
-    class SpringBoneLogic {
+    class VRMSpringBoneLogic {
         let node: SCNNode
         public var head: SCNNode { self.node }
         private let length: SCNFloat
@@ -138,7 +138,7 @@ extension VRMSpringBone {
         private let localRotation: SCNQuaternion
         private let boneAxis: SCNVector3
         private var parentRotation: SCNQuaternion {
-            self.node.parent?.rotation ?? SCNQuaternion.identity
+            self.node.parent?.utx.rotation ?? SCNQuaternion.identity
         }
         var radius: SCNFloat = 0.5
         
