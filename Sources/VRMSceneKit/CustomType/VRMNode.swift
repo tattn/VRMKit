@@ -12,6 +12,7 @@ import VRMKit
 open class VRMNode: SCNNode {
     public let vrm: VRM
     public let humanoid = Humanoid()
+    private var springBones: [VRMSpringBone] = []
 
     var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
 
@@ -47,6 +48,30 @@ open class VRMNode: SCNNode {
                 result[clip.key] = clip
         }
     }
+    
+    func setUpSpringBones(loader: VRMSceneLoader) throws {
+        var springBones: [VRMSpringBone] = []
+        let secondaryAnimation = vrm.secondaryAnimation
+        for boneGroup in secondaryAnimation.boneGroups {
+            guard !boneGroup.bones.isEmpty else { return }
+            let rootBones: [SCNNode] = try boneGroup.bones.compactMap({ try loader.node(withNodeIndex: $0) }).compactMap({ $0 })
+            let centerIndex = max(boneGroup.center, boneGroup.bones[0])
+            if let centerNode = try? loader.node(withNodeIndex: centerIndex) {
+                let colliderGroups = try secondaryAnimation.colliderGroups.map({ try VRMSpringBoneColliderGroup(colliderGroup: $0, loader: loader) })
+                let springBone = VRMSpringBone(center: centerNode,
+                                               rootBones: rootBones,
+                                               comment: boneGroup.comment,
+                                               stiffnessForce: SCNFloat(boneGroup.stiffiness),
+                                               gravityPower: SCNFloat(boneGroup.gravityPower),
+                                               gravityDir: boneGroup.gravityDir.createSCNVector3(),
+                                               dragForce: SCNFloat(boneGroup.dragForce),
+                                               hitRadius: SCNFloat(boneGroup.hitRadius),
+                                               colliderGroups: colliderGroups)
+                springBones.append(springBone)
+            }
+        }
+        self.springBones = springBones
+    }
 
     /// Set blend shapes to avatar
     ///
@@ -74,5 +99,11 @@ open class VRMNode: SCNNode {
             let binding = clip.values.first,
             let morpher = binding.mesh.childNodes.lazy.compactMap({ $0.morpher }).first else { return 0 }
         return morpher.weight(forTargetAt: binding.index)
+    }
+}
+
+extension VRMNode: RenderUpdatable {
+    public func update(deltaTime seconds: TimeInterval) {
+        springBones.forEach({ $0.update(deltaTime: seconds) })
     }
 }
