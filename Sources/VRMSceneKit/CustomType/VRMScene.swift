@@ -7,7 +7,6 @@
 //
 
 import SceneKit
-import GameKit
 
 open class VRMScene: SCNScene {
     public let vrmNode: VRMNode
