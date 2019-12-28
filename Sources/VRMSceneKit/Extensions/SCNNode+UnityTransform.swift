@@ -39,8 +39,8 @@ extension UnityTransform where Base == SCNNode {
     }
     
     var localRotation: SCNQuaternion {
-        get { base.rotation }
-        set { base.rotation = newValue }
+        get { base.orientation }
+        set { base.orientation = newValue }
     }
     
     var position: SCNVector3 {
@@ -54,8 +54,8 @@ extension UnityTransform where Base == SCNNode {
     }
     
     var rotation: SCNQuaternion {
-        get { base.rotation }
-        set { base.rotation = newValue }
+        get { base.worldOrientation }
+        set { base.worldOrientation = newValue }
     }
     
     var childCount: Int {
