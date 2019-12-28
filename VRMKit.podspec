@@ -15,7 +15,7 @@ VRMKit can read VRM metadata and show the 3D models.
   s.source           = { :git => 'https://github.com/tattn/VRMKit.git', :tag => s.version.to_s }
   s.social_media_url = 'https://twitter.com/tanakasan2525'
 
-  s.ios.deployment_target = '10.0'
+  s.ios.deployment_target = '11.0'
 
   s.source_files = 'Sources/VRMKit/**/*.{swift,h}'
   
