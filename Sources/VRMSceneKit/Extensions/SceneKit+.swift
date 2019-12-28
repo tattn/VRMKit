@@ -116,7 +116,7 @@ extension SCNMatrix4 {
 }
 
 extension SCNQuaternion {
-    static let identity: SCNQuaternion = SCNQuaternionIdentity
+    static let identity: SCNQuaternion = SCNQuaternion(0, 0, 0, 1)
     
     init(from: SCNVector3, to: SCNVector3) {
         let fromNormal = from.normalized, toNormal = to.normalized
