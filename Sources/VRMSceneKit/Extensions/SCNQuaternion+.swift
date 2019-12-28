@@ -17,6 +17,8 @@ func * (left: SCNQuaternion, right: SCNQuaternion) -> SCNQuaternion {
     )
 }
 
+let SCNQuaternionIdentity: SCNQuaternion = SCNQuaternion(x: 0, y: 0, z: 0, w: 1)
+
 /*
  x, y, and z represent the imaginary values.
  */

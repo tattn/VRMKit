@@ -10,6 +10,10 @@ import SceneKit
 import SpriteKit
 
 extension SCNVector3 {
+    static func sqrMagnitude(_ vector: SCNVector3) -> SCNFloat {
+        SCNVector3LengthSquared(vector)
+    }
+    
     static func + (_ left: SCNVector3, _ right: SCNVector3) -> SCNVector3 {
         return SCNVector3(left.x + right.x, left.y + right.y, left.z + right.z)
     }
@@ -30,28 +34,12 @@ extension SCNVector3 {
         left = left + right
     }
 
-    static func -= (_ left: inout SCNVector3, _ right: SCNVector3) {
-        left = left - right
-    }
-
-    static func *= (_ left: inout SCNVector3, _ right: SCNFloat) {
-        left = left * right
-    }
-
-    static func /= (_ left: inout SCNVector3, _ right: SCNFloat) {
-        left = left / right
-    }
-
-    var length: SCNFloat {
+    var magnitude: SCNFloat {
         SCNVector3Length(self)
     }
 
     var normalized: SCNVector3 {
-        return self * (1.0 / length)
-    }
-
-    mutating func normalize() {
-        self = normalized
+        SCNVector3Normalize(self)
     }
     
     var magnitudeSquared: SCNFloat {
@@ -96,16 +84,6 @@ extension SCNMatrix4 {
                   m41: v[12], m42: v[13], m43: v[14], m44: v[15])
     }
     
-    static func * (_ left: SCNMatrix4, _ value: SCNVector3) -> SCNVector3 {
-        let vector3: SCNVector3 = SCNVector3(
-            (left.m11 *  value.x +  left.m12 *  value.y +  left.m13 *  value.z) + left.m14,
-            (left.m21 *  value.x +  left.m22 *  value.y +  left.m23 *  value.z) + left.m24,
-            (left.m31 *  value.x +  left.m32 *  value.y +  left.m33 *  value.z) + left.m34
-        )
-        let num: Float = 1.0 / ( ( left.m41 *  value.x +  left.m42 *  value.y +  left.m43 *  value.z) + left.m44)
-        return vector3 * num
-    }
-    
     static func * (_ left: SCNMatrix4, right: SCNMatrix4) -> SCNMatrix4 {
         SCNMatrix4Mult(left, right)
     }
@@ -116,7 +94,7 @@ extension SCNMatrix4 {
 }
 
 extension SCNQuaternion {
-    static let identity: SCNQuaternion = SCNQuaternion(0, 0, 0, 1)
+    static let identity: SCNQuaternion = SCNQuaternionIdentity
     
     init(from: SCNVector3, to: SCNVector3) {
         let fromNormal = from.normalized, toNormal = to.normalized
@@ -134,10 +112,6 @@ extension SCNQuaternion {
     
     static func * (_ left: SCNQuaternion, _ right: SCNVector3) -> SCNVector3 {
         SCNQuaternionRotateVector3(left, right)
-    }
-    
-    mutating func normalize() {
-        self = SCNQuaternionNormalize(self)
     }
 }
 

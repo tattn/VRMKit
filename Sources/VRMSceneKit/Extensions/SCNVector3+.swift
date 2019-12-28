@@ -27,3 +27,9 @@ extension VRM.Vector3 {
 @inlinable func SCNVector3DotProduct(_ vectorLeft: SCNVector3, _ vectorRight: SCNVector3) -> SCNFloat {
     vectorLeft.x * vectorRight.x + vectorLeft.y * vectorRight.y + vectorLeft.z * vectorRight.z
 }
+
+@inlinable func SCNVector3Normalize(_ vector: SCNVector3) -> SCNVector3 {
+    let scale: SCNFloat = 1.0 / SCNVector3Length(vector)
+    let v: SCNVector3 = SCNVector3(vector.x * scale, vector.y * scale, vector.z * scale)
+    return v
+}
