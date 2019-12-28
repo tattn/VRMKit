@@ -53,7 +53,6 @@ extension SCNVector3 {
     var normalized: SCNVector3 {
         return self * (1.0 / length)
     }
-    
     mutating func normalize() {
         self = normalized
     }
