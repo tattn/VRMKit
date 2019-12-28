@@ -33,6 +33,18 @@ extension SCNVector3 {
     static func += (_ left: inout SCNVector3, _ right: SCNVector3) {
         left = left + right
     }
+    
+    static func -= (_ left: inout SCNVector3, _ right: SCNVector3) {
+        left = left - right
+    }
+
+    static func *= (_ left: inout SCNVector3, _ right: SCNFloat) {
+        left = left * right
+    }
+
+    static func /= (_ left: inout SCNVector3, _ right: SCNFloat) {
+        left = left / right
+    }
 
     var magnitude: SCNFloat {
         SCNVector3Length(self)
@@ -82,6 +94,16 @@ extension SCNMatrix4 {
                   m21: v[4], m22: v[5], m23: v[6], m24: v[7],
                   m31: v[8], m32: v[9], m33: v[10], m34: v[11],
                   m41: v[12], m42: v[13], m43: v[14], m44: v[15])
+    }
+    
+    static func * (_ left: SCNMatrix4, _ value: SCNVector3) -> SCNVector3 {
+        let vector3: SCNVector3 = SCNVector3(
+            (left.m11 *  value.x +  left.m12 *  value.y +  left.m13 *  value.z) + left.m14,
+            (left.m21 *  value.x +  left.m22 *  value.y +  left.m23 *  value.z) + left.m24,
+            (left.m31 *  value.x +  left.m32 *  value.y +  left.m33 *  value.z) + left.m34
+        )
+        let num: Float = 1.0 / ( ( left.m41 *  value.x +  left.m42 *  value.y +  left.m43 *  value.z) + left.m44)
+        return vector3 * num
     }
     
     static func * (_ left: SCNMatrix4, right: SCNMatrix4) -> SCNMatrix4 {
