@@ -99,10 +99,6 @@ extension SCNMatrix4 {
     static func * (_ left: SCNMatrix4, right: SCNMatrix4) -> SCNMatrix4 {
         SCNMatrix4Mult(left, right)
     }
-
-    var inverted: SCNMatrix4 {
-        SCNMatrix4Invert(self)
-    }
 }
 
 extension SCNQuaternion {
