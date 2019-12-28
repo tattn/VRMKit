@@ -53,26 +53,17 @@ final class VRMSpringBone {
     }
     
     private func setup() {
-        if self.rootBones != nil {
-            if self.initialLocalRotationMap == nil {
-                self.initialLocalRotationMap = [:]
-            } else {
-                for kv in self.initialLocalRotationMap {
-                    kv.key.utx.localRotation = kv.value
-                }
-                self.initialLocalRotationMap = [:]
-            }
-            self.verlet = []
+        for kv in self.initialLocalRotationMap {
+            kv.key.utx.localRotation = kv.value
+        }
+        self.initialLocalRotationMap = [:]
+        self.verlet = []
 
-            for go in self.rootBones {
-                if go != nil {
-                    for x in go.utx.transform.traverse() {
-                        self.initialLocalRotationMap[x.base] = x.localRotation
-                    }
-                    
-                    setupRecursive(self.center, go)
-                }
+        for go in self.rootBones {
+            go.enumerateHierarchy { (x, _) in
+                self.initialLocalRotationMap[x] = x.utx.localRotation
             }
+            setupRecursive(self.center, go)
         }
     }
     

@@ -31,11 +31,11 @@ extension SCNNode: UnityTransformCompatible {}
 
 extension UnityTransform where Base == SCNNode {
     func transformPoint(_ position: SCNVector3) -> SCNVector3 {
-        fatalError()
+        base.convertPosition(position, to: nil)
     }
     
     func inverseTransformPoint(_ position: SCNVector3) -> SCNVector3 {
-        fatalError()
+        base.parent!.convertVector(position, from: nil)
     }
     
     var localRotation: SCNQuaternion {
@@ -44,24 +44,18 @@ extension UnityTransform where Base == SCNNode {
     }
     
     var position: SCNVector3 {
-        base.worldPosition
+        get { base.worldPosition }
+        set { base.worldPosition = newValue }
     }
     
     var localPosition: SCNVector3 {
-        base.position
+        get { base.position }
+        set { base.position = newValue }
     }
     
     var rotation: SCNQuaternion {
-        get { fatalError() }
-        set { fatalError() }
-    }
-    
-    var transform: UnityTransform<SCNNode> {
-        self
-    }
-    
-    func traverse() -> [UnityTransform<SCNNode>] {
-        fatalError()
+        get { base.rotation }
+        set { base.rotation = newValue }
     }
     
     var childCount: Int {
@@ -69,11 +63,11 @@ extension UnityTransform where Base == SCNNode {
     }
     
     var worldToLocalMatrix: SCNMatrix4 {
-        fatalError()
+        base.transform
     }
     
     var lossyScale: SCNVector3 {
-        fatalError()
+        base.scale
     }
 }
 
