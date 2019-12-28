@@ -43,7 +43,7 @@ extension SCNVector3 {
     }
 
     var length: SCNFloat {
-        return SCNFloat(sqrtf(x * x + y * y + z * z))
+        SCNVector3Length(self)
     }
 
     var normalized: SCNVector3 {
@@ -54,12 +54,8 @@ extension SCNVector3 {
         self = normalized
     }
     
-    var magnitude: SCNFloat {
-        SCNFloat(simd.length(self.toSimd))
-    }
-    
     var magnitudeSquared: SCNFloat {
-        SCNFloat(simd.length_squared(self.toSimd))
+        SCNVector3LengthSquared(self)
     }
 }
 
@@ -76,7 +72,7 @@ func normal(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3) -> SCNVector3 
 }
 
 func dot(_ left: SCNVector3, _ right: SCNVector3) -> SCNFloat {
-    SCNFloat(simd.dot(left.toSimd, right.toSimd))
+    SCNVector3DotProduct(left, right)
 }
 
 extension SCNMaterial {
@@ -128,7 +124,7 @@ extension SCNQuaternion {
         if dotProduct >= 1.0 {
             self = SCNQuaternion.identity
         } else if dotProduct < (-1.0 + SCNFloat.leastNormalMagnitude) {
-            self = GLKQuaternionMakeWithAngleAndVector3Axis(Float.pi, .init(v: (0, 1, 0))).toSCN
+            self = SCNQuaternionMakeWithAngleAndVector3Axis(Float.pi, SCNVector3(0, 1, 0))
         } else {
             let s = sqrt((1.0 + dotProduct) * 2.0)
             let xyz = cross(fromNormal, toNormal) / s
@@ -136,16 +132,12 @@ extension SCNQuaternion {
         }
     }
     
-    static func * (_ left: SCNQuaternion, _ right: SCNQuaternion) -> SCNQuaternion {
-        GLKQuaternionMultiply(left.toGLK, right.toGLK).toSCN
-    }
-    
     static func * (_ left: SCNQuaternion, _ right: SCNVector3) -> SCNVector3 {
-        GLKQuaternionRotateVector3(left.toGLK, right.toGLK).toSCN
+        SCNQuaternionRotateVector3(left, right)
     }
     
     mutating func normalize() {
-        self = GLKQuaternionNormalize(self.toGLK).toSCN
+        self = SCNQuaternionNormalize(self)
     }
 }
 

@@ -144,7 +144,7 @@ extension VRMSpringBone {
             prevTail = currentTail
             localRotation = node.orientation
             boneAxis = localChildPosition.normalized
-            length = localChildPosition.magnitude
+            length = localChildPosition.length
         }
         
         func update(center: SCNNode, stiffnessForce: SCNFloat, dragForce: SCNFloat, external: SCNVector3, colliders: [SphereCollider]) {
