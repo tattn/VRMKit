@@ -14,22 +14,3 @@ extension VRM.Vector3 {
         return .init(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z))
     }
 }
-
-@inlinable func SCNVector3Length(_ vector: SCNVector3) -> SCNFloat {
-    sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z)
-}
-
-// Convenience
-@inlinable func SCNVector3LengthSquared(_ vector: SCNVector3) -> SCNFloat {
-    vector.x * vector.x + vector.y * vector.y + vector.z * vector.z
-}
-
-@inlinable func SCNVector3DotProduct(_ vectorLeft: SCNVector3, _ vectorRight: SCNVector3) -> SCNFloat {
-    vectorLeft.x * vectorRight.x + vectorLeft.y * vectorRight.y + vectorLeft.z * vectorRight.z
-}
-
-@inlinable func SCNVector3Normalize(_ vector: SCNVector3) -> SCNVector3 {
-    let scale: SCNFloat = 1.0 / SCNVector3Length(vector)
-    let v: SCNVector3 = SCNVector3(vector.x * scale, vector.y * scale, vector.z * scale)
-    return v
-}
