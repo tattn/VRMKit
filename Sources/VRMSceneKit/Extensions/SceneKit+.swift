@@ -132,6 +132,10 @@ extension SCNQuaternion {
         }
     }
     
+    static func * (_ left: SCNQuaternion, _ right: SCNQuaternion) -> SCNQuaternion {
+        SCNQuaternionMultiply(left, right)
+    }
+    
     static func * (_ left: SCNQuaternion, _ right: SCNVector3) -> SCNVector3 {
         SCNQuaternionRotateVector3(left, right)
     }

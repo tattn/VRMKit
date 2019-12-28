@@ -8,15 +8,6 @@
 
 import SceneKit
 
-func * (left: SCNQuaternion, right: SCNQuaternion) -> SCNQuaternion {
-    SCNQuaternion(
-        left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z,  // 1
-        left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y,  // i
-        left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x,  // j
-        left.w * right.z + left.x * right.y - left.y * right.x + left.z * right.w   // k
-    )
-}
-
 /*
  x, y, and z represent the imaginary values.
  */
