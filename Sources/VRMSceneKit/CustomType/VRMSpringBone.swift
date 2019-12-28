@@ -84,7 +84,7 @@ final class VRMSpringBone {
             self.verlet.append(logic)
         }
 
-        for child in parent {
+        for child in parent.childNodes {
             self.setupRecursive(center, child)
         }
     }

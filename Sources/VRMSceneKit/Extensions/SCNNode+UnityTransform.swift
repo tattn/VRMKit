@@ -70,27 +70,3 @@ extension UnityTransform where Base == SCNNode {
         base.scale
     }
 }
-
-
-extension SCNNode: Sequence {
-    public func makeIterator() -> ChildNodeIterator {
-        SCNNode.ChildNodeIterator(self)
-    }
-}
-
-extension SCNNode {
-    public struct ChildNodeIterator: IteratorProtocol {
-        private let node: SCNNode
-        private var index: Int = 0
-
-        init(_ node: SCNNode) {
-            self.node = node
-        }
-
-        mutating public func next() -> SCNNode? {
-            defer { index += 1 }
-            guard index < node.childNodes.count else { return nil }
-            return node.childNodes[index]
-        }
-    }
-}
