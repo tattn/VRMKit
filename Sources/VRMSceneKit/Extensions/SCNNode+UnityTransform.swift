@@ -31,11 +31,11 @@ extension SCNNode: UnityTransformCompatible {}
 
 extension UnityTransform where Base == SCNNode {
     func transformPoint(_ position: SCNVector3) -> SCNVector3 {
-        base.convertPosition(position, to: nil)
+        base.convertPosition(position, to: base)
     }
     
     func inverseTransformPoint(_ position: SCNVector3) -> SCNVector3 {
-        base.parent!.convertVector(position, from: nil)
+        base.convertPosition(position, from: base)
     }
     
     var localRotation: SCNQuaternion {
