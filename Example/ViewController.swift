@@ -10,7 +10,6 @@ import UIKit
 import SceneKit
 import VRMKit
 import VRMSceneKit
-import GameKit
 
 class ViewController: UIViewController {
 
