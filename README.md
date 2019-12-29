@@ -25,7 +25,10 @@
 
 <br />
 
+<div>
 <img src="https://github.com/tattn/VRMKit/raw/master/docs/demo.jpg" width="300px" alt="demo" />
+<img src="https://github.com/tattn/VRMKit/raw/master/docs/demo2.gif" width="300px" alt="demo" />
+</div>
 
 For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 
@@ -35,12 +38,13 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 - [x] Render VRM models on SceneKit (experimental)
 - [x] Face morphing (blend shape)
 - [x] Bone animation (skin / joint)
+- [x] Physics (spring bone)
 
 # Requirements
 
-- Xcode 10.x
-- Swift 4.x
-- iOS 10.0+
+- Xcode 11+
+- Swift 5.1+
+- iOS 11.0+
 
 # Installation
 
@@ -120,6 +124,13 @@ node.setBlendShape(value: 1.0, for: .preset(.fun))
 node.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
 node.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
 node.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+```
+
+### Read the thumbnail image
+
+```swift
+let loader = try VRMSceneLoader(named: "model.vrm")
+let image = try loader.loadThumbnail()
 ```
 
 # ToDo
