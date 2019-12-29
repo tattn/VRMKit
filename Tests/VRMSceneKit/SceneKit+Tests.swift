@@ -12,11 +12,6 @@ import SceneKit
 
 class SceneKit_Tests: XCTestCase {
 
-    func testSCNVector3_sqrMagnitude() {
-        let magnitude = SCNVector3.sqrMagnitude(SCNVector3(1, 2, 3))
-        XCTAssertEqual(magnitude, 14.0)
-    }
-
     func testSCNVector3_add() {
         let (v1, v2) = (SCNVector3(1, 2, 3), SCNVector3(4, 5, 6))
         XCTAssertEqual(v1 + v2, SCNVector3(5, 7, 9))
@@ -61,8 +56,13 @@ class SceneKit_Tests: XCTestCase {
         XCTAssertEqual(v, SCNVector3(1, 2, 3))
     }
 
-    func testSCNVector3_length() {
-        XCTAssertEqual(SCNVector3(3, 4, 5).length, 7.071068, accuracy: 0.000001)
+    func testSCNVector3_sqrMagnitude() {
+        let sqrMagnitude = SCNVector3(1, 2, 3).sqrMagnitude
+        XCTAssertEqual(sqrMagnitude, 14.0)
+    }
+
+    func testSCNVector3_magnitude() {
+        XCTAssertEqual(SCNVector3(3, 4, 5).magnitude, 7.071068, accuracy: 0.000001)
     }
 
     func testSCNVector3_normalized() {

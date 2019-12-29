@@ -10,24 +10,20 @@ import SceneKit
 import SpriteKit
 
 extension SCNVector3 {
-    static func sqrMagnitude(_ vector: SCNVector3) -> SCNFloat {
-        vector.x * vector.x + vector.y * vector.y + vector.z * vector.z
-    }
-    
     static func + (_ left: SCNVector3, _ right: SCNVector3) -> SCNVector3 {
-        return SCNVector3(left.x + right.x, left.y + right.y, left.z + right.z)
+        SCNVector3(left.x + right.x, left.y + right.y, left.z + right.z)
     }
 
     static func - (_ left: SCNVector3, _ right: SCNVector3) -> SCNVector3 {
-        return SCNVector3(left.x - right.x, left.y - right.y, left.z - right.z)
+        SCNVector3(left.x - right.x, left.y - right.y, left.z - right.z)
     }
 
     static func * (_ left: SCNVector3, _ value: SCNFloat) -> SCNVector3 {
-        return SCNVector3(left.x * value, left.y * value, left.z * value)
+        SCNVector3(left.x * value, left.y * value, left.z * value)
     }
 
     static func / (_ left: SCNVector3, _ value: SCNFloat) -> SCNVector3 {
-        return left * (1.0 / value)
+        left * (1.0 / value)
     }
 
     static func += (_ left: inout SCNVector3, _ right: SCNVector3) {
@@ -46,12 +42,16 @@ extension SCNVector3 {
         left = left / right
     }
 
-    var length: SCNFloat {
-        return SCNFloat(sqrtf(x * x + y * y + z * z))
+    var sqrMagnitude: SCNFloat {
+        x * x + y * y + z * z
+    }
+
+    var magnitude: SCNFloat {
+        sqrt(sqrMagnitude)
     }
 
     var normalized: SCNVector3 {
-        return self * (1.0 / length)
+        self * (1.0 / magnitude)
     }
     
     mutating func normalize() {
@@ -60,7 +60,7 @@ extension SCNVector3 {
 }
 
 func cross(_ left: SCNVector3, _ right: SCNVector3) -> SCNVector3 {
-    return SCNVector3(left.y * right.z - left.z * right.y, left.z * right.x - left.x * right.z, left.x * right.y - left.y * right.x)
+    SCNVector3(left.y * right.z - left.z * right.y, left.z * right.x - left.x * right.z, left.x * right.y - left.y * right.x)
 }
 
 func normal(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3) -> SCNVector3 {
@@ -120,8 +120,8 @@ extension SCNQuaternion {
     
     init(angle radians: SCNFloat, axis: SCNVector3) {
         let halfAngle: SCNFloat = radians * 0.5
-        let scale: SCNFloat = SCNFloat(sinf(Float(halfAngle)))
-        self = SCNQuaternion(x: scale * axis.x, y: scale * axis.y, z: scale * axis.z, w: cosf(Float(halfAngle)))
+        let scale: SCNFloat = sin(halfAngle)
+        self = SCNQuaternion(x: scale * axis.x, y: scale * axis.y, z: scale * axis.z, w: cos(halfAngle))
     }
     
     static func * (_ left: SCNQuaternion, _ right: SCNQuaternion) -> SCNQuaternion {
@@ -149,9 +149,9 @@ extension SCNQuaternion {
     }
     
     static func * (_ left: SCNQuaternion, _ right: SCNVector3) -> SCNVector3 {
-        var rotatedQuaternion: SCNQuaternion = SCNQuaternion(right.x, right.y, right.z, 0.0)
+        var rotatedQuaternion = SCNQuaternion(right.x, right.y, right.z, 0.0)
         rotatedQuaternion = (left * rotatedQuaternion) * left.inverted
-        return SCNVector3Make(rotatedQuaternion.x, rotatedQuaternion.y, rotatedQuaternion.z)
+        return SCNVector3(rotatedQuaternion.x, rotatedQuaternion.y, rotatedQuaternion.z)
     }
     
     @inlinable var inverted: SCNQuaternion {

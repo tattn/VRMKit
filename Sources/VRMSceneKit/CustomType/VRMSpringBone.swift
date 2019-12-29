@@ -149,7 +149,7 @@ extension VRMSpringBone {
             self.prevTail = self.currentTail
             self.localRotation = node.utx.localRotation
             self.boneAxis = localChildPosition.normalized
-            self.length = localChildPosition.length
+            self.length = localChildPosition.magnitude
         }
         
         func update(center: SCNNode, stiffnessForce: SCNFloat, dragForce: SCNFloat, external: SCNVector3, colliders: [SphereCollider]) {
@@ -187,7 +187,7 @@ extension VRMSpringBone {
             var nextTail = nextTail
             for collider in colliders {
                 let r = self.radius + collider.radius
-                if SCNVector3.sqrMagnitude(nextTail - collider.position) <= (r * r) {
+                if (nextTail - collider.position).sqrMagnitude <= (r * r) {
                     // ヒット。Colliderの半径方向に押し出す
                     let normal = (nextTail - collider.position).normalized
                     let posFromCollider = collider.position + normal * (self.radius + collider.radius)
