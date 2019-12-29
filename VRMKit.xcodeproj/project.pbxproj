@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		242C32FC23B88EFB007314D3 /* SCNMatrix4+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242C32FB23B88EFB007314D3 /* SCNMatrix4+Tests.swift */; };
+		242C32FE23B89476007314D3 /* Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242C32FD23B89476007314D3 /* Helpers.swift */; };
+		242C330023B89715007314D3 /* SceneKit+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242C32FF23B89715007314D3 /* SceneKit+Tests.swift */; };
 		2457259C2146EF99003AA5D7 /* VRMSceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 245725932146EF99003AA5D7 /* VRMSceneKit.framework */; };
 		245725A12146EF99003AA5D7 /* VRMSceneKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725A02146EF99003AA5D7 /* VRMSceneKitTests.swift */; };
 		245725A32146EF99003AA5D7 /* VRMSceneKit.h in Headers */ = {isa = PBXBuildFile; fileRef = 245725952146EF99003AA5D7 /* VRMSceneKit.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -142,6 +145,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		242C32FB23B88EFB007314D3 /* SCNMatrix4+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNMatrix4+Tests.swift"; sourceTree = "<group>"; };
+		242C32FD23B89476007314D3 /* Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Helpers.swift; sourceTree = "<group>"; };
+		242C32FF23B89715007314D3 /* SceneKit+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SceneKit+Tests.swift"; sourceTree = "<group>"; };
 		245725932146EF99003AA5D7 /* VRMSceneKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = VRMSceneKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		245725952146EF99003AA5D7 /* VRMSceneKit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VRMSceneKit.h; sourceTree = "<group>"; };
 		245725962146EF99003AA5D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -297,6 +303,9 @@
 			children = (
 				245725A02146EF99003AA5D7 /* VRMSceneKitTests.swift */,
 				245725A22146EF99003AA5D7 /* Info.plist */,
+				242C32FD23B89476007314D3 /* Helpers.swift */,
+				242C32FB23B88EFB007314D3 /* SCNMatrix4+Tests.swift */,
+				242C32FF23B89715007314D3 /* SceneKit+Tests.swift */,
 			);
 			path = VRMSceneKit;
 			sourceTree = "<group>";
@@ -761,7 +770,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				242C32FC23B88EFB007314D3 /* SCNMatrix4+Tests.swift in Sources */,
+				242C32FE23B89476007314D3 /* Helpers.swift in Sources */,
 				245725A12146EF99003AA5D7 /* VRMSceneKitTests.swift in Sources */,
+				242C330023B89715007314D3 /* SceneKit+Tests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
