@@ -9,5 +9,5 @@
 import Foundation
 
 public protocol RenderUpdatable {
-    func update(deltaTime seconds: TimeInterval)
+    func update(at time: TimeInterval)
 }

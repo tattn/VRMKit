@@ -12,6 +12,7 @@ import VRMKit
 open class VRMNode: SCNNode {
     public let vrm: VRM
     public let humanoid = Humanoid()
+    private let timer = Timer()
     private var springBones: [VRMSpringBone] = []
 
     var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
@@ -103,7 +104,8 @@ open class VRMNode: SCNNode {
 }
 
 extension VRMNode: RenderUpdatable {
-    public func update(deltaTime seconds: TimeInterval) {
+    public func update(at time: TimeInterval) {
+        let seconds = timer.deltaTime(updateAtTime: time)
         springBones.forEach({ $0.update(deltaTime: seconds) })
     }
 }

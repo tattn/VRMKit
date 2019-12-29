@@ -8,12 +8,10 @@
 
 import Foundation
 
-public class Timer {
-    private(set) var lastUpdateTime = TimeInterval()
+final class Timer {
+    private var lastUpdateTime = TimeInterval()
     
-    public init() {}
-    
-    public func deltaTime(updateAtTime time: TimeInterval) -> TimeInterval {
+    func deltaTime(updateAtTime time: TimeInterval) -> TimeInterval {
         if lastUpdateTime == 0 {
             lastUpdateTime = time
         }

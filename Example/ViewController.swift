@@ -23,8 +23,6 @@ class ViewController: UIViewController {
         }
     }
     
-    let timer = Timer()
-    
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -77,6 +75,6 @@ class ViewController: UIViewController {
 
 extension ViewController: SCNSceneRendererDelegate {
     func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
-        (renderer.scene as! VRMScene).vrmNode.update(deltaTime: timer.deltaTime(updateAtTime: time))
+        (renderer.scene as! VRMScene).vrmNode.update(at: time)
     }
 }
