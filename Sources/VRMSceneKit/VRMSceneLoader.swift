@@ -39,12 +39,13 @@ open class VRMSceneLoader {
         }
         vrmNode.setUpHumanoid(nodes: sceneData.nodes)
         vrmNode.setUpBlendShapes(meshes: sceneData.meshes)
+        try vrmNode.setUpSpringBones(loader: self)
 
         let scnScene = VRMScene(node: vrmNode)
         sceneData.scenes[index] = scnScene
         return scnScene
     }
-    
+
     public func loadThumbnail() throws -> UIImage? {
         guard let textureIndex = vrm.meta.texture else { return nil }
         if let cache = try sceneData.load(\.images, index: textureIndex) { return cache }

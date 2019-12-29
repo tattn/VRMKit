@@ -127,7 +127,6 @@ node.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGF
 - [ ] Improve rendering quality
 - [ ] Animation support
 - [ ] VRM editing function
-- [ ] Physics support
 - [ ] GLTF renderer support
 
 # Contributing
