@@ -91,6 +91,7 @@
 		24EE14952215CE1F00A14305 /* VRMExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24EE14942215CE1F00A14305 /* VRMExtension.swift */; };
 		3719EF3923B7E3CA00BA5067 /* RenderUpdatable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3719EF3823B7E3CA00BA5067 /* RenderUpdatable.swift */; };
 		3719EF3C23B7E55300BA5067 /* Timer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3719EF3B23B7E55300BA5067 /* Timer.swift */; };
+		3733358423F898D400EC746D /* simd+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3733358323F898D400EC746D /* simd+.swift */; };
 		3755420423B74D8B00D81B4D /* SCNNode+UnityTransform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3755420323B74D8B00D81B4D /* SCNNode+UnityTransform.swift */; };
 		3755420623B7568300D81B4D /* SCNMatrix4+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3755420523B7568300D81B4D /* SCNMatrix4+.swift */; };
 		37DD503623AD513200A4CEFF /* VRMSpringBoneColliderGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DD503223AD4D3C00A4CEFF /* VRMSpringBoneColliderGroup.swift */; };
@@ -231,6 +232,7 @@
 		24EE14942215CE1F00A14305 /* VRMExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMExtension.swift; sourceTree = "<group>"; };
 		3719EF3823B7E3CA00BA5067 /* RenderUpdatable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderUpdatable.swift; sourceTree = "<group>"; };
 		3719EF3B23B7E55300BA5067 /* Timer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timer.swift; sourceTree = "<group>"; };
+		3733358323F898D400EC746D /* simd+.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "simd+.swift"; sourceTree = "<group>"; };
 		3755420323B74D8B00D81B4D /* SCNNode+UnityTransform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNNode+UnityTransform.swift"; sourceTree = "<group>"; };
 		3755420523B7568300D81B4D /* SCNMatrix4+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNMatrix4+.swift"; sourceTree = "<group>"; };
 		37DD503223AD4D3C00A4CEFF /* VRMSpringBoneColliderGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMSpringBoneColliderGroup.swift; sourceTree = "<group>"; };
@@ -379,6 +381,7 @@
 			isa = PBXGroup;
 			children = (
 				245725CB2146F28B003AA5D7 /* GlobalFunction.swift */,
+				3733358323F898D400EC746D /* simd+.swift */,
 				245725CD2146F2B4003AA5D7 /* SceneKit+.swift */,
 				245725D12146F323003AA5D7 /* Collection+.swift */,
 				245725F821481886003AA5D7 /* VRMError+.swift */,
@@ -762,6 +765,7 @@
 				3755420423B74D8B00D81B4D /* SCNNode+UnityTransform.swift in Sources */,
 				245725BC2146F19D003AA5D7 /* UIImage+GLTF.swift in Sources */,
 				245725C62146F224003AA5D7 /* SCNGeometrySource+GLTF.swift in Sources */,
+				3733358423F898D400EC746D /* simd+.swift in Sources */,
 				37DD503923AD535E00A4CEFF /* VRMSpringBone.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
