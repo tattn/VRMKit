@@ -21,7 +21,7 @@ final class VRMSpringBone {
     public let gravityPower: SCNFloat
     public let gravityDir: SCNVector3
     public let dragForce: SCNFloat
-    public let center: SCNNode
+    public let center: SCNNode?
     public let rootBones: [SCNNode]
     public let hitRadius: SCNFloat
     
@@ -30,7 +30,7 @@ final class VRMSpringBone {
     private var verlet: [VRMSpringBoneLogic] = []
     private var colliderList: [SphereCollider] = []
     
-    init(center: SCNNode,
+    init(center: SCNNode?,
          rootBones: [SCNNode],
          comment: String? = nil,
          stiffnessForce: SCNFloat = 1.0,
@@ -66,7 +66,7 @@ final class VRMSpringBone {
         }
     }
     
-    private func setupRecursive(_ center: SCNNode, _ parent: SCNNode) {
+    private func setupRecursive(_ center: SCNNode?, _ parent: SCNNode) {
         if parent.utx.childCount == 0 {
             let delta = parent.utx.position - parent.parent!.utx.position
             let childPosition = parent.utx.position + delta.normalized * 0.07
@@ -142,19 +142,19 @@ extension VRMSpringBone {
         }
         var radius: SCNFloat = 0.5
         
-        init(center: SCNNode, node: SCNNode, localChildPosition: SCNVector3) {
+        init(center: SCNNode?, node: SCNNode, localChildPosition: SCNVector3) {
             self.node = node
             let worldChildPosition = node.utx.transformPoint(localChildPosition)
-            self.currentTail = center.utx.inverseTransformPoint(worldChildPosition)
+            self.currentTail = center?.utx.inverseTransformPoint(worldChildPosition) ?? worldChildPosition
             self.prevTail = self.currentTail
             self.localRotation = node.utx.localRotation
             self.boneAxis = localChildPosition.normalized
             self.length = localChildPosition.magnitude
         }
         
-        func update(center: SCNNode, stiffnessForce: SCNFloat, dragForce: SCNFloat, external: SCNVector3, colliders: [SphereCollider]) {
-            let currentTail: SCNVector3 = center.utx.transformPoint(self.currentTail)
-            let prevTail: SCNVector3 = center.utx.transformPoint(self.prevTail)
+        func update(center: SCNNode?, stiffnessForce: SCNFloat, dragForce: SCNFloat, external: SCNVector3, colliders: [SphereCollider]) {
+            let currentTail: SCNVector3 = center?.utx.transformPoint(self.currentTail) ?? self.currentTail
+            let prevTail: SCNVector3 = center?.utx.transformPoint(self.prevTail) ?? self.prevTail
 
             // verlet積分で次の位置を計算
             var nextTail: SCNVector3 = {
@@ -171,8 +171,8 @@ extension VRMSpringBone {
             // Collisionで移動
             nextTail = self.collision(colliders, nextTail)
 
-            self.prevTail = center.utx.inverseTransformPoint(currentTail)
-            self.currentTail = center.utx.inverseTransformPoint(nextTail)
+            self.prevTail = center?.utx.inverseTransformPoint(currentTail) ?? currentTail
+            self.currentTail = center?.utx.inverseTransformPoint(nextTail) ?? nextTail
 
             //回転を適用
             self.head.utx.rotation = self.applyRotation(nextTail)
