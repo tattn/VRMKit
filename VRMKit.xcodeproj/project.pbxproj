@@ -93,7 +93,6 @@
 		3719EF3C23B7E55300BA5067 /* Timer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3719EF3B23B7E55300BA5067 /* Timer.swift */; };
 		3733358423F898D400EC746D /* simd+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3733358323F898D400EC746D /* simd+.swift */; };
 		3755420423B74D8B00D81B4D /* SCNNode+UnityTransform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3755420323B74D8B00D81B4D /* SCNNode+UnityTransform.swift */; };
-		3755420623B7568300D81B4D /* SCNMatrix4+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3755420523B7568300D81B4D /* SCNMatrix4+.swift */; };
 		37DD503623AD513200A4CEFF /* VRMSpringBoneColliderGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DD503223AD4D3C00A4CEFF /* VRMSpringBoneColliderGroup.swift */; };
 		37DD503723AD515E00A4CEFF /* SCNVector3+.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DD503423AD4FE700A4CEFF /* SCNVector3+.swift */; };
 		37DD503923AD535E00A4CEFF /* VRMSpringBone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DD503823AD535E00A4CEFF /* VRMSpringBone.swift */; };
@@ -234,7 +233,6 @@
 		3719EF3B23B7E55300BA5067 /* Timer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timer.swift; sourceTree = "<group>"; };
 		3733358323F898D400EC746D /* simd+.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "simd+.swift"; sourceTree = "<group>"; };
 		3755420323B74D8B00D81B4D /* SCNNode+UnityTransform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNNode+UnityTransform.swift"; sourceTree = "<group>"; };
-		3755420523B7568300D81B4D /* SCNMatrix4+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNMatrix4+.swift"; sourceTree = "<group>"; };
 		37DD503223AD4D3C00A4CEFF /* VRMSpringBoneColliderGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMSpringBoneColliderGroup.swift; sourceTree = "<group>"; };
 		37DD503423AD4FE700A4CEFF /* SCNVector3+.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SCNVector3+.swift"; sourceTree = "<group>"; };
 		37DD503823AD535E00A4CEFF /* VRMSpringBone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VRMSpringBone.swift; sourceTree = "<group>"; };
@@ -388,7 +386,6 @@
 				245725FA21481FF9003AA5D7 /* GLTF+.swift */,
 				37DD503423AD4FE700A4CEFF /* SCNVector3+.swift */,
 				3755420323B74D8B00D81B4D /* SCNNode+UnityTransform.swift */,
-				3755420523B7568300D81B4D /* SCNMatrix4+.swift */,
 			);
 			path = Extensions;
 			sourceTree = "<group>";
@@ -739,7 +736,6 @@
 				245725C42146F207003AA5D7 /* SCNGeometryElement+GLTF.swift in Sources */,
 				245725BA2146F185003AA5D7 /* SCNCamera+GLTF.swift in Sources */,
 				245725FB21481FF9003AA5D7 /* GLTF+.swift in Sources */,
-				3755420623B7568300D81B4D /* SCNMatrix4+.swift in Sources */,
 				245725B82146F165003AA5D7 /* GLTF2SCN.swift in Sources */,
 				248D3AA6220EBAE200D50019 /* SCNMorpher+GLTF.swift in Sources */,
 				245725F921481887003AA5D7 /* VRMError+.swift in Sources */,
@@ -981,6 +977,7 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FBQ6Z8AF3U;
 				INFOPLIST_FILE = Example/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1000,6 +997,7 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = FBQ6Z8AF3U;
 				INFOPLIST_FILE = Example/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				LD_RUNPATH_SEARCH_PATHS = (
