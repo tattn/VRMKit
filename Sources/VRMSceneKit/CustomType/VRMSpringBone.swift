@@ -228,15 +228,15 @@ extension VRMSpringBone {
             let prevGizmoNode = SCNNode(geometry: prevGizmoGeometry)
             prevGizmoNode.name = gizmoNodeName
             prevGizmoNode.geometry?.firstMaterial?.diffuse.contents = UIColor.gray
-            prevGizmoNode.simdWorldPosition = prevTail
             base.addChildNode(prevGizmoNode)
+            prevGizmoNode.simdWorldPosition = prevTail
             
             let currentGizmoGeometry = SCNSphere(radius: CGFloat(radius))
             let currentGizmoNode = SCNNode(geometry: currentGizmoGeometry)
             currentGizmoNode.name = gizmoNodeName
             currentGizmoNode.geometry?.firstMaterial?.diffuse.contents = color
-            currentGizmoNode.simdWorldPosition = currentTail
             base.addChildNode(currentGizmoNode)
+            currentGizmoNode.simdWorldPosition = currentTail
         }
     }
 }
