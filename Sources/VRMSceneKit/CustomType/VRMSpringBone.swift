@@ -41,7 +41,7 @@ final class VRMSpringBone {
          dragForce: simd_float1 = 0.4,
          hitRadius: simd_float1 = 0.02,
          colliderGroups: [VRMSpringBoneColliderGroup] = [],
-         isDrawGizmo: Bool = true) {
+         isDrawGizmo: Bool = false) {
         self.center = center
         self.rootBones = rootBones
         self.comment = comment
