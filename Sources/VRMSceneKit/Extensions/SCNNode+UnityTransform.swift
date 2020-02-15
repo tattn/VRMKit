@@ -31,11 +31,11 @@ extension SCNNode: UnityTransformCompatible {}
 
 extension UnityTransform where Base == SCNNode {
     func transformPoint(_ position: simd_float3) -> simd_float3 {
-        base.simdConvertPosition(position, to: base)
+        base.simdConvertPosition(position, to: nil)
     }
     
     func inverseTransformPoint(_ position: simd_float3) -> simd_float3 {
-        base.simdConvertPosition(position, from: base)
+        base.simdConvertPosition(position, from: nil)
     }
     
     var localRotation: simd_quatf {
@@ -62,11 +62,23 @@ extension UnityTransform where Base == SCNNode {
         base.childNodes.count
     }
     
+    var localToWorldMatrix: simd_float4x4 {
+        if let parent = base.parent {
+            return parent.utx.localToWorldMatrix * base.simdTransform
+        } else {
+            return base.simdTransform
+        }
+    }
+    
     var worldToLocalMatrix: simd_float4x4 {
-        base.simdTransform
+        localToWorldMatrix.inverse
     }
     
     var lossyScale: simd_float3 {
-        base.simdScale
+        if let parent = base.parent {
+            return parent.utx.lossyScale * base.simdScale
+        } else {
+            return base.simdScale
+        }
     }
 }
