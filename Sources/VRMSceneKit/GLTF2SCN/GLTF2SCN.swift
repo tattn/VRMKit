@@ -80,6 +80,10 @@ extension GLTF.Vector3 {
     func createSCNVector3() -> SCNVector3 {
         return .init(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z))
     }
+    
+    var simd: simd_float3 {
+        simd_float3(x: Float(x), y: Float(y), z: Float(z))
+    }
 }
 
 extension GLTF.Vector4 {
