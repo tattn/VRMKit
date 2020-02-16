@@ -12,32 +12,32 @@ import VRMKit
 
 final class VRMSpringBone {
     struct SphereCollider {
-        let position: SCNVector3
-        let radius: SCNFloat
+        let position: SIMD3<Float>
+        let radius: Float
     }
     
     public let comment: String?
-    public let stiffnessForce: SCNFloat
-    public let gravityPower: SCNFloat
-    public let gravityDir: SCNVector3
-    public let dragForce: SCNFloat
-    public let center: SCNNode
+    public let stiffnessForce: Float
+    public let gravityPower: Float
+    public let gravityDir: SIMD3<Float>
+    public let dragForce: Float
+    public let center: SCNNode?
     public let rootBones: [SCNNode]
-    public let hitRadius: SCNFloat
+    public let hitRadius: Float
     
-    private var initialLocalRotationMap: [SCNNode : SCNQuaternion] = [:]
+    private var initialLocalRotationMap: [SCNNode : simd_quatf] = [:]
     private let colliderGroups: [VRMSpringBoneColliderGroup]
     private var verlet: [VRMSpringBoneLogic] = []
     private var colliderList: [SphereCollider] = []
     
-    init(center: SCNNode,
+    init(center: SCNNode?,
          rootBones: [SCNNode],
          comment: String? = nil,
-         stiffnessForce: SCNFloat = 1.0,
-         gravityPower: SCNFloat = 0.0,
-         gravityDir: SCNVector3 = .init(0, -1, 0),
-         dragForce: SCNFloat = 0.4,
-         hitRadius: SCNFloat = 0.02,
+         stiffnessForce: Float = 1.0,
+         gravityPower: Float = 0.0,
+         gravityDir: SIMD3<Float> = .init(0, -1, 0),
+         dragForce: Float = 0.4,
+         hitRadius: Float = 0.02,
          colliderGroups: [VRMSpringBoneColliderGroup] = []) {
         self.center = center
         self.rootBones = rootBones
@@ -66,7 +66,7 @@ final class VRMSpringBone {
         }
     }
     
-    private func setupRecursive(_ center: SCNNode, _ parent: SCNNode) {
+    private func setupRecursive(_ center: SCNNode?, _ parent: SCNNode) {
         if parent.utx.childCount == 0 {
             let delta = parent.utx.position - parent.parent!.utx.position
             let childPosition = parent.utx.position + delta.normalized * 0.07
@@ -76,7 +76,7 @@ final class VRMSpringBone {
             let firstChild = parent.childNodes.first!
             let localPosition = firstChild.utx.localPosition
             let scale = firstChild.utx.lossyScale
-            let logic = VRMSpringBoneLogic(center: center, node: parent, localChildPosition: SCNVector3(
+            let logic = VRMSpringBoneLogic(center: center, node: parent, localChildPosition: SIMD3<Float>(
                 localPosition.x * scale.x,
                 localPosition.y * scale.y,
                 localPosition.z * scale.z
@@ -91,7 +91,7 @@ final class VRMSpringBone {
     
     private func setLocalRotationsIdentity() {
         for verlet in self.verlet {
-            verlet.head.utx.localRotation = SCNQuaternion.identity
+            verlet.head.utx.localRotation = quart_identity_float
         }
     }
     
@@ -113,8 +113,8 @@ final class VRMSpringBone {
             }
         }
 
-        let stiffness = self.stiffnessForce * SCNFloat(deltaTime)
-        let external = self.gravityDir * (self.gravityPower * SCNFloat(deltaTime))
+        let stiffness = self.stiffnessForce * Float(deltaTime)
+        let external = self.gravityDir * (self.gravityPower * Float(deltaTime))
 
         for verlet in self.verlet {
             verlet.radius = self.hitRadius
@@ -132,32 +132,32 @@ extension VRMSpringBone {
     class VRMSpringBoneLogic {
         let node: SCNNode
         public var head: SCNNode { self.node }
-        private let length: SCNFloat
-        private var currentTail: SCNVector3
-        private var prevTail: SCNVector3
-        private let localRotation: SCNQuaternion
-        private let boneAxis: SCNVector3
-        private var parentRotation: SCNQuaternion {
-            self.node.parent?.utx.rotation ?? SCNQuaternion.identity
+        private let length: Float
+        private var currentTail: SIMD3<Float>
+        private var prevTail: SIMD3<Float>
+        private let localRotation: simd_quatf
+        private let boneAxis: SIMD3<Float>
+        private var parentRotation: simd_quatf {
+            self.node.parent?.utx.rotation ?? quart_identity_float
         }
-        var radius: SCNFloat = 0.5
+        var radius: Float = 0.5
         
-        init(center: SCNNode, node: SCNNode, localChildPosition: SCNVector3) {
+        init(center: SCNNode?, node: SCNNode, localChildPosition: SIMD3<Float>) {
             self.node = node
             let worldChildPosition = node.utx.transformPoint(localChildPosition)
-            self.currentTail = center.utx.inverseTransformPoint(worldChildPosition)
+            self.currentTail = center?.utx.inverseTransformPoint(worldChildPosition) ?? worldChildPosition
             self.prevTail = self.currentTail
             self.localRotation = node.utx.localRotation
             self.boneAxis = localChildPosition.normalized
-            self.length = localChildPosition.magnitude
+            self.length = localChildPosition.length
         }
         
-        func update(center: SCNNode, stiffnessForce: SCNFloat, dragForce: SCNFloat, external: SCNVector3, colliders: [SphereCollider]) {
-            let currentTail: SCNVector3 = center.utx.transformPoint(self.currentTail)
-            let prevTail: SCNVector3 = center.utx.transformPoint(self.prevTail)
+        func update(center: SCNNode?, stiffnessForce: Float, dragForce: Float, external: SIMD3<Float>, colliders: [SphereCollider]) {
+            let currentTail: SIMD3<Float> = center?.utx.transformPoint(self.currentTail) ?? self.currentTail
+            let prevTail: SIMD3<Float> = center?.utx.transformPoint(self.prevTail) ?? self.prevTail
 
             // verlet積分で次の位置を計算
-            var nextTail: SCNVector3 = {
+            var nextTail: SIMD3<Float> = {
                 let a = currentTail
                 let b = (currentTail - prevTail) * (1.0 - dragForce) // 前フレームの移動を継続する(減衰もあるよ)
                 let c = self.parentRotation * self.localRotation * self.boneAxis * stiffnessForce // 親の回転による子ボーンの移動目標
@@ -171,23 +171,23 @@ extension VRMSpringBone {
             // Collisionで移動
             nextTail = self.collision(colliders, nextTail)
 
-            self.prevTail = center.utx.inverseTransformPoint(currentTail)
-            self.currentTail = center.utx.inverseTransformPoint(nextTail)
+            self.prevTail = center?.utx.inverseTransformPoint(currentTail) ?? currentTail
+            self.currentTail = center?.utx.inverseTransformPoint(nextTail) ?? nextTail
 
             //回転を適用
             self.head.utx.rotation = self.applyRotation(nextTail)
         }
         
-        private func applyRotation(_ nextTail: SCNVector3) -> SCNQuaternion {
+        private func applyRotation(_ nextTail: SIMD3<Float>) -> simd_quatf {
             let rotation = self.parentRotation * self.localRotation
-            return SCNQuaternion(from: rotation * self.boneAxis, to: nextTail - self.node.utx.position) * rotation
+            return simd_quatf(from: rotation * self.boneAxis, to: nextTail - self.node.utx.position) * rotation
         }
         
-        private func collision(_ colliders: [SphereCollider], _ nextTail: SCNVector3) -> SCNVector3 {
+        private func collision(_ colliders: [SphereCollider], _ nextTail: SIMD3<Float>) -> SIMD3<Float> {
             var nextTail = nextTail
             for collider in colliders {
                 let r = self.radius + collider.radius
-                if (nextTail - collider.position).sqrMagnitude <= (r * r) {
+                if (nextTail - collider.position).length_squared <= (r * r) {
                     // ヒット。Colliderの半径方向に押し出す
                     let normal = (nextTail - collider.position).normalized
                     let posFromCollider = collider.position + normal * (self.radius + collider.radius)

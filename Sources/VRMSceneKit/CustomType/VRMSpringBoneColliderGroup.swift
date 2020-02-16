@@ -19,12 +19,12 @@ final class VRMSpringBoneColliderGroup {
     }
     
     final class SphereCollider {
-        let offset: SCNVector3
-        let radius: SCNFloat
+        let offset: SIMD3<Float>
+        let radius: Float
         
         init(collider: VRM.SecondaryAnimation.ColliderGroup.Collider) {
-            self.offset = collider.offset.createSCNVector3()
-            self.radius = SCNFloat(collider.radius)
+            self.offset = collider.offset.simd
+            self.radius = Float(collider.radius)
         }
     }
 }

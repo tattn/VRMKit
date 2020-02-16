@@ -26,14 +26,19 @@ class SCNMatrix4_Tests: XCTestCase {
             XCTAssertEqual(m1, m2, accuracy: 0.000000001)
         }
     }
+}
 
+class SIMDFloat4x4_Tests: XCTestCase {
+    private let testMatrix: simd_float4x4 = {
+        let node = SCNNode()
+        node.position = .init(3, 4, 5)
+        node.rotation = .init(1, 0, 0, CGFloat.pi)
+        node.scale = .init(1, 2, 3)
+        return node.simdTransform
+    }()
+    
     func test_multiplyPointWithSCNVector3() {
-        let vec = testMatrix.multiplyPoint(SCNVector3(1, 2, 3))
-        XCTAssertEqual(vec, SCNVector3(x: 0.99999976, y: -3.9999993, z: -9.0))
-    }
-
-    func test_multiplyPointWithSCNVector4() {
-        let vec = testMatrix.multiplyPoint(SCNVector4(1, 2, 3, 4))
-        XCTAssertEqual(vec, SCNVector4(x: 13.0, y: 12.000001, z: 11.0, w: 4.0))
+        let vec = testMatrix.multiplyPoint(SIMD3<Float>(1, 2, 3))
+        XCTAssertEqual(vec, SIMD3<Float>(x: 3.9999998, y: 7.1525574e-07, z: -4.0))
     }
 }

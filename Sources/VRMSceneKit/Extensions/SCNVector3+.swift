@@ -10,7 +10,7 @@ import VRMKit
 import SceneKit
 
 extension VRM.Vector3 {
-    func createSCNVector3() -> SCNVector3 {
-        return .init(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z))
+    var simd: SIMD3<Float> {
+        SIMD3<Float>(x: Float(x), y: Float(y), z: Float(z))
     }
 }

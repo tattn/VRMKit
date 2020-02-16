@@ -15,7 +15,7 @@ public protocol UnityTransformCompatible {
 }
 
 public final class UnityTransform<Base> {
-    let base: Base
+    private let base: Base
     public init(_ base: Base) {
         self.base = base
     }
@@ -30,43 +30,55 @@ public extension UnityTransformCompatible {
 extension SCNNode: UnityTransformCompatible {}
 
 extension UnityTransform where Base == SCNNode {
-    func transformPoint(_ position: SCNVector3) -> SCNVector3 {
-        base.convertPosition(position, to: base)
+    func transformPoint(_ position: SIMD3<Float>) -> SIMD3<Float> {
+        base.simdConvertPosition(position, to: nil)
     }
     
-    func inverseTransformPoint(_ position: SCNVector3) -> SCNVector3 {
-        base.convertPosition(position, from: base)
+    func inverseTransformPoint(_ position: SIMD3<Float>) -> SIMD3<Float> {
+        base.simdConvertPosition(position, from: nil)
     }
     
-    var localRotation: SCNQuaternion {
-        get { base.orientation }
-        set { base.orientation = newValue }
+    var localRotation: simd_quatf {
+        get { base.simdOrientation }
+        set { base.simdOrientation = newValue }
     }
     
-    var position: SCNVector3 {
-        get { base.worldPosition }
-        set { base.worldPosition = newValue }
+    var position: SIMD3<Float> {
+        get { base.simdWorldPosition }
+        set { base.simdWorldPosition = newValue }
     }
     
-    var localPosition: SCNVector3 {
-        get { base.position }
-        set { base.position = newValue }
+    var localPosition: SIMD3<Float> {
+        get { base.simdPosition }
+        set { base.simdPosition = newValue }
     }
     
-    var rotation: SCNQuaternion {
-        get { base.worldOrientation }
-        set { base.worldOrientation = newValue }
+    var rotation: simd_quatf {
+        get { base.simdWorldOrientation }
+        set { base.simdWorldOrientation = newValue }
     }
     
     var childCount: Int {
         base.childNodes.count
     }
     
-    var worldToLocalMatrix: SCNMatrix4 {
-        base.transform
+    var localToWorldMatrix: simd_float4x4 {
+        if let parent = base.parent {
+            return parent.utx.localToWorldMatrix * base.simdTransform
+        } else {
+            return base.simdTransform
+        }
     }
     
-    var lossyScale: SCNVector3 {
-        base.scale
+    var worldToLocalMatrix: simd_float4x4 {
+        localToWorldMatrix.inverse
+    }
+    
+    var lossyScale: SIMD3<Float> {
+        if let parent = base.parent {
+            return parent.utx.lossyScale * base.simdScale
+        } else {
+            return base.simdScale
+        }
     }
 }
