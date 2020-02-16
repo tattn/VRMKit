@@ -61,11 +61,11 @@ open class VRMNode: SCNNode {
             let springBone = VRMSpringBone(center: centerNode,
                                            rootBones: rootBones,
                                            comment: boneGroup.comment,
-                                           stiffnessForce: simd_float1(boneGroup.stiffiness),
-                                           gravityPower: simd_float1(boneGroup.gravityPower),
+                                           stiffnessForce: Float(boneGroup.stiffiness),
+                                           gravityPower: Float(boneGroup.gravityPower),
                                            gravityDir: boneGroup.gravityDir.simd,
-                                           dragForce: simd_float1(boneGroup.dragForce),
-                                           hitRadius: simd_float1(boneGroup.hitRadius),
+                                           dragForce: Float(boneGroup.dragForce),
+                                           hitRadius: Float(boneGroup.hitRadius),
                                            colliderGroups: colliderGroups)
             springBones.append(springBone)
         }

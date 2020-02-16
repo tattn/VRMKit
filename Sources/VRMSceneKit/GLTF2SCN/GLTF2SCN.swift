@@ -81,8 +81,8 @@ extension GLTF.Vector3 {
         return .init(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z))
     }
     
-    var simd: simd_float3 {
-        simd_float3(x: Float(x), y: Float(y), z: Float(z))
+    var simd: SIMD3<Float> {
+        SIMD3<Float>(x: Float(x), y: Float(y), z: Float(z))
     }
 }
 

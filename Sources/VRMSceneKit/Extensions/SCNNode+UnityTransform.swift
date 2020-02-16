@@ -30,11 +30,11 @@ public extension UnityTransformCompatible {
 extension SCNNode: UnityTransformCompatible {}
 
 extension UnityTransform where Base == SCNNode {
-    func transformPoint(_ position: simd_float3) -> simd_float3 {
+    func transformPoint(_ position: SIMD3<Float>) -> SIMD3<Float> {
         base.simdConvertPosition(position, to: nil)
     }
     
-    func inverseTransformPoint(_ position: simd_float3) -> simd_float3 {
+    func inverseTransformPoint(_ position: SIMD3<Float>) -> SIMD3<Float> {
         base.simdConvertPosition(position, from: nil)
     }
     
@@ -43,12 +43,12 @@ extension UnityTransform where Base == SCNNode {
         set { base.simdOrientation = newValue }
     }
     
-    var position: simd_float3 {
+    var position: SIMD3<Float> {
         get { base.simdWorldPosition }
         set { base.simdWorldPosition = newValue }
     }
     
-    var localPosition: simd_float3 {
+    var localPosition: SIMD3<Float> {
         get { base.simdPosition }
         set { base.simdPosition = newValue }
     }
@@ -74,7 +74,7 @@ extension UnityTransform where Base == SCNNode {
         localToWorldMatrix.inverse
     }
     
-    var lossyScale: simd_float3 {
+    var lossyScale: SIMD3<Float> {
         if let parent = base.parent {
             return parent.utx.lossyScale * base.simdScale
         } else {
