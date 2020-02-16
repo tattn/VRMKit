@@ -71,7 +71,9 @@ func normal(_ v0: SCNVector3, _ v1: SCNVector3, _ v2: SCNVector3) -> SCNVector3 
     return n.normalized
 }
 
-
+func dot(_ left: SCNVector3, _ right: SCNVector3) -> SCNFloat {
+    left.x * right.x + left.y * right.y + left.z * right.z
+}
 
 extension SCNMaterial {
     static var `default`: SCNMaterial {
