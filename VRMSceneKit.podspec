@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'VRMSceneKit'
-  s.version          = '0.4.0'
+  s.version          = '0.4.1'
   s.summary          = 'VRM loader and VRM renderer'
 
   s.description      = <<-DESC
