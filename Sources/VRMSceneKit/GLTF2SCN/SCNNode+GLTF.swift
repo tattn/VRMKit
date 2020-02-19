@@ -19,7 +19,7 @@ extension SCNNode {
             let meshNode = try loader.mesh(withMeshIndex: mesh)
             addChildNode(meshNode)
 
-            if let skinIndex = node.skin, let skin = skins?[skinIndex] {
+            if let skinIndex = node.skin, let skin = skins?[skinIndex], loader.options.needsSkinner {
                 let joints = try skin.joints.map(loader.node)
                 let ibm = try skin.inverseBindMatrices.map(loader.inverseBindMatrix)
                 let skeleton = try skin.skeleton.map(loader.node)
@@ -88,7 +88,7 @@ extension SCNNode {
                 }
             }
 
-            if let targets = primitive.targets, !targets.isEmpty {
+            if let targets = primitive.targets, !targets.isEmpty, loader.options.needsMopher {
                 morpher = try SCNMorpher(primitiveTargets: targets, loader: loader)
                 node.morpher = morpher
 //                let path = "childNodes[0].childNodes[\(primitiveIndex)].morpher.weights[\(index)]"

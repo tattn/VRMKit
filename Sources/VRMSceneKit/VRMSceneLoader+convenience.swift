@@ -10,18 +10,18 @@ import VRMKit
 import Foundation
 
 extension VRMSceneLoader {
-    public convenience init(withURL url: URL, rootDirectory: URL? = nil) throws {
+    public convenience init(withURL url: URL, options: VRMSceneLoaderOptions = .default) throws {
         let vrm = try VRMLoader().load(withURL: url)
-        self.init(vrm: vrm, rootDirectory: rootDirectory)
+        self.init(vrm: vrm, options: options)
     }
 
-    public convenience init(named: String, rootDirectory: URL? = nil) throws {
+    public convenience init(named: String, options: VRMSceneLoaderOptions = .default) throws {
         let vrm = try VRMLoader().load(named: named)
-        self.init(vrm: vrm, rootDirectory: rootDirectory)
+        self.init(vrm: vrm, options: options)
     }
 
-    public convenience init(withData data: Data, rootDirectory: URL? = nil) throws {
+    public convenience init(withData data: Data, options: VRMSceneLoaderOptions = .default) throws {
         let vrm = try VRMLoader().load(withData: data)
-        self.init(vrm: vrm, rootDirectory: rootDirectory)
+        self.init(vrm: vrm, options: options)
     }
 }

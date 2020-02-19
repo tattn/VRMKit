@@ -10,7 +10,7 @@ import VRMKit
 import UIKit
 
 extension UIImage {
-    convenience init(image: GLTF.Image, relativeTo rootDirectory: URL?, loader: VRMSceneLoader) throws {
+    convenience init(image: GLTF.Image, relativeTo rootDirectory: URL?, loader: VRMSceneLoader, scale: CGFloat) throws {
         let data: Data
         if let uri = image.uri {
             data = try Data(gltfUrlString: uri, relativeTo: rootDirectory)
@@ -19,6 +19,11 @@ extension UIImage {
         } else {
             throw VRMError._dataInconsistent("failed to load images")
         }
-        self.init(cgImage: try UIImage(data: data)?.cgImage ??? ._dataInconsistent("failed to load image"))
+        
+        let cgImage: CGImage? = {
+            guard let ciImage = CIImage(data: data)?.transformed(by: CGAffineTransform(scaleX: scale, y: scale)) else { return nil }
+            return CIContext().createCGImage(ciImage, from: ciImage.extent)
+        }()
+        self.init(cgImage: try cgImage ??? ._dataInconsistent("failed to load image"))
     }
 }

@@ -11,17 +11,33 @@ import VRMKit
 import SceneKit
 import SpriteKit
 
+public struct VRMSceneLoaderOptions {
+    public let textureScale: CGFloat
+    public let needsSkinner: Bool
+    public let needsMopher: Bool
+    public let rootDirectory: URL?
+    
+    init(textureScale: CGFloat = 1.0, needsSkinner: Bool = true, needsMopher: Bool = true, rootDirectory: URL? = nil) {
+        self.textureScale = textureScale
+        self.needsSkinner = needsSkinner
+        self.needsMopher = needsMopher
+        self.rootDirectory = rootDirectory
+    }
+    
+    public static var `default`: VRMSceneLoaderOptions { VRMSceneLoaderOptions() }
+    public static var preview: VRMSceneLoaderOptions { VRMSceneLoaderOptions(textureScale: 0.1, needsSkinner: false, needsMopher: false, rootDirectory: nil) }
+}
+
 open class VRMSceneLoader {
     let vrm: VRM
     private let gltf: GLTF
     private let sceneData: SceneData
+    let options: VRMSceneLoaderOptions
 
-    private var rootDirectory: URL? = nil
-
-    public init(vrm: VRM, rootDirectory: URL? = nil) {
+    public init(vrm: VRM, options: VRMSceneLoaderOptions = .default) {
         self.vrm = vrm
         self.gltf = vrm.gltf.jsonData
-        self.rootDirectory = rootDirectory
+        self.options = options
         self.sceneData = SceneData(vrm: gltf)
     }
 
@@ -126,7 +142,7 @@ open class VRMSceneLoader {
     private func buffer(withBufferIndex index: Int) throws -> Data {
         if let cache = try sceneData.load(\.buffers, index: index) { return cache }
         let gltfBuffer = try gltf.load(\.buffers, keyName: "buffers")[index]
-        let buffer = try Data(buffer: gltfBuffer, relativeTo: rootDirectory, vrm: vrm)
+        let buffer = try Data(buffer: gltfBuffer, relativeTo: options.rootDirectory, vrm: vrm)
         sceneData.buffers[index] = buffer
         return buffer
     }
@@ -156,7 +172,7 @@ open class VRMSceneLoader {
     func image(withImageIndex index: Int) throws -> UIImage {
         if let cache = try sceneData.load(\.images, index: index) { return cache }
         let gltfImage = try gltf.load(\.images, keyName: "images")[index]
-        let image = try UIImage(image: gltfImage, relativeTo: rootDirectory, loader: self)
+        let image = try UIImage(image: gltfImage, relativeTo: options.rootDirectory, loader: self, scale: options.textureScale)
         sceneData.images[index] = image
         return image
     }
