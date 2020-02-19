@@ -17,7 +17,7 @@ public struct VRMSceneLoaderOptions {
     public let needsMopher: Bool
     public let rootDirectory: URL?
     
-    init(textureScale: CGFloat = 1.0, needsSkinner: Bool = true, needsMopher: Bool = true, rootDirectory: URL? = nil) {
+    public init(textureScale: CGFloat = 1.0, needsSkinner: Bool = true, needsMopher: Bool = true, rootDirectory: URL? = nil) {
         self.textureScale = textureScale
         self.needsSkinner = needsSkinner
         self.needsMopher = needsMopher
