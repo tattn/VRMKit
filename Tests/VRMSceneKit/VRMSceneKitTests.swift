@@ -41,8 +41,8 @@ class VRMSceneKitTests: XCTestCase {
         XCTAssertEqual(clip.values[0].index, 31)
         XCTAssertEqual(clip.values[0].weight, 100)
         XCTAssertEqual(clip.values[0].mesh.name, "face.baked")
-        XCTAssertEqual(clips.filter({ $0.key.isPreset }).count, 13)
-        XCTAssertEqual(clips.filter({ !$0.key.isPreset }).count, 5)
+        XCTAssertEqual(clips.filter({ $0.key.isPreset }).count, 17)
+        XCTAssertEqual(clips.filter({ !$0.key.isPreset }).count, 1)
     }
 
     func testBlendShape_SetAndGet() {
