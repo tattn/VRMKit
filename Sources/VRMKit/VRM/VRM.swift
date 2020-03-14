@@ -141,9 +141,16 @@ public extension VRM {
         public let firstPersonBone: Int
         public let firstPersonBoneOffset: Vector3
         public let meshAnnotations: [MeshAnnotation]
+        public let lookAtTypeName: LookAtType
+        
         public struct MeshAnnotation: Codable {
             public let firstPersonFlag: String
             public let mesh: Int
+        }
+        public enum LookAtType: String, Codable {
+            case none = "None"
+            case bone = "Bone"
+            case blendShape = "BlendShape"
         }
     }
 
