@@ -48,10 +48,18 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 
 # Installation
 
-## Carthage (Recommended)
+## Swift Package Manager (Recommended)
+
+You can install this package with Swift Package Manager.
+
+## Carthage
 
 ```ruby
 github "tattn/VRMKit"
+```
+
+```ruby
+$ carthage update --platform ios --use-xcframeworks
 ```
 
 ## CocoaPods
