@@ -26,8 +26,8 @@
 <br />
 
 <div>
-<img src="https://github.com/tattn/VRMKit/raw/master/docs/demo.jpg" width="300px" alt="demo" />
-<img src="https://github.com/tattn/VRMKit/raw/master/docs/demo2.gif" width="300px" alt="demo" />
+<img src="https://github.com/tattn/VRMKit/raw/main/docs/demo.jpg" width="300px" alt="demo" />
+<img src="https://github.com/tattn/VRMKit/raw/main/docs/demo2.gif" width="300px" alt="demo" />
 </div>
 
 For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
@@ -97,19 +97,19 @@ sceneView.scene = scene
 
 ### Blend shapes
 
-<img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_joy.png" width="100px" alt="joy" />
+<img src="https://github.com/tattn/VRMKit/raw/main/docs/alicia_joy.png" width="100px" alt="joy" />
 
 ```swift
 node.setBlendShape(value: 1.0, for: .preset(.joy))
 ```
 
-<img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_angry.png" width="100px" alt="angry" />
+<img src="https://github.com/tattn/VRMKit/raw/main/docs/alicia_angry.png" width="100px" alt="angry" />
 
 ```swift
 node.setBlendShape(value: 1.0, for: .preset(.angry))
 ```
 
-<img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_><.png" width="100px" alt="><" />
+<img src="https://github.com/tattn/VRMKit/raw/main/docs/alicia_><.png" width="100px" alt="><" />
 
 ```swift
 node.setBlendShape(value: 1.0, for: .custom("><"))
@@ -117,7 +117,7 @@ node.setBlendShape(value: 1.0, for: .custom("><"))
 
 ### Bone animation
 
-<img src="https://github.com/tattn/VRMKit/raw/master/docs/alicia_humanoid.png" width="200px" alt="Humanoid" />
+<img src="https://github.com/tattn/VRMKit/raw/main/docs/alicia_humanoid.png" width="200px" alt="Humanoid" />
 
 ```swift
 node.setBlendShape(value: 1.0, for: .preset(.fun))
