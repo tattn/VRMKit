@@ -902,7 +902,6 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMSceneKit;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
-				SKIP_INSTALL = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -929,7 +928,6 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMSceneKit;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
-				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1153,7 +1151,6 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMKit;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
-				SKIP_INSTALL = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1180,7 +1177,6 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.github.tattn.VRMKit;
 				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
-				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
