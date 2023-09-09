@@ -16,8 +16,10 @@ final class SceneData {
     var cameras: [SCNCamera?]
     var nodes: [SCNNode?]
     var skins: [SCNSkinner?]
+#if !os(watchOS)
     var animationChannels: [[CAAnimation?]?]
     var animationSamplers: [[CAAnimation?]?]
+#endif
     var meshes: [SCNNode?]
     var accessors: [Any?]
     var durations: [CFTimeInterval?]
@@ -32,8 +34,10 @@ final class SceneData {
         cameras = Array(repeating: nil, count: vrm.cameras?.count ?? 0)
         nodes = Array(repeating: nil, count: vrm.nodes?.count ?? 0)
         skins = Array(repeating: nil, count: vrm.skins?.count ?? 0)
+#if !os(watchOS)
         animationChannels = Array(repeating: nil, count: vrm.animations?.count ?? 0)
         animationSamplers = Array(repeating: nil, count: vrm.animations?.count ?? 0)
+#endif
         meshes = Array(repeating: nil, count: vrm.meshes?.count ?? 0)
         accessors = Array(repeating: nil, count: vrm.accessors?.count ?? 0)
         durations = Array(repeating: nil, count: vrm.accessors?.count ?? 0)
