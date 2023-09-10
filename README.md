@@ -4,19 +4,7 @@
 
 <div align="center">
   <a href="https://app.bitrise.io/app/efaa4b22f111455d">
-    <img src="https://app.bitrise.io/app/efaa4b22f111455d/status.svg?token=dGmU0Ahl_o8gC_zhegVyPQ" />
-  </a>
-  <a href="https://github.com/Carthage/Carthage">
-    <img src="https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat" alt="Carthage compatible" />
-  </a>
-  <a href="http://cocoapods.org/pods/VRMKit">
-    <img src="https://img.shields.io/cocoapods/v/VRMKit.svg" alt="CocoaPods" />
-  </a>
-  <a href="http://cocoapods.org/pods/VRMKit">
-    <img src="https://img.shields.io/cocoapods/p/VRMKit.svg" alt="Platform" />
-  </a>
-  <a href="https://developer.apple.com/swift">
-    <img src="https://img.shields.io/badge/Swift-5-F16D39.svg" alt="Swift Version" />
+    <img src="https://github.com/tattn/VRMKit/actions/workflows/ci.yml/badge.svg" />
   </a>
   <a href="./LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="license:MIT" />
@@ -26,8 +14,8 @@
 <br />
 
 <div>
-<img src="https://github.com/tattn/VRMKit/raw/main/docs/demo.jpg" width="300px" alt="demo" />
-<img src="https://github.com/tattn/VRMKit/raw/main/docs/demo2.gif" width="300px" alt="demo" />
+<img src="https://github.com/tattn/VRMKit/raw/main/.github/demo.jpg" width="300px" alt="demo" />
+<img src="https://github.com/tattn/VRMKit/raw/main/.github/demo2.gif" width="300px" alt="demo" />
 </div>
 
 For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
@@ -42,32 +30,18 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 
 # Requirements
 
-- Xcode 12+
-- Swift 5.1+
-- iOS 12.0+
+- Swift 5.7+
+- iOS 15.0+
 
 # Installation
 
-## Swift Package Manager (Recommended)
+## Swift Package Manager
 
 You can install this package with Swift Package Manager.
 
-## Carthage
+## Carthage & CocoaPods (Deprecated)
 
-```ruby
-github "tattn/VRMKit"
-```
-
-```ruby
-$ carthage update --platform ios --use-xcframeworks
-```
-
-## CocoaPods
-
-```ruby
-pod 'VRMKit'
-pod 'VRMSceneKit' # for rendering
-```
+If you want to use these package managers, please use https://github.com/tattn/VRMKit/releases/tag/0.4.2
 
 # Usage
 
@@ -105,19 +79,19 @@ sceneView.scene = scene
 
 ### Blend shapes
 
-<img src="https://github.com/tattn/VRMKit/raw/main/docs/alicia_joy.png" width="100px" alt="joy" />
+<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" />
 
 ```swift
 node.setBlendShape(value: 1.0, for: .preset(.joy))
 ```
 
-<img src="https://github.com/tattn/VRMKit/raw/main/docs/alicia_angry.png" width="100px" alt="angry" />
+<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" />
 
 ```swift
 node.setBlendShape(value: 1.0, for: .preset(.angry))
 ```
 
-<img src="https://github.com/tattn/VRMKit/raw/main/docs/alicia_><.png" width="100px" alt="><" />
+<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
 
 ```swift
 node.setBlendShape(value: 1.0, for: .custom("><"))
@@ -125,7 +99,7 @@ node.setBlendShape(value: 1.0, for: .custom("><"))
 
 ### Bone animation
 
-<img src="https://github.com/tattn/VRMKit/raw/main/docs/alicia_humanoid.png" width="200px" alt="Humanoid" />
+<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_humanoid.png" width="200px" alt="Humanoid" />
 
 ```swift
 node.setBlendShape(value: 1.0, for: .preset(.fun))

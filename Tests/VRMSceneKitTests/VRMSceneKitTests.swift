@@ -52,7 +52,7 @@ class VRMSceneKitTests: XCTestCase {
     }
 
     func loadVRM() -> VRMNode {
-        let url = Bundle(for: VRMSceneKitTests.self).url(forResource: "AliciaSolid", withExtension: "vrm")!
+        let url = Bundle.module.url(forResource: "AliciaSolid", withExtension: "vrm")!
         let data = try! Data(contentsOf: url)
         let loader = try! VRMSceneLoader(withData: data)
         return try! loader.loadScene().vrmNode
