@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "VRMKit",
-    platforms: [.iOS(.v14)],
+    platforms: [.iOS(.v15)],
     products: [
         .library(name: "VRMKit", targets: ["VRMKit"]),
         .library(name: "VRMSceneKit", targets: ["VRMSceneKit"])
@@ -18,13 +18,11 @@ let package = Package(
         .testTarget(
             name: "VRMKitTests",
             dependencies: ["VRMKit"],
-            exclude: ["Info.plist"],
             resources: [.copy("Assets/AliciaSolid.vrm")]
         ),
         .testTarget(
             name: "VRMSceneKitTests",
             dependencies: ["VRMSceneKit"],
-            exclude: ["Info.plist"],
             resources: [.copy("Assets/AliciaSolid.vrm")]
         ),
     ]
