@@ -18,6 +18,7 @@
 		06F0BD7F2AAD82120089488C /* VRMKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06F0BD7E2AAD82120089488C /* VRMKit */; };
 		06F0BD812AAD82120089488C /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06F0BD802AAD82120089488C /* VRMSceneKit */; };
 		06F0BD822AAD82B00089488C /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 067C5C532AAD6EC600F8FBB3 /* AliciaSolid.vrm */; };
+		06F0BD842AAD844E0089488C /* ViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F0BD832AAD844E0089488C /* ViewModel.swift */; };
 		245725DA2146F47A003AA5D7 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725D92146F47A003AA5D7 /* AppDelegate.swift */; };
 		245725DC2146F47A003AA5D7 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 245725DB2146F47A003AA5D7 /* ViewController.swift */; };
 		245725DF2146F47B003AA5D7 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 245725DD2146F47B003AA5D7 /* Main.storyboard */; };
@@ -67,6 +68,7 @@
 		06F0BD702AAD81A30089488C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		06F0BD722AAD81A40089488C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		06F0BD752AAD81A40089488C /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		06F0BD832AAD844E0089488C /* ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModel.swift; sourceTree = "<group>"; };
 		245725D72146F47A003AA5D7 /* VRMExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VRMExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		245725D92146F47A003AA5D7 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		245725DB2146F47A003AA5D7 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -111,6 +113,7 @@
 			children = (
 				06F0BD6E2AAD81A30089488C /* WatchExampleApp.swift */,
 				06F0BD702AAD81A30089488C /* ContentView.swift */,
+				06F0BD832AAD844E0089488C /* ViewModel.swift */,
 				06F0BD722AAD81A40089488C /* Assets.xcassets */,
 				06F0BD742AAD81A40089488C /* Preview Content */,
 			);
@@ -283,6 +286,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				06F0BD712AAD81A30089488C /* ContentView.swift in Sources */,
+				06F0BD842AAD844E0089488C /* ViewModel.swift in Sources */,
 				06F0BD6F2AAD81A30089488C /* WatchExampleApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
