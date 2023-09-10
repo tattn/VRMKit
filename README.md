@@ -32,6 +32,7 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 
 - Swift 5.7+
 - iOS 15.0+
+- watchOS 8.0+ (Experimental)
 
 # Installation
 

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "VRMKit",
-    platforms: [.iOS(.v15)],
+    platforms: [.iOS(.v15), .watchOS(.v8)],
     products: [
         .library(name: "VRMKit", targets: ["VRMKit"]),
         .library(name: "VRMSceneKit", targets: ["VRMSceneKit"])
