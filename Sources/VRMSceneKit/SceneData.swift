@@ -6,9 +6,9 @@
 //  Copyright © 2018年 tattn. All rights reserved.
 //
 
-import Foundation
 import VRMKit
 import SceneKit
+import UIKit
 
 final class SceneData {
     var scene: VRMScene?
