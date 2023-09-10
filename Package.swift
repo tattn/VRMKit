@@ -1,22 +1,29 @@
-// swift-tools-version:5.1
+// swift-tools-version:5.7
 import PackageDescription
 
 let package = Package(
     name: "VRMKit",
-    platforms: [.iOS(.v12)],
+    platforms: [.iOS(.v15)],
     products: [
         .library(name: "VRMKit", targets: ["VRMKit"]),
         .library(name: "VRMSceneKit", targets: ["VRMSceneKit"])
     ],
     targets: [
-        .target(
-            name: "VRMKit",
-            path: "Sources/VRMKit"
-        ),
+        .target(name: "VRMKit"),
         .target(
             name: "VRMSceneKit",
+            dependencies: ["VRMKit"]
+        ),
+
+        .testTarget(
+            name: "VRMKitTests",
             dependencies: ["VRMKit"],
-            path: "Sources/VRMSceneKit"
-        )
+            resources: [.copy("Assets/AliciaSolid.vrm")]
+        ),
+        .testTarget(
+            name: "VRMSceneKitTests",
+            dependencies: ["VRMSceneKit"],
+            resources: [.copy("Assets/AliciaSolid.vrm")]
+        ),
     ]
 )
