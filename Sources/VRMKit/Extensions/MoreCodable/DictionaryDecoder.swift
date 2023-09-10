@@ -69,7 +69,7 @@ open class DictionaryDecoder: Decoder {
 }
 
 extension DictionaryDecoder {
-    open func decode<T : Decodable>(_ type: T.Type, from container: Any) throws -> T {
+    public func decode<T : Decodable>(_ type: T.Type, from container: Any) throws -> T {
         return try unbox(container, as: T.self)
     }
 }

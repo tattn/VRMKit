@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1240"
+   LastUpgradeVersion = "1430"
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -14,9 +14,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "245725922146EF99003AA5D7"
-               BuildableName = "VRMSceneKit.framework"
-               BlueprintName = "VRMSceneKit"
+               BlueprintIdentifier = "24CF7F7A2143EEDB007A5C6C"
+               BuildableName = "VRMKit.framework"
+               BlueprintName = "VRMKit"
                ReferencedContainer = "container:VRMKit.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -30,9 +30,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "245725922146EF99003AA5D7"
-            BuildableName = "VRMSceneKit.framework"
-            BlueprintName = "VRMSceneKit"
+            BlueprintIdentifier = "24CF7F7A2143EEDB007A5C6C"
+            BuildableName = "VRMKit.framework"
+            BlueprintName = "VRMKit"
             ReferencedContainer = "container:VRMKit.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
@@ -41,9 +41,9 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2457259A2146EF99003AA5D7"
-               BuildableName = "VRMSceneKitTests.xctest"
-               BlueprintName = "VRMSceneKitTests"
+               BlueprintIdentifier = "24CF7F832143EEDB007A5C6C"
+               BuildableName = "VRMKitTests.xctest"
+               BlueprintName = "VRMKitTests"
                ReferencedContainer = "container:VRMKit.xcodeproj">
             </BuildableReference>
          </TestableReference>
@@ -62,9 +62,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "245725922146EF99003AA5D7"
-            BuildableName = "VRMSceneKit.framework"
-            BlueprintName = "VRMSceneKit"
+            BlueprintIdentifier = "24CF7F7A2143EEDB007A5C6C"
+            BuildableName = "VRMKit.framework"
+            BlueprintName = "VRMKit"
             ReferencedContainer = "container:VRMKit.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
@@ -78,9 +78,9 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "245725922146EF99003AA5D7"
-            BuildableName = "VRMSceneKit.framework"
-            BlueprintName = "VRMSceneKit"
+            BlueprintIdentifier = "24CF7F7A2143EEDB007A5C6C"
+            BuildableName = "VRMKit.framework"
+            BlueprintName = "VRMKit"
             ReferencedContainer = "container:VRMKit.xcodeproj">
          </BuildableReference>
       </MacroExpansion>

@@ -47,22 +47,6 @@ class ViewController: UIViewController {
     }
 
     private func setupScene(_ scene: SCNScene) {
-//        let enviromentLightNode = SCNNode()
-//        let enviromentLight = SCNLight()
-//        enviromentLightNode.light = enviromentLight
-//        enviromentLight.type = .ambient
-//        enviromentLight.color = UIColor.white
-//        scene.rootNode.addChildNode(enviromentLightNode)
-//
-//        let pointLightNode = SCNNode()
-//        let pointLight = SCNLight()
-//        pointLightNode.light = pointLight
-//        pointLight.type = .spot
-//        pointLight.color = UIColor.white
-//        enviromentLight.intensity = 1000
-//        enviromentLightNode.position = SCNVector3(x: 0, y: 0, z: -2)
-//        scene.rootNode.addChildNode(pointLightNode)
-
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
         scene.rootNode.addChildNode(cameraNode)
