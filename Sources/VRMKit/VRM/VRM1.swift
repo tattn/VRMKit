@@ -1,4 +1,3 @@
-
 //
 //  VRM1.swift
 //  VRMKit
@@ -11,33 +10,35 @@ import Foundation
 
 public struct VRM1: VRMFileProtocol {
     public let gltf: BinaryGLTF
-    public let meta: Meta
-    public let version: String?
-    public let materialProperties: [MaterialProperty]
-    public let humanoid: Humanoid
-    public let blendShapeMaster: BlendShapeMaster
-    public let firstPerson: FirstPerson
-    public let secondaryAnimation: SecondaryAnimation
+    public let specVersion: String
+    //public let meta: Meta
+    //public let version: String?
+    //public let materialProperties: [MaterialProperty]
+    //public let humanoid: Humanoid
+    //public let blendShapeMaster: BlendShapeMaster
+    //public let firstPerson: FirstPerson
+    //public let secondaryAnimation: SecondaryAnimation
 
-    public let materialPropertyNameMap: [String: MaterialProperty]
+    //public let materialPropertyNameMap: [String: MaterialProperty]
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
 
         let rawExtensions = try gltf.jsonData.extensions ??? .keyNotFound("extensions")
         let extensions = try rawExtensions.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
-        let vrm = try extensions["VRM"] ??? .keyNotFound("VRM")
+        let vrm = try extensions["VRMC_vrm"] ??? .keyNotFound("VRMC_vrm")
+        specVersion = vrm["specVersion"] as! String
 
-        let decoder = DictionaryDecoder()
-        meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
-        version = vrm["version"] as? String
-        materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
-        humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
-        blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
-        firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
-        secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
+        //let decoder = DictionaryDecoder()
+        //meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
+        //version = vrm["version"] as? String
+        //materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
+        //humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
+        //blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
+        //firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
+        //secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
 
-        materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
+        //materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
     }
 }
 
