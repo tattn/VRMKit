@@ -8,7 +8,7 @@
 
 import Foundation
 
-public struct VRM {
+public struct VRM: VRMFileProtocol {
     public let gltf: BinaryGLTF
     public let meta: Meta
     public let version: String?
