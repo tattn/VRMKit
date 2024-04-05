@@ -12,16 +12,10 @@ public struct VRM1: VRMFileProtocol {
     public let gltf: BinaryGLTF
     public let specVersion: String
     public let meta: Meta
-    //public let version: String?
-    //public let materialProperties: [MaterialProperty]
     public let humanoid: Humanoid
-    //public let blendShapeMaster: BlendShapeMaster
     public let firstPerson: FirstPerson?
-    //public let secondaryAnimation: SecondaryAnimation
     public let lookAt: LookAt?
     public let expressions: Expressions?
-
-    //public let materialPropertyNameMap: [String: MaterialProperty]
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
@@ -33,15 +27,9 @@ public struct VRM1: VRMFileProtocol {
 
         let decoder = DictionaryDecoder()
         meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
-        //version = vrm["version"] as? String
-        //materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
         humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
-        //blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
         let containFirstPerson = vrm.keys.contains("firstPerson")
         firstPerson = containFirstPerson ? try decoder.decode(FirstPerson.self, from: vrm["firstPerson"] ?? "".data(using: .utf8)!) : nil
-        //secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
-
-        //materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
         let containLookAt = vrm.keys.contains("lookAt")
         lookAt = containLookAt ? try decoder.decode(LookAt.self, from: vrm["lookAt"] ?? "".data(using: .utf8)!) : nil
 
@@ -94,17 +82,6 @@ public extension VRM1 {
             case allowModification
             case allowModificationRedistribution
         }
-    }
-
-    struct MaterialProperty: Codable {
-        public let name: String
-        public let shader: String
-        public let renderQueue: Int
-        public let floatProperties: CodableAny
-        public let keywordMap: [String: Bool]
-        public let tagMap: [String: String]
-        public let textureProperties: [String: Int]
-        public let vectorProperties: CodableAny
     }
 
     struct Humanoid: Codable {
@@ -173,42 +150,6 @@ public extension VRM1 {
         }
     }
 
-    struct BlendShapeMaster: Codable {
-        public let blendShapeGroups: [BlendShapeGroup]
-        public struct BlendShapeGroup: Codable {
-            public let binds: [Bind]?
-            public let materialValues: [MaterialValueBind]?
-            public let name: String
-            public let presetName: String
-            let _isBinary: Bool?
-            public var isBinary: Bool { return _isBinary ?? false }
-            private enum CodingKeys: String, CodingKey {
-                case binds
-                case materialValues
-                case name
-                case presetName
-                case _isBinary = "isBinary"
-            }
-            public struct Bind: Codable {
-                public let index: Int
-                public let mesh: Int
-                public let weight: Double
-
-                public init(from decoder: Decoder) throws {
-                    let container = try decoder.container(keyedBy: CodingKeys.self)
-                    index = try container.decode(Int.self, forKey: .index)
-                    mesh = try container.decode(Int.self, forKey: .mesh)
-                    weight = try decodeDouble(key: .weight, container: container)
-                }
-            }
-            public struct MaterialValueBind: Codable {
-                public let materialName: String
-                public let propertyName: String
-                public let targetValue: [Double]
-            }
-        }
-    }
-
     struct FirstPerson: Codable {
         public let meshAnnotations: [MeshAnnotation]
         
@@ -222,55 +163,6 @@ public extension VRM1 {
             case both
             case thirdPersonOnly
             case firstPersonOnly
-        }
-    }
-
-    struct SecondaryAnimation: Codable {
-        public let boneGroups: [BoneGroup]
-        public let colliderGroups: [ColliderGroup]
-        public struct BoneGroup: Codable {
-            public let bones: [Int]
-            public let center: Int
-            public let colliderGroups: [Int]
-            public let comment: String?
-            public let dragForce: Double
-            public let gravityDir: Vector3
-            public let gravityPower: Double
-            public let hitRadius: Double
-            public let stiffiness: Double
-
-            public init(from decoder: Decoder) throws {
-                let container = try decoder.container(keyedBy: CodingKeys.self)
-                bones = try container.decode([Int].self, forKey: .bones)
-                center = try container.decode(Int.self, forKey: .center)
-                colliderGroups = try container.decode([Int].self, forKey: .colliderGroups)
-                comment = try? container.decode(String.self, forKey: .comment)
-                dragForce = try decodeDouble(key: .dragForce, container: container)
-                gravityDir = try container.decode(Vector3.self, forKey: .gravityDir)
-                gravityPower = try decodeDouble(key: .gravityPower, container: container)
-                hitRadius = try decodeDouble(key: .hitRadius, container: container)
-                stiffiness = try decodeDouble(key: .stiffiness, container: container)
-            }
-        }
-        
-        public struct ColliderGroup: Codable {
-            public let node: Int
-            public let colliders: [Collider]
-            
-            public struct Collider: Codable {
-                public let offset: Vector3
-                public let radius: Double
-            }
-        }
-    }
-
-    struct Vector3: Codable {
-        public let x, y, z: Double
-        public init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            x = try decodeDouble(key: .x, container: container)
-            y = try decodeDouble(key: .y, container: container)
-            z = try decodeDouble(key: .z, container: container)
         }
     }
 
