@@ -16,7 +16,7 @@ public struct VRM1: VRMFileProtocol {
     //public let materialProperties: [MaterialProperty]
     //public let humanoid: Humanoid
     //public let blendShapeMaster: BlendShapeMaster
-    //public let firstPerson: FirstPerson
+    public let firstPerson: FirstPerson?
     //public let secondaryAnimation: SecondaryAnimation
 
     //public let materialPropertyNameMap: [String: MaterialProperty]
@@ -35,7 +35,8 @@ public struct VRM1: VRMFileProtocol {
         //materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
         //humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
         //blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
-        //firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
+        let containFirstPerson = vrm.keys.contains("firstPerson")
+        firstPerson = containFirstPerson ? try decoder.decode(FirstPerson.self, from: vrm["firstPerson"] ?? "".data(using: .utf8)!) : nil
         //secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
 
         //materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
@@ -167,19 +168,18 @@ public extension VRM1 {
     }
 
     struct FirstPerson: Codable {
-        public let firstPersonBone: Int
-        public let firstPersonBoneOffset: Vector3
         public let meshAnnotations: [MeshAnnotation]
-        public let lookAtTypeName: LookAtType
         
         public struct MeshAnnotation: Codable {
-            public let firstPersonFlag: String
-            public let mesh: Int
+            public let type: FirstPersonType
+            public let node: Int
         }
-        public enum LookAtType: String, Codable {
-            case none = "None"
-            case bone = "Bone"
-            case blendShape = "BlendShape"
+
+        public enum FirstPersonType: String, Codable {
+            case auto
+            case both
+            case thirdPersonOnly
+            case firstPersonOnly
         }
     }
 
