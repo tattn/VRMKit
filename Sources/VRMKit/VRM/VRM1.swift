@@ -11,7 +11,7 @@ import Foundation
 public struct VRM1: VRMFileProtocol {
     public let gltf: BinaryGLTF
     public let specVersion: String
-    //public let meta: Meta
+    public let meta: Meta
     //public let version: String?
     //public let materialProperties: [MaterialProperty]
     //public let humanoid: Humanoid
@@ -29,8 +29,8 @@ public struct VRM1: VRMFileProtocol {
         let vrm = try extensions["VRMC_vrm"] ??? .keyNotFound("VRMC_vrm")
         specVersion = vrm["specVersion"] as! String
 
-        //let decoder = DictionaryDecoder()
-        //meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
+        let decoder = DictionaryDecoder()
+        meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
         //version = vrm["version"] as? String
         //materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
         //humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
@@ -44,21 +44,48 @@ public struct VRM1: VRMFileProtocol {
 
 public extension VRM1 {
     struct Meta: Codable {
-        public let title: String?
-        public let author: String?
-        public let contactInformation: String?
-        public let reference: String?
-        public let texture: Int?
+        public let name: String
         public let version: String?
-
-        public let allowedUserName: String?
-        public let violentUssageName: String?
-        public let sexualUssageName: String?
-        public let commercialUssageName: String?
-        public let otherPermissionUrl: String?
-
-        public let licenseName: String?
+        public let authors: [String]
+        public let copyrightInformation: String?
+        public let contactInformation: String?
+        public let references: [String]?
+        public let thirdPartyLicenses: String?
+        public let thumbnailImage: Int?
+        public let licenseUrl: String
+        public let avatarPermission: AvatarPermissionType?
+        public let allowExcessivelyViolentUsage: Bool?
+        public let allowExcessivelySexualUsage: Bool?
+        public let commercialUsage: CommercialUsageType?
+        public let allowPoliticalOrReligiousUsage: Bool?
+        public let allowAntisocialOrHateUsage: Bool?
+        public let creditNotation: CreditNotationType?
+        public let allowRedistribution: Bool?
+        public let modification: ModificationType?
         public let otherLicenseUrl: String?
+
+        public enum AvatarPermissionType: String, Codable {
+            case onlyAuthor
+            case onlySeparatelyLicensedPerson
+            case everyone
+        }
+
+        public enum CommercialUsageType: String, Codable {
+            case personalNonProfit
+            case personalProfit
+            case corporation
+        }
+
+        public enum CreditNotationType: String, Codable {
+            case required
+            case unnecessary
+        }
+
+        public enum ModificationType: String, Codable {
+            case prohibited
+            case allowModification
+            case allowModificationRedistribution
+        }
     }
 
     struct MaterialProperty: Codable {
