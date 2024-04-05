@@ -14,7 +14,7 @@ public struct VRM1: VRMFileProtocol {
     public let meta: Meta
     //public let version: String?
     //public let materialProperties: [MaterialProperty]
-    //public let humanoid: Humanoid
+    public let humanoid: Humanoid
     //public let blendShapeMaster: BlendShapeMaster
     public let firstPerson: FirstPerson?
     //public let secondaryAnimation: SecondaryAnimation
@@ -34,7 +34,7 @@ public struct VRM1: VRMFileProtocol {
         meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
         //version = vrm["version"] as? String
         //materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
-        //humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
+        humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
         //blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
         let containFirstPerson = vrm.keys.contains("firstPerson")
         firstPerson = containFirstPerson ? try decoder.decode(FirstPerson.self, from: vrm["firstPerson"] ?? "".data(using: .utf8)!) : nil
@@ -104,33 +104,68 @@ public extension VRM1 {
     }
 
     struct Humanoid: Codable {
-        public let armStretch: Double
-        public let feetSpacing: Double
-        public let hasTranslationDoF: Bool
-        public let legStretch: Double
-        public let lowerArmTwist: Double
-        public let lowerLegTwist: Double
-        public let upperArmTwist: Double
-        public let upperLegTwist: Double
-        public let humanBones: [HumanBone]
+        public let humanBones: HumanBones
 
-        public init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            armStretch = try decodeDouble(key: .armStretch, container: container)
-            feetSpacing = try decodeDouble(key: .feetSpacing, container: container)
-            hasTranslationDoF = try container.decode(Bool.self, forKey: .hasTranslationDoF)
-            legStretch = try decodeDouble(key: .legStretch, container: container)
-            lowerArmTwist = try decodeDouble(key: .lowerArmTwist, container: container)
-            lowerLegTwist = try decodeDouble(key: .lowerLegTwist, container: container)
-            upperArmTwist = try decodeDouble(key: .upperArmTwist, container: container)
-            upperLegTwist = try decodeDouble(key: .upperLegTwist, container: container)
-            humanBones = try container.decode([HumanBone].self, forKey: .humanBones)
-        }
-
-        public struct HumanBone: Codable {
-            public let bone: String
-            public let node: Int
-            public let useDefaultValues: Bool
+        public struct HumanBones: Codable{
+            public let hips: HumanBone
+            public let spine: HumanBone
+            public let chest: HumanBone?
+            public let upperChest: HumanBone?
+            public let neck: HumanBone?
+            public let head: HumanBone
+            public let leftEye: HumanBone?
+            public let rightEye: HumanBone?
+            public let jaw: HumanBone?
+            public let leftUpperLeg: HumanBone
+            public let leftLowerLeg: HumanBone
+            public let leftFoot:HumanBone
+            public let leftToes: HumanBone?
+            public let rightUpperLeg: HumanBone
+            public let rightLowerLeg: HumanBone
+            public let rightFoot: HumanBone
+            public let rightToes: HumanBone?
+            public let leftShoulder: HumanBone?
+            public let leftUpperArm: HumanBone
+            public let leftLowerArm: HumanBone
+            public let leftHand: HumanBone
+            public let rightShoulder: HumanBone?
+            public let rightUpperArm: HumanBone
+            public let rightLowerArm: HumanBone
+            public let rightHand: HumanBone
+            public let leftThumbMetacarpal: HumanBone?
+            public let leftThumbProximal: HumanBone?
+            public let leftThumbDistal: HumanBone?
+            public let leftIndexProximal: HumanBone?
+            public let leftIndexIntermediate: HumanBone?
+            public let leftIndexDistal: HumanBone?
+            public let leftMiddleProximal: HumanBone?
+            public let leftMiddleIntermediate: HumanBone?
+            public let leftMiddleDistal: HumanBone?
+            public let leftRingProximal: HumanBone?
+            public let leftRingIntermediate: HumanBone?
+            public let leftRingDistal: HumanBone?
+            public let leftLittleProximal: HumanBone?
+            public let leftLittleIntermediate: HumanBone?
+            public let leftLittleDistal: HumanBone?
+            public let rightThumbMetacarpal: HumanBone?
+            public let rightThumbProximal: HumanBone?
+            public let rightThumbDistal: HumanBone?
+            public let rightIndexProximal: HumanBone?
+            public let rightIndexIntermediate: HumanBone?
+            public let rightIndexDistal: HumanBone?
+            public let rightMiddleProximal: HumanBone?
+            public let rightMiddleIntermediate: HumanBone?
+            public let rightMiddleDistal: HumanBone?
+            public let rightRingProximal: HumanBone?
+            public let rightRingIntermediate: HumanBone?
+            public let rightRingDistal: HumanBone?
+            public let rightLittleProximal: HumanBone?
+            public let rightLittleIntermediate: HumanBone?
+            public let rightLittleDistal: HumanBone?
+            
+            public struct HumanBone: Codable {
+                public let node: Int
+            }
         }
     }
 
