@@ -19,6 +19,7 @@ public struct VRM1: VRMFileProtocol {
     public let firstPerson: FirstPerson?
     //public let secondaryAnimation: SecondaryAnimation
     public let lookAt: LookAt?
+    public let expressions: Expressions?
 
     //public let materialPropertyNameMap: [String: MaterialProperty]
 
@@ -43,6 +44,9 @@ public struct VRM1: VRMFileProtocol {
         //materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
         let containLookAt = vrm.keys.contains("lookAt")
         lookAt = containLookAt ? try decoder.decode(LookAt.self, from: vrm["lookAt"] ?? "".data(using: .utf8)!) : nil
+
+        let containExpression = vrm.keys.contains("expressions")
+        expressions = containExpression ? try decoder.decode(Expressions.self, from: vrm["expressions"] ?? "".data(using: .utf8)!) : nil
     }
 }
 
@@ -277,39 +281,7 @@ public extension VRM1 {
         public let rangeMapHorizontalOuter: LookAtRangeMap
         public let rangeMapVerticalDown: LookAtRangeMap
         public let rangeMapVerticalUp: LookAtRangeMap
-
-        public enum IntOrDouble: Codable {
-            case int(Int)
-            case double(Double)
-
-            public func getValue() -> Double {
-                switch self {
-                    case .int(let v):
-                        return Double(v)
-                    case .double(let v):
-                        return v
-                }
-            }
-
-            public init(from decoder: Decoder) throws {
-                if let i = try? decoder.singleValueContainer().decode(Int.self) {
-                    self = .int(i)
-                    return
-                }
-
-                if let d = try? decoder.singleValueContainer().decode(Double.self) {
-                    self = .double(d)
-                    return
-                }
-
-                throw Error.couldNotDecodeIntOrDouble
-            }
-
-            public enum Error: Swift.Error {
-                case couldNotDecodeIntOrDouble
-            }
-        }
-
+        
         public enum LookAtType: String, Codable {
             case bone
             case expression
@@ -334,6 +306,113 @@ public extension VRM1 {
             rangeMapHorizontalOuter = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalOuter)
             rangeMapVerticalDown = try container.decode(LookAtRangeMap.self, forKey: .rangeMapVerticalDown)
             rangeMapVerticalUp = try container.decode(LookAtRangeMap.self, forKey: .rangeMapVerticalUp)
+        }
+    }
+    
+    struct Expressions: Codable {
+        public let preset: Preset
+
+        public struct Preset: Codable {
+            public let happy: Expression
+            public let angry: Expression
+            public let sad: Expression
+            public let relaxed: Expression
+            public let surprised: Expression
+            public let aa: Expression
+            public let ih: Expression
+            public let ou: Expression
+            public let ee: Expression
+            public let oh: Expression
+            public let blink: Expression
+            public let blinkLeft: Expression
+            public let blinkRight: Expression
+            public let lookUp: Expression
+            public let lookDown: Expression
+            public let lookLeft: Expression
+            public let lookRight: Expression
+            public let neutral: Expression
+        }
+
+        public struct Expression: Codable {
+            public let morphTargetBinds: [MorphTargetBind]?
+            public let materialColorBinds: [MaterialColorBind]?
+            public let textureTransformBinds: [TextureTransformBind]?
+            public let isBinary: Bool?
+            public let overrideBlink: ExpressionOverrideType?
+            public let overrideLookAt: ExpressionOverrideType?
+            public let overrideMouth: ExpressionOverrideType?
+
+            public struct MorphTargetBind: Codable {
+                public let node: Int
+                public let index: Int
+                public let weight: Double
+                
+                public init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    node = try container.decode(Int.self, forKey: .node)
+                    index = try container.decode(Int.self, forKey: .index)
+                    weight = try decodeDouble(key: .weight, container: container)
+                }
+            }
+
+            public struct MaterialColorBind: Codable {
+                public let material: Int
+                public let type: MaterialColorType
+                public let targetValue: [IntOrDouble]
+
+                public enum MaterialColorType: String, Codable {
+                    case color
+                    case emissionColor
+                    case shadeColor
+                    case matcapColor
+                    case rimColor
+                    case outlineColor
+                }
+            }
+
+            public struct TextureTransformBind: Codable {
+                public let material: Int
+                public let scale: [IntOrDouble]?
+                public let offset: [IntOrDouble]?
+            }
+
+            public enum ExpressionOverrideType: String, Codable {
+                case none
+                case block
+                case blend
+            }
+        }
+    }
+
+    enum IntOrDouble: Codable {
+        case int(Int)
+        case double(Double)
+        
+        public func getValue() -> Double {
+            switch self {
+            case .int(let v):
+                return Double(v)
+            case .double(let v):
+                return v
+            }
+        }
+        
+        public init(from decoder: Decoder) throws {
+            if let i = try? decoder.singleValueContainer().decode(Int.self) {
+                self = .int(i)
+                return
+            }
+            
+            if let d = try? decoder.singleValueContainer().decode(Double.self) {
+                self = .double(d)
+                return
+            }
+            
+            throw Error.couldNotDecodeIntOrDouble
+        }
+        
+        public enum Error: Swift.Error {
+            case couldNotDecodeIntOrDouble
         }
     }
 }
