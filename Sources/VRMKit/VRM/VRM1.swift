@@ -18,6 +18,7 @@ public struct VRM1: VRMFileProtocol {
     //public let blendShapeMaster: BlendShapeMaster
     public let firstPerson: FirstPerson?
     //public let secondaryAnimation: SecondaryAnimation
+    public let lookAt: LookAt?
 
     //public let materialPropertyNameMap: [String: MaterialProperty]
 
@@ -40,6 +41,8 @@ public struct VRM1: VRMFileProtocol {
         //secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
 
         //materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
+        let containLookAt = vrm.keys.contains("lookAt")
+        lookAt = containLookAt ? try decoder.decode(LookAt.self, from: vrm["lookAt"] ?? "".data(using: .utf8)!) : nil
     }
 }
 
@@ -229,6 +232,73 @@ public extension VRM1 {
             x = try decodeDouble(key: .x, container: container)
             y = try decodeDouble(key: .y, container: container)
             z = try decodeDouble(key: .z, container: container)
+        }
+    }
+
+    struct LookAt: Codable {
+        public let offsetFromHeadBone:[IntOrDouble]
+        public let type: LookAtType
+        public let rangeMapHorizontalInner: LookAtRangeMap
+        public let rangeMapHorizontalOuter: LookAtRangeMap
+        public let rangeMapVerticalDown: LookAtRangeMap
+        public let rangeMapVerticalUp: LookAtRangeMap
+
+        public enum IntOrDouble: Codable {
+            case int(Int)
+            case double(Double)
+
+            public func getValue() -> Double {
+                switch self {
+                    case .int(let v):
+                        return Double(v)
+                    case .double(let v):
+                        return v
+                }
+            }
+
+            public init(from decoder: Decoder) throws {
+                if let i = try? decoder.singleValueContainer().decode(Int.self) {
+                    self = .int(i)
+                    return
+                }
+
+                if let d = try? decoder.singleValueContainer().decode(Double.self) {
+                    self = .double(d)
+                    return
+                }
+
+                throw Error.couldNotDecodeIntOrDouble
+            }
+
+            public enum Error: Swift.Error {
+                case couldNotDecodeIntOrDouble
+            }
+        }
+
+        public enum LookAtType: String, Codable {
+            case bone
+            case expression
+        }
+
+        public struct LookAtRangeMap: Codable {
+            public let inputMaxValue: Double
+            public let outputScale: Double
+
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                inputMaxValue = try decodeDouble(key: .inputMaxValue, container: container)
+                outputScale = try decodeDouble(key: .outputScale, container: container)
+            }
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            offsetFromHeadBone = try container.decode([IntOrDouble].self, forKey: .offsetFromHeadBone)
+            type = try container.decode(LookAtType.self, forKey: .type)
+            rangeMapHorizontalInner = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalInner)
+            rangeMapHorizontalOuter = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalOuter)
+            rangeMapVerticalDown = try container.decode(LookAtRangeMap.self, forKey: .rangeMapVerticalDown)
+            rangeMapVerticalUp = try container.decode(LookAtRangeMap.self, forKey: .rangeMapVerticalUp)
         }
     }
 }
