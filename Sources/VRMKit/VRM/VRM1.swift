@@ -16,6 +16,7 @@ public struct VRM1: VRMFileProtocol {
     public let firstPerson: FirstPerson?
     public let lookAt: LookAt?
     public let expressions: Expressions?
+    public let springBone: SpringBone?
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
@@ -35,9 +36,13 @@ public struct VRM1: VRMFileProtocol {
 
         let containExpression = vrm.keys.contains("expressions")
         expressions = containExpression ? try decoder.decode(Expressions.self, from: vrm["expressions"] ?? "".data(using: .utf8)!) : nil
+
+        let containSpringBone = extensions.keys.contains("VRMC_springBone")
+        springBone = containSpringBone ? try decoder.decode(SpringBone.self, from: extensions["VRMC_springBone"] ?? "".data(using: .utf8)!) : nil
     }
 }
 
+// VRMC_vrm
 public extension VRM1 {
     struct Meta: Codable {
         public let name: String
@@ -305,6 +310,57 @@ public extension VRM1 {
         
         public enum Error: Swift.Error {
             case couldNotDecodeIntOrDouble
+        }
+    }
+}
+
+// VRMC_springBone
+extension VRM1 {
+    public struct SpringBone: Codable {
+        public let specVersion: String
+        public let colliders: [Collider]?
+        public let colliderGroups: [ColliderGroup]?
+        public let springs: [Spring]?
+
+        public struct Collider: Codable {
+            public let node: Int
+            public let shape: Shape
+
+            public struct Shape: Codable {
+                public let sphere: ColliderShapeSphere?
+                public let capsule: ColliderShapeCapsule?
+
+                public struct ColliderShapeSphere: Codable {
+                    public let offset: [IntOrDouble]
+                    public let radius: Double
+                }
+
+                public struct ColliderShapeCapsule: Codable {
+                    public let offset: [IntOrDouble]
+                    public let radius: Double
+                    public let tail: [IntOrDouble]
+                }
+            }
+        }
+
+        public struct ColliderGroup: Codable {
+            public let colliders: [Int]
+        }
+
+        public struct Spring: Codable {
+            public let name: String?
+            public let joints: [Joint]
+            public let colliderGroups: [Int]?
+            public let center: Int?
+
+            public struct Joint: Codable {
+                public let node: Int
+                public let hitRadius: Double
+                public let stiffness: IntOrDouble
+                public let gravityPower: IntOrDouble
+                public let gravityDir: [IntOrDouble]
+                public let dragForce: IntOrDouble
+            }
         }
     }
 }
