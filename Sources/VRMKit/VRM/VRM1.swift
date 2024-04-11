@@ -172,7 +172,7 @@ public extension VRM1 {
     }
 
     struct LookAt: Codable {
-        public let offsetFromHeadBone:[IntOrDouble]
+        public let offsetFromHeadBone:[Either<Int, Double>]
         public let type: LookAtType
         public let rangeMapHorizontalInner: LookAtRangeMap
         public let rangeMapHorizontalOuter: LookAtRangeMap
@@ -197,7 +197,7 @@ public extension VRM1 {
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            offsetFromHeadBone = try container.decode([IntOrDouble].self, forKey: .offsetFromHeadBone)
+            offsetFromHeadBone = try container.decode([Either<Int, Double>].self, forKey: .offsetFromHeadBone)
             type = try container.decode(LookAtType.self, forKey: .type)
             rangeMapHorizontalInner = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalInner)
             rangeMapHorizontalOuter = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalOuter)
@@ -255,7 +255,7 @@ public extension VRM1 {
             public struct MaterialColorBind: Codable {
                 public let material: Int
                 public let type: MaterialColorType
-                public let targetValue: [IntOrDouble]
+                public let targetValue: [Either<Int, Double>]
 
                 public enum MaterialColorType: String, Codable {
                     case color
@@ -269,8 +269,8 @@ public extension VRM1 {
 
             public struct TextureTransformBind: Codable {
                 public let material: Int
-                public let scale: [IntOrDouble]?
-                public let offset: [IntOrDouble]?
+                public let scale: [Either<Int, Double>]?
+                public let offset: [Either<Int, Double>]?
             }
 
             public enum ExpressionOverrideType: String, Codable {
@@ -281,35 +281,33 @@ public extension VRM1 {
         }
     }
 
-    enum IntOrDouble: Codable {
+    enum Either<A: Codable, B: Codable>: Codable {
         case int(Int)
         case double(Double)
-        
-        public func getValue() -> Double {
-            switch self {
-            case .int(let v):
-                return Double(v)
-            case .double(let v):
-                return v
+
+        public var value: Double {
+            get {
+                switch self {
+                case .double(let d):
+                    return d
+                case .int(let i):
+                    return Double(i)
+                }
             }
         }
         
         public init(from decoder: Decoder) throws {
             if let i = try? decoder.singleValueContainer().decode(Int.self) {
                 self = .int(i)
-                return
-            }
-            
-            if let d = try? decoder.singleValueContainer().decode(Double.self) {
+            } else if let d = try? decoder.singleValueContainer().decode(Double.self) {
                 self = .double(d)
-                return
+            } else {
+                throw Error.neitherDecodable
             }
-            
-            throw Error.couldNotDecodeIntOrDouble
         }
         
         public enum Error: Swift.Error {
-            case couldNotDecodeIntOrDouble
+            case neitherDecodable
         }
     }
 }
@@ -331,14 +329,14 @@ extension VRM1 {
                 public let capsule: ColliderShapeCapsule?
 
                 public struct ColliderShapeSphere: Codable {
-                    public let offset: [IntOrDouble]
+                    public let offset: [Either<Int, Double>]
                     public let radius: Double
                 }
 
                 public struct ColliderShapeCapsule: Codable {
-                    public let offset: [IntOrDouble]
+                    public let offset: [Either<Int, Double>]
                     public let radius: Double
-                    public let tail: [IntOrDouble]
+                    public let tail: [Either<Int, Double>]
                 }
             }
         }
@@ -356,10 +354,24 @@ extension VRM1 {
             public struct Joint: Codable {
                 public let node: Int
                 public let hitRadius: Double
-                public let stiffness: IntOrDouble
-                public let gravityPower: IntOrDouble
-                public let gravityDir: [IntOrDouble]
-                public let dragForce: IntOrDouble
+                public let stiffness: Double
+                public let gravityPower: Double
+                public let gravityDir: [Either<Int, Double>]
+                public let dragForce: Double
+
+                public init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    node = try container.decode(Int.self, forKey: .node)
+                    hitRadius = try container.decode(Double.self, forKey: .hitRadius)
+                    stiffness = try decodeDouble(key: .stiffness, container: container)
+                    gravityPower = try decodeDouble(key: .gravityPower, container: container)
+                    gravityDir = try container.decode([Either<Int, Double>].self, forKey: .gravityDir)
+                    do {
+                        dragForce = try container.decode(Double.self, forKey: .dragForce)
+                    } catch DecodingError.typeMismatch {
+                        dragForce = Double(try container.decode(Int.self, forKey: .dragForce))
+                    }
+                }
             }
         }
     }
@@ -368,3 +380,4 @@ extension VRM1 {
 private func decodeDouble<T: CodingKey>(key: T, container: KeyedDecodingContainer<T>) throws -> Double {
     return try (try? container.decode(Double.self, forKey: key)) ?? Double(try container.decode(Int.self, forKey: key))
 }
+
