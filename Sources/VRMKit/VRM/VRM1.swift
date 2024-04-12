@@ -280,36 +280,6 @@ public extension VRM1 {
             }
         }
     }
-
-    enum Either<A: Codable, B: Codable>: Codable {
-        case int(Int)
-        case double(Double)
-
-        public var value: Double {
-            get {
-                switch self {
-                case .double(let d):
-                    return d
-                case .int(let i):
-                    return Double(i)
-                }
-            }
-        }
-        
-        public init(from decoder: Decoder) throws {
-            if let i = try? decoder.singleValueContainer().decode(Int.self) {
-                self = .int(i)
-            } else if let d = try? decoder.singleValueContainer().decode(Double.self) {
-                self = .double(d)
-            } else {
-                throw Error.neitherDecodable
-            }
-        }
-        
-        public enum Error: Swift.Error {
-            case neitherDecodable
-        }
-    }
 }
 
 // VRMC_springBone
@@ -376,8 +346,3 @@ extension VRM1 {
         }
     }
 }
-
-private func decodeDouble<T: CodingKey>(key: T, container: KeyedDecodingContainer<T>) throws -> Double {
-    return try (try? container.decode(Double.self, forKey: key)) ?? Double(try container.decode(Int.self, forKey: key))
-}
-

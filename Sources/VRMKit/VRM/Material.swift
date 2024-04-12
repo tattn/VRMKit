@@ -13,7 +13,7 @@ import Foundation
 extension GLTF {
     public struct Material: Codable {
         public let name: String?
-        public let extensions: CodableAny?
+        public let extensions: MaterialExtensions?
         public let extras: CodableAny?
         public let pbrMetallicRoughness: PbrMetallicRoughness?
         public let normalTexture: NormalTextureInfo?
@@ -101,6 +101,101 @@ extension GLTF {
             case OPAQUE
             case MASK
             case BLEND
+        }
+        
+        public struct MaterialExtensions: Codable {
+            public let materialsMToon: MaterialsMToon?
+
+            private enum CodingKeys: String, CodingKey {
+                case materialsMToon = "VRMC_materials_mtoon"
+            }
+
+            public struct MaterialsMToon: Codable {
+                public let specVersion: String
+                public let transparentWithZWrite: Bool?
+                public let renderQueueOffsetNumber: Int?
+                public let shadeColorFactor: [Either<Int, Double>]?
+                public let shadeMultiplyTexture: MaterialsMToonTextureInfo?
+                public let shadingShiftFactor: Double?
+                public let shadingShiftTexture: MaterialsMToonShadingShiftTextureInfo?
+                public let shadingToonyFactor: Double?
+                public let giEqualizationFactor: Double?
+                public let matcapFactor: [Either<Int, Double>]?
+                public let matcapTexture: MaterialsMToonTextureInfo?
+                public let parametricRimColorFactor: [Either<Int, Double>]?
+                public let rimMultiplyTexture: MaterialsMToonTextureInfo?
+                public let rimLightingMixFactor: Double?
+                public let parametricRimFresnelPowerFactor: Double?
+                public let parametricRimLiftFactor: Double?
+                public let outlineWidthMode: MaterialsMToonOutlineWidthMode?
+                public let outlineWidthFactor: Double?
+                public let outlineWidthMultiplyTexture: MaterialsMToonTextureInfo?
+                public let outlineColorFactor: [Either<Int, Double>]?
+                public let outlineLightingMixFactor: Double?
+                public let uvAnimationMaskTexture: MaterialsMToonTextureInfo?
+                public let uvAnimationScrollXSpeedFactor: Double?
+                public let uvAnimationScrollYSpeedFactor: Double?
+                public let uvAnimationRotationSpeedFactor: Double?
+                
+                public struct MaterialsMToonTextureInfo: Codable {
+                    public let index: Double
+                    public let texCoord: Double?
+                    
+                    public init(from decoder: Decoder) throws {
+                        let container = try decoder.container(keyedBy: CodingKeys.self)
+                        index = try decodeDouble(key: .index, container: container)
+                        texCoord = try? decodeDouble(key: .texCoord, container: container)
+                    }
+                }
+                
+                public struct MaterialsMToonShadingShiftTextureInfo: Codable {
+                    public let index: Double
+                    public let texCoord: Double?
+                    public let scale: Double?
+                    
+                    public init(from decoder: Decoder) throws {
+                        let container = try decoder.container(keyedBy: CodingKeys.self)
+                        index = try decodeDouble(key: .index, container: container)
+                        texCoord = try? decodeDouble(key: .texCoord, container: container)
+                        scale = try? decodeDouble(key: .scale, container: container)
+                    }
+                }
+                
+                public enum MaterialsMToonOutlineWidthMode: String, Codable {
+                    case none
+                    case worldCoordinates
+                    case screenCoordinates
+                }
+                
+                public init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    specVersion = try container.decode(String.self, forKey: .specVersion)
+                    transparentWithZWrite = try container.decodeIfPresent(Bool.self, forKey: .transparentWithZWrite)
+                    renderQueueOffsetNumber = try container.decodeIfPresent(Int.self, forKey: .renderQueueOffsetNumber)
+                    shadeColorFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .shadeColorFactor)
+                    shadeMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .shadeMultiplyTexture)
+                    shadingShiftFactor = try? decodeDouble(key: .shadingShiftFactor, container: container)
+                    shadingShiftTexture = try container.decodeIfPresent(MaterialsMToonShadingShiftTextureInfo.self, forKey: .shadingShiftTexture)
+                    shadingToonyFactor = try? decodeDouble(key: .shadingToonyFactor, container: container)
+                    giEqualizationFactor = try? decodeDouble(key: .giEqualizationFactor, container: container)
+                    matcapFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .matcapFactor)
+                    matcapTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .matcapTexture)
+                    parametricRimColorFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .parametricRimColorFactor)
+                    rimMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .rimMultiplyTexture)
+                    rimLightingMixFactor = try? decodeDouble(key: .rimLightingMixFactor, container: container)
+                    parametricRimFresnelPowerFactor = try? decodeDouble(key: .parametricRimFresnelPowerFactor, container: container)
+                    parametricRimLiftFactor = try? decodeDouble(key: .parametricRimLiftFactor, container: container)
+                    outlineWidthMode = try container.decodeIfPresent(MaterialsMToonOutlineWidthMode.self, forKey: .outlineWidthMode)
+                    outlineWidthFactor = try? decodeDouble(key: .outlineWidthFactor, container: container)
+                    outlineWidthMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .outlineWidthMultiplyTexture)
+                    outlineColorFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .outlineColorFactor)
+                    outlineLightingMixFactor = try? decodeDouble(key: .outlineLightingMixFactor, container: container)
+                    uvAnimationMaskTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .uvAnimationMaskTexture)
+                    uvAnimationScrollXSpeedFactor = try? decodeDouble(key: .uvAnimationScrollXSpeedFactor, container: container)
+                    uvAnimationScrollYSpeedFactor = try? decodeDouble(key: .uvAnimationScrollYSpeedFactor, container: container)
+                    uvAnimationRotationSpeedFactor = try? decodeDouble(key: .uvAnimationRotationSpeedFactor, container: container)
+                }
+            }
         }
     }
 }
