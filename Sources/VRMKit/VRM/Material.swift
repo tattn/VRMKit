@@ -117,7 +117,7 @@ extension GLTF {
                 public let shadeColorFactor: [Either<Int, Double>]?
                 public let shadeMultiplyTexture: MaterialsMToonTextureInfo?
                 public let shadingShiftFactor: Double?
-                public let shadingShiftTexture: MaterialsMToonShadingShiftTextureInfo?
+                public let shadingShiftTexture: MaterialsMToonShadingShiftTexture?
                 public let shadingToonyFactor: Double?
                 public let giEqualizationFactor: Double?
                 public let matcapFactor: [Either<Int, Double>]?
@@ -136,28 +136,38 @@ extension GLTF {
                 public let uvAnimationScrollXSpeedFactor: Double?
                 public let uvAnimationScrollYSpeedFactor: Double?
                 public let uvAnimationRotationSpeedFactor: Double?
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
                 
                 public struct MaterialsMToonTextureInfo: Codable {
                     public let index: Double
                     public let texCoord: Double?
+                    public let extensions: CodableAny?
+                    public let extras: CodableAny?
                     
                     public init(from decoder: Decoder) throws {
                         let container = try decoder.container(keyedBy: CodingKeys.self)
                         index = try decodeDouble(key: .index, container: container)
                         texCoord = try? decodeDouble(key: .texCoord, container: container)
+                        extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                        extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                     }
                 }
                 
-                public struct MaterialsMToonShadingShiftTextureInfo: Codable {
+                public struct MaterialsMToonShadingShiftTexture: Codable {
                     public let index: Double
                     public let texCoord: Double?
                     public let scale: Double?
+                    public let extensions: CodableAny?
+                    public let extras: CodableAny?
                     
                     public init(from decoder: Decoder) throws {
                         let container = try decoder.container(keyedBy: CodingKeys.self)
                         index = try decodeDouble(key: .index, container: container)
                         texCoord = try? decodeDouble(key: .texCoord, container: container)
                         scale = try? decodeDouble(key: .scale, container: container)
+                        extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                        extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                     }
                 }
                 
@@ -175,7 +185,7 @@ extension GLTF {
                     shadeColorFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .shadeColorFactor)
                     shadeMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .shadeMultiplyTexture)
                     shadingShiftFactor = try? decodeDouble(key: .shadingShiftFactor, container: container)
-                    shadingShiftTexture = try container.decodeIfPresent(MaterialsMToonShadingShiftTextureInfo.self, forKey: .shadingShiftTexture)
+                    shadingShiftTexture = try container.decodeIfPresent(MaterialsMToonShadingShiftTexture.self, forKey: .shadingShiftTexture)
                     shadingToonyFactor = try? decodeDouble(key: .shadingToonyFactor, container: container)
                     giEqualizationFactor = try? decodeDouble(key: .giEqualizationFactor, container: container)
                     matcapFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .matcapFactor)
@@ -194,6 +204,8 @@ extension GLTF {
                     uvAnimationScrollXSpeedFactor = try? decodeDouble(key: .uvAnimationScrollXSpeedFactor, container: container)
                     uvAnimationScrollYSpeedFactor = try? decodeDouble(key: .uvAnimationScrollYSpeedFactor, container: container)
                     uvAnimationRotationSpeedFactor = try? decodeDouble(key: .uvAnimationRotationSpeedFactor, container: container)
+                    extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                    extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                 }
             }
         }

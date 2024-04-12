@@ -17,6 +17,8 @@ public struct VRM1: VRMFileProtocol {
     public let lookAt: LookAt?
     public let expressions: Expressions?
     public let springBone: SpringBone?
+    public let extensions: CodableAny?
+    public let extras: CodableAny?
 
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
@@ -29,16 +31,12 @@ public struct VRM1: VRMFileProtocol {
         let decoder = DictionaryDecoder()
         meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
         humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
-        let containFirstPerson = vrm.keys.contains("firstPerson")
-        firstPerson = containFirstPerson ? try decoder.decode(FirstPerson.self, from: vrm["firstPerson"] ?? "".data(using: .utf8)!) : nil
-        let containLookAt = vrm.keys.contains("lookAt")
-        lookAt = containLookAt ? try decoder.decode(LookAt.self, from: vrm["lookAt"] ?? "".data(using: .utf8)!) : nil
-
-        let containExpression = vrm.keys.contains("expressions")
-        expressions = containExpression ? try decoder.decode(Expressions.self, from: vrm["expressions"] ?? "".data(using: .utf8)!) : nil
-
-        let containSpringBone = extensions.keys.contains("VRMC_springBone")
-        springBone = containSpringBone ? try decoder.decode(SpringBone.self, from: extensions["VRMC_springBone"] ?? "".data(using: .utf8)!) : nil
+        firstPerson = vrm.keys.contains("firstPerson") ? try decoder.decode(FirstPerson.self, from: vrm["firstPerson"] ?? "".data(using: .utf8)!) : nil
+        lookAt = vrm.keys.contains("lookAt") ? try decoder.decode(LookAt.self, from: vrm["lookAt"] ?? "".data(using: .utf8)!) : nil
+        expressions = vrm.keys.contains("expressions") ? try decoder.decode(Expressions.self, from: vrm["expressions"] ?? "".data(using: .utf8)!) : nil
+        springBone = extensions.keys.contains("VRMC_springBone") ? try decoder.decode(SpringBone.self, from: extensions["VRMC_springBone"] ?? "".data(using: .utf8)!) : nil
+        self.extensions = vrm.keys.contains("extensions") ? try decoder.decode(CodableAny.self, from: vrm["extensions"] ?? "".data(using: .utf8)!) : nil
+        extras = vrm.keys.contains("extras") ? try decoder.decode(CodableAny.self, from: vrm["extras"] ?? "".data(using: .utf8)!) : nil
     }
 }
 
@@ -64,6 +62,8 @@ public extension VRM1 {
         public let allowRedistribution: Bool?
         public let modification: ModificationType?
         public let otherLicenseUrl: String?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         public enum AvatarPermissionType: String, Codable {
             case onlyAuthor
@@ -91,6 +91,8 @@ public extension VRM1 {
 
     struct Humanoid: Codable {
         public let humanBones: HumanBones
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         public struct HumanBones: Codable{
             public let hips: HumanBone
@@ -151,16 +153,22 @@ public extension VRM1 {
             
             public struct HumanBone: Codable {
                 public let node: Int
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
             }
         }
     }
 
     struct FirstPerson: Codable {
         public let meshAnnotations: [MeshAnnotation]
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
         
         public struct MeshAnnotation: Codable {
             public let type: FirstPersonType
             public let node: Int
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
         }
 
         public enum FirstPersonType: String, Codable {
@@ -178,6 +186,8 @@ public extension VRM1 {
         public let rangeMapHorizontalOuter: LookAtRangeMap
         public let rangeMapVerticalDown: LookAtRangeMap
         public let rangeMapVerticalUp: LookAtRangeMap
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
         
         public enum LookAtType: String, Codable {
             case bone
@@ -187,11 +197,15 @@ public extension VRM1 {
         public struct LookAtRangeMap: Codable {
             public let inputMaxValue: Double
             public let outputScale: Double
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
 
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 inputMaxValue = try decodeDouble(key: .inputMaxValue, container: container)
                 outputScale = try decodeDouble(key: .outputScale, container: container)
+                extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
             }
         }
 
@@ -203,11 +217,16 @@ public extension VRM1 {
             rangeMapHorizontalOuter = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalOuter)
             rangeMapVerticalDown = try container.decode(LookAtRangeMap.self, forKey: .rangeMapVerticalDown)
             rangeMapVerticalUp = try container.decode(LookAtRangeMap.self, forKey: .rangeMapVerticalUp)
+            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
         }
     }
     
     struct Expressions: Codable {
         public let preset: Preset
+        public let custom: CodableAny?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         public struct Preset: Codable {
             public let happy: Expression
@@ -238,17 +257,23 @@ public extension VRM1 {
             public let overrideBlink: ExpressionOverrideType?
             public let overrideLookAt: ExpressionOverrideType?
             public let overrideMouth: ExpressionOverrideType?
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
 
             public struct MorphTargetBind: Codable {
                 public let node: Int
                 public let index: Int
                 public let weight: Double
-                
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
+
                 public init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
                     node = try container.decode(Int.self, forKey: .node)
                     index = try container.decode(Int.self, forKey: .index)
                     weight = try decodeDouble(key: .weight, container: container)
+                    extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                    extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                 }
             }
 
@@ -256,6 +281,8 @@ public extension VRM1 {
                 public let material: Int
                 public let type: MaterialColorType
                 public let targetValue: [Either<Int, Double>]
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
 
                 public enum MaterialColorType: String, Codable {
                     case color
@@ -271,6 +298,8 @@ public extension VRM1 {
                 public let material: Int
                 public let scale: [Either<Int, Double>]?
                 public let offset: [Either<Int, Double>]?
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
             }
 
             public enum ExpressionOverrideType: String, Codable {
@@ -289,14 +318,20 @@ extension VRM1 {
         public let colliders: [Collider]?
         public let colliderGroups: [ColliderGroup]?
         public let springs: [Spring]?
+        public let extensions: CodableAny?
+        public let extras: CodableAny?
 
         public struct Collider: Codable {
             public let node: Int
             public let shape: Shape
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
 
             public struct Shape: Codable {
                 public let sphere: ColliderShapeSphere?
                 public let capsule: ColliderShapeCapsule?
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
 
                 public struct ColliderShapeSphere: Codable {
                     public let offset: [Either<Int, Double>]
@@ -313,6 +348,8 @@ extension VRM1 {
 
         public struct ColliderGroup: Codable {
             public let colliders: [Int]
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
         }
 
         public struct Spring: Codable {
@@ -320,6 +357,8 @@ extension VRM1 {
             public let joints: [Joint]
             public let colliderGroups: [Int]?
             public let center: Int?
+            public let extensions: CodableAny?
+            public let extras: CodableAny?
 
             public struct Joint: Codable {
                 public let node: Int
@@ -328,6 +367,8 @@ extension VRM1 {
                 public let gravityPower: Double
                 public let gravityDir: [Either<Int, Double>]
                 public let dragForce: Double
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
 
                 public init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -341,6 +382,8 @@ extension VRM1 {
                     } catch DecodingError.typeMismatch {
                         dragForce = Double(try container.decode(Int.self, forKey: .dragForce))
                     }
+                    extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                    extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                 }
             }
         }

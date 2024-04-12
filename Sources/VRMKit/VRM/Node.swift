@@ -62,16 +62,22 @@ extension GLTF {
             public struct NodeConstraint: Codable {
                 public let specVersion: String
                 public let constraint: Constraint
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
 
                 public struct Constraint: Codable {
                     public let roll: RollConstraint?
                     public let aim: AimConstraint?
                     public let rotation: RotationConstraint?
+                    public let extensions: CodableAny?
+                    public let extras: CodableAny?
 
                     public struct RollConstraint: Codable {
                         public let source: Int
                         public let rollAxis: RollAxis
                         public let weight: Double?
+                        public let extensions: CodableAny?
+                        public let extras: CodableAny?
 
                         public enum RollAxis: String, Codable {
                             case X
@@ -84,6 +90,8 @@ extension GLTF {
                             source = try container.decode(Int.self, forKey: .source)
                             rollAxis = try container.decode(RollAxis.self, forKey: .rollAxis)
                             weight = try? decodeDouble(key: .weight, container: container)
+                            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                         }
                     }
 
@@ -91,6 +99,8 @@ extension GLTF {
                         public let source: Int
                         public let aimAxis: AimAxis
                         public let weight: Double?
+                        public let extensions: CodableAny?
+                        public let extras: CodableAny?
 
                         public enum AimAxis: String, Codable {
                             case positiveX
@@ -115,17 +125,23 @@ extension GLTF {
                             source = try container.decode(Int.self, forKey: .source)
                             aimAxis = try container.decode(AimAxis.self, forKey: .aimAxis)
                             weight = try? decodeDouble(key: .weight, container: container)
+                            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                         }
                     }
 
                     public struct RotationConstraint: Codable {
                         public let source: Int
                         public let weight: Double?
+                        public let extensions: CodableAny?
+                        public let extras: CodableAny?
 
                         public init(from decoder: Decoder) throws {
                             let container = try decoder.container(keyedBy: CodingKeys.self)
                             source = try container.decode(Int.self, forKey: .source)
                             weight = try? decodeDouble(key: .weight, container: container)
+                            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+                            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                         }
                     }
                 }
