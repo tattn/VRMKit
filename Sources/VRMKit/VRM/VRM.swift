@@ -81,19 +81,6 @@ public extension VRM {
         public let upperLegTwist: Double
         public let humanBones: [HumanBone]
 
-        public init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            armStretch = try decodeDouble(key: .armStretch, container: container)
-            feetSpacing = try decodeDouble(key: .feetSpacing, container: container)
-            hasTranslationDoF = try container.decode(Bool.self, forKey: .hasTranslationDoF)
-            legStretch = try decodeDouble(key: .legStretch, container: container)
-            lowerArmTwist = try decodeDouble(key: .lowerArmTwist, container: container)
-            lowerLegTwist = try decodeDouble(key: .lowerLegTwist, container: container)
-            upperArmTwist = try decodeDouble(key: .upperArmTwist, container: container)
-            upperLegTwist = try decodeDouble(key: .upperLegTwist, container: container)
-            humanBones = try container.decode([HumanBone].self, forKey: .humanBones)
-        }
-
         public struct HumanBone: Codable {
             public let bone: String
             public let node: Int
@@ -121,13 +108,6 @@ public extension VRM {
                 public let index: Int
                 public let mesh: Int
                 public let weight: Double
-
-                public init(from decoder: Decoder) throws {
-                    let container = try decoder.container(keyedBy: CodingKeys.self)
-                    index = try container.decode(Int.self, forKey: .index)
-                    mesh = try container.decode(Int.self, forKey: .mesh)
-                    weight = try decodeDouble(key: .weight, container: container)
-                }
             }
             public struct MaterialValueBind: Codable {
                 public let materialName: String
@@ -167,19 +147,6 @@ public extension VRM {
             public let gravityPower: Double
             public let hitRadius: Double
             public let stiffiness: Double
-
-            public init(from decoder: Decoder) throws {
-                let container = try decoder.container(keyedBy: CodingKeys.self)
-                bones = try container.decode([Int].self, forKey: .bones)
-                center = try container.decode(Int.self, forKey: .center)
-                colliderGroups = try container.decode([Int].self, forKey: .colliderGroups)
-                comment = try? container.decode(String.self, forKey: .comment)
-                dragForce = try decodeDouble(key: .dragForce, container: container)
-                gravityDir = try container.decode(Vector3.self, forKey: .gravityDir)
-                gravityPower = try decodeDouble(key: .gravityPower, container: container)
-                hitRadius = try decodeDouble(key: .hitRadius, container: container)
-                stiffiness = try decodeDouble(key: .stiffiness, container: container)
-            }
         }
         
         public struct ColliderGroup: Codable {
@@ -195,15 +162,5 @@ public extension VRM {
 
     struct Vector3: Codable {
         public let x, y, z: Double
-        public init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            x = try decodeDouble(key: .x, container: container)
-            y = try decodeDouble(key: .y, container: container)
-            z = try decodeDouble(key: .z, container: container)
-        }
     }
-}
-
-private func decodeDouble<T: CodingKey>(key: T, container: KeyedDecodingContainer<T>) throws -> Double {
-    return try (try? container.decode(Double.self, forKey: key)) ?? Double(try container.decode(Int.self, forKey: key))
 }
