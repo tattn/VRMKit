@@ -180,7 +180,7 @@ public extension VRM1 {
     }
 
     struct LookAt: Codable {
-        public let offsetFromHeadBone:[Either<Int, Double>]
+        public let offsetFromHeadBone:[Double]
         public let type: LookAtType
         public let rangeMapHorizontalInner: LookAtRangeMap
         public let rangeMapHorizontalOuter: LookAtRangeMap
@@ -211,7 +211,7 @@ public extension VRM1 {
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            offsetFromHeadBone = try container.decode([Either<Int, Double>].self, forKey: .offsetFromHeadBone)
+            offsetFromHeadBone = try container.decode([Double].self, forKey: .offsetFromHeadBone)
             type = try container.decode(LookAtType.self, forKey: .type)
             rangeMapHorizontalInner = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalInner)
             rangeMapHorizontalOuter = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalOuter)
@@ -280,7 +280,7 @@ public extension VRM1 {
             public struct MaterialColorBind: Codable {
                 public let material: Int
                 public let type: MaterialColorType
-                public let targetValue: [Either<Int, Double>]
+                public let targetValue: [Double]
                 public let extensions: CodableAny?
                 public let extras: CodableAny?
 
@@ -296,8 +296,8 @@ public extension VRM1 {
 
             public struct TextureTransformBind: Codable {
                 public let material: Int
-                public let scale: [Either<Int, Double>]?
-                public let offset: [Either<Int, Double>]?
+                public let scale: [Double]?
+                public let offset: [Double]?
                 public let extensions: CodableAny?
                 public let extras: CodableAny?
             }
@@ -334,14 +334,14 @@ extension VRM1 {
                 public let extras: CodableAny?
 
                 public struct ColliderShapeSphere: Codable {
-                    public let offset: [Either<Int, Double>]
+                    public let offset: [Double]
                     public let radius: Double
                 }
 
                 public struct ColliderShapeCapsule: Codable {
-                    public let offset: [Either<Int, Double>]
+                    public let offset: [Double]
                     public let radius: Double
-                    public let tail: [Either<Int, Double>]
+                    public let tail: [Double]
                 }
             }
         }
@@ -365,7 +365,7 @@ extension VRM1 {
                 public let hitRadius: Double
                 public let stiffness: Double
                 public let gravityPower: Double
-                public let gravityDir: [Either<Int, Double>]
+                public let gravityDir: [Double]
                 public let dragForce: Double
                 public let extensions: CodableAny?
                 public let extras: CodableAny?
@@ -376,7 +376,7 @@ extension VRM1 {
                     hitRadius = try container.decode(Double.self, forKey: .hitRadius)
                     stiffness = try decodeDouble(key: .stiffness, container: container)
                     gravityPower = try decodeDouble(key: .gravityPower, container: container)
-                    gravityDir = try container.decode([Either<Int, Double>].self, forKey: .gravityDir)
+                    gravityDir = try container.decode([Double].self, forKey: .gravityDir)
                     do {
                         dragForce = try container.decode(Double.self, forKey: .dragForce)
                     } catch DecodingError.typeMismatch {

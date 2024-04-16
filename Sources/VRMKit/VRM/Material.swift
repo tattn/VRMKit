@@ -114,15 +114,15 @@ extension GLTF {
                 public let specVersion: String
                 public let transparentWithZWrite: Bool?
                 public let renderQueueOffsetNumber: Int?
-                public let shadeColorFactor: [Either<Int, Double>]?
+                public let shadeColorFactor: [Double]?
                 public let shadeMultiplyTexture: MaterialsMToonTextureInfo?
                 public let shadingShiftFactor: Double?
                 public let shadingShiftTexture: MaterialsMToonShadingShiftTexture?
                 public let shadingToonyFactor: Double?
                 public let giEqualizationFactor: Double?
-                public let matcapFactor: [Either<Int, Double>]?
+                public let matcapFactor: [Double]?
                 public let matcapTexture: MaterialsMToonTextureInfo?
-                public let parametricRimColorFactor: [Either<Int, Double>]?
+                public let parametricRimColorFactor: [Double]?
                 public let rimMultiplyTexture: MaterialsMToonTextureInfo?
                 public let rimLightingMixFactor: Double?
                 public let parametricRimFresnelPowerFactor: Double?
@@ -130,7 +130,7 @@ extension GLTF {
                 public let outlineWidthMode: MaterialsMToonOutlineWidthMode?
                 public let outlineWidthFactor: Double?
                 public let outlineWidthMultiplyTexture: MaterialsMToonTextureInfo?
-                public let outlineColorFactor: [Either<Int, Double>]?
+                public let outlineColorFactor: [Double]?
                 public let outlineLightingMixFactor: Double?
                 public let uvAnimationMaskTexture: MaterialsMToonTextureInfo?
                 public let uvAnimationScrollXSpeedFactor: Double?
@@ -182,15 +182,15 @@ extension GLTF {
                     specVersion = try container.decode(String.self, forKey: .specVersion)
                     transparentWithZWrite = try container.decodeIfPresent(Bool.self, forKey: .transparentWithZWrite)
                     renderQueueOffsetNumber = try container.decodeIfPresent(Int.self, forKey: .renderQueueOffsetNumber)
-                    shadeColorFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .shadeColorFactor)
+                    shadeColorFactor = try container.decodeIfPresent([Double].self, forKey: .shadeColorFactor)
                     shadeMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .shadeMultiplyTexture)
                     shadingShiftFactor = try? decodeDouble(key: .shadingShiftFactor, container: container)
                     shadingShiftTexture = try container.decodeIfPresent(MaterialsMToonShadingShiftTexture.self, forKey: .shadingShiftTexture)
                     shadingToonyFactor = try? decodeDouble(key: .shadingToonyFactor, container: container)
                     giEqualizationFactor = try? decodeDouble(key: .giEqualizationFactor, container: container)
-                    matcapFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .matcapFactor)
+                    matcapFactor = try container.decodeIfPresent([Double].self, forKey: .matcapFactor)
                     matcapTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .matcapTexture)
-                    parametricRimColorFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .parametricRimColorFactor)
+                    parametricRimColorFactor = try container.decodeIfPresent([Double].self, forKey: .parametricRimColorFactor)
                     rimMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .rimMultiplyTexture)
                     rimLightingMixFactor = try? decodeDouble(key: .rimLightingMixFactor, container: container)
                     parametricRimFresnelPowerFactor = try? decodeDouble(key: .parametricRimFresnelPowerFactor, container: container)
@@ -198,7 +198,7 @@ extension GLTF {
                     outlineWidthMode = try container.decodeIfPresent(MaterialsMToonOutlineWidthMode.self, forKey: .outlineWidthMode)
                     outlineWidthFactor = try? decodeDouble(key: .outlineWidthFactor, container: container)
                     outlineWidthMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .outlineWidthMultiplyTexture)
-                    outlineColorFactor = try container.decodeIfPresent([Either<Int, Double>].self, forKey: .outlineColorFactor)
+                    outlineColorFactor = try container.decodeIfPresent([Double].self, forKey: .outlineColorFactor)
                     outlineLightingMixFactor = try? decodeDouble(key: .outlineLightingMixFactor, container: container)
                     uvAnimationMaskTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .uvAnimationMaskTexture)
                     uvAnimationScrollXSpeedFactor = try? decodeDouble(key: .uvAnimationScrollXSpeedFactor, container: container)
