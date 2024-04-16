@@ -8,7 +8,7 @@
 
 import Foundation
 
-public protocol VRMFileProtocol {
+public protocol VRMFile {
     init(data: Data) throws
 }
 
