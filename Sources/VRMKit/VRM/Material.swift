@@ -140,15 +140,15 @@ extension GLTF {
                 public let extras: CodableAny?
                 
                 public struct MaterialsMToonTextureInfo: Codable {
-                    public let index: Double
-                    public let texCoord: Double?
+                    public let index: Int
+                    public let texCoord: Int?
                     public let extensions: CodableAny?
                     public let extras: CodableAny?
                     
                     public init(from decoder: Decoder) throws {
                         let container = try decoder.container(keyedBy: CodingKeys.self)
-                        index = try decodeDouble(key: .index, container: container)
-                        texCoord = try? decodeDouble(key: .texCoord, container: container)
+                        index = try container.decode(Int.self, forKey: .index)
+                        texCoord = try container.decodeIfPresent(Int.self, forKey: .texCoord)
                         extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
                         extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                     }
