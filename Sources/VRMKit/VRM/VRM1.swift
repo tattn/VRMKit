@@ -199,26 +199,6 @@ public extension VRM1 {
             public let outputScale: Double
             public let extensions: CodableAny?
             public let extras: CodableAny?
-
-            public init(from decoder: Decoder) throws {
-                let container = try decoder.container(keyedBy: CodingKeys.self)
-                inputMaxValue = try decodeDouble(key: .inputMaxValue, container: container)
-                outputScale = try decodeDouble(key: .outputScale, container: container)
-                extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-            }
-        }
-
-        public init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            offsetFromHeadBone = try container.decode([Double].self, forKey: .offsetFromHeadBone)
-            type = try container.decode(LookAtType.self, forKey: .type)
-            rangeMapHorizontalInner = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalInner)
-            rangeMapHorizontalOuter = try container.decode(LookAtRangeMap.self, forKey: .rangeMapHorizontalOuter)
-            rangeMapVerticalDown = try container.decode(LookAtRangeMap.self, forKey: .rangeMapVerticalDown)
-            rangeMapVerticalUp = try container.decode(LookAtRangeMap.self, forKey: .rangeMapVerticalUp)
-            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
         }
     }
     
@@ -266,15 +246,6 @@ public extension VRM1 {
                 public let weight: Double
                 public let extensions: CodableAny?
                 public let extras: CodableAny?
-
-                public init(from decoder: Decoder) throws {
-                    let container = try decoder.container(keyedBy: CodingKeys.self)
-                    node = try container.decode(Int.self, forKey: .node)
-                    index = try container.decode(Int.self, forKey: .index)
-                    weight = try decodeDouble(key: .weight, container: container)
-                    extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                    extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-                }
             }
 
             public struct MaterialColorBind: Codable {
@@ -369,22 +340,6 @@ extension VRM1 {
                 public let dragForce: Double
                 public let extensions: CodableAny?
                 public let extras: CodableAny?
-
-                public init(from decoder: Decoder) throws {
-                    let container = try decoder.container(keyedBy: CodingKeys.self)
-                    node = try container.decode(Int.self, forKey: .node)
-                    hitRadius = try container.decode(Double.self, forKey: .hitRadius)
-                    stiffness = try decodeDouble(key: .stiffness, container: container)
-                    gravityPower = try decodeDouble(key: .gravityPower, container: container)
-                    gravityDir = try container.decode([Double].self, forKey: .gravityDir)
-                    do {
-                        dragForce = try container.decode(Double.self, forKey: .dragForce)
-                    } catch DecodingError.typeMismatch {
-                        dragForce = Double(try container.decode(Int.self, forKey: .dragForce))
-                    }
-                    extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                    extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-                }
             }
         }
     }

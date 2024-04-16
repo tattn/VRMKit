@@ -84,15 +84,6 @@ extension GLTF {
                             case Y
                             case Z
                         }
-
-                        public init(from decoder: Decoder) throws {
-                            let container = try decoder.container(keyedBy: CodingKeys.self)
-                            source = try container.decode(Int.self, forKey: .source)
-                            rollAxis = try container.decode(RollAxis.self, forKey: .rollAxis)
-                            weight = try? decodeDouble(key: .weight, container: container)
-                            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-                        }
                     }
 
                     public struct AimConstraint: Codable {
@@ -119,15 +110,6 @@ extension GLTF {
                                 case negativeZ = "NegativeZ"
                             }
                         }
-
-                        public init(from decoder: Decoder) throws {
-                            let container = try decoder.container(keyedBy: CodingKeys.self)
-                            source = try container.decode(Int.self, forKey: .source)
-                            aimAxis = try container.decode(AimAxis.self, forKey: .aimAxis)
-                            weight = try? decodeDouble(key: .weight, container: container)
-                            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-                        }
                     }
 
                     public struct RotationConstraint: Codable {
@@ -135,14 +117,6 @@ extension GLTF {
                         public let weight: Double?
                         public let extensions: CodableAny?
                         public let extras: CodableAny?
-
-                        public init(from decoder: Decoder) throws {
-                            let container = try decoder.container(keyedBy: CodingKeys.self)
-                            source = try container.decode(Int.self, forKey: .source)
-                            weight = try? decodeDouble(key: .weight, container: container)
-                            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-                        }
                     }
                 }
             }

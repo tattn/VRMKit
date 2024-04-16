@@ -28,6 +28,3 @@ func ???<T>(lhs: T?,
     return value
 }
 
-func decodeDouble<T: CodingKey>(key: T, container: KeyedDecodingContainer<T>) throws -> Double {
-    return try (try? container.decode(Double.self, forKey: key)) ?? Double(try container.decode(Int.self, forKey: key))
-}

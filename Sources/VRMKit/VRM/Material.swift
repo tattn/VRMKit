@@ -160,52 +160,12 @@ extension GLTF {
                     public let scale: Double?
                     public let extensions: CodableAny?
                     public let extras: CodableAny?
-                    
-                    public init(from decoder: Decoder) throws {
-                        let container = try decoder.container(keyedBy: CodingKeys.self)
-                        index = try container.decode(Int.self, forKey: .index)
-                        texCoord = try container.decodeIfPresent(Int.self, forKey: .texCoord)
-                        scale = try? decodeDouble(key: .scale, container: container)
-                        extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                        extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-                    }
                 }
                 
                 public enum MaterialsMToonOutlineWidthMode: String, Codable {
                     case none
                     case worldCoordinates
                     case screenCoordinates
-                }
-                
-                public init(from decoder: Decoder) throws {
-                    let container = try decoder.container(keyedBy: CodingKeys.self)
-                    specVersion = try container.decode(String.self, forKey: .specVersion)
-                    transparentWithZWrite = try container.decodeIfPresent(Bool.self, forKey: .transparentWithZWrite)
-                    renderQueueOffsetNumber = try container.decodeIfPresent(Int.self, forKey: .renderQueueOffsetNumber)
-                    shadeColorFactor = try container.decodeIfPresent([Double].self, forKey: .shadeColorFactor)
-                    shadeMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .shadeMultiplyTexture)
-                    shadingShiftFactor = try? decodeDouble(key: .shadingShiftFactor, container: container)
-                    shadingShiftTexture = try container.decodeIfPresent(MaterialsMToonShadingShiftTexture.self, forKey: .shadingShiftTexture)
-                    shadingToonyFactor = try? decodeDouble(key: .shadingToonyFactor, container: container)
-                    giEqualizationFactor = try? decodeDouble(key: .giEqualizationFactor, container: container)
-                    matcapFactor = try container.decodeIfPresent([Double].self, forKey: .matcapFactor)
-                    matcapTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .matcapTexture)
-                    parametricRimColorFactor = try container.decodeIfPresent([Double].self, forKey: .parametricRimColorFactor)
-                    rimMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .rimMultiplyTexture)
-                    rimLightingMixFactor = try? decodeDouble(key: .rimLightingMixFactor, container: container)
-                    parametricRimFresnelPowerFactor = try? decodeDouble(key: .parametricRimFresnelPowerFactor, container: container)
-                    parametricRimLiftFactor = try? decodeDouble(key: .parametricRimLiftFactor, container: container)
-                    outlineWidthMode = try container.decodeIfPresent(MaterialsMToonOutlineWidthMode.self, forKey: .outlineWidthMode)
-                    outlineWidthFactor = try? decodeDouble(key: .outlineWidthFactor, container: container)
-                    outlineWidthMultiplyTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .outlineWidthMultiplyTexture)
-                    outlineColorFactor = try container.decodeIfPresent([Double].self, forKey: .outlineColorFactor)
-                    outlineLightingMixFactor = try? decodeDouble(key: .outlineLightingMixFactor, container: container)
-                    uvAnimationMaskTexture = try container.decodeIfPresent(MaterialsMToonTextureInfo.self, forKey: .uvAnimationMaskTexture)
-                    uvAnimationScrollXSpeedFactor = try? decodeDouble(key: .uvAnimationScrollXSpeedFactor, container: container)
-                    uvAnimationScrollYSpeedFactor = try? decodeDouble(key: .uvAnimationScrollYSpeedFactor, container: container)
-                    uvAnimationRotationSpeedFactor = try? decodeDouble(key: .uvAnimationRotationSpeedFactor, container: container)
-                    extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                    extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
                 }
             }
         }
