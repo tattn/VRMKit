@@ -112,8 +112,20 @@ extension DictionaryDecoder {
         func decode(_ type: UInt16.Type, forKey key: Key) throws -> UInt16 { return try _decode(type, forKey: key) }
         func decode(_ type: UInt32.Type, forKey key: Key) throws -> UInt32 { return try _decode(type, forKey: key) }
         func decode(_ type: UInt64.Type, forKey key: Key) throws -> UInt64 { return try _decode(type, forKey: key) }
-        func decode(_ type: Float.Type, forKey key: Key) throws -> Float { return try _decode(type, forKey: key) }
-        func decode(_ type: Double.Type, forKey key: Key) throws -> Double { return try _decode(type, forKey: key) }
+        func decode(_ type: Float.Type, forKey key: Key) throws -> Float { // specialize for VRM
+            do {
+                return try _decode(type, forKey: key)
+            } catch {
+                return Float(try _decode(Int.self, forKey: key))
+            }
+        }
+        func decode(_ type: Double.Type, forKey key: Key) throws -> Double { // specialize for VRM
+            do {
+                return try _decode(type, forKey: key)
+            } catch {
+                return Double(try _decode(Int.self, forKey: key))
+            }
+        }
         func decode(_ type: String.Type, forKey key: Key) throws -> String { return try _decode(type, forKey: key) }
         func decode<T: Decodable>(_ type: T.Type, forKey key: Key) throws -> T { return try _decode(type, forKey: key) }
 
@@ -203,8 +215,20 @@ extension DictionaryDecoder {
         func decode(_ type: UInt16.Type) throws -> UInt16 { return try _decode(type) }
         func decode(_ type: UInt32.Type) throws -> UInt32 { return try _decode(type) }
         func decode(_ type: UInt64.Type) throws -> UInt64 { return try _decode(type) }
-        func decode(_ type: Float.Type) throws -> Float { return try _decode(type) }
-        func decode(_ type: Double.Type) throws -> Double { return try _decode(type) }
+        func decode(_ type: Float.Type) throws -> Float { // specialize for VRM
+            do {
+                return try _decode(type)
+            } catch {
+                return Float(try _decode(Int.self))
+            }
+        }
+        func decode(_ type: Double.Type) throws -> Double { // specialize for VRM
+            do {
+                return try _decode(type)
+            } catch {
+                return Double(try _decode(Int.self))
+            }
+        }
         func decode(_ type: String.Type) throws -> String { return try _decode(type) }
         func decode<T: Decodable>(_ type: T.Type) throws -> T { return try _decode(type) }
 
@@ -272,8 +296,20 @@ extension DictionaryDecoder {
         func decode(_ type: UInt16.Type) throws -> UInt16 { return try _decode(type) }
         func decode(_ type: UInt32.Type) throws -> UInt32 { return try _decode(type) }
         func decode(_ type: UInt64.Type) throws -> UInt64 { return try _decode(type) }
-        func decode(_ type: Float.Type) throws -> Float { return try _decode(type) }
-        func decode(_ type: Double.Type) throws -> Double { return try _decode(type) }
+        func decode(_ type: Float.Type) throws -> Float { // specialize for VRM
+            do {
+                return try _decode(type)
+            } catch {
+                return Float(try _decode(Int.self))
+            }
+        }
+        func decode(_ type: Double.Type) throws -> Double { // specialize for VRM
+            do {
+                return try _decode(type)
+            } catch {
+                return Double(try _decode(Int.self))
+            }
+        }
         func decode(_ type: String.Type) throws -> String { return try _decode(type) }
         func decode<T: Decodable>(_ type: T.Type) throws -> T {
             let container = try decoder.lastContainer(forType: type)
