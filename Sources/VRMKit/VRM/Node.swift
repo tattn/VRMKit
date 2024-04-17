@@ -80,9 +80,15 @@ extension GLTF {
                         public let extras: CodableAny?
 
                         public enum RollAxis: String, Codable {
-                            case X
-                            case Y
-                            case Z
+                            case x
+                            case y
+                            case z
+
+                            private enum CodingKeys: String, CodingKey {
+                                case x = "X"
+                                case y = "Y"
+                                case z = "Z"
+                            }
                         }
                     }
 
