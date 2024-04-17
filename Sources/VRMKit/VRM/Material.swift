@@ -144,14 +144,6 @@ extension GLTF {
                     public let texCoord: Int?
                     public let extensions: CodableAny?
                     public let extras: CodableAny?
-                    
-                    public init(from decoder: Decoder) throws {
-                        let container = try decoder.container(keyedBy: CodingKeys.self)
-                        index = try container.decode(Int.self, forKey: .index)
-                        texCoord = try container.decodeIfPresent(Int.self, forKey: .texCoord)
-                        extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                        extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-                    }
                 }
                 
                 public struct MaterialsMToonShadingShiftTexture: Codable {
