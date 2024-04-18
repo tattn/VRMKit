@@ -13,7 +13,7 @@ import Foundation
 extension GLTF {
     public struct Material: Codable {
         public let name: String?
-        public let extensions: CodableAny?
+        public let extensions: MaterialExtensions?
         public let extras: CodableAny?
         public let pbrMetallicRoughness: PbrMetallicRoughness?
         public let normalTexture: NormalTextureInfo?
@@ -101,6 +101,65 @@ extension GLTF {
             case OPAQUE
             case MASK
             case BLEND
+        }
+        
+        public struct MaterialExtensions: Codable {
+            public let materialsMToon: MaterialsMToon?
+
+            private enum CodingKeys: String, CodingKey {
+                case materialsMToon = "VRMC_materials_mtoon"
+            }
+
+            public struct MaterialsMToon: Codable {
+                public let specVersion: String
+                public let transparentWithZWrite: Bool?
+                public let renderQueueOffsetNumber: Int?
+                public let shadeColorFactor: [Double]?
+                public let shadeMultiplyTexture: MaterialsMToonTextureInfo?
+                public let shadingShiftFactor: Double?
+                public let shadingShiftTexture: MaterialsMToonShadingShiftTexture?
+                public let shadingToonyFactor: Double?
+                public let giEqualizationFactor: Double?
+                public let matcapFactor: [Double]?
+                public let matcapTexture: MaterialsMToonTextureInfo?
+                public let parametricRimColorFactor: [Double]?
+                public let rimMultiplyTexture: MaterialsMToonTextureInfo?
+                public let rimLightingMixFactor: Double?
+                public let parametricRimFresnelPowerFactor: Double?
+                public let parametricRimLiftFactor: Double?
+                public let outlineWidthMode: MaterialsMToonOutlineWidthMode?
+                public let outlineWidthFactor: Double?
+                public let outlineWidthMultiplyTexture: MaterialsMToonTextureInfo?
+                public let outlineColorFactor: [Double]?
+                public let outlineLightingMixFactor: Double?
+                public let uvAnimationMaskTexture: MaterialsMToonTextureInfo?
+                public let uvAnimationScrollXSpeedFactor: Double?
+                public let uvAnimationScrollYSpeedFactor: Double?
+                public let uvAnimationRotationSpeedFactor: Double?
+                public let extensions: CodableAny?
+                public let extras: CodableAny?
+                
+                public struct MaterialsMToonTextureInfo: Codable {
+                    public let index: Int
+                    public let texCoord: Int?
+                    public let extensions: CodableAny?
+                    public let extras: CodableAny?
+                }
+                
+                public struct MaterialsMToonShadingShiftTexture: Codable {
+                    public let index: Int
+                    public let texCoord: Int?
+                    public let scale: Double?
+                    public let extensions: CodableAny?
+                    public let extras: CodableAny?
+                }
+                
+                public enum MaterialsMToonOutlineWidthMode: String, Codable {
+                    case none
+                    case worldCoordinates
+                    case screenCoordinates
+                }
+            }
         }
     }
 }

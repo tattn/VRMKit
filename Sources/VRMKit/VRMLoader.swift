@@ -27,4 +27,20 @@ open class VRMLoader {
     open func load(withData data: Data) throws -> VRM {
         return try VRM(data: data)
     }
+
+    open func load<T: VRMFile>(_ type: T.Type = T.self, named: String) throws -> T {
+        guard let url = Bundle.main.url(forResource: named, withExtension: nil) else {
+            throw URLError(.fileDoesNotExist)
+        }
+        return try load<T>(type, withURL: url)
+    }
+
+    open func load<T: VRMFile>(_ type: T.Type = T.self, withURL url: URL) throws -> T {
+        let data = try Data(contentsOf: url)
+        return try load<T>(type, withData: data)
+    }
+
+    open func load<T: VRMFile>(_ type: T.Type = T.self, withData data: Data) throws -> T {
+        return try T(data: data)
+    }
 }

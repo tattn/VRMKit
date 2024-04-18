@@ -27,3 +27,4 @@ func ???<T>(lhs: T?,
     guard let value = lhs else { throw error() }
     return value
 }
+
