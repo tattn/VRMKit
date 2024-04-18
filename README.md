@@ -117,6 +117,9 @@ let image = try loader.loadThumbnail()
 ```
 
 # ToDo
+- [ ] VRM 1.0 support
+  - [x] Decoding VRM 1.0 file
+  - [ ] Render an avatar by SceneKit
 - [ ] VRM shaders support
 - [ ] Improve rendering quality
 - [ ] Animation support
