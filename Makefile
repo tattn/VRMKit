@@ -1,5 +1,5 @@
-PLATFORM_IOS = iOS Simulator,id=$(call udid_for,iPhone,iOS-16)
-PLATFORM_WATCHOS = watchOS Simulator,id=$(call udid_for,Watch,watchOS-9)
+PLATFORM_IOS = iOS Simulator,id=$(call udid_for,iPhone,iOS-18)
+PLATFORM_WATCHOS = watchOS Simulator,id=$(call udid_for,Watch,watchOS-11)
 
 test: test-package
 
