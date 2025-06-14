@@ -44,7 +44,10 @@ open class VRM1SceneLoader {
             throw VRMError.keyNotFound("images")
         }
         
-        let gltfImage = gltfImages[index]
+        guard index >= 0 && index < gltfImages.count,
+              let gltfImage = gltfImages[safe: index] else {
+            throw VRMError.dataInconsistent("Image index \(index) is out of bounds for \(gltfImages.count) images.")
+        }
         
         let image = try UIImage(image: gltfImage, relativeTo: rootDirectory, loader: self)
         sceneData.images[index] = image
@@ -56,7 +59,10 @@ open class VRM1SceneLoader {
             throw VRMError.keyNotFound("bufferViews")
         }
         
-        let gltfBufferView = gltfBufferViews[index]
+        guard index >= 0 && index < gltfBufferViews.count,
+              let gltfBufferView = gltfBufferViews[safe: index] else {
+            throw VRMError.dataInconsistent("BufferView index \(index) is out of bounds for \(gltfBufferViews.count) bufferViews.")
+        }
         
         if let cache = try sceneData.load(\.bufferViews, index: index) {
             return (cache, gltfBufferView.byteStride)
@@ -78,7 +84,10 @@ open class VRM1SceneLoader {
             throw VRMError.keyNotFound("buffers")
         }
         
-        let gltfBuffer = gltfBuffers[index]
+        guard index >= 0 && index < gltfBuffers.count,
+              let gltfBuffer = gltfBuffers[safe: index] else {
+            throw VRMError.dataInconsistent("Buffer index \(index) is out of bounds for \(gltfBuffers.count) buffers.")
+        }
         
         let data: Data
         if let uri = gltfBuffer.uri {
