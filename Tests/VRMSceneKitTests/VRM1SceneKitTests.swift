@@ -20,7 +20,7 @@ struct VRM1SceneLoaderTests {
         #expect(vrm1.meta.name == "Seed-san")
         #expect(gltf.asset.version == "2.0")
         #expect(try #require(gltf.buffers, "GLTF buffers should not be nil").map(\.byteLength) == [10783033])
-        #expect(gltf.bufferViews!.count == 404)
+        #expect(try #require(gltf.bufferViews, "GLTF bufferViews should not be nil").count == 404)
         #expect(gltf.scene == 0)
         #expect(gltf.scenes!.map(\.nodes).map(\.?.count) == [7])
 
