@@ -21,4 +21,16 @@ extension UIImage {
         }
         self.init(cgImage: try UIImage(data: data)?.cgImage ??? ._dataInconsistent("failed to load image"))
     }
+    
+    convenience init(image: GLTF.Image, relativeTo rootDirectory: URL?, loader: VRM1SceneLoader) throws {
+        let data: Data
+        if let uri = image.uri {
+            data = try Data(gltfUrlString: uri, relativeTo: rootDirectory)
+        } else if let bufferViewIndex = image.bufferView {
+            data = try loader.bufferView(withBufferViewIndex: bufferViewIndex).bufferView
+        } else {
+            throw VRMError._dataInconsistent("failed to load images")
+        }
+        self.init(cgImage: try UIImage(data: data)?.cgImage ??? ._dataInconsistent("failed to load image"))
+    }
 }
