@@ -21,7 +21,8 @@ struct VRM1SceneLoaderTests {
         #expect(gltf.asset.version == "2.0")
         let buffers = try #require(gltf.buffers, "GLTF buffers should not be nil")
         #expect(buffers.map(\.byteLength) == [10783033])
-        #expect(try #require(gltf.bufferViews, "GLTF bufferViews should not be nil").count == 404)
+        let bufferViews = try #require(gltf.bufferViews, "GLTF bufferViews should not be nil")
+        #expect(bufferViews.count == 404)
         #expect(gltf.scene == 0)
         #expect(try #require(gltf.scenes, "GLTF scenes should not be nil").map(\.nodes).map(\.?.count) == [7])
 
