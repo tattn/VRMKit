@@ -7,7 +7,7 @@ import Testing
 struct VRM1SceneLoaderTests {
 
     func vrm1Loader() throws -> VRM1SceneLoader {
-        let url = Bundle.module.url(forResource: "Seed-san", withExtension: "vrm")!
+        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
         return try VRM1SceneLoader(withURL: url)
     }
 
