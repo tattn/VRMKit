@@ -27,7 +27,8 @@ struct VRM1SceneLoaderTests {
         let scenes = try #require(gltf.scenes, "GLTF scenes should not be nil")
         #expect(scenes.map(\.nodes).map(\.?.count) == [7])
 
-        let thumbnail = try #require(try vrm1Loader.loadThumbnail(), "Thumbnail should be loadable and not nil.")
+        let loadedThumbnail = try vrm1Loader.loadThumbnail()
+        let thumbnail = try #require(loadedThumbnail, "Thumbnail should be loadable and not nil.")
         #expect(thumbnail.size == CGSize(width: 512, height: 512))
     }
 
