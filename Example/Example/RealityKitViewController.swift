@@ -15,7 +15,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     private var orbitPitch: Float = -0.1
     private var orbitDistance: Float = 2
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
-    private var currentExpression: RKExpression = .neutral
+    private var currentExpression: Expression = .neutral
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -52,7 +52,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         segmentedControl.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(segmentedControl)
 
-        let expressionItems = RKExpression.allCases.map { $0.displayName }
+        let expressionItems = Expression.allCases.map { $0.displayName }
         let expressionSegmentedControl = UISegmentedControl(items: expressionItems)
         expressionSegmentedControl.selectedSegmentIndex = 0
         expressionSegmentedControl.addTarget(self, action: #selector(expressionSegmentChanged(_:)), for: .valueChanged)
@@ -73,7 +73,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     }
 
     @objc private func expressionSegmentChanged(_ sender: UISegmentedControl) {
-        let expression = RKExpression.allCases[sender.selectedSegmentIndex]
+        let expression = Expression.allCases[sender.selectedSegmentIndex]
         loadedEntity?.setBlendShape(value: 0.0, for: .preset(currentExpression.preset))
         currentExpression = expression
         loadedEntity?.setBlendShape(value: 1.0, for: .preset(currentExpression.preset))
@@ -247,24 +247,5 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         return true
-    }
-}
-
-@available(iOS 18.0, *)
-private enum RKExpression: String, CaseIterable {
-    case neutral, joy, angry, sorrow, fun
-
-    var preset: BlendShapePreset {
-        switch self {
-        case .neutral: return .neutral
-        case .joy: return .joy
-        case .angry: return .angry
-        case .sorrow: return .sorrow
-        case .fun: return .fun
-        }
-    }
-
-    var displayName: String {
-        return rawValue.capitalized
     }
 }
