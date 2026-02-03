@@ -399,10 +399,11 @@ open class VRMEntityLoader {
             return vrm.materialPropertyNameMap[name]
         }()
         let shaderName = materialProperty?.shader.lowercased()
-        // VRM shaders (MToon, Unlit variants) are not PBR, so use UnlitMaterial for consistent rendering
+        // MToon / Unlit variants are not PBR, so use UnlitMaterial for consistent rendering
         // This matches SceneKit's behavior which uses lightingModel = .constant
-        let isMToon = shaderName?.contains("mtoon") == true
-        let useUnlit = shaderName?.contains("unlit") == true || isMToon || materialProperty != nil
+        let isMToon = shaderName?.contains("mtoon") == true || gltfMaterial.extensions?.materialsMToon != nil
+        let isUnlit = shaderName?.contains("unlit") == true || gltfMaterial.extensions?.materialsUnlit != nil
+        let useUnlit = isMToon || isUnlit
         let hasAlphaPremultiply = materialProperty?.keywordMap["_ALPHAPREMULTIPLY_ON"] == true
         let hasAlphaBlend = materialProperty?.keywordMap["_ALPHABLEND_ON"] == true
         let hasAlphaTest = materialProperty?.keywordMap["_ALPHATEST_ON"] == true
