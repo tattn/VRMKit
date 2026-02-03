@@ -3,7 +3,6 @@ import SceneKit
 internal import VRMKit
 internal import VRMSceneKit
 
-@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 enum VRMExampleModel: String, CaseIterable, Identifiable {
     case alicia = "AliciaSolid.vrm"
     case vrm1 = "VRM1_Constraint_Twist_Sample.vrm"
