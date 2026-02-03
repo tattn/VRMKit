@@ -22,27 +22,18 @@ open class VRMLoader {
         return try VRM(data: data)
     }
 
-    open func load<T: VRMFile>(_ type: T.Type = T.self, named: String) throws -> T {
-        guard let url = Bundle.main.url(forResource: named, withExtension: nil) else {
-            throw URLError(.fileDoesNotExist)
-        }
-        return try load(type, withURL: url)
-    }
-
-    open func load<T: VRMFile>(_ type: T.Type = T.self, withURL url: URL) throws -> T {
-        let data = try Data(contentsOf: url)
-        return try load(type, withData: data)
-    }
-
-    open func load<T: VRMFile>(_ type: T.Type = T.self, withData data: Data) throws -> T {
-        return try T(data: data)
-    }
-
     open func loadThumbnail(from vrm: VRM) throws -> VRMImage {
         guard let textureIndex = vrm.meta.texture, textureIndex >= 0 else {
             throw VRMError.thumbnailNotFound
         }
         return try loadImage(from: vrm.gltf, at: textureIndex)
+    }
+
+    open func loadThumbnail(from vrm0: VRM0) throws -> VRMImage {
+        guard let textureIndex = vrm0.meta.texture, textureIndex >= 0 else {
+            throw VRMError.thumbnailNotFound
+        }
+        return try loadImage(from: vrm0.gltf, at: textureIndex)
     }
 
     open func loadThumbnail(from vrm1: VRM1) throws -> VRMImage {

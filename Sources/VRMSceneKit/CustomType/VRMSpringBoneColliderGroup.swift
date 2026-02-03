@@ -6,7 +6,7 @@ final class VRMSpringBoneColliderGroup {
     let node: SCNNode
     let colliders: [SphereCollider]
     
-    init(colliderGroup: VRM.SecondaryAnimation.ColliderGroup, loader: VRMSceneLoader) throws {
+    init(colliderGroup: VRM0.SecondaryAnimation.ColliderGroup, loader: VRMSceneLoader) throws {
         self.node = try loader.node(withNodeIndex: colliderGroup.node)
         self.colliders = colliderGroup.colliders.map(SphereCollider.init)
     }
@@ -16,7 +16,7 @@ final class VRMSpringBoneColliderGroup {
         let offset: SIMD3<Float>
         let radius: Float
         
-        init(collider: VRM.SecondaryAnimation.ColliderGroup.Collider) {
+        init(collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) {
             self.offset = collider.offset.simd
             self.radius = Float(collider.radius)
         }

@@ -5,7 +5,7 @@ import SceneKit
 public final class Humanoid {
     var bones: [Bones: SCNNode] = [:]
 
-    func setUp(humanoid: VRM.Humanoid, nodes: [SCNNode?]) {
+    func setUp(humanoid: VRM0.Humanoid, nodes: [SCNNode?]) {
         bones = humanoid.humanBones.reduce(into: [:]) { result, humanBone in
             guard let bone = Bones(rawValue: humanBone.bone),
                 let node = nodes[humanBone.node] else { return }

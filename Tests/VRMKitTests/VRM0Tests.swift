@@ -1,14 +1,14 @@
 import XCTest
 import VRMKit
 
-class VRMTests: XCTestCase {
+class VRM0Tests: XCTestCase {
 
     let vrm = try! VRM(data: Resources.aliciaSolid.data)
-    
+
     override func setUp() {
         super.setUp()
     }
-    
+
     func testMeta() {
         XCTAssertEqual(vrm.meta.title, "Alicia Solid")
         XCTAssertEqual(vrm.meta.author, "DWANGO Co., Ltd.")
@@ -16,13 +16,13 @@ class VRMTests: XCTestCase {
         XCTAssertEqual(vrm.meta.reference, "")
         XCTAssertEqual(vrm.meta.texture, 6)
         XCTAssertEqual(vrm.meta.version, "1.0.0")
-        
+
         XCTAssertEqual(vrm.meta.allowedUserName, "Everyone")
         XCTAssertEqual(vrm.meta.violentUssageName, "Disallow")
         XCTAssertEqual(vrm.meta.sexualUssageName, "Disallow")
         XCTAssertEqual(vrm.meta.commercialUssageName, "Allow")
         XCTAssertEqual(vrm.meta.otherPermissionUrl, "http://3d.nicovideo.jp/alicia/rule.html")
-        
+
         XCTAssertEqual(vrm.meta.licenseName, "Other")
         XCTAssertEqual(vrm.meta.otherLicenseUrl, "http://3d.nicovideo.jp/alicia/rule.html")
     }
@@ -87,7 +87,7 @@ class VRMTests: XCTestCase {
         XCTAssertEqual(target.hitRadius, 0.01)
         XCTAssertEqual(target.stiffiness, 0.65)
     }
-    
+
     func testSecondaryAnimationColliderGroups() {
         let target = vrm.secondaryAnimation.colliderGroups[0]
         XCTAssertEqual(target.node, 34)
@@ -95,5 +95,13 @@ class VRMTests: XCTestCase {
         XCTAssertEqual(target.colliders[0].offset.y, 0.05)
         XCTAssertEqual(target.colliders[0].offset.z, 0.0)
         XCTAssertEqual(target.colliders[0].radius, 0.09)
+    }
+
+    func testVRMVersionDetection() {
+        guard case .v0(let vrm0) = vrm else {
+            XCTFail("Expected VRM0")
+            return
+        }
+        XCTAssertEqual(vrm0.meta.title, "Alicia Solid")
     }
 }

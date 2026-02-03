@@ -13,7 +13,7 @@ extension SCNMaterial {
         isLitPerPixel = false
         writesToDepthBuffer = material.alphaMode != .BLEND
 
-        var shader: VRM.MaterialProperty.Shader?
+        var shader: VRM0.MaterialProperty.Shader?
 
         if let name = name, let property = loader.vrm.materialPropertyNameMap[name] {
             shader = property.vrmShader

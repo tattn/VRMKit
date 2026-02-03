@@ -7,7 +7,7 @@ import VRMKit
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 open class VRMEntityLoader {
-    let vrm: VRM
+    public let vrm: VRM
     private let gltf: GLTF
     private let entityData: EntityData
 
@@ -394,7 +394,7 @@ open class VRMEntityLoader {
         if let cache = try entityData.load(\.materials, index: index) { return cache }
         let gltfMaterial = try gltf.load(\.materials)[index]
 
-        let materialProperty: VRM.MaterialProperty? = {
+        let materialProperty: VRM0.MaterialProperty? = {
             guard let name = gltfMaterial.name else { return nil }
             return vrm.materialPropertyNameMap[name]
         }()

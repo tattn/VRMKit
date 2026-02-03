@@ -5,7 +5,7 @@ import RealityKit
 public final class Humanoid {
     var bones: [Bones: Entity] = [:]
 
-    func setUp(humanoid: VRM.Humanoid, nodes: [Entity?]) {
+    func setUp(humanoid: VRM0.Humanoid, nodes: [Entity?]) {
         bones = humanoid.humanBones.reduce(into: [:]) { result, humanBone in
             guard let bone = Bones(rawValue: humanBone.bone),
                   let node = nodes[safe: humanBone.node] else { return }

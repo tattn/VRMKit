@@ -1,6 +1,6 @@
 import Foundation
 
-public struct VRM1: VRMFile {
+public struct VRM1 {
     public let gltf: BinaryGLTF
     public let specVersion: String
     public let meta: Meta

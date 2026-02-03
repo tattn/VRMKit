@@ -8,7 +8,7 @@ final class VRMEntitySpringBoneColliderGroup {
     let node: Entity
     let colliders: [SphereCollider]
 
-    init(colliderGroup: VRM.SecondaryAnimation.ColliderGroup, loader: VRMEntityLoader) throws {
+    init(colliderGroup: VRM0.SecondaryAnimation.ColliderGroup, loader: VRMEntityLoader) throws {
         self.node = try loader.node(withNodeIndex: colliderGroup.node)
         self.colliders = colliderGroup.colliders.map(SphereCollider.init)
     }
@@ -17,7 +17,7 @@ final class VRMEntitySpringBoneColliderGroup {
         let offset: SIMD3<Float>
         let radius: Float
 
-        init(collider: VRM.SecondaryAnimation.ColliderGroup.Collider) {
+        init(collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) {
             self.offset = SIMD3<Float>(Float(collider.offset.x), Float(collider.offset.y), Float(collider.offset.z))
             self.radius = Float(collider.radius)
         }

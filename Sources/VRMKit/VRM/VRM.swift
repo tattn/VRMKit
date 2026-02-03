@@ -1,190 +1,96 @@
 import Foundation
 
-public struct VRM: VRMFile {
-    public let gltf: BinaryGLTF
-    public let meta: Meta
-    public let version: String?
-    public let materialProperties: [MaterialProperty]
-    public let humanoid: Humanoid
-    public let blendShapeMaster: BlendShapeMaster
-    public let firstPerson: FirstPerson
-    public let secondaryAnimation: SecondaryAnimation
-
-    public let materialPropertyNameMap: [String: MaterialProperty]
+/// VRM data, supporting both VRM0 and VRM1 formats
+public enum VRM {
+    case v0(VRM0)
+    case v1(VRM1)
 
     public init(data: Data) throws {
-        gltf = try BinaryGLTF(data: data)
-
+        let gltf = try BinaryGLTF(data: data)
         let rawExtensions = try gltf.jsonData.extensions ??? .keyNotFound("extensions")
         let extensions = try rawExtensions.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
 
-        let decoder = DictionaryDecoder()
-
         if extensions.keys.contains("VRMC_vrm") {
-            // VRM 1.0 Support
-            let vrm1 = try VRM1(data: data)
-            
-            // Version
-            version = vrm1.specVersion
-            
-            // Meta
-            meta = Meta(vrm1: vrm1.meta)
-            
-            // Humanoid
-            humanoid = Humanoid(vrm1: vrm1.humanoid)
-            
-            // BlendShapeMaster
-            blendShapeMaster = BlendShapeMaster(vrm1: vrm1.expressions, gltf: gltf)
-            
-            // FirstPerson
-            firstPerson = FirstPerson(vrm1: vrm1.firstPerson, lookAt: vrm1.lookAt)
-            
-            // SecondaryAnimation (SpringBone)
-            secondaryAnimation = SecondaryAnimation(vrm1: vrm1.springBone)
-            
-            // MaterialProperties (MToon)
-            materialProperties = try VRM.migrateMaterials(gltf: gltf, vrm1: vrm1)
-            
-            materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
-            
+            self = .v1(try VRM1(data: data))
         } else {
-            // VRM 0.x Support
-            let vrm = try extensions["VRM"] ??? .keyNotFound("VRM")
-            
-            meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
-            version = vrm["version"] as? String
-            materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
-            humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
-            blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
-            firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
-            secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
-
-            materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
-        }
-    }
-}
-
-public extension VRM {
-    struct Meta: Codable {
-        public let title: String?
-        public let author: String?
-        public let contactInformation: String?
-        public let reference: String?
-        public let texture: Int?
-        public let version: String?
-
-        public let allowedUserName: String?
-        public let violentUssageName: String?
-        public let sexualUssageName: String?
-        public let commercialUssageName: String?
-        public let otherPermissionUrl: String?
-
-        public let licenseName: String?
-        public let otherLicenseUrl: String?
-    }
-
-    struct MaterialProperty: Codable {
-        public let name: String
-        public let shader: String
-        public let renderQueue: Int
-        public let floatProperties: CodableAny
-        public let keywordMap: [String: Bool]
-        public let tagMap: [String: String]
-        public let textureProperties: [String: Int]
-        public let vectorProperties: CodableAny
-    }
-
-    struct Humanoid: Codable {
-        public let armStretch: Double
-        public let feetSpacing: Double
-        public let hasTranslationDoF: Bool
-        public let legStretch: Double
-        public let lowerArmTwist: Double
-        public let lowerLegTwist: Double
-        public let upperArmTwist: Double
-        public let upperLegTwist: Double
-        public let humanBones: [HumanBone]
-
-        public struct HumanBone: Codable {
-            public let bone: String
-            public let node: Int
-            public let useDefaultValues: Bool
+            self = .v0(try VRM0(data: data))
         }
     }
 
-    struct BlendShapeMaster: Codable {
-        public let blendShapeGroups: [BlendShapeGroup]
-        public struct BlendShapeGroup: Codable {
-            public let binds: [Bind]?
-            public let materialValues: [MaterialValueBind]?
-            public let name: String
-            public let presetName: String
-            let _isBinary: Bool?
-            public var isBinary: Bool { return _isBinary ?? false }
-            private enum CodingKeys: String, CodingKey {
-                case binds
-                case materialValues
-                case name
-                case presetName
-                case _isBinary = "isBinary"
-            }
-            public struct Bind: Codable {
-                public let index: Int
-                public let mesh: Int
-                public let weight: Double
-            }
-            public struct MaterialValueBind: Codable {
-                public let materialName: String
-                public let propertyName: String
-                public let targetValue: [Double]
-            }
+    // MARK: - Common Interface
+
+    /// The underlying BinaryGLTF data
+    public var gltf: BinaryGLTF {
+        switch self {
+        case .v0(let vrm): return vrm.gltf
+        case .v1(let vrm): return vrm.gltf
         }
     }
 
-    struct FirstPerson: Codable {
-        public let firstPersonBone: Int
-        public let firstPersonBoneOffset: Vector3
-        public let meshAnnotations: [MeshAnnotation]
-        public let lookAtTypeName: LookAtType
-        
-        public struct MeshAnnotation: Codable {
-            public let firstPersonFlag: String
-            public let mesh: Int
-        }
-        public enum LookAtType: String, Codable {
-            case none = "None"
-            case bone = "Bone"
-            case blendShape = "BlendShape"
+    /// VRM spec version string
+    public var specVersion: String {
+        switch self {
+        case .v0(let vrm): return vrm.version ?? "0.x"
+        case .v1(let vrm): return vrm.specVersion
         }
     }
 
-    struct SecondaryAnimation: Codable {
-        public let boneGroups: [BoneGroup]
-        public let colliderGroups: [ColliderGroup]
-        public struct BoneGroup: Codable {
-            public let bones: [Int]
-            public let center: Int
-            public let colliderGroups: [Int]
-            public let comment: String?
-            public let dragForce: Double
-            public let gravityDir: Vector3
-            public let gravityPower: Double
-            public let hitRadius: Double
-            public let stiffiness: Double
-        }
-        
-        public struct ColliderGroup: Codable {
-            public let node: Int
-            public let colliders: [Collider]
-            
-            public struct Collider: Codable {
-                public let offset: Vector3
-                public let radius: Double
-            }
+    // MARK: - VRM0 Format interfaces (for current migration period)
+    // In the future, these will be replaced with VRM1 native types
+
+    /// Meta information (VRM0 format)
+    public var meta: VRM0.Meta {
+        switch self {
+        case .v0(let vrm): return vrm.meta
+        case .v1(let vrm): return VRM0.Meta(vrm1: vrm.meta)
         }
     }
 
-    struct Vector3: Codable {
-        public let x, y, z: Double
+    /// Humanoid bone mapping (VRM0 format)
+    public var humanoid: VRM0.Humanoid {
+        switch self {
+        case .v0(let vrm): return vrm.humanoid
+        case .v1(let vrm): return VRM0.Humanoid(vrm1: vrm.humanoid)
+        }
+    }
+
+    /// Material properties (VRM0 format)
+    public var materialProperties: [VRM0.MaterialProperty] {
+        switch self {
+        case .v0(let vrm): return vrm.materialProperties
+        case .v1(let vrm): return VRM0(migratedFrom: vrm).materialProperties
+        }
+    }
+
+    /// Material property name map (VRM0 format)
+    public var materialPropertyNameMap: [String: VRM0.MaterialProperty] {
+        switch self {
+        case .v0(let vrm): return vrm.materialPropertyNameMap
+        case .v1(let vrm): return VRM0(migratedFrom: vrm).materialPropertyNameMap
+        }
+    }
+
+    /// BlendShape master (VRM0 format)
+    public var blendShapeMaster: VRM0.BlendShapeMaster {
+        switch self {
+        case .v0(let vrm): return vrm.blendShapeMaster
+        case .v1(let vrm): return VRM0(migratedFrom: vrm).blendShapeMaster
+        }
+    }
+
+    /// First person settings (VRM0 format)
+    public var firstPerson: VRM0.FirstPerson {
+        switch self {
+        case .v0(let vrm): return vrm.firstPerson
+        case .v1(let vrm): return VRM0(migratedFrom: vrm).firstPerson
+        }
+    }
+
+    /// Secondary animation / spring bones (VRM0 format)
+    public var secondaryAnimation: VRM0.SecondaryAnimation {
+        switch self {
+        case .v0(let vrm): return vrm.secondaryAnimation
+        case .v1(let vrm): return VRM0(migratedFrom: vrm).secondaryAnimation
+        }
     }
 }
