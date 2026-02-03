@@ -15,13 +15,15 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     private var orbitPitch: Float = -0.1
     private var orbitDistance: Float = 2
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
+    private var currentExpression: RKExpression = .neutral
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "RealityKit"
         view.backgroundColor = .black
         setUpARView()
-        loadVRM()
+        setUpUI()
+        loadVRM(model: .alicia)
     }
 
     private func setUpARView() {
@@ -42,11 +44,51 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         setUpGestures()
     }
 
-    private func loadVRM() {
+    private func setUpUI() {
+        let items = VRMExampleModel.allCases.map { $0.displayName }
+        let segmentedControl = UISegmentedControl(items: items)
+        segmentedControl.selectedSegmentIndex = 0
+        segmentedControl.addTarget(self, action: #selector(segmentChanged(_:)), for: .valueChanged)
+        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(segmentedControl)
+
+        let expressionItems = RKExpression.allCases.map { $0.displayName }
+        let expressionSegmentedControl = UISegmentedControl(items: expressionItems)
+        expressionSegmentedControl.selectedSegmentIndex = 0
+        expressionSegmentedControl.addTarget(self, action: #selector(expressionSegmentChanged(_:)), for: .valueChanged)
+        expressionSegmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(expressionSegmentedControl)
+        
+        NSLayoutConstraint.activate([
+            segmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            segmentedControl.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -50),
+            expressionSegmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            expressionSegmentedControl.bottomAnchor.constraint(equalTo: segmentedControl.topAnchor, constant: -20)
+        ])
+    }
+
+    @objc private func segmentChanged(_ sender: UISegmentedControl) {
+        let model = VRMExampleModel.allCases[sender.selectedSegmentIndex]
+        loadVRM(model: model)
+    }
+
+    @objc private func expressionSegmentChanged(_ sender: UISegmentedControl) {
+        let expression = RKExpression.allCases[sender.selectedSegmentIndex]
+        loadedEntity?.setBlendShape(value: 0.0, for: .preset(currentExpression.preset))
+        currentExpression = expression
+        loadedEntity?.setBlendShape(value: 1.0, for: .preset(currentExpression.preset))
+    }
+
+    private func loadVRM(model: VRMExampleModel) {
         guard let arView = arView else { return }
 
+        if let loadedEntity = loadedEntity {
+            loadedEntity.entity.removeFromParent()
+            self.loadedEntity = nil
+        }
+
         do {
-            let loader = try VRMEntityLoader(named: "AliciaSolid.vrm")
+            let loader = try VRMEntityLoader(named: model.rawValue)
             let vrmEntity = try loader.loadEntity()
 
             let anchor = AnchorEntity(world: .zero)
@@ -72,10 +114,12 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
             if let rightShoulder {
                 rightShoulder.transform.rotation = rightShoulder.transform.rotation * shoulderRotation
             }
-            vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
+            vrmEntity.setBlendShape(value: 1.0, for: .preset(currentExpression.preset))
             
             loadedEntity = vrmEntity
             
+            let rotationOffset = model.initialRotation
+
             var time: TimeInterval = 0
             updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
                 guard let loadedEntity = self?.loadedEntity else { return }
@@ -92,7 +136,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
                     angle = -0.5 + 0.5 * progress
                 }
                 
-                loadedEntity.entity.transform.rotation = simd_quatf(angle: angle, axis: SIMD3<Float>(0, 1, 0))
+                loadedEntity.entity.transform.rotation = simd_quatf(angle: rotationOffset + angle, axis: SIMD3<Float>(0, 1, 0))
                 
                 loadedEntity.update(at: event.deltaTime)
             }
@@ -203,5 +247,24 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         return true
+    }
+}
+
+@available(iOS 18.0, *)
+private enum RKExpression: String, CaseIterable {
+    case neutral, joy, angry, sorrow, fun
+
+    var preset: BlendShapePreset {
+        switch self {
+        case .neutral: return .neutral
+        case .joy: return .joy
+        case .angry: return .angry
+        case .sorrow: return .sorrow
+        case .fun: return .fun
+        }
+    }
+
+    var displayName: String {
+        return rawValue.capitalized
     }
 }

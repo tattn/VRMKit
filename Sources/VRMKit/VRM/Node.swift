@@ -72,15 +72,9 @@ extension GLTF {
                         public let extras: CodableAny?
 
                         public enum RollAxis: String, Codable {
-                            case x
-                            case y
-                            case z
-
-                            private enum CodingKeys: String, CodingKey {
-                                case x = "X"
-                                case y = "Y"
-                                case z = "Z"
-                            }
+                            case x = "X"
+                            case y = "Y"
+                            case z = "Z"
                         }
                     }
 
@@ -92,21 +86,12 @@ extension GLTF {
                         public let extras: CodableAny?
 
                         public enum AimAxis: String, Codable {
-                            case positiveX
-                            case negativeX
-                            case positiveY
-                            case negativeY
-                            case positiveZ
-                            case negativeZ
-
-                            private enum CodingKeys: String, CodingKey {
-                                case positiveX = "PositiveX"
-                                case negativeX = "NegativeX"
-                                case positiveY = "PositiveY"
-                                case negativeY = "NegativeY"
-                                case positiveZ = "PositiveZ"
-                                case negativeZ = "NegativeZ"
-                            }
+                            case positiveX = "PositiveX"
+                            case negativeX = "NegativeX"
+                            case positiveY = "PositiveY"
+                            case negativeY = "NegativeY"
+                            case positiveZ = "PositiveZ"
+                            case negativeZ = "NegativeZ"
                         }
                     }
 

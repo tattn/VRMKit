@@ -17,18 +17,50 @@ public struct VRM: VRMFile {
 
         let rawExtensions = try gltf.jsonData.extensions ??? .keyNotFound("extensions")
         let extensions = try rawExtensions.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
-        let vrm = try extensions["VRM"] ??? .keyNotFound("VRM")
 
         let decoder = DictionaryDecoder()
-        meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
-        version = vrm["version"] as? String
-        materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
-        humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
-        blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
-        firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
-        secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
 
-        materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
+        if extensions.keys.contains("VRMC_vrm") {
+            // VRM 1.0 Support
+            let vrm1 = try VRM1(data: data)
+            
+            // Version
+            version = vrm1.specVersion
+            
+            // Meta
+            meta = Meta(vrm1: vrm1.meta)
+            
+            // Humanoid
+            humanoid = Humanoid(vrm1: vrm1.humanoid)
+            
+            // BlendShapeMaster
+            blendShapeMaster = BlendShapeMaster(vrm1: vrm1.expressions, gltf: gltf)
+            
+            // FirstPerson
+            firstPerson = FirstPerson(vrm1: vrm1.firstPerson, lookAt: vrm1.lookAt)
+            
+            // SecondaryAnimation (SpringBone)
+            secondaryAnimation = SecondaryAnimation(vrm1: vrm1.springBone)
+            
+            // MaterialProperties (MToon)
+            materialProperties = try VRM.migrateMaterials(gltf: gltf, vrm1: vrm1)
+            
+            materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
+            
+        } else {
+            // VRM 0.x Support
+            let vrm = try extensions["VRM"] ??? .keyNotFound("VRM")
+            
+            meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
+            version = vrm["version"] as? String
+            materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
+            humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
+            blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
+            firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
+            secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
+
+            materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
+        }
     }
 }
 

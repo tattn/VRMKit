@@ -13,14 +13,23 @@ internal import Combine
 
 struct ContentView: View {
     @State private var viewModel = ContentViewModel()
+    @State private var selectedModel: MacExampleModel = .alicia
     
     var body: some View {
         VStack {
+            Picker("Model", selection: $selectedModel) {
+                ForEach(MacExampleModel.allCases) { model in
+                    Text(model.displayName).tag(model)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding([.top, .horizontal])
+
             RealityView { content in
                 content.add(viewModel.rootEntity)
             }
-            .task {
-                await viewModel.loadEntity()
+            .task(id: selectedModel) {
+                await viewModel.loadEntity(model: selectedModel)
             }
             .onReceive(viewModel.updateTimer) { _ in
                 viewModel.update()
@@ -44,16 +53,22 @@ final class ContentViewModel {
     private var vrmEntity: VRMEntity?
     private var time: TimeInterval = 0
     private var lastUpdateTime: Date?
+    private var currentModel: MacExampleModel = .alicia
     
     let updateTimer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
     
-    func loadEntity() async {
+    func loadEntity(model: MacExampleModel) async {
         do {
-            let loader = try VRMEntityLoader(named: "AliciaSolid.vrm")
+            if let vrmEntity {
+                vrmEntity.entity.removeFromParent()
+                self.vrmEntity = nil
+            }
+
+            let loader = try VRMEntityLoader(named: model.rawValue)
             let vrmEntity = try loader.loadEntity()
             
             vrmEntity.entity.transform.translation = SIMD3<Float>(0, -1, 0)
-            vrmEntity.entity.transform.rotation = simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
+            vrmEntity.entity.transform.rotation = simd_quatf(angle: model.initialRotation, axis: SIMD3<Float>(0, 1, 0))
             rootEntity.addChild(vrmEntity.entity)
             
             // Adjust pose
@@ -75,6 +90,7 @@ final class ContentViewModel {
             vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
             
             self.vrmEntity = vrmEntity
+            self.currentModel = model
             self.lastUpdateTime = Date()
         } catch {
             errorMessage = error.localizedDescription
@@ -102,8 +118,30 @@ final class ContentViewModel {
             angle = -0.5 + 0.5 * progress
         }
         
-        vrmEntity.entity.transform.rotation = simd_quatf(angle: .pi + angle, axis: SIMD3<Float>(0, 1, 0))
+        vrmEntity.entity.transform.rotation = simd_quatf(angle: currentModel.initialRotation + angle,
+                                                         axis: SIMD3<Float>(0, 1, 0))
         vrmEntity.update(at: deltaTime)
+    }
+}
+
+enum MacExampleModel: String, CaseIterable, Identifiable {
+    case alicia = "AliciaSolid.vrm"
+    case vrm1 = "VRM1_Constraint_Twist_Sample.vrm"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .alicia: return "Alicia"
+        case .vrm1: return "VRM 1.0"
+        }
+    }
+
+    var initialRotation: Float {
+        switch self {
+        case .alicia: return .pi
+        case .vrm1: return 0
+        }
     }
 }
 

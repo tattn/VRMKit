@@ -325,11 +325,11 @@ extension VRM1 {
 
             public struct Joint: Codable {
                 public let node: Int
-                public let hitRadius: Double
-                public let stiffness: Double
-                public let gravityPower: Double
-                public let gravityDir: [Double]
-                public let dragForce: Double
+                public let hitRadius: Double?
+                public let stiffness: Double?
+                public let gravityPower: Double?
+                public let gravityDir: [Double]?
+                public let dragForce: Double?
                 public let extensions: CodableAny?
                 public let extras: CodableAny?
             }

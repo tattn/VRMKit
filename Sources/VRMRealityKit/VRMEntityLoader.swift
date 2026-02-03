@@ -399,7 +399,10 @@ open class VRMEntityLoader {
             return vrm.materialPropertyNameMap[name]
         }()
         let shaderName = materialProperty?.shader.lowercased()
-        let useUnlit = shaderName?.contains("unlit") == true
+        // VRM shaders (MToon, Unlit variants) are not PBR, so use UnlitMaterial for consistent rendering
+        // This matches SceneKit's behavior which uses lightingModel = .constant
+        let isMToon = shaderName?.contains("mtoon") == true
+        let useUnlit = shaderName?.contains("unlit") == true || isMToon || materialProperty != nil
         let hasAlphaPremultiply = materialProperty?.keywordMap["_ALPHAPREMULTIPLY_ON"] == true
         let hasAlphaBlend = materialProperty?.keywordMap["_ALPHABLEND_ON"] == true
         let hasAlphaTest = materialProperty?.keywordMap["_ALPHATEST_ON"] == true
@@ -763,19 +766,25 @@ open class VRMEntityLoader {
         let accessor = try gltf.load(\.accessors)[index]
         let (componentsPerVector, bytesPerComponent, vectorSize) = accessor.components()
 
-        let (bufferView, dataStride): (Data, Int) = try {
+        let baseData: Data = try {
             if let bufferViewIndex = accessor.bufferView {
                 let bufferView = try self.bufferView(withBufferViewIndex: bufferViewIndex)
-                return (bufferView.bufferView, bufferView.stride ?? vectorSize)
-            } else {
-                return (Data(count: vectorSize * accessor.count), vectorSize)
+                let dataStride = bufferView.stride ?? vectorSize
+                return bufferView.bufferView.subdata(offset: accessor.byteOffset,
+                                                     size: vectorSize,
+                                                     stride: dataStride,
+                                                     count: accessor.count)
             }
+            return Data(count: vectorSize * accessor.count)
         }()
 
-        let data = bufferView.subdata(offset: accessor.byteOffset,
-                                      size: vectorSize,
-                                      stride: dataStride,
-                                      count: accessor.count)
+        var data = baseData
+        if let sparse = accessor.sparse {
+            try applySparse(sparse: sparse,
+                            accessorCount: accessor.count,
+                            vectorSize: vectorSize,
+                            data: &data)
+        }
 
         let slice = AccessorSlice(
             data: data,
@@ -787,6 +796,68 @@ open class VRMEntityLoader {
         )
         entityData.accessors[index] = slice
         return slice
+    }
+
+    private func applySparse(sparse: GLTF.Accessor.Sparse,
+                             accessorCount: Int,
+                             vectorSize: Int,
+                             data: inout Data) throws {
+        guard sparse.count > 0 else { return }
+        let indices = try sparseIndices(sparse: sparse)
+        let values = try sparseValues(sparse: sparse, vectorSize: vectorSize)
+        let count = min(indices.count, sparse.count)
+        data.withUnsafeMutableBytes { rawDst in
+            guard let dst = rawDst.bindMemory(to: UInt8.self).baseAddress else { return }
+            values.withUnsafeBytes { rawSrc in
+                guard let src = rawSrc.bindMemory(to: UInt8.self).baseAddress else { return }
+                for i in 0..<count {
+                    let index = indices[i]
+                    guard index >= 0, index < accessorCount else { continue }
+                    let dstPos = index * vectorSize
+                    let srcPos = i * vectorSize
+                    memcpy(dst.advanced(by: dstPos), src.advanced(by: srcPos), vectorSize)
+                }
+            }
+        }
+    }
+
+    private func sparseIndices(sparse: GLTF.Accessor.Sparse) throws -> [Int] {
+        let bufferView = try self.bufferView(withBufferViewIndex: sparse.indices.bufferView)
+        let bytesPerIndex = bytes(of: sparse.indices.componentType)
+        let stride = bufferView.stride ?? bytesPerIndex
+        let indexData = bufferView.bufferView.subdata(offset: sparse.indices.byteOffset,
+                                                      size: bytesPerIndex,
+                                                      stride: stride,
+                                                      count: sparse.count)
+        var indices: [Int] = []
+        indices.reserveCapacity(sparse.count)
+        indexData.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            for i in 0..<sparse.count {
+                let offset = i * bytesPerIndex
+                switch sparse.indices.componentType {
+                case .unsignedByte:
+                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt8.self)))
+                case .unsignedShort:
+                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt16.self)))
+                case .unsignedInt:
+                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt32.self)))
+                default:
+                    break
+                }
+            }
+        }
+        return indices
+    }
+
+    private func sparseValues(sparse: GLTF.Accessor.Sparse,
+                              vectorSize: Int) throws -> Data {
+        let bufferView = try self.bufferView(withBufferViewIndex: sparse.values.bufferView)
+        let stride = bufferView.stride ?? vectorSize
+        return bufferView.bufferView.subdata(offset: sparse.values.byteOffset,
+                                             size: vectorSize,
+                                             stride: stride,
+                                             count: sparse.count)
     }
 
     private func vector2s(_ accessorIndex: Int) throws -> [SIMD2<Float>] {

@@ -18,6 +18,8 @@
 		06F0BD812AAD82120089488C /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06F0BD802AAD82120089488C /* VRMSceneKit */; };
 		9FD10CB0B1951449373631D5 /* VRMRealityKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B5F /* VRMRealityKit */; };
 		A1B2C3D4E5F60718293A4B60 /* VRMRealityKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B5F /* VRMRealityKit */; };
+		AF000002AF000002AF000002 /* VRM1_Constraint_Twist_Sample.vrm in Resources */ = {isa = PBXBuildFile; fileRef = AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */; };
+		AF000003AF000003AF000003 /* VRM1_Constraint_Twist_Sample.vrm in Resources */ = {isa = PBXBuildFile; fileRef = AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +63,7 @@
 		06F0BD6C2AAD81A30089488C /* WatchExample Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WatchExample Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		245725D72146F47A003AA5D7 /* VRMExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VRMExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FABF60E748F3EF7D574461 /* VisionExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VisionExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */ = {isa = PBXFileReference; lastKnownFileType = file; name = VRM1_Constraint_Twist_Sample.vrm; path = ../../Tests/VRMKitTests/Assets/VRM1_Constraint_Twist_Sample.vrm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -146,6 +149,7 @@
 			isa = PBXGroup;
 			children = (
 				06E116512F277D1700D74CA4 /* AliciaSolid.vrm */,
+				AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -340,6 +344,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				06E116522F277D1800D74CA4 /* AliciaSolid.vrm in Resources */,
+				AF000002AF000002AF000002 /* VRM1_Constraint_Twist_Sample.vrm in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -355,6 +360,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				06E116542F277ED600D74CA4 /* AliciaSolid.vrm in Resources */,
+				AF000003AF000003AF000003 /* VRM1_Constraint_Twist_Sample.vrm in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -97,10 +97,15 @@ extension GLTF {
         
         public struct MaterialExtensions: Codable {
             public let materialsMToon: MaterialsMToon?
+            public let materialsUnlit: MaterialsUnlit?
 
             private enum CodingKeys: String, CodingKey {
                 case materialsMToon = "VRMC_materials_mtoon"
+                case materialsUnlit = "KHR_materials_unlit"
             }
+            
+            /// KHR_materials_unlit extension marker (empty object in glTF)
+            public struct MaterialsUnlit: Codable {}
 
             public struct MaterialsMToon: Codable {
                 public let specVersion: String

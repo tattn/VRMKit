@@ -46,3 +46,13 @@ jobs:
               RUNTIME_PLATFORM="${{ matrix.platform }}" \
               DEVICE_NAME="${{ matrix.device_name }}" | xcbeautify
           fi
+
+  build-examples:
+    name: Build examples (iOS/visionOS/WatchOS/macOS)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build All Examples
+        run: |
+          set -o pipefail
+          make build-examples | xcbeautify

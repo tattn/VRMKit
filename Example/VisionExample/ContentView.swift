@@ -8,9 +8,18 @@ struct MainView: View {
     @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
 
     var body: some View {
+        @Bindable var appModel = appModel
         VStack(spacing: 20) {
             Text("VRM Example")
                 .font(.largeTitle)
+
+            Picker("Model", selection: $appModel.selectedModelName) {
+                ForEach(AppModel.ModelName.allCases, id: \.self) { model in
+                    Text(model.displayName).tag(model)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(appModel.immersiveSpaceState == .inTransition)
 
             Button {
                 Task {
@@ -38,6 +47,7 @@ struct MainView: View {
 }
 
 struct ImmersiveView: View {
+    @Environment(AppModel.self) private var appModel
     @State private var viewModel = ImmersiveViewModel()
 
     var body: some View {
@@ -45,7 +55,12 @@ struct ImmersiveView: View {
             content.add(viewModel.rootEntity)
         }
         .task {
-            await viewModel.loadEntity()
+            await viewModel.loadEntity(model: appModel.selectedModelName)
+        }
+        .onChange(of: appModel.selectedModelName) { _, newValue in
+            Task {
+                await viewModel.loadEntity(model: newValue)
+            }
         }
         .onReceive(viewModel.updateTimer) { _ in
             viewModel.update()
@@ -62,15 +77,28 @@ final class ImmersiveViewModel {
     private var time: TimeInterval = 0
     private var lastUpdateTime: Date?
     
+    private var baseRotation: Float = 0
+    
     let updateTimer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
-    func loadEntity() async {
+    func loadEntity(model: AppModel.ModelName) async {
+        let modelName = model.rawValue
+        
+        // Clean up previous
+        if let current = vrmEntity {
+            current.entity.removeFromParent()
+            vrmEntity = nil
+        }
+        
+        // Alicia (VRM0) needs 180 degree rotation to face camera, VRM1 samples often don't
+        baseRotation = model.initialRotation
+        
         do {
-            let loader = try VRMEntityLoader(named: "AliciaSolid.vrm")
+            let loader = try VRMEntityLoader(named: modelName)
             let vrmEntity = try loader.loadEntity()
             
             vrmEntity.entity.transform.translation = SIMD3<Float>(0, 0, -1.5)
-            vrmEntity.entity.transform.rotation = simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
+            vrmEntity.entity.transform.rotation = simd_quatf(angle: baseRotation, axis: SIMD3<Float>(0, 1, 0))
             rootEntity.addChild(vrmEntity.entity)
 
             // Adjust pose
@@ -119,7 +147,7 @@ final class ImmersiveViewModel {
             angle = -0.5 + 0.5 * progress
         }
         
-        vrmEntity.entity.transform.rotation = simd_quatf(angle: .pi + angle, axis: SIMD3<Float>(0, 1, 0))
+        vrmEntity.entity.transform.rotation = simd_quatf(angle: baseRotation + angle, axis: SIMD3<Float>(0, 1, 0))
         vrmEntity.update(at: deltaTime)
     }
 }
