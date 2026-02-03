@@ -48,8 +48,8 @@ final class AppModel {
 
         var initialRotation: Float {
             switch self {
-            case .alicia: return 0
-            case .vrm1: return .pi
+            case .alicia: return .pi
+            case .vrm1: return 0
             }
         }
     }
