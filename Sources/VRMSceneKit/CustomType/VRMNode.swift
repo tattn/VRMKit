@@ -1,5 +1,6 @@
 import SceneKit
 import VRMKit
+import VRMKitRuntime
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 open class VRMNode: SCNNode {

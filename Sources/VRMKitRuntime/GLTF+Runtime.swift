@@ -1,6 +1,6 @@
 import VRMKit
 
-protocol GLTFTextureInfoProtocol {
+public protocol GLTFTextureInfoProtocol {
     var index: Int { get }
     var texCoord: Int { get }
 }

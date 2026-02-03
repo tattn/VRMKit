@@ -1,6 +1,7 @@
 #if canImport(RealityKit)
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 import Foundation
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

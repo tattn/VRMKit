@@ -1,26 +1,7 @@
 import SceneKit
-
-public protocol UnityTransformCompatible {
-    associatedtype CompatibleType
-    
-    var utx: CompatibleType { get }
-}
+import VRMKitRuntime
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-public final class UnityTransform<Base> {
-    private let base: Base
-    public init(_ base: Base) {
-        self.base = base
-    }
-}
-
-@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-public extension UnityTransformCompatible {
-    var utx: UnityTransform<Self> {
-        return UnityTransform(self)
-    }
-}
-
 extension SCNNode: UnityTransformCompatible {}
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")

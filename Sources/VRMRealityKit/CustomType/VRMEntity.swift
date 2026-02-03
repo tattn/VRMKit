@@ -3,6 +3,7 @@ import CoreGraphics
 import Foundation
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct BlendShapeNormalTangentComponent: Component {
@@ -360,4 +361,3 @@ public final class VRMEntity {
     }
 }
 #endif
-

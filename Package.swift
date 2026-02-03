@@ -12,12 +12,16 @@ let package = Package(
     targets: [
         .target(name: "VRMKit"),
         .target(
-            name: "VRMSceneKit",
+            name: "VRMKitRuntime",
             dependencies: ["VRMKit"]
         ),
         .target(
+            name: "VRMSceneKit",
+            dependencies: ["VRMKit", "VRMKitRuntime"]
+        ),
+        .target(
             name: "VRMRealityKit",
-            dependencies: ["VRMKit"]
+            dependencies: ["VRMKit", "VRMKitRuntime"]
         ),
 
         .testTarget(

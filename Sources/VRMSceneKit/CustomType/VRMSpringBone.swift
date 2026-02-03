@@ -1,6 +1,7 @@
 import SceneKit
 import GameKit
 import VRMKit
+import VRMKitRuntime
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 final class VRMSpringBone {

@@ -1,24 +1,7 @@
 #if canImport(RealityKit)
 import RealityKit
 import simd
-
-public protocol UnityTransformCompatible {
-    associatedtype CompatibleType
-    var utx: CompatibleType { get }
-}
-
-public final class UnityTransform<Base> {
-    private let base: Base
-    public init(_ base: Base) {
-        self.base = base
-    }
-}
-
-public extension UnityTransformCompatible {
-    var utx: UnityTransform<Self> {
-        UnityTransform(self)
-    }
-}
+import VRMKitRuntime
 
 extension Entity: UnityTransformCompatible {}
 

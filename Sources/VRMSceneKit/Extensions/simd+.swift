@@ -1,20 +1,6 @@
 import simd
 import SceneKit
 
-extension SIMD3 where Scalar == Float {
-    var normalized: SIMD3 {
-        simd_normalize(self)
-    }
-    
-    var length: Scalar {
-        simd_length(self)
-    }
-    
-    var length_squared: Scalar {
-        simd_length_squared(self)
-    }
-}
-
 extension simd_float4x4 {
     func multiplyPoint(_ v: SIMD3<Float>) -> SIMD3<Float> {
         let scn = SCNMatrix4(self)
@@ -40,11 +26,3 @@ extension simd_float4x4 {
         return vector3
     }
 }
-
-extension simd_quatf {
-    static func * (_ left: simd_quatf, _ right: SIMD3<Float>) -> SIMD3<Float> {
-        simd_act(left, right)
-    }
-}
-
-nonisolated(unsafe) var quat_identity_float = simd_quatf(matrix_identity_float4x4)

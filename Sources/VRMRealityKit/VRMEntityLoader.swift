@@ -3,6 +3,7 @@ import CoreGraphics
 import RealityKit
 import Metal
 import VRMKit
+import VRMKitRuntime
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor

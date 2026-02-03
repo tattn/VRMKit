@@ -1,4 +1,5 @@
 import VRMKit
+import VRMKitRuntime
 import SceneKit
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
