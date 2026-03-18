@@ -149,10 +149,10 @@ vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
 ```swift
 vrmEntity.setBlendShape(value: 1.0, for: .preset(.fun))
 let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-let shoulderRotation = simd_quatf(angle: 40 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
+let upperArmRotation = simd_quatf(angle: 40 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
 vrmEntity.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
-vrmEntity.humanoid.node(for: .leftShoulder)?.transform.rotation *= shoulderRotation
-vrmEntity.humanoid.node(for: .rightShoulder)?.transform.rotation *= shoulderRotation
+vrmEntity.humanoid.node(for: .leftUpperArm)?.transform.rotation *= upperArmRotation
+vrmEntity.humanoid.node(for: .rightUpperArm)?.transform.rotation *= upperArmRotation
 ```
 
 ### Read the thumbnail image

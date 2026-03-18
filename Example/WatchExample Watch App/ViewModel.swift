@@ -55,8 +55,8 @@ final class ViewModel: ObservableObject {
             let rotationOffset = model.initialRotation
             node.eulerAngles = SCNVector3(0, rotationOffset, 0)
 
-            node.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
-            node.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / -180)
+            node.humanoid.node(for: .leftUpperArm)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+            node.humanoid.node(for: .rightUpperArm)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / -180)
 
             node.runAction(.repeatForever(.sequence([
                 .wait(duration: 3.0),

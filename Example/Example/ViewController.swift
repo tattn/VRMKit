@@ -114,8 +114,8 @@ class ViewController: UIViewController {
             node.setBlendShape(value: 1.0, for: .preset(currentExpression.preset))
             
             node.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
-            node.humanoid.node(for: .leftShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
-            node.humanoid.node(for: .rightShoulder)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+            node.humanoid.node(for: .leftUpperArm)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+            node.humanoid.node(for: .rightUpperArm)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
             
             node.runAction(SCNAction.repeatForever(SCNAction.sequence([
                 SCNAction.rotateBy(x: 0, y: -0.5, z: 0, duration: 0.5),

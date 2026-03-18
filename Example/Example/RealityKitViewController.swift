@@ -100,19 +100,19 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
             updateCameraTransform()
             
             let neck = vrmEntity.humanoid.node(for: .neck)
-            let leftShoulder = vrmEntity.humanoid.node(for: .leftShoulder) ?? vrmEntity.humanoid.node(for: .leftUpperArm)
-            let rightShoulder = vrmEntity.humanoid.node(for: .rightShoulder) ?? vrmEntity.humanoid.node(for: .rightUpperArm)
+            let leftUpperArm = vrmEntity.humanoid.node(for: .leftUpperArm)
+            let rightUpperArm = vrmEntity.humanoid.node(for: .rightUpperArm)
             
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            let shoulderRotation = simd_quatf(angle: 40 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
+            let upperArmRotation = simd_quatf(angle: 40 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
             if let neck {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
             }
-            if let leftShoulder {
-                leftShoulder.transform.rotation = leftShoulder.transform.rotation * shoulderRotation
+            if let leftUpperArm {
+                leftUpperArm.transform.rotation = leftUpperArm.transform.rotation * upperArmRotation
             }
-            if let rightShoulder {
-                rightShoulder.transform.rotation = rightShoulder.transform.rotation * shoulderRotation
+            if let rightUpperArm {
+                rightUpperArm.transform.rotation = rightUpperArm.transform.rotation * upperArmRotation
             }
             vrmEntity.setBlendShape(value: 1.0, for: .preset(currentExpression.preset))
             
