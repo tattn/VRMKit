@@ -10,6 +10,7 @@ import SwiftUI
 import RealityKit
 internal import VRMRealityKit
 internal import Combine
+internal import VRMKit
 
 struct ContentView: View {
     @State private var viewModel = ContentViewModel()
