@@ -114,8 +114,18 @@ class ViewController: UIViewController {
             node.setBlendShape(value: 1.0, for: .preset(currentExpression.preset))
             
             node.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
-            node.humanoid.node(for: .leftUpperArm)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
-            node.humanoid.node(for: .rightUpperArm)?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+            let leftArm: SCNNode?
+            let rightArm: SCNNode?
+            switch node.vrm {
+            case .v1:
+                leftArm = node.humanoid.node(for: .leftShoulder)
+                rightArm = node.humanoid.node(for: .rightShoulder)
+            case .v0:
+                leftArm = node.humanoid.node(for: .leftUpperArm)
+                rightArm = node.humanoid.node(for: .rightUpperArm)
+            }
+            leftArm?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
+            rightArm?.eulerAngles = SCNVector3(0, 0, 40 * CGFloat.pi / 180)
             
             node.runAction(SCNAction.repeatForever(SCNAction.sequence([
                 SCNAction.rotateBy(x: 0, y: -0.5, z: 0, duration: 0.5),
