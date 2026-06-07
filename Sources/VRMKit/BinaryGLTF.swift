@@ -32,6 +32,26 @@ package extension BinaryGLTF {
 }
 
 extension BinaryGLTF {
+    public init(jsonDataOnly data: Data) throws {
+        var offset = MemoryLayout<UInt32>.size // skip `magic`
+        let rawVersion: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+        guard let version = GLTF.Version(rawValue: rawVersion), version == .two else {
+            throw VRMError.notSupportedVersion(rawVersion)
+        }
+        self.version = version
+
+        _ = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size) as UInt32
+        let chunk0Length: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+        let chunk0Type: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)
+        guard ChunkType(rawValue: chunk0Type) == .json else {
+            throw VRMError.notSupportedChunkType(chunk0Type)
+        }
+        let jsonData = read(data, offset: &offset, size: Int(chunk0Length))
+        let decoder = JSONDecoder()
+        self.jsonData = try decoder.decode(GLTF.self, from: jsonData)
+        binaryBuffer = nil
+    }
+
     public init(data: Data) throws {
         var offset = MemoryLayout<UInt32>.size // skip `magic`
         let rawVersion: UInt32 = try read(data, offset: &offset, size: MemoryLayout<UInt32>.size)

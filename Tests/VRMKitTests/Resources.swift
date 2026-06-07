@@ -5,13 +5,15 @@ enum Resources {
     case seedSan
 
     var data: Data {
+        return try! Data(contentsOf: url)
+    }
+
+    var url: URL {
         switch self {
         case .aliciaSolid:
-            let url = Bundle.module.url(forResource: "AliciaSolid", withExtension: "vrm")!
-            return try! Data(contentsOf: url)
+            return Bundle.module.url(forResource: "AliciaSolid", withExtension: "vrm")!
         case .seedSan:
-            let url = Bundle.module.url(forResource: "Seed-san", withExtension: "vrm")!
-            return try! Data(contentsOf: url)
+            return Bundle.module.url(forResource: "Seed-san", withExtension: "vrm")!
         }
     }
 }

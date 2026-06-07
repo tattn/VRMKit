@@ -22,6 +22,26 @@ open class VRMLoader {
         return try VRM(data: data)
     }
 
+    open func loadMeta(withURL url: URL) throws -> VRM0.Meta {
+        let data = try Data(contentsOf: url)
+        return try loadMeta(withData: data)
+    }
+
+    open func loadMeta(withData data: Data) throws -> VRM0.Meta {
+        let gltf = try BinaryGLTF(jsonDataOnly: data)
+        let rawExtensions = try gltf.jsonData.extensions ??? .keyNotFound("extensions")
+        let extensions = try rawExtensions.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
+        let decoder = DictionaryDecoder()
+
+        if let vrm1 = extensions["VRMC_vrm"] {
+            let meta = try decoder.decode(VRM1.Meta.self, from: try vrm1["meta"] ??? .keyNotFound("meta"))
+            return VRM0.Meta(vrm1: meta)
+        }
+
+        let vrm0 = try extensions["VRM"] ??? .keyNotFound("VRM")
+        return try decoder.decode(VRM0.Meta.self, from: try vrm0["meta"] ??? .keyNotFound("meta"))
+    }
+
     open func loadThumbnail(from vrm: VRM) throws -> VRMImage {
         guard let textureIndex = vrm.meta.texture, textureIndex >= 0 else {
             throw VRMError.thumbnailNotFound
