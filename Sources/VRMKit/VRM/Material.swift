@@ -35,7 +35,7 @@ extension GLTF {
 
         public struct PbrMetallicRoughness: Codable {
             let _baseColorFactor: Color4?
-            public var baseColorFactor: Color4 { return _baseColorFactor ?? .init(r: 0, g: 0, b: 0, a: 0) }
+            public var baseColorFactor: Color4 { return _baseColorFactor ?? .init(r: 1, g: 1, b: 1, a: 1) }
             public let baseColorTexture: TextureInfo?
             let _metallicFactor: Float?
             public var metallicFactor: Float { return _metallicFactor ?? 1 }

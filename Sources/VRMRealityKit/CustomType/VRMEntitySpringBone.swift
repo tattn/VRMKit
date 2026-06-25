@@ -7,9 +7,47 @@ import Foundation
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 final class VRMEntitySpringBone {
-    struct SphereCollider {
-        let position: SIMD3<Float>
+    struct Collider {
+        let head: SIMD3<Float>
+        let tail: SIMD3<Float>?
         let radius: Float
+
+        func closestPoint(to point: SIMD3<Float>) -> SIMD3<Float> {
+            guard let tail else { return head }
+            let segment = tail - head
+            let lengthSquared = segment.length_squared
+            guard lengthSquared > 0 else { return head }
+            let t = max(0, min(1, simd_dot(point - head, segment) / lengthSquared))
+            return head + segment * t
+        }
+    }
+
+    struct JointSetting {
+        let stiffnessForce: Float
+        let gravityPower: Float
+        let gravityDir: SIMD3<Float>
+        let dragForce: Float
+        let hitRadius: Float
+
+        init(stiffnessForce: Float = 1.0,
+             gravityPower: Float = 0.0,
+             gravityDir: SIMD3<Float> = .init(0, -1, 0),
+             dragForce: Float = 0.4,
+             hitRadius: Float = 0.02) {
+            self.stiffnessForce = stiffnessForce
+            self.gravityPower = gravityPower
+            self.gravityDir = gravityDir
+            self.dragForce = dragForce
+            self.hitRadius = hitRadius
+        }
+
+        init(joint: VRM1.SpringBone.Spring.Joint) {
+            self.init(stiffnessForce: Float(joint.stiffness ?? 1.0),
+                      gravityPower: Float(joint.gravityPower ?? 0.0),
+                      gravityDir: SIMD3<Float>(joint.gravityDir, defaultValue: SIMD3<Float>(0, -1, 0)),
+                      dragForce: Float(joint.dragForce ?? 0.5),
+                      hitRadius: Float(joint.hitRadius ?? 0.02))
+        }
     }
 
     public let comment: String?
@@ -24,7 +62,9 @@ final class VRMEntitySpringBone {
     private var initialLocalRotations: [(Entity, simd_quatf)] = []
     private let colliderGroups: [VRMEntitySpringBoneColliderGroup]
     private var verlet: [VRMEntitySpringBoneLogic] = []
-    private var colliderList: [SphereCollider] = []
+    private var colliderList: [Collider] = []
+    private let jointChain: [Entity]?
+    private let jointSettings: [ObjectIdentifier: JointSetting]
 
     init(center: Entity?,
          rootBones: [Entity],
@@ -34,6 +74,8 @@ final class VRMEntitySpringBone {
          gravityDir: SIMD3<Float> = .init(0, -1, 0),
          dragForce: Float = 0.4,
          hitRadius: Float = 0.02,
+         jointChain: [Entity]? = nil,
+         jointSettings: [ObjectIdentifier: JointSetting] = [:],
          colliderGroups: [VRMEntitySpringBoneColliderGroup] = []) {
         self.center = center
         self.rootBones = rootBones
@@ -43,6 +85,8 @@ final class VRMEntitySpringBone {
         self.gravityDir = gravityDir
         self.dragForce = dragForce
         self.hitRadius = hitRadius
+        self.jointChain = jointChain
+        self.jointSettings = jointSettings
         self.colliderGroups = colliderGroups
         setup()
     }
@@ -54,11 +98,18 @@ final class VRMEntitySpringBone {
         initialLocalRotations = []
         verlet = []
 
-        for root in rootBones {
-            enumerateHierarchy(root) { node in
+        if let jointChain, !jointChain.isEmpty {
+            for node in jointChain {
                 initialLocalRotations.append((node, node.utx.localRotation))
             }
-            setupRecursive(center, root)
+            setupChain(center, jointChain)
+        } else {
+            for root in rootBones {
+                enumerateHierarchy(root) { node in
+                    initialLocalRotations.append((node, node.utx.localRotation))
+                }
+                setupRecursive(center, root)
+            }
         }
     }
 
@@ -97,6 +148,28 @@ final class VRMEntitySpringBone {
         }
     }
 
+    private func setupChain(_ center: Entity?, _ joints: [Entity]) {
+        for index in joints.indices {
+            let joint = joints[index]
+            let localChildPosition: SIMD3<Float>
+            if joints.indices.contains(index + 1) {
+                localChildPosition = joint.utx.worldToLocalMatrix.multiplyPoint(joints[index + 1].utx.position)
+            } else if let firstChild = joint.children.first {
+                localChildPosition = firstChild.utx.localPosition * firstChild.utx.lossyScale
+            } else if let parent = joint.parent {
+                let delta = joint.utx.position - parent.utx.position
+                let childPosition = joint.utx.position + delta.normalized * 0.07
+                localChildPosition = joint.utx.worldToLocalMatrix.multiplyPoint(childPosition)
+            } else {
+                continue
+            }
+            let logic = VRMEntitySpringBoneLogic(center: center,
+                                                 node: joint,
+                                                 localChildPosition: localChildPosition)
+            verlet.append(logic)
+        }
+    }
+
     func update(deltaTime: TimeInterval) {
         if verlet.isEmpty {
             if rootBones.isEmpty {
@@ -108,21 +181,22 @@ final class VRMEntitySpringBone {
         colliderList = []
         for group in colliderGroups {
             for collider in group.colliders {
-                colliderList.append(SphereCollider(
-                    position: group.node.utx.transformPoint(collider.offset),
-                    radius: collider.radius
-                ))
+                colliderList.append(collider.worldCollider)
             }
         }
 
-        let stiffness = stiffnessForce * Float(deltaTime)
-        let external = gravityDir * (gravityPower * Float(deltaTime))
-
         for logic in verlet {
-            logic.radius = hitRadius
+            let setting = jointSettings[ObjectIdentifier(logic.head)] ?? JointSetting(stiffnessForce: stiffnessForce,
+                                                                                      gravityPower: gravityPower,
+                                                                                      gravityDir: gravityDir,
+                                                                                      dragForce: dragForce,
+                                                                                      hitRadius: hitRadius)
+            let stiffness = setting.stiffnessForce * Float(deltaTime)
+            let external = setting.gravityDir * (setting.gravityPower * Float(deltaTime))
+            logic.radius = setting.hitRadius
             logic.update(center: center,
                          stiffnessForce: stiffness,
-                         dragForce: dragForce,
+                         dragForce: setting.dragForce,
                          external: external,
                          colliders: colliderList)
         }
@@ -159,7 +233,7 @@ extension VRMEntitySpringBone {
                     stiffnessForce: Float,
                     dragForce: Float,
                     external: SIMD3<Float>,
-                    colliders: [SphereCollider]) {
+                    colliders: [Collider]) {
             let currentTail: SIMD3<Float> = center?.utx.transformPoint(self.currentTail) ?? self.currentTail
             let prevTail: SIMD3<Float> = center?.utx.transformPoint(self.prevTail) ?? self.prevTail
 
@@ -185,18 +259,26 @@ extension VRMEntitySpringBone {
             return simd_quatf(from: rotation * boneAxis, to: nextTail - node.utx.position) * rotation
         }
 
-        private func collision(_ colliders: [SphereCollider], _ nextTail: SIMD3<Float>) -> SIMD3<Float> {
+        private func collision(_ colliders: [Collider], _ nextTail: SIMD3<Float>) -> SIMD3<Float> {
             var nextTail = nextTail
             for collider in colliders {
+                let colliderPosition = collider.closestPoint(to: nextTail)
                 let r = radius + collider.radius
-                if (nextTail - collider.position).length_squared <= (r * r) {
-                    let normal = (nextTail - collider.position).normalized
-                    let posFromCollider = collider.position + normal * (radius + collider.radius)
+                if (nextTail - colliderPosition).length_squared <= (r * r) {
+                    let normal = (nextTail - colliderPosition).normalized
+                    let posFromCollider = colliderPosition + normal * (radius + collider.radius)
                     nextTail = node.utx.position + (posFromCollider - node.utx.position).normalized * length
                 }
             }
             return nextTail
         }
+    }
+}
+private extension SIMD3 where Scalar == Float {
+    init(_ values: [Double]?, defaultValue: SIMD3<Float>) {
+        self.init(Float(values?[safe: 0] ?? Double(defaultValue.x)),
+                  Float(values?[safe: 1] ?? Double(defaultValue.y)),
+                  Float(values?[safe: 2] ?? Double(defaultValue.z)))
     }
 }
 #endif

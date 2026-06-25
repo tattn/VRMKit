@@ -89,3 +89,12 @@ extension GLTF.Color4 {
         return .init(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
     }
 }
+
+extension SKColor {
+    convenience init(color3 values: [Double], alpha: CGFloat) {
+        self.init(red: CGFloat(values[safe: 0] ?? 0),
+                  green: CGFloat(values[safe: 1] ?? 0),
+                  blue: CGFloat(values[safe: 2] ?? 0),
+                  alpha: alpha)
+    }
+}

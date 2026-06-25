@@ -1,6 +1,7 @@
 import VRMKit
 @testable import VRMSceneKit
 import SceneKit
+import simd
 import Testing
 
 @Suite
@@ -41,5 +42,70 @@ struct VRM1SceneLoaderTests {
         let result = try vrmLoader.bufferView(withBufferViewIndex: 0)
         #expect(result.stride == nil)
         #expect(result.bufferView.count == 93840)
+    }
+
+    @Test
+    func testVRM1NativeExpressionBindingsUseNodes() throws {
+        let vrmLoader = try vrmLoader()
+        let scene = try vrmLoader.loadScene()
+        let vrmNode = scene.vrmNode
+
+        #expect(vrmNode.blendShapeClips.count == 18)
+        let happyBinding = try #require(vrmNode.blendShapeClips[.preset(.happy)]?.values.first)
+        #expect(happyBinding.mesh === (try vrmLoader.node(withNodeIndex: 2)))
+        #expect(vrmNode.blendShapeClips[.preset(.aa)]?.values.first?.index == 25)
+
+        vrmNode.setBlendShape(value: 0.42, for: .preset(.aa))
+        #expect(abs(vrmNode.blendShape(for: .preset(.aa)) - 0.42) < 0.001)
+        #expect(abs(vrmNode.blendShape(for: .preset(.a)) - 0.42) < 0.001)
+    }
+
+    @Test
+    func testVRM1FirstPersonAnnotationsUseNodes() throws {
+        let vrmLoader = try vrmLoader()
+        let scene = try vrmLoader.loadScene()
+        let annotatedNode = try vrmLoader.node(withNodeIndex: 0)
+
+        #expect(annotatedNode.isHidden == false)
+        scene.vrmNode.setFirstPersonRenderMode(.firstPerson)
+        #expect(annotatedNode.isHidden == true)
+        scene.vrmNode.setFirstPersonRenderMode(.thirdPerson)
+        #expect(annotatedNode.isHidden == false)
+    }
+
+    @Test
+    func testVRM1MToonMaterialIsLoadedFromExtension() throws {
+        let vrmLoader = try vrmLoader()
+        let material = try vrmLoader.material(withMaterialIndex: 0)
+        let gltfMaterial = try #require(vrmLoader.vrm.gltf.jsonData.materials?[0])
+
+        #expect(material.name == gltfMaterial.name)
+        #expect(material.lightingModel == .constant)
+        #expect(material.isLitPerPixel == false)
+        #expect(material.writesToDepthBuffer == true)
+    }
+
+    @Test
+    func testVRM1NodeConstraintRotationIsApplied() throws {
+        let vrmLoader = try vrmLoader()
+        let scene = try vrmLoader.loadScene()
+        let target = try vrmLoader.node(withNodeIndex: 14)
+        let source = try vrmLoader.node(withNodeIndex: 82)
+
+        let targetRest = target.simdOrientation
+        let sourceRest = source.simdOrientation
+        let sourceDelta = simd_quatf(angle: 0.35, axis: simd_normalize(SIMD3<Float>(0.2, 0.9, 0.3)))
+        source.simdOrientation = sourceRest * sourceDelta
+
+        scene.vrmNode.update(at: 0)
+
+        let expected = targetRest * (simd_inverse(sourceRest) * source.simdOrientation)
+        #expect(target.simdOrientation.isApproximatelyEqual(to: expected))
+    }
+}
+
+private extension simd_quatf {
+    func isApproximatelyEqual(to other: simd_quatf, tolerance: Float = 0.0001) -> Bool {
+        abs(simd_dot(vector, other.vector)) > 1.0 - tolerance
     }
 }
