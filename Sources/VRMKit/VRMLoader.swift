@@ -35,7 +35,11 @@ open class VRMLoader {
         guard let textureIndex = vrm0.meta.texture, textureIndex >= 0 else {
             throw VRMError.thumbnailNotFound
         }
-        let texture = try vrm0.gltf.jsonData.load(\.textures)[textureIndex]
+        let textures = try vrm0.gltf.jsonData.load(\.textures)
+        guard textures.indices.contains(textureIndex) else {
+            throw VRMError.thumbnailNotFound
+        }
+        let texture = textures[textureIndex]
         return try loadImage(from: vrm0.gltf, at: texture.source)
     }
 
@@ -47,7 +51,11 @@ open class VRMLoader {
     }
 
     private func loadImage(from gltf: BinaryGLTF, at index: Int, relativeTo rootDirectory: URL? = nil) throws -> VRMImage {
-        let gltfImage = try gltf.jsonData.load(\.images)[index]
+        let images = try gltf.jsonData.load(\.images)
+        guard images.indices.contains(index) else {
+            throw VRMError.thumbnailNotFound
+        }
+        let gltfImage = images[index]
         let imageData: Data
         if let uri = gltfImage.uri {
             imageData = try Data(gltfUrlString: uri, relativeTo: rootDirectory)

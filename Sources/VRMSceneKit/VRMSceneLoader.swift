@@ -48,11 +48,23 @@ open class VRMSceneLoader {
             guard let textureIndex = vrm0.meta.texture, textureIndex >= 0 else {
                 throw VRMError.thumbnailNotFound
             }
-            let texture = try gltf.load(\.textures)[textureIndex]
+            let textures = try gltf.load(\.textures)
+            guard textures.indices.contains(textureIndex) else {
+                throw VRMError.thumbnailNotFound
+            }
+            let texture = textures[textureIndex]
+            let images = try gltf.load(\.images)
+            guard images.indices.contains(texture.source) else {
+                throw VRMError.thumbnailNotFound
+            }
             if let cache = try sceneData.load(\.images, index: texture.source) { return cache }
             return try image(withImageIndex: texture.source)
         case .v1(let vrm1):
             guard let imageIndex = vrm1.meta.thumbnailImage, imageIndex >= 0 else {
+                throw VRMError.thumbnailNotFound
+            }
+            let images = try gltf.load(\.images)
+            guard images.indices.contains(imageIndex) else {
                 throw VRMError.thumbnailNotFound
             }
             if let cache = try sceneData.load(\.images, index: imageIndex) { return cache }

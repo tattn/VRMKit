@@ -126,7 +126,8 @@ final class VRMSpringBone {
                 localChildPosition = firstChild.utx.localPosition * firstChild.utx.lossyScale
             } else if let parent = joint.parent {
                 let delta = joint.utx.position - parent.utx.position
-                let childPosition = joint.utx.position + delta.normalized * 0.07
+                let direction = delta.length_squared > Float.ulpOfOne ? delta.normalized : SIMD3<Float>(0, -1, 0)
+                let childPosition = joint.utx.position + direction * 0.07
                 localChildPosition = joint.utx.worldToLocalMatrix.multiplyPoint(childPosition)
             } else {
                 continue
@@ -139,7 +140,8 @@ final class VRMSpringBone {
     private func setupRecursive(_ center: SCNNode?, _ parent: SCNNode) {
         if parent.utx.childCount == 0 {
             let delta = parent.utx.position - parent.parent!.utx.position
-            let childPosition = parent.utx.position + delta.normalized * 0.07
+            let direction = delta.length_squared > Float.ulpOfOne ? delta.normalized : SIMD3<Float>(0, -1, 0)
+            let childPosition = parent.utx.position + direction * 0.07
             let logic = VRMSpringBoneLogic(center: center, node: parent, localChildPosition: parent.utx.worldToLocalMatrix.multiplyPoint(childPosition))
             self.verlet.append(logic)
         } else {

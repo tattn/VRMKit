@@ -576,7 +576,13 @@ private struct NodeConstraintBinding {
     }
 
     static func ordered(_ bindings: [NodeConstraintBinding]) throws -> [NodeConstraintBinding] {
-        let byTargetIndex = Dictionary(uniqueKeysWithValues: bindings.map { ($0.targetIndex, $0) })
+        var byTargetIndex: [Int: NodeConstraintBinding] = [:]
+        for binding in bindings {
+            if byTargetIndex[binding.targetIndex] != nil {
+                throw VRMError._dataInconsistent("Multiple constraints targeting the same node \(binding.targetIndex)")
+            }
+            byTargetIndex[binding.targetIndex] = binding
+        }
         var states: [Int: VisitState] = [:]
         var result: [NodeConstraintBinding] = []
 

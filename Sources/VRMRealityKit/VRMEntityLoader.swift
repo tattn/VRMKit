@@ -62,11 +62,23 @@ open class VRMEntityLoader {
             guard let textureIndex = vrm0.meta.texture, textureIndex >= 0 else {
                 throw VRMError.thumbnailNotFound
             }
-            let texture = try gltf.load(\.textures)[textureIndex]
+            let textures = try gltf.load(\.textures)
+            guard textures.indices.contains(textureIndex) else {
+                throw VRMError.thumbnailNotFound
+            }
+            let texture = textures[textureIndex]
+            let images = try gltf.load(\.images)
+            guard images.indices.contains(texture.source) else {
+                throw VRMError.thumbnailNotFound
+            }
             if let cache = try entityData.load(\.images, index: texture.source) { return cache }
             return try image(withImageIndex: texture.source)
         case .v1(let vrm1):
             guard let imageIndex = vrm1.meta.thumbnailImage, imageIndex >= 0 else {
+                throw VRMError.thumbnailNotFound
+            }
+            let images = try gltf.load(\.images)
+            guard images.indices.contains(imageIndex) else {
                 throw VRMError.thumbnailNotFound
             }
             if let cache = try entityData.load(\.images, index: imageIndex) { return cache }
@@ -413,7 +425,11 @@ open class VRMEntityLoader {
 
     func material(withMaterialIndex index: Int) throws -> Material {
         if let cache = try entityData.load(\.materials, index: index) { return cache }
-        let gltfMaterial = try gltf.load(\.materials)[index]
+        let materials = try gltf.load(\.materials)
+        guard materials.indices.contains(index) else {
+            throw VRMError._dataInconsistent("Material index \(index) out of bounds")
+        }
+        let gltfMaterial = materials[index]
 
         let materialProperty: VRM0.MaterialProperty? = {
             guard case .v0(let vrm0) = vrm,
