@@ -132,15 +132,10 @@ final class VRMEntitySpringBone {
                                                  localChildPosition: localChild)
             verlet.append(logic)
         } else if let firstChild = parent.children.first {
-            let localPosition = firstChild.utx.localPosition
-            let scale = firstChild.utx.lossyScale
+            let localChildPosition = parent.utx.worldToLocalMatrix.multiplyPoint(firstChild.utx.position)
             let logic = VRMEntitySpringBoneLogic(center: center,
                                                  node: parent,
-                                                 localChildPosition: SIMD3<Float>(
-                                                    localPosition.x * scale.x,
-                                                    localPosition.y * scale.y,
-                                                    localPosition.z * scale.z
-                                                 ))
+                                                 localChildPosition: localChildPosition)
             verlet.append(logic)
         }
 
@@ -156,7 +151,7 @@ final class VRMEntitySpringBone {
             if joints.indices.contains(index + 1) {
                 localChildPosition = joint.utx.worldToLocalMatrix.multiplyPoint(joints[index + 1].utx.position)
             } else if let firstChild = joint.children.first {
-                localChildPosition = firstChild.utx.localPosition * firstChild.utx.lossyScale
+                localChildPosition = joint.utx.worldToLocalMatrix.multiplyPoint(firstChild.utx.position)
             } else if let parent = joint.parent {
                 let delta = joint.utx.position - parent.utx.position
                 let direction = delta.length_squared > Float.ulpOfOne ? delta.normalized : SIMD3<Float>(0, -1, 0)

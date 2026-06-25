@@ -115,15 +115,21 @@ open class VRMNode: SCNNode {
                       let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
                     return nil
                 }
-                return FirstPersonAnnotation(node: mesh, type: type)
+                return FirstPersonAnnotation(node: mesh,
+                                             type: type,
+                                             hidesAutoInFirstPerson: false)
             }
         case .v1(let vrm1):
+            let head = humanoid.node(for: .head)
             firstPersonAnnotations = vrm1.firstPerson?.meshAnnotations.compactMap { annotation in
                 guard nodes.indices.contains(annotation.node),
                       let node = nodes[annotation.node] else {
                     return nil
                 }
-                return FirstPersonAnnotation(node: node, type: FirstPersonAnnotationType(vrm1Type: annotation.type))
+                let type = FirstPersonAnnotationType(vrm1Type: annotation.type)
+                return FirstPersonAnnotation(node: node,
+                                             type: type,
+                                             hidesAutoInFirstPerson: type == .auto && node.isSameOrDescendant(of: head))
             } ?? []
         }
         setFirstPersonRenderMode(.thirdPerson)
@@ -251,7 +257,8 @@ open class VRMNode: SCNNode {
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
         for annotation in firstPersonAnnotations {
-            annotation.node.isHidden = annotation.type.isHidden(in: mode)
+            annotation.node.isHidden = annotation.type.isHidden(in: mode,
+                                                                hidesAutoInFirstPerson: annotation.hidesAutoInFirstPerson)
         }
     }
 
@@ -385,6 +392,7 @@ private struct TextureTransformBinding {
 private struct FirstPersonAnnotation {
     let node: SCNNode
     let type: FirstPersonAnnotationType
+    let hidesAutoInFirstPerson: Bool
 }
 
 private enum FirstPersonAnnotationType {
@@ -417,8 +425,10 @@ private enum FirstPersonAnnotationType {
         }
     }
 
-    func isHidden(in mode: FirstPersonRenderMode) -> Bool {
+    func isHidden(in mode: FirstPersonRenderMode, hidesAutoInFirstPerson: Bool) -> Bool {
         switch (self, mode) {
+        case (.auto, .firstPerson):
+            return hidesAutoInFirstPerson
         case (.firstPersonOnly, .thirdPerson),
              (.thirdPersonOnly, .firstPerson):
             return true
@@ -437,6 +447,18 @@ private extension SCNNode {
             }
         }
         return result
+    }
+
+    func isSameOrDescendant(of ancestor: SCNNode?) -> Bool {
+        guard let ancestor else { return false }
+        var node: SCNNode? = self
+        while let current = node {
+            if current === ancestor {
+                return true
+            }
+            node = current.parent
+        }
+        return false
     }
 }
 

@@ -122,15 +122,21 @@ public final class VRMEntity {
                       let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
                     return nil
                 }
-                return FirstPersonAnnotation(entity: mesh, type: type)
+                return FirstPersonAnnotation(entity: mesh,
+                                             type: type,
+                                             hidesAutoInFirstPerson: false)
             }
         case .v1(let vrm1):
+            let head = humanoid.node(for: .head)
             firstPersonAnnotations = vrm1.firstPerson?.meshAnnotations.compactMap { annotation in
                 guard nodes.indices.contains(annotation.node),
                       let node = nodes[annotation.node] else {
                     return nil
                 }
-                return FirstPersonAnnotation(entity: node, type: FirstPersonAnnotationType(vrm1Type: annotation.type))
+                let type = FirstPersonAnnotationType(vrm1Type: annotation.type)
+                return FirstPersonAnnotation(entity: node,
+                                             type: type,
+                                             hidesAutoInFirstPerson: type == .auto && node.isSameOrDescendant(of: head))
             } ?? []
         }
         setFirstPersonRenderMode(.thirdPerson)
@@ -339,7 +345,8 @@ public final class VRMEntity {
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
         for annotation in firstPersonAnnotations {
-            annotation.entity.isEnabled = !annotation.type.isHidden(in: mode)
+            annotation.entity.isEnabled = !annotation.type.isHidden(in: mode,
+                                                                    hidesAutoInFirstPerson: annotation.hidesAutoInFirstPerson)
         }
     }
 
@@ -635,6 +642,7 @@ private struct MaterialColorBinding {
 private struct FirstPersonAnnotation {
     let entity: Entity
     let type: FirstPersonAnnotationType
+    let hidesAutoInFirstPerson: Bool
 }
 
 private enum FirstPersonAnnotationType {
@@ -667,14 +675,31 @@ private enum FirstPersonAnnotationType {
         }
     }
 
-    func isHidden(in mode: FirstPersonRenderMode) -> Bool {
+    func isHidden(in mode: FirstPersonRenderMode, hidesAutoInFirstPerson: Bool) -> Bool {
         switch (self, mode) {
+        case (.auto, .firstPerson):
+            return hidesAutoInFirstPerson
         case (.firstPersonOnly, .thirdPerson),
              (.thirdPersonOnly, .firstPerson):
             return true
         default:
             return false
         }
+    }
+}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+private extension Entity {
+    func isSameOrDescendant(of ancestor: Entity?) -> Bool {
+        guard let ancestor else { return false }
+        var entity: Entity? = self
+        while let current = entity {
+            if current === ancestor {
+                return true
+            }
+            entity = current.parent
+        }
+        return false
     }
 }
 

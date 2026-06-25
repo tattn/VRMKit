@@ -123,7 +123,7 @@ final class VRMSpringBone {
             if joints.indices.contains(index + 1) {
                 localChildPosition = joint.utx.worldToLocalMatrix.multiplyPoint(joints[index + 1].utx.position)
             } else if let firstChild = joint.childNodes.first {
-                localChildPosition = firstChild.utx.localPosition * firstChild.utx.lossyScale
+                localChildPosition = joint.utx.worldToLocalMatrix.multiplyPoint(firstChild.utx.position)
             } else if let parent = joint.parent {
                 let delta = joint.utx.position - parent.utx.position
                 let direction = delta.length_squared > Float.ulpOfOne ? delta.normalized : SIMD3<Float>(0, -1, 0)
@@ -146,13 +146,8 @@ final class VRMSpringBone {
             self.verlet.append(logic)
         } else {
             let firstChild = parent.childNodes.first!
-            let localPosition = firstChild.utx.localPosition
-            let scale = firstChild.utx.lossyScale
-            let logic = VRMSpringBoneLogic(center: center, node: parent, localChildPosition: SIMD3<Float>(
-                localPosition.x * scale.x,
-                localPosition.y * scale.y,
-                localPosition.z * scale.z
-            ))
+            let localChildPosition = parent.utx.worldToLocalMatrix.multiplyPoint(firstChild.utx.position)
+            let logic = VRMSpringBoneLogic(center: center, node: parent, localChildPosition: localChildPosition)
             self.verlet.append(logic)
         }
 
