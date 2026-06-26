@@ -15,6 +15,7 @@
 		067C5C522AAD6D8B00F8FBB3 /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 067C5C512AAD6D8B00F8FBB3 /* VRMSceneKit */; };
 		06E1164E2F277C6D00D74CA4 /* VRMKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E1164D2F277C6D00D74CA4 /* VRMKit */; };
 		06E116502F277C6D00D74CA4 /* VRMRealityKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E1164F2F277C6D00D74CA4 /* VRMRealityKit */; };
+		06E116552F333D8700D74CA4 /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E116562F333D8700D74CA4 /* VRMSceneKit */; };
 		06E116522F277D1800D74CA4 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 06E116512F277D1700D74CA4 /* AliciaSolid.vrm */; };
 		06E116542F277ED600D74CA4 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 06E116512F277D1700D74CA4 /* AliciaSolid.vrm */; };
 		06F0BD792AAD81A40089488C /* WatchExample Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 06F0BD6C2AAD81A30089488C /* WatchExample Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -106,6 +107,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				06E116552F333D8700D74CA4 /* VRMSceneKit in Frameworks */,
 				06E116502F277C6D00D74CA4 /* VRMRealityKit in Frameworks */,
 				06E1164E2F277C6D00D74CA4 /* VRMKit in Frameworks */,
 			);
@@ -212,6 +214,7 @@
 			packageProductDependencies = (
 				06E1164D2F277C6D00D74CA4 /* VRMKit */,
 				06E1164F2F277C6D00D74CA4 /* VRMRealityKit */,
+				06E116562F333D8700D74CA4 /* VRMSceneKit */,
 			);
 			productName = MacExample;
 			productReference = 06E116422F277AEA00D74CA4 /* MacExample.app */;
@@ -865,6 +868,10 @@
 		06E1164F2F277C6D00D74CA4 /* VRMRealityKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = VRMRealityKit;
+		};
+		06E116562F333D8700D74CA4 /* VRMSceneKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = VRMSceneKit;
 		};
 		06F0BD7E2AAD82120089488C /* VRMKit */ = {
 			isa = XCSwiftPackageProductDependency;
