@@ -43,10 +43,26 @@ class VRMSceneKitTests: XCTestCase {
         XCTAssertEqual(round(node.blendShape(for: .preset(.joy)) * 100), 85)
     }
 
+    func testVRM0MaterialsKeepConstantLighting() {
+        let loader = loadVRMLoader()
+        let materialCount = loader.vrm.gltf.jsonData.materials?.count ?? 0
+        XCTAssertGreaterThan(materialCount, 0)
+
+        for index in 0..<materialCount {
+            let material = try! loader.material(withMaterialIndex: index)
+            XCTAssertEqual(material.lightingModel, .constant, "Material \(index): \(material.name ?? "")")
+            XCTAssertFalse(material.isLitPerPixel, "Material \(index): \(material.name ?? "")")
+        }
+    }
+
     func loadVRM() -> VRMNode {
+        let loader = loadVRMLoader()
+        return try! loader.loadScene().vrmNode
+    }
+
+    func loadVRMLoader() -> VRMSceneLoader {
         let url = Bundle.module.url(forResource: "AliciaSolid", withExtension: "vrm")!
         let data = try! Data(contentsOf: url)
-        let loader = try! VRMSceneLoader(withData: data)
-        return try! loader.loadScene().vrmNode
+        return try! VRMSceneLoader(withData: data)
     }
 }

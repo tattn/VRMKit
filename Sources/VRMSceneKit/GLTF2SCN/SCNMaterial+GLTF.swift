@@ -10,12 +10,16 @@ extension SCNMaterial {
         let mtoon = material.extensions?.materialsMToon
         let isMToon = mtoon != nil
         let isUnlit = material.extensions?.materialsUnlit != nil
-        lightingModel = (isMToon || isUnlit) ? .constant : .physicallyBased
-        isDoubleSided = material.doubleSided
-        isLitPerPixel = !(isMToon || isUnlit)
-        writesToDepthBuffer = mtoon?.transparentWithZWrite == true || material.alphaMode != .BLEND
+        let isVRM0: Bool
+        switch loader.vrm {
+        case .v0:
+            isVRM0 = true
+        case .v1:
+            isVRM0 = false
+        }
 
         var shader: VRM0.MaterialProperty.Shader?
+        writesToDepthBuffer = mtoon?.transparentWithZWrite == true || material.alphaMode != .BLEND
 
         if let name = name, let property = loader.vrm0MaterialProperty(named: name) {
             shader = property.vrmShader
@@ -31,6 +35,11 @@ extension SCNMaterial {
         } else {
             blendMode = blendMode(of: material.alphaMode)
         }
+
+        let usesConstantLighting = isVRM0 || shader == .mToon || shader == .unlitTransparent || isMToon || isUnlit
+        lightingModel = usesConstantLighting ? .constant : .physicallyBased
+        isDoubleSided = material.doubleSided
+        isLitPerPixel = !usesConstantLighting
 
         if let pbr = material.pbrMetallicRoughness {
             // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#metallic-roughness-material
