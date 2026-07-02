@@ -15,9 +15,10 @@
 		067C5C522AAD6D8B00F8FBB3 /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 067C5C512AAD6D8B00F8FBB3 /* VRMSceneKit */; };
 		06E1164E2F277C6D00D74CA4 /* VRMKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E1164D2F277C6D00D74CA4 /* VRMKit */; };
 		06E116502F277C6D00D74CA4 /* VRMRealityKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E1164F2F277C6D00D74CA4 /* VRMRealityKit */; };
+		06E116552F333D8700D74CA4 /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E116562F333D8700D74CA4 /* VRMSceneKit */; };
 		06E116522F277D1800D74CA4 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 06E116512F277D1700D74CA4 /* AliciaSolid.vrm */; };
 		06E116542F277ED600D74CA4 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 06E116512F277D1700D74CA4 /* AliciaSolid.vrm */; };
-		06E116552F333D8700D74CA4 /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E116562F333D8700D74CA4 /* VRMSceneKit */; };
+		06F0BD792AAD81A40089488C /* WatchExample Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 06F0BD6C2AAD81A30089488C /* WatchExample Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		06F0BD7F2AAD82120089488C /* VRMKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06F0BD7E2AAD82120089488C /* VRMKit */; };
 		06F0BD812AAD82120089488C /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06F0BD802AAD82120089488C /* VRMSceneKit */; };
 		9FD10CB0B1951449373631D5 /* VRMRealityKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B5F /* VRMRealityKit */; };
@@ -26,7 +27,28 @@
 		AF000003AF000003AF000003 /* VRM1_Constraint_Twist_Sample.vrm in Resources */ = {isa = PBXBuildFile; fileRef = AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		06F0BD772AAD81A40089488C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 24CF7F722143EEDB007A5C6C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 06F0BD6B2AAD81A30089488C;
+			remoteInfo = "WatchExample Watch App";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXCopyFilesBuildPhase section */
+		06F0BD7A2AAD81A40089488C /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				06F0BD792AAD81A40089488C /* WatchExample Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		245725F12146F496003AA5D7 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -230,10 +252,12 @@
 				245725D42146F47A003AA5D7 /* Frameworks */,
 				245725D52146F47A003AA5D7 /* Resources */,
 				245725F12146F496003AA5D7 /* Embed Frameworks */,
+				06F0BD7A2AAD81A40089488C /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				06F0BD782AAD81A40089488C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				06E1165E2F277EDD00D74CA4 /* Example */,
@@ -390,6 +414,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		06F0BD782AAD81A40089488C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 06F0BD6B2AAD81A30089488C /* WatchExample Watch App */;
+			targetProxy = 06F0BD772AAD81A40089488C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		06E1164B2F277AEB00D74CA4 /* Debug */ = {
