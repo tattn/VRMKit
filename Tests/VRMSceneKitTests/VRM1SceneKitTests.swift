@@ -88,9 +88,11 @@ struct VRM1SceneLoaderTests {
         #expect(material.lightingModel == .constant)
         #expect(material.isLitPerPixel == false)
         #expect(material.writesToDepthBuffer == true)
-        #expect(material.shaderModifiers?[.surface]?.contains("mtoonLambert") == true)
-        #expect(material.shaderModifiers?[.surface]?.contains("_surface.ambientOcclusion") == true)
-        #expect(material.shaderModifiers?[.surface]?.contains("_surface.transparent") == false)
+        let surface = try #require(material.shaderModifiers?[.surface])
+        #expect(surface.contains("mtoonLinearstepA") == true)
+        #expect(surface.contains("smoothstep") == false)
+        #expect(surface.contains("_surface.ambientOcclusion") == false)
+        #expect(surface.contains("_surface.transparent") == false)
 
         let shadeColor = try #require(material.mtoonColor(forKey: MToonUniform.shadeColor))
         #expect(abs(shadeColor.x - 0.301212043) < 0.0001)
@@ -135,11 +137,137 @@ struct VRM1SceneLoaderTests {
     }
 
     @Test
+    func testVRM1MToonCustomTextureUniformsAreLoaded() throws {
+        let vrmLoader = try vrmLoader()
+        let materialWithShift = try vrmLoader.material(withMaterialIndex: 2)
+        let materialWithMatcap = try vrmLoader.material(withMaterialIndex: 6)
+        let materialWithoutRimTexture = try vrmLoader.material(withMaterialIndex: 0)
+
+        #expect((materialWithShift.value(forKey: MToonUniform.shadingShiftTexture) as? SCNMaterialProperty) != nil)
+        #expect((materialWithMatcap.value(forKey: MToonUniform.matcapTexture) as? SCNMaterialProperty) != nil)
+        #expect((materialWithoutRimTexture.value(forKey: MToonUniform.rimMultiplyTexture) as? SCNMaterialProperty) != nil)
+        #expect(materialWithShift.shaderModifiers?[.surface]?.contains("mtoonShadingShiftTexture.sample") == true)
+        #expect(materialWithMatcap.shaderModifiers?[.surface]?.contains("mtoonMatcapUV") == true)
+        #expect(!(materialWithMatcap.reflective.contents is VRMImage))
+        #expect(!(materialWithoutRimTexture.selfIllumination.contents is VRMImage))
+    }
+
+    @Test
+    func testVRM1MToonEmissiveFactorAndTextureAreCustomUniforms() throws {
+        let vrmLoader = try vrmLoader()
+        let material = try vrmLoader.material(withMaterialIndex: 11)
+        let emissive = try #require(material.mtoonColor(forKey: MToonUniform.emissiveColor))
+        let emissiveTexture = try #require(material.value(forKey: MToonUniform.emissiveTexture) as? SCNMaterialProperty)
+        let surface = try #require(material.shaderModifiers?[.surface])
+
+        #expect(emissive.isApproximatelyEqual(to: SIMD4<Float>(0, 1, 0.2984293, 1)))
+        #expect(emissiveTexture.contents is VRMImage)
+        #expect(!(material.emission.contents is VRMImage))
+        #expect(surface.contains("mtoonEmissive *= mtoonEmissiveTexture.sample"))
+        let featureParams = try #require(material.value(forKey: MToonUniform.featureParams) as? SCNVector4)
+        #expect(featureParams.w == 1) // emissive texture present
+    }
+
+    @Test
+    func testVRM1MToonOptionalTextureSamplingIsFlagGated() throws {
+        let vrmLoader = try vrmLoader()
+        // Material without matcap/rim/emissive textures must not add the
+        // matcap term (absent textures may sample as white and blow out colors).
+        let material = try vrmLoader.material(withMaterialIndex: 0)
+        let featureParams = try #require(material.value(forKey: MToonUniform.featureParams) as? SCNVector4)
+        let surface = try #require(material.shaderModifiers?[.surface])
+
+        #expect(featureParams.x == 0) // no matcap texture
+        #expect(featureParams.y == 0) // no rim multiply texture
+        #expect(featureParams.w == 0) // no emissive texture
+        #expect((material.value(forKey: MToonUniform.matcapTexture) as? SCNMaterialProperty)?.contents is VRMImage)
+        #expect((material.value(forKey: MToonUniform.rimMultiplyTexture) as? SCNMaterialProperty)?.contents is VRMImage)
+        #expect((material.value(forKey: MToonUniform.emissiveTexture) as? SCNMaterialProperty)?.contents is VRMImage)
+        #expect(surface.contains("if (mtoonFeatureParams.x > 0.5)"))
+        #expect(surface.contains("if (mtoonFeatureParams.y > 0.5)"))
+        #expect(surface.contains("if (mtoonFeatureParams.z > 0.5)"))
+        #expect(surface.contains("if (mtoonFeatureParams.w > 0.5)"))
+        #expect(surface.contains("float3 mtoonRim = float3(0.0);"))
+    }
+
+    @Test
+    func testVRM1MToonOutlineMaterialInheritsUniformPacking() throws {
+        let vrmLoader = try vrmLoader()
+        let material = try vrmLoader.material(withMaterialIndex: 0)
+        let outlineMaterial = try #require(material.mtoonOutlineMaterial())
+
+        #expect((outlineMaterial.value(forKey: MToonUniform.baseColor) as? SCNVector4) != nil)
+        #expect((outlineMaterial.value(forKey: MToonUniform.shadeColor) as? SCNVector4) != nil)
+        #expect((outlineMaterial.value(forKey: MToonUniform.alphaParams) as? SCNVector4) != nil)
+        #expect((outlineMaterial.value(forKey: MToonUniform.lightDirection) as? SCNVector4) != nil)
+        #expect(outlineMaterial.shaderModifiers?[.surface]?.contains("mtoonOutlineParams.z") == true)
+    }
+
+    @Test
     func testSceneKitMToonShaderModifiersUsePackedMaskChannels() throws {
         let source = try sceneKitMaterialSource()
+        let packedMaskSample = SIMD4<Float>(0.125, 0.5, 0.875, 1.0)
 
-        #expect(source.contains("mtoonUvAnimationMaskTexture.sample(mtoonUvAnimationMaskTextureSampler, mtoonUV).b"))
-        #expect(source.contains("mtoonOutlineWidthMultiplyTexture.sample(mtoonOutlineWidthMultiplyTextureSampler, _geometry.texcoords[0]).g"))
+        #expect(try sampledChannelValue(in: source,
+                                        marker: "mtoonShadingShiftTexture.sample(mtoonShadingShiftTextureSampler, mtoonUV)",
+                                        sample: packedMaskSample) == packedMaskSample.x)
+        #expect(try sampledChannelValue(in: source,
+                                        marker: "mtoonOutlineWidthMultiplyTexture.sample(mtoonOutlineWidthMultiplyTextureSampler, _geometry.texcoords[0])",
+                                        sample: packedMaskSample) == packedMaskSample.y)
+        #expect(try sampledChannelValue(in: source,
+                                        marker: "mtoonUvAnimationMaskTexture.sample(mtoonUvAnimationMaskTextureSampler, mtoonUV)",
+                                        sample: packedMaskSample) == packedMaskSample.z)
+        #expect(source.contains("u_time"))
+        // scn_frame has no viewport member; referencing one fails Metal compilation
+        // and SceneKit falls back to magenta. Only scn_node/scn_frame members are valid.
+        #expect(source.contains("scn_node.modelViewTransform"))
+        #expect(source.contains("scn_frame.projectionTransform[1][1]"))
+        #expect(!source.contains("scn_frame.viewport"))
+        #expect(!source.contains("u_modelViewTransform"))
+        #expect(!source.contains("u_projectionTransform"))
+    }
+
+    @Test
+    func testVRM1MToonLightingColorAPIsUpdateSceneKitUniforms() throws {
+        let vrmLoader = try vrmLoader()
+        let scene = try vrmLoader.loadScene()
+        let lightColor = SIMD3<Float>(0.8, 0.7, 0.6)
+        let ambientColor = SIMD3<Float>(0.05, 0.1, 0.15)
+
+        scene.vrmNode.setMToonLightColor(lightColor)
+        scene.vrmNode.setMToonAmbientColor(ambientColor)
+
+        let material = try #require(scene.rootNode.allNodes.compactMap {
+            $0.geometry?.materials.first
+        }.first { $0.value(forKey: MToonUniform.shadeParams) != nil })
+        let outlineMaterial = try #require(scene.rootNode.allNodes.compactMap {
+            $0.geometry?.materials.first
+        }.first { $0.name?.hasSuffix("_outline") == true })
+
+        #expect((material.value(forKey: MToonUniform.lightColor) as? SCNVector4)?
+            .isApproximatelyEqual(to: SCNVector4(0.8, 0.7, 0.6, 1)) == true)
+        #expect((material.value(forKey: MToonUniform.ambientColor) as? SCNVector4)?
+            .isApproximatelyEqual(to: SCNVector4(0.05, 0.1, 0.15, 1)) == true)
+        #expect((outlineMaterial.value(forKey: MToonUniform.lightColor) as? SCNVector4)?
+            .isApproximatelyEqual(to: SCNVector4(0.8, 0.7, 0.6, 1)) == true)
+        #expect((outlineMaterial.value(forKey: MToonUniform.ambientColor) as? SCNVector4)?
+            .isApproximatelyEqual(to: SCNVector4(0.05, 0.1, 0.15, 1)) == true)
+    }
+
+    @Test
+    func testVRM1MToonRenderingOrderKeepsOutlineAdjacent() throws {
+        let vrmLoader = try vrmLoader()
+        let scene = try vrmLoader.loadScene()
+        let outlineNodes = scene.rootNode.allNodes.filter {
+            $0.geometry?.materials.first?.name?.hasSuffix("_outline") == true
+        }
+
+        #expect(!outlineNodes.isEmpty)
+        for outlineNode in outlineNodes {
+            let baseNode = try #require(outlineNode.previousSibling)
+            #expect(baseNode.renderingOrder % 2 == 0)
+            #expect(outlineNode.renderingOrder == baseNode.renderingOrder + 1)
+        }
     }
 
     @Test
@@ -267,6 +395,53 @@ private extension SIMD4 where Scalar == Float {
         abs(z - other.z) < tolerance &&
         abs(w - other.w) < tolerance
     }
+}
+
+private extension SCNVector4 {
+    func isApproximatelyEqual(to other: SCNVector4, tolerance: SCNFloat = 0.0001) -> Bool {
+        abs(x - other.x) < tolerance &&
+        abs(y - other.y) < tolerance &&
+        abs(z - other.z) < tolerance &&
+        abs(w - other.w) < tolerance
+    }
+}
+
+private enum ShaderChannel: String {
+    case r
+    case g
+    case b
+    case a
+
+    func value(in color: SIMD4<Float>) -> Float {
+        switch self {
+        case .r: return color.x
+        case .g: return color.y
+        case .b: return color.z
+        case .a: return color.w
+        }
+    }
+}
+
+private func sampledChannelValue(in source: String,
+                                 marker: String,
+                                 sample: SIMD4<Float>) throws -> Float {
+    let channel = try sampledChannel(in: source, marker: marker)
+    return channel.value(in: sample)
+}
+
+private func sampledChannel(in source: String, marker: String) throws -> ShaderChannel {
+    guard let markerRange = source.range(of: marker) else {
+        throw VRMError.dataInconsistent("Expected shader sample marker: \(marker)")
+    }
+    guard let dotIndex = source[markerRange.upperBound...].firstIndex(of: ".") else {
+        throw VRMError.dataInconsistent("Expected channel access after shader sample marker: \(marker)")
+    }
+    let channelIndex = source.index(after: dotIndex)
+    guard channelIndex < source.endIndex,
+          let channel = ShaderChannel(rawValue: String(source[channelIndex])) else {
+        throw VRMError.dataInconsistent("Expected r/g/b/a channel after shader sample marker: \(marker)")
+    }
+    return channel
 }
 
 private extension VRMColor {

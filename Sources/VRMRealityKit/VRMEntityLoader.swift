@@ -623,11 +623,16 @@ open class VRMEntityLoader {
             material.normal.texture = try neutralNormalCustomTexture()
         }
 
-        if let rimTexture = mtoon.rimMultiplyTexture {
-            let textureParam = try customTexture(withTextureIndex: rimTexture.index, semantic: .color)
+        if let emissiveTexture = mtoon.emissiveTexture {
+            let textureParam = try customTexture(withTextureIndex: emissiveTexture.index, semantic: .color)
             material.emissiveColor = .init(color: .white, texture: textureParam)
         } else {
             material.emissiveColor = .init(color: .white, texture: try whiteCustomTexture())
+        }
+        if let rimTexture = mtoon.rimMultiplyTexture {
+            material.clearcoatRoughness.texture = try customTexture(withTextureIndex: rimTexture.index, semantic: .color)
+        } else {
+            material.clearcoatRoughness.texture = try whiteCustomTexture()
         }
         if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
             material.clearcoat.texture = try customTexture(withTextureIndex: outlineWidthTexture.index, semantic: .color)
@@ -1052,6 +1057,7 @@ open class VRMEntityLoader {
                                 shadingShift: mtoonSamplerKey(for: mtoon.shadingShiftTexture),
                                 normal: mtoonSamplerKey(for: mtoon.normalTexture),
                                 matcap: mtoonSamplerKey(for: mtoon.matcapTexture),
+                                emissive: mtoonSamplerKey(for: mtoon.emissiveTexture),
                                 rim: mtoonSamplerKey(for: mtoon.rimMultiplyTexture),
                                 outlineWidth: mtoonSamplerKey(for: mtoon.outlineWidthMultiplyTexture),
                                 uvAnimationMask: mtoonSamplerKey(for: mtoon.uvAnimationMaskTexture))
@@ -1960,6 +1966,7 @@ private struct MToonSamplerVariant: Hashable {
     let shadingShift: MToonSamplerKey
     let normal: MToonSamplerKey
     let matcap: MToonSamplerKey
+    let emissive: MToonSamplerKey
     let rim: MToonSamplerKey
     let outlineWidth: MToonSamplerKey
     let uvAnimationMask: MToonSamplerKey
@@ -2050,6 +2057,7 @@ private extension String {
             .replacingSampler(named: "mtoonShadingShiftSampler", with: variant.shadingShift)
             .replacingSampler(named: "mtoonNormalSampler", with: variant.normal)
             .replacingSampler(named: "mtoonMatcapSampler", with: variant.matcap)
+            .replacingSampler(named: "mtoonEmissiveSampler", with: variant.emissive)
             .replacingSampler(named: "mtoonRimSampler", with: variant.rim)
             .replacingSampler(named: "mtoonOutlineWidthSampler", with: variant.outlineWidth)
             .replacingSampler(named: "mtoonUvAnimationMaskSampler", with: variant.uvAnimationMask)

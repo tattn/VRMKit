@@ -150,22 +150,38 @@ open class VRMSceneLoader {
         guard let name else { return nil }
         switch vrm {
         case .v0(let vrm0):
-            return vrm0.materialPropertyNameMap[name]?.renderQueue
+            guard let property = vrm0.materialPropertyNameMap[name] else { return nil }
+            if let material = try gltf.load(\.materials).first(where: { $0.name == name }),
+               let descriptor = MToonMaterialDescriptor(material: material, materialProperty: property) {
+                return mtoonRenderQueue(alphaMode: descriptor.alphaMode,
+                                        transparentWithZWrite: descriptor.transparentWithZWrite,
+                                        offset: descriptor.renderQueueOffsetNumber)
+            }
+            return property.renderQueue
         case .v1:
             guard let material = try gltf.load(\.materials).first(where: { $0.name == name }) else {
                 return nil
             }
-            let baseQueue: Int
-            switch material.alphaMode {
-            case .OPAQUE:
-                baseQueue = 2000
-            case .MASK:
-                baseQueue = 2450
-            case .BLEND:
-                baseQueue = material.extensions?.materialsMToon?.transparentWithZWrite == true ? 2501 : 3000
-            }
-            return baseQueue + (material.extensions?.materialsMToon?.renderQueueOffsetNumber ?? 0)
+            let mtoon = material.extensions?.materialsMToon
+            return mtoonRenderQueue(alphaMode: material.alphaMode,
+                                    transparentWithZWrite: mtoon?.transparentWithZWrite == true,
+                                    offset: mtoon?.renderQueueOffsetNumber ?? 0)
         }
+    }
+
+    private func mtoonRenderQueue(alphaMode: GLTF.Material.AlphaMode,
+                                  transparentWithZWrite: Bool,
+                                  offset: Int) -> Int {
+        let baseQueue: Int
+        switch alphaMode {
+        case .OPAQUE:
+            baseQueue = 2000
+        case .MASK:
+            baseQueue = 2450
+        case .BLEND:
+            baseQueue = transparentWithZWrite ? 2501 : 3000
+        }
+        return baseQueue + offset
     }
 
     func texture(withTextureIndex index: Int) throws -> SCNMaterialProperty {

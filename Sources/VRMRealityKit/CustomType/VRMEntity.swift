@@ -1,6 +1,7 @@
 #if canImport(RealityKit)
 import CoreGraphics
 import Foundation
+import OSLog
 import RealityKit
 import simd
 import VRMKit
@@ -22,6 +23,8 @@ struct VRMMaterialIndexComponent: Component {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public final class VRMEntity {
+    private static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "MToon")
+
     public let vrm: VRM
     public let entity: Entity
     public let humanoid = Humanoid()
@@ -38,6 +41,8 @@ public final class VRMEntity {
     private var springBones: [VRMEntitySpringBone] = []
     private var nodeConstraints: [NodeConstraintBinding] = []
     private var mtoonLightDirection = MToonMaterialParameters.defaultLightDirection
+    private var mtoonLightColor = SIMD3<Float>(1, 1, 1)
+    private var mtoonAmbientColor = SIMD3<Float>(0, 0, 0)
     private var mtoonElapsedTime: Float = 0
     private var lastUpdateTime: TimeInterval?
 
@@ -280,6 +285,18 @@ public final class VRMEntity {
         updateMToonRuntime(deltaTime: 0)
     }
 
+    /// Sets the explicit main light color used by MToon CustomMaterial shaders. The default is white.
+    public func setMToonLightColor(_ color: SIMD3<Float>) {
+        mtoonLightColor = color
+        updateMToonLightingParameters()
+    }
+
+    /// Sets the explicit ambient color used by the MToon GI approximation. The default is black.
+    public func setMToonAmbientColor(_ color: SIMD3<Float>) {
+        mtoonAmbientColor = color
+        updateMToonLightingParameters()
+    }
+
     private func updateSkinning() {
         for binding in skinBindings {
             updateSkinPose(for: binding)
@@ -452,6 +469,22 @@ public final class VRMEntity {
 #endif
     }
 
+    private func updateMToonLightingParameters() {
+#if !os(visionOS)
+        for modelEntity in modelEntities(in: entity) {
+            guard var state = modelEntity.components[MToonMaterialParametersComponent.self],
+                  var component = modelEntity.components[ModelComponent.self] else { continue }
+            state.parameters.lightColor = SIMD4<Float>(mtoonLightColor.x, mtoonLightColor.y, mtoonLightColor.z, 1)
+            state.parameters.ambientColor = SIMD4<Float>(mtoonAmbientColor.x, mtoonAmbientColor.y, mtoonAmbientColor.z, 1)
+            state.parameters.lightDirection = mtoonLightDirection
+            state.parameters.elapsedTime = mtoonElapsedTime
+            applyMToonParameters(state.parameters, to: &component, updateParameterTexture: true)
+            modelEntity.components.set(state)
+            modelEntity.components.set(component)
+        }
+#endif
+    }
+
     private func updateMToonColor(_ color: SIMD4<Float>,
                                   type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
                                   on modelEntity: ModelEntity,
@@ -461,6 +494,8 @@ public final class VRMEntity {
 #else
         guard var state = modelEntity.components[MToonMaterialParametersComponent.self] else { return false }
         guard state.parameters.setColor(color, for: type) else { return false }
+        state.parameters.lightColor = SIMD4<Float>(mtoonLightColor.x, mtoonLightColor.y, mtoonLightColor.z, 1)
+        state.parameters.ambientColor = SIMD4<Float>(mtoonAmbientColor.x, mtoonAmbientColor.y, mtoonAmbientColor.z, 1)
         state.parameters.lightDirection = mtoonLightDirection
         state.parameters.elapsedTime = mtoonElapsedTime
         applyMToonParameters(state.parameters, to: &modelComponent, updateParameterTexture: true)
@@ -476,8 +511,12 @@ public final class VRMEntity {
         component.materials = component.materials.map { material in
             guard var material = material as? CustomMaterial else { return material }
             material.custom.value = parameters.customValue
-            if updateParameterTexture, let texture = try? parameters.textureResource() {
-                material.custom.texture = CustomMaterial.Texture(texture)
+            if updateParameterTexture {
+                do {
+                    material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
+                } catch {
+                    Self.logger.error("Failed to update MToon parameter texture: \(error.localizedDescription, privacy: .public)")
+                }
             }
             return material
         }

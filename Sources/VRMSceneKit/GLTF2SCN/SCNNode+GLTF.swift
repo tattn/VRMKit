@@ -49,7 +49,7 @@ extension SCNNode {
         name = mesh.name
         var morpher: SCNMorpher?
 
-        for primitive in mesh.primitives {
+        for (primitiveIndex, primitive) in mesh.primitives.enumerated() {
             let node = SCNNode()
             let materialIndex = primitive.material
             var attributes = try loader.attributes(primitive.attributes.rawValue)
@@ -80,8 +80,8 @@ extension SCNNode {
                 // FIXME/TODO:
                 if let renderQueue = try loader.renderQueue(forMaterialNamed: geometry.materials[0].name),
                    renderQueue != -1 {
-                    let lastRenderingOrder = childNodes.last?.renderingOrder ?? 0
-                    node.renderingOrder = lastRenderingOrder == 0 ? renderQueue : renderQueue + 1
+                    node.renderingOrder = scnRenderingOrder(forRenderQueue: renderQueue,
+                                                            primitiveIndex: primitiveIndex)
                 }
             }
 
@@ -111,6 +111,13 @@ extension SCNNode {
             }
         }
     }
+}
+
+private let scnRenderingOrderQueueStride = 10_000
+private let scnRenderingOrderPrimitiveStride = 2
+
+private func scnRenderingOrder(forRenderQueue renderQueue: Int, primitiveIndex: Int) -> Int {
+    return renderQueue * scnRenderingOrderQueueStride + primitiveIndex * scnRenderingOrderPrimitiveStride
 }
 
 private extension SCNGeometry {

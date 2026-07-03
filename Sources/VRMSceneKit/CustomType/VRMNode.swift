@@ -10,7 +10,8 @@ open class VRMNode: SCNNode {
     private let timer = Timer()
     private var springBones: [VRMSpringBone] = []
     private var mtoonLightDirection = SIMD3<Float>(0.35, 0.55, 0.75)
-    private var mtoonElapsedTime: Float = 0
+    private var mtoonLightColor = SIMD3<Float>(1, 1, 1)
+    private var mtoonAmbientColor = SIMD3<Float>(0, 0, 0)
 
     var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
@@ -296,7 +297,19 @@ open class VRMNode: SCNNode {
     public func setMToonLightDirection(_ direction: SIMD3<Float>) {
         let length = simd_length(direction)
         mtoonLightDirection = length > 0.001 ? direction / length : SIMD3<Float>(0.35, 0.55, 0.75)
-        updateMToonMaterials(deltaTime: 0)
+        updateMToonMaterials()
+    }
+
+    /// Sets the explicit main light color used by MToon shader modifiers. The default is white.
+    public func setMToonLightColor(_ color: SIMD3<Float>) {
+        mtoonLightColor = color
+        updateMToonMaterials()
+    }
+
+    /// Sets the explicit ambient color used by the MToon GI approximation. The default is black.
+    public func setMToonAmbientColor(_ color: SIMD3<Float>) {
+        mtoonAmbientColor = color
+        updateMToonMaterials()
     }
 
     private func expressionClip(for key: ExpressionKey) -> ExpressionClip? {
@@ -326,8 +339,7 @@ open class VRMNode: SCNNode {
         return []
     }
 
-    private func updateMToonMaterials(deltaTime: Float) {
-        mtoonElapsedTime += deltaTime
+    private func updateMToonMaterials() {
         enumerateHierarchy { node, _ in
             guard let materials = node.geometry?.materials else { return }
             for material in materials {
@@ -337,13 +349,16 @@ open class VRMNode: SCNNode {
                                              SCNFloat(mtoonLightDirection.z),
                                              0),
                                   forKey: MToonUniform.lightDirection)
-                if let uvAnimation = material.value(forKey: MToonUniform.uvAnimation) as? SCNVector4 {
-                    material.setValue(SCNVector4(uvAnimation.x,
-                                                 uvAnimation.y,
-                                                 uvAnimation.z,
-                                                 SCNFloat(mtoonElapsedTime)),
-                                      forKey: MToonUniform.uvAnimation)
-                }
+                material.setValue(SCNVector4(SCNFloat(mtoonLightColor.x),
+                                             SCNFloat(mtoonLightColor.y),
+                                             SCNFloat(mtoonLightColor.z),
+                                             1),
+                                  forKey: MToonUniform.lightColor)
+                material.setValue(SCNVector4(SCNFloat(mtoonAmbientColor.x),
+                                             SCNFloat(mtoonAmbientColor.y),
+                                             SCNFloat(mtoonAmbientColor.z),
+                                             1),
+                                  forKey: MToonUniform.ambientColor)
             }
         }
     }
@@ -353,7 +368,6 @@ open class VRMNode: SCNNode {
 extension VRMNode: RenderUpdatable {
     public func update(at time: TimeInterval) {
         let seconds = timer.deltaTime(updateAtTime: time)
-        updateMToonMaterials(deltaTime: Float(seconds))
         nodeConstraints.forEach { $0.apply() }
         springBones.forEach({ $0.update(deltaTime: seconds) })
     }
@@ -532,7 +546,7 @@ extension SCNMaterial {
         case .color:
             return MToonUniform.baseColor
         case .emissionColor:
-            return nil
+            return MToonUniform.emissiveColor
         case .shadeColor:
             return MToonUniform.shadeColor
         case .matcapColor:
@@ -570,14 +584,15 @@ extension SCNMaterial {
     }
 
     private var mtoonTextureProperties: [SCNMaterialProperty] {
-        [
-            diffuse,
-            ambientOcclusion,
-            normal,
-            reflective,
-            selfIllumination,
-            ambient
-        ]
+        [diffuse, normal] + [
+            MToonUniform.shadeMultiplyTexture,
+            MToonUniform.shadingShiftTexture,
+            MToonUniform.matcapTexture,
+            MToonUniform.rimMultiplyTexture,
+            MToonUniform.emissiveTexture,
+            MToonUniform.outlineWidthMultiplyTexture,
+            MToonUniform.uvAnimationMaskTexture
+        ].compactMap { value(forKey: $0) as? SCNMaterialProperty }
     }
 }
 

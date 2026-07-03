@@ -21,7 +21,9 @@ struct VRM1RealityKitTests {
         #expect(customMaterial.custom.texture != nil)
         #expect(customMaterial.normal.texture != nil)
         #expect(customMaterial.roughness.texture != nil)
+        #expect(customMaterial.emissiveColor.texture != nil)
         #expect(customMaterial.clearcoat.texture != nil)
+        #expect(customMaterial.clearcoatRoughness.texture != nil)
 
         let direction = MToonMaterialParameters.defaultLightDirection
         #expect(abs(customMaterial.custom.value.x - direction.x) < 0.0001)
@@ -34,19 +36,92 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let shader = try mtoonShaderSource()
 
-        #expect(shader.contains("surface.set_base_color(half3(0.0h));\n    surface.set_emissive_color(finalColor);"))
-        #expect(shader.contains("surface.set_base_color(half3(0.0h));\n    surface.set_emissive_color(outlineColor.rgb);"))
+        #expect(shader.contains("surface.set_base_color(half3(0.0h));\n    surface.set_emissive_color(half3(color));"))
+        #expect(shader.contains("surface.set_base_color(half3(0.0h));\n    surface.set_emissive_color(half3(finalColor));"))
     }
 
     @Test
     func testVRM1MToonShaderUsesPackedMaskChannels() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let shader = try mtoonShaderSource()
+        let packedMaskSample = SIMD4<Float>(0.125, 0.5, 0.875, 1.0)
 
-        #expect(shader.contains("mtoonUvAnimationMaskSampler, maskUV).b"))
-        #expect(shader.contains("mtoonOutlineWidthSampler, widthUV).g"))
-        #expect(!shader.contains("mtoonUvAnimationMaskSampler, maskUV).r"))
-        #expect(!shader.contains("mtoonOutlineWidthSampler, widthUV).r"))
+        #expect(try sampledChannelValue(in: shader,
+                                        marker: "textures.specular().sample(mtoonShadingShiftSampler, uv)",
+                                        sample: packedMaskSample) == packedMaskSample.x)
+        #expect(try sampledChannelValue(in: shader,
+                                        marker: "params.textures().clearcoat().sample(mtoonOutlineWidthSampler, widthUV)",
+                                        sample: packedMaskSample) == packedMaskSample.y)
+        #expect(try sampledChannelValue(in: shader,
+                                        marker: "params.textures().ambient_occlusion().sample(mtoonUvAnimationMaskSampler, maskUV)",
+                                        sample: packedMaskSample) == packedMaskSample.z)
+    }
+
+    @Test
+    func testMToonParameterTextureRowsMatchMetalConstant() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
+        let vrmLoader = try VRMEntityLoader(withURL: url)
+        let vrmEntity = try vrmLoader.loadEntity()
+        let parameters = try firstMToonParameters(in: vrmEntity.entity)
+        let texture = try parameters.textureResource()
+        let shader = try mtoonShaderSource()
+
+        #expect(MToonMaterialParameters.textureRowCount == 14)
+        #expect(texture.width == MToonMaterialParameters.textureRowCount)
+        #expect(texture.height == 1)
+        #expect(shader.contains("constant float mtoonParameterTextureWidth = 14.0;"))
+    }
+
+    @Test
+    func testMToonEmissiveFlagFactorAndEmissionColorBind() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
+        let vrmLoader = try VRMEntityLoader(withURL: url)
+        let vrmEntity = try vrmLoader.loadEntity()
+        var parameters = try firstMToonParameters(in: vrmEntity.entity)
+        let boundColor = SIMD4<Float>(0.25, 0.5, 0.75, 0.2)
+
+        #expect(parameters.extraFlags.z == 0 || parameters.extraFlags.z == 1)
+        #expect(parameters.color(for: .emissionColor)?.isApproximatelyEqual(to: parameters.emissiveFactor) == true)
+        let didSetEmissionColor = parameters.setColor(boundColor, for: .emissionColor)
+        #expect(didSetEmissionColor)
+        #expect(parameters.emissiveFactor.isApproximatelyEqual(to: SIMD4<Float>(0.25, 0.5, 0.75, 1)))
+        #expect(parameters.color(for: .emissionColor)?.isApproximatelyEqual(to: parameters.emissiveFactor) == true)
+    }
+
+    @Test
+    func testSetMToonLightAndAmbientColorUpdateParameterRows() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
+        let vrmLoader = try VRMEntityLoader(withURL: url)
+        let vrmEntity = try vrmLoader.loadEntity()
+        let lightColor = SIMD3<Float>(0.8, 0.7, 0.6)
+        let ambientColor = SIMD3<Float>(0.05, 0.1, 0.15)
+
+        vrmEntity.setMToonLightColor(lightColor)
+        vrmEntity.setMToonAmbientColor(ambientColor)
+
+        let parameters = try firstMToonParameters(in: vrmEntity.entity)
+        let material = try firstCustomMaterial(in: vrmEntity.entity)
+        #expect(parameters.lightColor.isApproximatelyEqual(to: SIMD4<Float>(0.8, 0.7, 0.6, 1)))
+        #expect(parameters.ambientColor.isApproximatelyEqual(to: SIMD4<Float>(0.05, 0.1, 0.15, 1)))
+        #expect(material.custom.texture != nil)
+    }
+
+    @Test
+    func testMToonShaderUsesMToon10LightingAndTextureSlots() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let shader = try mtoonShaderSource()
+
+        #expect(shader.contains("mtoonLinearstep(-1.0 + shadingToony"))
+        #expect(shader.contains("shift += float(shadingShift) * float(uvAnimation.w);"))
+        #expect(shader.contains("textures.clearcoat_roughness().sample(mtoonRimSampler"))
+        #expect(shader.contains("textures.emissive_color().sample(mtoonEmissiveSampler"))
+        #expect(shader.contains("float3 direct = mix(shadeColor, litColor, shading) * lightColor;"))
+        #expect(shader.contains("float3 indirect = litColor * giColor;"))
+        #expect(!shader.contains("* 2.0 - 1.0) * float(uvAnimation.w)"))
+        #expect(!shader.contains("dot(normal, lightDirection) * 0.5 + 0.5"))
     }
 
     @Test
@@ -143,6 +218,16 @@ struct VRM1RealityKitTests {
     }
 #endif
 
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func firstMToonParameters(in root: Entity) throws -> MToonMaterialParameters {
+        for modelEntity in modelEntities(in: root) {
+            if let component = modelEntity.components[MToonMaterialParametersComponent.self] {
+                return component.parameters
+            }
+        }
+        throw VRMError.dataInconsistent("Expected at least one MToon parameters component")
+    }
+
     private func modelEntities(in root: Entity) -> [ModelEntity] {
         var result: [ModelEntity] = []
         var stack: [Entity] = [root]
@@ -205,6 +290,14 @@ private extension VRMColor {
     }
 }
 
+private extension SIMD3 where Scalar == Float {
+    func isApproximatelyEqual(to other: SIMD3<Float>, tolerance: Float = 0.0001) -> Bool {
+        abs(x - other.x) < tolerance &&
+        abs(y - other.y) < tolerance &&
+        abs(z - other.z) < tolerance
+    }
+}
+
 private extension SIMD4 where Scalar == Float {
     func isApproximatelyEqual(to other: SIMD4<Float>, tolerance: Float = 0.0001) -> Bool {
         abs(x - other.x) < tolerance &&
@@ -212,5 +305,43 @@ private extension SIMD4 where Scalar == Float {
         abs(z - other.z) < tolerance &&
         abs(w - other.w) < tolerance
     }
+}
+
+private enum ShaderChannel: String {
+    case r
+    case g
+    case b
+    case a
+
+    func value(in color: SIMD4<Float>) -> Float {
+        switch self {
+        case .r: return color.x
+        case .g: return color.y
+        case .b: return color.z
+        case .a: return color.w
+        }
+    }
+}
+
+private func sampledChannelValue(in source: String,
+                                 marker: String,
+                                 sample: SIMD4<Float>) throws -> Float {
+    let channel = try sampledChannel(in: source, marker: marker)
+    return channel.value(in: sample)
+}
+
+private func sampledChannel(in source: String, marker: String) throws -> ShaderChannel {
+    guard let markerRange = source.range(of: marker) else {
+        throw VRMError.dataInconsistent("Expected shader sample marker: \(marker)")
+    }
+    guard let dotIndex = source[markerRange.upperBound...].firstIndex(of: ".") else {
+        throw VRMError.dataInconsistent("Expected channel access after shader sample marker: \(marker)")
+    }
+    let channelIndex = source.index(after: dotIndex)
+    guard channelIndex < source.endIndex,
+          let channel = ShaderChannel(rawValue: String(source[channelIndex])) else {
+        throw VRMError.dataInconsistent("Expected r/g/b/a channel after shader sample marker: \(marker)")
+    }
+    return channel
 }
 #endif

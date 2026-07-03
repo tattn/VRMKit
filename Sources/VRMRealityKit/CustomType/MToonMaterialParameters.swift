@@ -14,6 +14,7 @@ struct MToonMaterialParametersComponent: Component {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct MToonMaterialParameters {
     static let defaultLightDirection = simd_normalize(SIMD3<Float>(0.35, 0.55, 0.75))
+    static let textureRowCount = 14
 
     var baseColor: SIMD4<Float>
     var shadeColor: SIMD4<Float>
@@ -26,6 +27,9 @@ struct MToonMaterialParameters {
     var uvAnimation: SIMD4<Float>
     var featureFlags: SIMD4<Float>
     var extraFlags: SIMD4<Float>
+    var emissiveFactor: SIMD4<Float>
+    var lightColor = SIMD4<Float>(1, 1, 1, 1)
+    var ambientColor = SIMD4<Float>(0, 0, 0, 1)
     var lightDirection: SIMD3<Float> = MToonMaterialParameters.defaultLightDirection
     var elapsedTime: Float = 0
 
@@ -35,6 +39,7 @@ struct MToonMaterialParameters {
         rimColor = mtoon.parametricRimColorFactor
         matcapColor = SIMD4<Float>(mtoon.matcapFactor.x, mtoon.matcapFactor.y, mtoon.matcapFactor.z, 1)
         outlineColor = mtoon.outlineColorFactor
+        emissiveFactor = SIMD4<Float>(mtoon.emissiveFactor.x, mtoon.emissiveFactor.y, mtoon.emissiveFactor.z, 1)
         shadeParams = SIMD4<Float>(mtoon.shadingShiftFactor,
                                    mtoon.shadingToonyFactor,
                                    mtoon.giEqualizationFactor,
@@ -42,7 +47,7 @@ struct MToonMaterialParameters {
         rimParams = SIMD4<Float>(mtoon.parametricRimFresnelPowerFactor,
                                  mtoon.parametricRimLiftFactor,
                                  mtoon.rimLightingMixFactor,
-                                 mtoon.outlineLightingMixFactor)
+                                 0)
         outlineParams = SIMD4<Float>(mtoon.outlineWidthFactor,
                                      mtoon.outlineWidthMode.rawValue,
                                      mtoon.outlineLightingMixFactor,
@@ -57,8 +62,8 @@ struct MToonMaterialParameters {
                                     mtoon.uvAnimationMaskTexture == nil ? 0 : 1)
         extraFlags = SIMD4<Float>(mtoon.normalTexture == nil ? 0 : 1,
                                   mtoon.shadeMultiplyTexture == nil ? 0 : 1,
-                                  0,
-                                  0)
+                                  mtoon.emissiveTexture == nil ? 0 : 1,
+                                  mtoon.alphaMode.mtoonRawValue)
     }
 
     var customValue: SIMD4<Float> {
@@ -79,7 +84,7 @@ struct MToonMaterialParameters {
         case .outlineColor:
             outlineColor = color
         case .emissionColor:
-            return false
+            emissiveFactor = SIMD4<Float>(color.x, color.y, color.z, emissiveFactor.w)
         }
         return true
     }
@@ -97,7 +102,7 @@ struct MToonMaterialParameters {
         case .outlineColor:
             return outlineColor
         case .emissionColor:
-            return nil
+            return emissiveFactor
         }
     }
 
@@ -114,8 +119,12 @@ struct MToonMaterialParameters {
             outlineParams,
             uvAnimation,
             featureFlags,
-            extraFlags
+            extraFlags,
+            emissiveFactor,
+            lightColor,
+            ambientColor
         ]
+        precondition(rows.count == Self.textureRowCount)
         let data = rows.withUnsafeBufferPointer { Data(buffer: $0) }
         let mip = TextureResource.Contents.MipmapLevel.mip(
             data: data,
@@ -124,6 +133,19 @@ struct MToonMaterialParameters {
         return try TextureResource(dimensions: .dimensions(width: rows.count, height: 1),
                                    format: .raw(pixelFormat: .rgba32Float),
                                    contents: .init(mipmapLevels: [mip]))
+    }
+}
+
+private extension GLTF.Material.AlphaMode {
+    var mtoonRawValue: Float {
+        switch self {
+        case .OPAQUE:
+            return 0
+        case .MASK:
+            return 1
+        case .BLEND:
+            return 2
+        }
     }
 }
 

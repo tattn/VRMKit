@@ -24,6 +24,7 @@ package struct MToonMaterialDescriptor {
     }
 
     package let baseColorFactor: SIMD4<Float>
+    package let emissiveFactor: SIMD3<Float>
     package let shadeColorFactor: SIMD4<Float>
     package let shadingShiftFactor: Float
     package let shadingShiftTextureScale: Float
@@ -47,6 +48,7 @@ package struct MToonMaterialDescriptor {
     package let alphaCutoff: Float
     package let doubleSided: Bool
     package let baseColorTexture: Texture?
+    package let emissiveTexture: Texture?
     package let shadeMultiplyTexture: Texture?
     package let shadingShiftTexture: Texture?
     package let normalTexture: Texture?
@@ -98,11 +100,12 @@ private extension MToonMaterialDescriptor {
         let pbr = material.pbrMetallicRoughness
         let baseColor = (pbr?.baseColorFactor).map(SIMD4<Float>.init) ?? SIMD4<Float>(1, 1, 1, 1)
         let shadeColor = SIMD4<Float>(mtoon.shadeColorFactor, default: SIMD4<Float>(1, 1, 1, 1))
-        let matcapFactor = SIMD3<Float>(mtoon.matcapFactor, default: SIMD3<Float>(0, 0, 0))
+        let matcapFactor = SIMD3<Float>(mtoon.matcapFactor, default: SIMD3<Float>(1, 1, 1))
         let rimColor = SIMD4<Float>(mtoon.parametricRimColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
         let outlineColor = SIMD4<Float>(mtoon.outlineColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
 
         self.baseColorFactor = baseColor
+        self.emissiveFactor = SIMD3<Float>(material.emissiveFactor)
         self.shadeColorFactor = shadeColor
         self.shadingShiftFactor = Float(mtoon.shadingShiftFactor ?? 0)
         self.shadingShiftTextureScale = Float(mtoon.shadingShiftTexture?.scale ?? 1)
@@ -126,6 +129,7 @@ private extension MToonMaterialDescriptor {
         self.alphaCutoff = material.alphaCutoff
         self.doubleSided = material.doubleSided
         self.baseColorTexture = pbr?.baseColorTexture.map(MToonMaterialDescriptor.Texture.init)
+        self.emissiveTexture = material.emissiveTexture.map(MToonMaterialDescriptor.Texture.init)
         self.shadeMultiplyTexture = mtoon.shadeMultiplyTexture.map(MToonMaterialDescriptor.Texture.init)
         self.shadingShiftTexture = mtoon.shadingShiftTexture.map(MToonMaterialDescriptor.Texture.init)
         self.normalTexture = material.normalTexture.map(MToonMaterialDescriptor.Texture.init)
@@ -141,36 +145,46 @@ private extension MToonMaterialDescriptor {
         let vectors = property.vectorProperties.dictionaryValue
         let pbr = material.pbrMetallicRoughness
         let baseColor = vectors.simd4("_Color") ?? (pbr?.baseColorFactor).map(SIMD4<Float>.init) ?? SIMD4<Float>(1, 1, 1, 1)
+        let emissiveColor = vectors.simd3("_EmissionColor") ?? SIMD3<Float>(0, 0, 0)
         let shadeColor = vectors.simd4("_ShadeColor") ?? SIMD4<Float>(0.97, 0.81, 0.86, 1)
         let rimColor = vectors.simd4("_RimColor") ?? SIMD4<Float>(0, 0, 0, 1)
         let outlineColor = vectors.simd4("_OutlineColor") ?? SIMD4<Float>(0, 0, 0, 1)
         let alphaMode = GLTF.Material.AlphaMode(vrm0: property, fallback: material.alphaMode)
+        let transparentWithZWrite = property.keywordMap["_ZWRITE_ON"] ?? false
         let doubleSided = material.doubleSided || floats.float("_CullMode") == 0
+        let shadeShift0 = floats.float("_ShadeShift") ?? 0
+        let shadeToony0 = floats.float("_ShadeToony") ?? 0.9
+        let rangeMin = shadeShift0
+        let rangeMax = simd_mix(Float(1), shadeShift0, shadeToony0)
 
         self.baseColorFactor = baseColor
+        self.emissiveFactor = emissiveColor
         self.shadeColorFactor = shadeColor
-        self.shadingShiftFactor = floats.float("_ShadeShift") ?? floats.float("_ShadingShift") ?? 0
+        self.shadingShiftFactor = (-(rangeMax + rangeMin) / 2).clamped(to: -1 ... 1)
         self.shadingShiftTextureScale = 1
-        self.shadingToonyFactor = floats.float("_ShadeToony") ?? floats.float("_ShadingToony") ?? 0.9
-        self.giEqualizationFactor = floats.float("_GiEqualization") ?? floats.float("_IndirectLightIntensity") ?? 0.9
+        self.shadingToonyFactor = ((2 - (rangeMax - rangeMin)) / 2).clamped(to: 0 ... 1)
+        self.giEqualizationFactor = (1 - (floats.float("_IndirectLightIntensity") ?? 0.1)).clamped(to: 0 ... 1)
         self.matcapFactor = SIMD3<Float>(1, 1, 1)
         self.parametricRimColorFactor = rimColor
-        self.rimLightingMixFactor = floats.float("_RimLightingMix") ?? 1
+        self.rimLightingMixFactor = floats.float("_RimLightingMix") ?? 0
         self.parametricRimFresnelPowerFactor = floats.float("_RimFresnelPower") ?? 1
         self.parametricRimLiftFactor = floats.float("_RimLift") ?? 0
         self.outlineWidthMode = .init(vrm0: floats.float("_OutlineWidthMode") ?? 0)
-        self.outlineWidthFactor = floats.float("_OutlineWidth") ?? 0
+        self.outlineWidthFactor = (floats.float("_OutlineWidth") ?? 0) * 0.01
         self.outlineColorFactor = outlineColor
         self.outlineLightingMixFactor = floats.float("_OutlineLightingMix") ?? 1
         self.uvAnimationScrollXSpeedFactor = floats.float("_UvAnimScrollX") ?? 0
         self.uvAnimationScrollYSpeedFactor = floats.float("_UvAnimScrollY") ?? 0
-        self.uvAnimationRotationSpeedFactor = floats.float("_UvAnimRotation") ?? 0
-        self.transparentWithZWrite = property.keywordMap["_ZWRITE_ON"] ?? false
-        self.renderQueueOffsetNumber = property.renderQueue
+        self.uvAnimationRotationSpeedFactor = (floats.float("_UvAnimRotation") ?? 0) * 2 * Float.pi
+        self.transparentWithZWrite = transparentWithZWrite
+        self.renderQueueOffsetNumber = Self.vrm0RenderQueueOffset(renderQueue: property.renderQueue,
+                                                                  alphaMode: alphaMode,
+                                                                  transparentWithZWrite: transparentWithZWrite)
         self.alphaMode = alphaMode
         self.alphaCutoff = floats.float("_Cutoff") ?? material.alphaCutoff
         self.doubleSided = doubleSided
         self.baseColorTexture = textures["_MainTex"].map(MToonMaterialDescriptor.Texture.init)
+        self.emissiveTexture = textures["_EmissionMap"].map(MToonMaterialDescriptor.Texture.init)
         self.shadeMultiplyTexture = textures["_ShadeTexture"].map(MToonMaterialDescriptor.Texture.init)
         self.shadingShiftTexture = nil
         self.normalTexture = textures["_BumpMap"].map(MToonMaterialDescriptor.Texture.init) ?? material.normalTexture.map(MToonMaterialDescriptor.Texture.init)
@@ -178,6 +192,16 @@ private extension MToonMaterialDescriptor {
         self.rimMultiplyTexture = textures["_RimTexture"].map(MToonMaterialDescriptor.Texture.init)
         self.outlineWidthMultiplyTexture = textures["_OutlineWidthTexture"].map(MToonMaterialDescriptor.Texture.init)
         self.uvAnimationMaskTexture = textures["_UvAnimMaskTexture"].map(MToonMaterialDescriptor.Texture.init)
+    }
+
+    static func vrm0RenderQueueOffset(renderQueue: Int,
+                                      alphaMode: GLTF.Material.AlphaMode,
+                                      transparentWithZWrite: Bool) -> Int {
+        guard renderQueue > 0, alphaMode == .BLEND else { return 0 }
+        if transparentWithZWrite {
+            return (renderQueue - 2501).clamped(to: 0 ... 9)
+        }
+        return (renderQueue - 3000).clamped(to: -9 ... 0)
     }
 }
 
@@ -275,6 +299,28 @@ private extension Dictionary where Key == String, Value == Any {
 
     func simd4(_ key: String) -> SIMD4<Float>? {
         return (self[key] as? [Any]).map(SIMD4<Float>.init)
+    }
+
+    func simd3(_ key: String) -> SIMD3<Float>? {
+        return (self[key] as? [Any]).map(SIMD3<Float>.init)
+    }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        return min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+private extension SIMD3 where Scalar == Float {
+    init(_ color: Color3) {
+        self.init(color.r, color.g, color.b)
+    }
+
+    init(_ values: [Any]) {
+        self.init(values.float(at: 0, default: 0),
+                  values.float(at: 1, default: 0),
+                  values.float(at: 2, default: 0))
     }
 }
 
