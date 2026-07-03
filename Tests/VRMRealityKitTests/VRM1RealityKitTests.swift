@@ -39,6 +39,17 @@ struct VRM1RealityKitTests {
     }
 
     @Test
+    func testVRM1MToonShaderUsesPackedMaskChannels() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let shader = try mtoonShaderSource()
+
+        #expect(shader.contains("mtoonUvAnimationMaskSampler, maskUV).b"))
+        #expect(shader.contains("mtoonOutlineWidthSampler, widthUV).g"))
+        #expect(!shader.contains("mtoonUvAnimationMaskSampler, maskUV).r"))
+        #expect(!shader.contains("mtoonOutlineWidthSampler, widthUV).r"))
+    }
+
+    @Test
     func testMToonShadeColorBindDoesNotOverwriteCustomLightDirection() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")

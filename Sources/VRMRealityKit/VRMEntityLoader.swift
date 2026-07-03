@@ -585,6 +585,8 @@ open class VRMEntityLoader {
 #if !os(visionOS)
     private func customMToonMaterial(_ mtoon: MToonMaterialDescriptor,
                                      library: MTLLibrary) throws -> Material {
+        // RealityKit has no material-level render queue offset hook in this loader.
+        // MToon renderQueueOffsetNumber is applied by the SceneKit renderer only.
         let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: library)
         let geometry = CustomMaterial.GeometryModifier(named: "mtoonGeometry", in: library)
         var material = try CustomMaterial(surfaceShader: surface,
@@ -737,7 +739,8 @@ open class VRMEntityLoader {
         }
 #if (os(iOS) || os(visionOS)) && !targetEnvironment(simulator)
         // Runtime Metal source compilation is not used on physical iOS or visionOS devices.
-        // Sampler constexpr variants therefore fall back to the precompiled default sampler set here.
+        // The precompiled default library cannot specialize sampler constexpr values, so glTF
+        // wrap/filter variants fall back to the shader's default sampler settings on devices.
         if let library = Self.mtoonDefaultLibrary(device: device) {
             Self.mtoonLibraryCache[variant] = library
             return library
@@ -784,8 +787,8 @@ open class VRMEntityLoader {
         do {
             let source = try String(contentsOf: url)
             guard let header = realityKitShaderHeaderSource() else {
-                logger.warning("Failed to find RealityKit shader header; falling back to default MToon library when source compilation fails.")
-                return source
+                logger.warning("Failed to find RealityKit shader header; falling back to default MToon library.")
+                return nil
             }
             return source.replacingOccurrences(of: "#include <RealityKit/RealityKit.h>",
                                                 with: header)
@@ -839,12 +842,6 @@ open class VRMEntityLoader {
 #if os(macOS)
         candidates.append(contentsOf: xcrunSDKRootCandidates().map { $0.appendingPathComponent(relativePath) })
 #endif
-        candidates.append(contentsOf: [
-            URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Developer"),
-            URL(fileURLWithPath: "/Applications/Xcode-beta.app/Contents/Developer")
-        ].flatMap {
-            developerSDKCandidates(developerDirectory: $0.path, relativePath: relativePath)
-        })
 
         var visited = Set<String>()
         return candidates.first { candidate in

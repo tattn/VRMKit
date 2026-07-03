@@ -79,11 +79,11 @@ extension SCNMaterial {
         }
 
         if let mtoon {
-            applyMToon(mtoon, loader: loader)
+            try applyMToon(mtoon, loader: loader)
         }
     }
 
-    private func applyMToon(_ mtoon: MToonMaterialDescriptor, loader: VRMSceneLoader) {
+    private func applyMToon(_ mtoon: MToonMaterialDescriptor, loader: VRMSceneLoader) throws {
         setMToonColor(mtoon.baseColorFactor, forKey: MToonUniform.baseColor)
         setMToonColor(mtoon.shadeColorFactor, forKey: MToonUniform.shadeColor)
         setMToonColor(mtoon.parametricRimColorFactor, forKey: MToonUniform.rimColor)
@@ -113,27 +113,55 @@ extension SCNMaterial {
                  forKey: MToonUniform.lightDirection)
 
         if let baseColorTexture = mtoon.baseColorTexture {
-            try? diffuse.setMToonTexture(baseColorTexture, loader: loader)
+            try setMToonTexture(baseColorTexture,
+                                 to: diffuse,
+                                 loader: loader,
+                                 propertyName: "baseColorTexture")
         } else {
             diffuse.contents = SKColor(mtoon.baseColorFactor)
         }
         if let shadeTexture = mtoon.shadeMultiplyTexture {
-            try? ambientOcclusion.setMToonTexture(shadeTexture, loader: loader)
+            try setMToonTexture(shadeTexture,
+                                 to: ambientOcclusion,
+                                 loader: loader,
+                                 propertyName: "shadeMultiplyTexture")
         }
         if let normalTexture = mtoon.normalTexture {
-            try? normal.setMToonTexture(normalTexture, loader: loader)
+            try setMToonTexture(normalTexture,
+                                 to: normal,
+                                 loader: loader,
+                                 propertyName: "normalTexture")
         }
         reflective.contents = SKColor(red: 0, green: 0, blue: 0, alpha: 1)
         if let matcapTexture = mtoon.matcapTexture {
-            try? reflective.setMToonTexture(matcapTexture, loader: loader)
+            try setMToonTexture(matcapTexture,
+                                 to: reflective,
+                                 loader: loader,
+                                 propertyName: "matcapTexture")
         }
         selfIllumination.contents = SKColor(mtoon.parametricRimColorFactor)
         selfIllumination.intensity = CGFloat(mtoon.parametricRimLiftFactor)
         if let rimTexture = mtoon.rimMultiplyTexture {
-            try? selfIllumination.setMToonTexture(rimTexture, loader: loader)
+            try setMToonTexture(rimTexture,
+                                 to: selfIllumination,
+                                 loader: loader,
+                                 propertyName: "rimMultiplyTexture")
+        }
+        if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
+            let property = SCNMaterialProperty()
+            try setMToonTexture(outlineWidthTexture,
+                                 to: property,
+                                 loader: loader,
+                                 propertyName: "outlineWidthMultiplyTexture")
+            setValue(property, forKey: MToonUniform.outlineWidthMultiplyTexture)
         }
         if let uvMask = mtoon.uvAnimationMaskTexture {
-            try? ambient.setMToonTexture(uvMask, loader: loader)
+            let property = SCNMaterialProperty()
+            try setMToonTexture(uvMask,
+                                 to: property,
+                                 loader: loader,
+                                 propertyName: "uvAnimationMaskTexture")
+            setValue(property, forKey: MToonUniform.uvAnimationMaskTexture)
         }
         var modifiers: [SCNShaderModifierEntryPoint: String] = [
             .surface: MToonShaderModifier.surface
@@ -141,7 +169,9 @@ extension SCNMaterial {
         if mtoon.uvAnimationScrollXSpeedFactor != 0 ||
             mtoon.uvAnimationScrollYSpeedFactor != 0 ||
             mtoon.uvAnimationRotationSpeedFactor != 0 {
-            modifiers[.geometry] = MToonShaderModifier.geometry
+            modifiers[.geometry] = mtoon.uvAnimationMaskTexture == nil
+                ? MToonShaderModifier.geometry
+                : MToonShaderModifier.geometryWithUvAnimationMask
         }
         shaderModifiers = modifiers
 
@@ -150,6 +180,18 @@ extension SCNMaterial {
         }
         if mtoon.alphaMode == .MASK {
             transparencyMode = .aOne
+        }
+    }
+
+    private func setMToonTexture(_ textureInfo: MToonMaterialDescriptor.Texture,
+                                 to property: SCNMaterialProperty,
+                                 loader: VRMSceneLoader,
+                                 propertyName: String) throws {
+        do {
+            try property.setMToonTexture(textureInfo, loader: loader)
+        } catch {
+            let materialName = name ?? "<unnamed>"
+            throw VRMError._dataInconsistent("Failed to load MToon \(propertyName) for material \(materialName): \(error)")
         }
     }
 
@@ -241,6 +283,8 @@ package enum MToonUniform {
     package static let outlineParams = "mtoonOutlineParams"
     package static let uvAnimation = "mtoonUvAnimation"
     package static let lightDirection = "mtoonLightDirection"
+    package static let outlineWidthMultiplyTexture = "mtoonOutlineWidthMultiplyTexture"
+    package static let uvAnimationMaskTexture = "mtoonUvAnimationMaskTexture"
 }
 
 private enum MToonShaderModifier {
@@ -293,6 +337,27 @@ private enum MToonShaderModifier {
     }
     """
 
+    static let geometryWithUvAnimationMask = """
+    #pragma arguments
+    float4 mtoonUvAnimation;
+    texture2d<float> mtoonUvAnimationMaskTexture;
+    sampler mtoonUvAnimationMaskTextureSampler;
+    #pragma body
+    float2 mtoonUV = _geometry.texcoords[0];
+    float mtoonMask = 1.0;
+    if (mtoonUvAnimation.x != 0.0 || mtoonUvAnimation.y != 0.0 || mtoonUvAnimation.z != 0.0) {
+        mtoonMask = mtoonUvAnimationMaskTexture.sample(mtoonUvAnimationMaskTextureSampler, mtoonUV).b;
+        float mtoonAngle = mtoonUvAnimation.z * mtoonUvAnimation.w * mtoonMask;
+        float2 mtoonCenteredUV = mtoonUV - float2(0.5, 0.5);
+        float mtoonSin = sin(mtoonAngle);
+        float mtoonCos = cos(mtoonAngle);
+        mtoonUV = float2(mtoonCenteredUV.x * mtoonCos - mtoonCenteredUV.y * mtoonSin,
+                         mtoonCenteredUV.x * mtoonSin + mtoonCenteredUV.y * mtoonCos) + float2(0.5, 0.5);
+        mtoonUV += mtoonUvAnimation.xy * mtoonUvAnimation.w * mtoonMask;
+        _geometry.texcoords[0] = mtoonUV;
+    }
+    """
+
     static let outlineSurface = """
     #pragma arguments
     float4 mtoonOutlineColorFactor;
@@ -312,6 +377,26 @@ private enum MToonShaderModifier {
     #pragma body
     if (mtoonOutlineParams.w > 0.5) {
         float mtoonOutlineWidth = max(0.0, mtoonOutlineParams.x);
+        if (mtoonOutlineParams.y > 1.5) {
+            mtoonOutlineWidth *= max(0.001, abs(_geometry.position.z)) * 0.002;
+        }
+        float3 mtoonOutlineNormal = _geometry.normal;
+        float mtoonOutlineNormalLengthSquared = dot(mtoonOutlineNormal, mtoonOutlineNormal);
+        if (mtoonOutlineNormalLengthSquared > 0.000001) {
+            _geometry.position.xyz += mtoonOutlineNormal * rsqrt(mtoonOutlineNormalLengthSquared) * mtoonOutlineWidth;
+        }
+    }
+    """
+
+    static let outlineGeometryWithWidthTexture = """
+    #pragma arguments
+    float4 mtoonOutlineParams;
+    texture2d<float> mtoonOutlineWidthMultiplyTexture;
+    sampler mtoonOutlineWidthMultiplyTextureSampler;
+    #pragma body
+    if (mtoonOutlineParams.w > 0.5) {
+        float mtoonOutlineWidth = max(0.0, mtoonOutlineParams.x);
+        mtoonOutlineWidth *= mtoonOutlineWidthMultiplyTexture.sample(mtoonOutlineWidthMultiplyTextureSampler, _geometry.texcoords[0]).g;
         if (mtoonOutlineParams.y > 1.5) {
             mtoonOutlineWidth *= max(0.001, abs(_geometry.position.z)) * 0.002;
         }
@@ -356,9 +441,15 @@ package extension SCNMaterial {
             material.setValue(shadeParams, forKey: MToonUniform.shadeParams)
         }
         material.setValue(outlineParams, forKey: MToonUniform.outlineParams)
+        let outlineWidthTexture = value(forKey: MToonUniform.outlineWidthMultiplyTexture)
+        if let outlineWidthTexture {
+            material.setValue(outlineWidthTexture, forKey: MToonUniform.outlineWidthMultiplyTexture)
+        }
         material.shaderModifiers = [
             .surface: MToonShaderModifier.outlineSurface,
-            .geometry: MToonShaderModifier.outlineGeometry
+            .geometry: outlineWidthTexture == nil
+                ? MToonShaderModifier.outlineGeometry
+                : MToonShaderModifier.outlineGeometryWithWidthTexture
         ]
         return material
     }

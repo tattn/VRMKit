@@ -188,7 +188,7 @@ float2 mtoonAnimatedUV(realitykit::geometry_parameters params,
     float mask = 1.0;
     if (featureFlags.w > 0.5h) {
         float2 maskUV = mtoonTextureUV(uv);
-        mask = float(params.textures().ambient_occlusion().sample(mtoonUvAnimationMaskSampler, maskUV).r);
+        mask = float(params.textures().ambient_occlusion().sample(mtoonUvAnimationMaskSampler, maskUV).b);
     }
 
     float angle = float(uvAnimation.z) * time * mask;
@@ -227,7 +227,7 @@ void mtoonOutlineGeometry(realitykit::geometry_parameters params)
     }
 
     float2 widthUV = mtoonTextureUV(uv);
-    float widthMask = float(params.textures().clearcoat().sample(mtoonOutlineWidthSampler, widthUV).r);
+    float widthMask = float(params.textures().clearcoat().sample(mtoonOutlineWidthSampler, widthUV).g);
     float width = max(0.0, float(outlineParams.x)) * widthMask;
     if (outlineParams.y > 1.5h) {
         float4 viewPosition = params.uniforms().model_to_view() * float4(params.geometry().model_position(), 1.0);

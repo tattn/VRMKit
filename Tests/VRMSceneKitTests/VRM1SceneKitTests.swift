@@ -121,6 +121,28 @@ struct VRM1SceneLoaderTests {
     }
 
     @Test
+    func testVRM1MToonOutlineWidthMultiplyTextureUsesGreenChannel() throws {
+        let vrmLoader = try vrmLoader()
+        let material = try vrmLoader.material(withMaterialIndex: 0)
+        let outlineMaterial = try #require(material.mtoonOutlineMaterial())
+        let outlineTexture = outlineMaterial.value(forKey: MToonUniform.outlineWidthMultiplyTexture) as? SCNMaterialProperty
+        let outlineGeometry = try #require(outlineMaterial.shaderModifiers?[.geometry])
+
+        #expect(outlineTexture != nil)
+        #expect(outlineGeometry.contains("mtoonOutlineWidthMultiplyTexture"))
+        #expect(outlineGeometry.contains("mtoonOutlineWidthMultiplyTextureSampler"))
+        #expect(outlineGeometry.contains(").g"))
+    }
+
+    @Test
+    func testSceneKitMToonShaderModifiersUsePackedMaskChannels() throws {
+        let source = try sceneKitMaterialSource()
+
+        #expect(source.contains("mtoonUvAnimationMaskTexture.sample(mtoonUvAnimationMaskTextureSampler, mtoonUV).b"))
+        #expect(source.contains("mtoonOutlineWidthMultiplyTexture.sample(mtoonOutlineWidthMultiplyTextureSampler, _geometry.texcoords[0]).g"))
+    }
+
+    @Test
     func testVRM1MToonOutlineColorBindUpdatesOutlineMaterial() throws {
         let vrmLoader = try vrmLoader()
         let scene = try vrmLoader.loadScene()
@@ -160,6 +182,20 @@ struct VRM1SceneLoaderTests {
         scene.vrmNode.setExpression(value: 0.5, for: .preset(.aa))
         #expect(abs(baseMorpher.weight(forTargetAt: 36) - 0.5) < 0.001)
         #expect(abs(outlineMorpher.weight(forTargetAt: 36) - 0.5) < 0.001)
+    }
+
+    private func sceneKitMaterialSource() throws -> String {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let packageRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = packageRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("VRMSceneKit")
+            .appendingPathComponent("GLTF2SCN")
+            .appendingPathComponent("SCNMaterial+GLTF.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 
     @Test
