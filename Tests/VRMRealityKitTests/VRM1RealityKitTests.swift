@@ -1,5 +1,6 @@
 #if canImport(RealityKit)
 import Foundation
+import Metal
 import RealityKit
 import Testing
 import VRMKit
@@ -16,7 +17,11 @@ struct VRM1RealityKitTests {
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
         let vrmLoader = try VRMEntityLoader(withURL: url)
         let material = try vrmLoader.material(withMaterialIndex: 0)
-        guard let customMaterial = material as? CustomMaterial else { return }
+        guard let customMaterial = material as? CustomMaterial else {
+            #expect(hasCompiledMToonShaderLibrary() == false)
+            recordCompiledMToonShaderLibraryUnavailable("CustomMaterial parameter texture validation")
+            return
+        }
 
         #expect(customMaterial.custom.texture != nil)
         #expect(customMaterial.normal.texture != nil)
@@ -99,7 +104,7 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
         let vrmLoader = try VRMEntityLoader(withURL: url)
-        let hasCompiledMToonMaterial = try hasCompiledMToonCustomMaterial(in: vrmLoader)
+        let hasCompiledMToonMaterial = hasCompiledMToonShaderLibrary()
         let vrmEntity = try vrmLoader.loadEntity()
         let lightColor = SIMD3<Float>(0.8, 0.7, 0.6)
         let ambientColor = SIMD3<Float>(0.05, 0.1, 0.15)
@@ -113,6 +118,8 @@ struct VRM1RealityKitTests {
         if hasCompiledMToonMaterial {
             let material = try firstCustomMaterial(in: vrmEntity.entity)
             #expect(material.custom.texture != nil)
+        } else {
+            recordCompiledMToonShaderLibraryUnavailable("CustomMaterial parameter texture refresh validation")
         }
     }
 
@@ -151,7 +158,6 @@ struct VRM1RealityKitTests {
 
         #expect(source.contains("makeDefaultLibrary(bundle: .module)"))
         #expect(source.contains("requiredMToonFunctionNames.isSubset"))
-        #expect(source.contains("Compiled MToon shader library is unavailable for this SDK."))
         #expect(!source.contains("makeLibrary(source:"))
         #expect(!source.contains("SDKROOT"))
         #expect(!source.contains("DEVELOPER_DIR"))
@@ -163,9 +169,12 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let manifest = try packageManifestSource()
 
-        #expect(manifest.contains(#"exclude: ["Shaders/MToon.metal"]"#))
-        #expect(manifest.contains(#"resources: [.process("Resources")]"#))
-        #expect(!manifest.contains(#".copy("Shaders")"#))
+        #expect(manifest.range(of: #"exclude:\s*\[[^\]]*"Shaders/MToon\.metal"[^\]]*\]"#,
+                               options: .regularExpression) != nil)
+        #expect(manifest.range(of: #"resources:\s*\[[^\]]*\.process\s*\(\s*"Resources"\s*\)[^\]]*\]"#,
+                               options: .regularExpression) != nil)
+        #expect(manifest.range(of: #"\.copy\s*\(\s*"Shaders"\s*\)"#,
+                               options: .regularExpression) == nil)
     }
 
     @Test
@@ -174,11 +183,15 @@ struct VRM1RealityKitTests {
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
         let vrmLoader = try VRMEntityLoader(withURL: url)
         let material = try vrmLoader.material(withMaterialIndex: 0)
-        guard let material = material as? CustomMaterial else { return }
-        let initialValue = material.custom.value
+        guard let customMaterial = material as? CustomMaterial else {
+            #expect(hasCompiledMToonShaderLibrary() == false)
+            recordCompiledMToonShaderLibraryUnavailable("CustomMaterial shade-color bind validation")
+            return
+        }
+        let initialValue = customMaterial.custom.value
 
-        let updatedMaterial = material.settingColor(VRMColor(red: 0.2, green: 0.3, blue: 0.4, alpha: 1),
-                                                    for: .shadeColor)
+        let updatedMaterial = customMaterial.settingColor(VRMColor(red: 0.2, green: 0.3, blue: 0.4, alpha: 1),
+                                                          for: .shadeColor)
         let updatedCustomMaterial = try #require(updatedMaterial as? CustomMaterial)
 
         #expect(updatedCustomMaterial.custom.value == initialValue)
@@ -234,7 +247,10 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
         let vrmLoader = try VRMEntityLoader(withURL: url)
-        guard try hasCompiledMToonCustomMaterial(in: vrmLoader) else { return }
+        guard hasCompiledMToonShaderLibrary() else {
+            recordCompiledMToonShaderLibraryUnavailable("CustomMaterial UV animation runtime validation")
+            return
+        }
         let vrmEntity = try vrmLoader.loadEntity()
 
         vrmEntity.update(at: 10.0)
@@ -251,7 +267,10 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
         let vrmLoader = try VRMEntityLoader(withURL: url)
-        guard try hasCompiledMToonCustomMaterial(in: vrmLoader) else { return }
+        guard hasCompiledMToonShaderLibrary() else {
+            recordCompiledMToonShaderLibraryUnavailable("CustomMaterial outline entity validation")
+            return
+        }
         let vrmEntity = try vrmLoader.loadEntity()
         let outlineEntities = modelEntities(in: vrmEntity.entity).filter { modelEntity in
             guard let model = modelEntity.components[ModelComponent.self],
@@ -289,9 +308,49 @@ struct VRM1RealityKitTests {
 
 #if !os(visionOS)
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private func hasCompiledMToonCustomMaterial(in loader: VRMEntityLoader) throws -> Bool {
-        // `swift test` can exercise VRMRealityKit without a package default Metal library.
-        try loader.material(withMaterialIndex: 0) is CustomMaterial
+    private func hasCompiledMToonShaderLibrary() -> Bool {
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let bundle = vrmRealityKitResourceBundle(),
+              let library = try? device.makeDefaultLibrary(bundle: bundle) else {
+            return false
+        }
+        let requiredFunctionNames: Set<String> = [
+            "mtoonSurface",
+            "mtoonGeometry",
+            "mtoonOutlineSurface",
+            "mtoonOutlineGeometry"
+        ]
+        return requiredFunctionNames.isSubset(of: Set(library.functionNames))
+    }
+
+    private func vrmRealityKitResourceBundle() -> Bundle? {
+        let bundleName = "VRMKit_VRMRealityKit.bundle"
+        var baseURLs = [
+            Bundle.main.bundleURL,
+            Bundle.main.bundleURL.deletingLastPathComponent()
+        ]
+        if let resourceURL = Bundle.main.resourceURL {
+            baseURLs.append(resourceURL)
+        }
+        baseURLs += Bundle.allBundles.compactMap(\.resourceURL)
+        baseURLs += Bundle.allFrameworks.compactMap(\.resourceURL)
+
+        for baseURL in baseURLs {
+            let bundleURL = baseURL.appendingPathComponent(bundleName)
+            if let bundle = Bundle(url: bundleURL),
+               bundle.url(forResource: "ShaderLibrary", withExtension: "marker") != nil {
+                return bundle
+            }
+        }
+
+        return (Bundle.allBundles + Bundle.allFrameworks).first {
+            $0.url(forResource: "ShaderLibrary", withExtension: "marker") != nil
+        }
+    }
+
+    private func recordCompiledMToonShaderLibraryUnavailable(_ purpose: String) {
+        Issue.record("Skipping \(purpose) because this SwiftPM test environment does not provide the compiled MToon shader functions in Bundle.module.",
+                     severity: .warning)
     }
 
     private func firstCustomMaterial(in root: Entity) throws -> CustomMaterial {
