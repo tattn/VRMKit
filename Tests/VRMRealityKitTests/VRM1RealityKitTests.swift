@@ -154,6 +154,16 @@ struct VRM1RealityKitTests {
     }
 
     @Test
+    func testMToonPackageResourcesKeepShaderSourceOutOfBundleResources() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let manifest = try packageManifestSource()
+
+        #expect(manifest.contains(#"exclude: ["Shaders/MToon.metal"]"#))
+        #expect(manifest.contains(#"resources: [.process("Resources")]"#))
+        #expect(!manifest.contains(#".copy("Shaders")"#))
+    }
+
+    @Test
     func testMToonShadeColorBindDoesNotOverwriteCustomLightDirection() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
@@ -306,6 +316,16 @@ struct VRM1RealityKitTests {
             .appendingPathComponent("VRMRealityKit")
             .appendingPathComponent("VRMEntityLoader.swift")
         return try String(contentsOf: loaderURL, encoding: .utf8)
+    }
+
+    private func packageManifestSource() throws -> String {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let packageRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let manifestURL = packageRoot.appendingPathComponent("Package.swift")
+        return try String(contentsOf: manifestURL, encoding: .utf8)
     }
 }
 
