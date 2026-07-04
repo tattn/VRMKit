@@ -14,7 +14,10 @@ struct MToonMaterialParametersComponent: Component {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct MToonMaterialParameters {
     static let defaultLightDirection = simd_normalize(SIMD3<Float>(0.35, 0.55, 0.75))
-    static let textureRowCount = 14
+    static let baseParameterRowCount = 14
+    static let samplerRowCount = MToonTextureSlot.allCases.count
+    static let textureRowCount = baseParameterRowCount + samplerRowCount
+    static let defaultSampler = SIMD4<Float>(0, 0, 0, 0)
 
     var baseColor: SIMD4<Float>
     var shadeColor: SIMD4<Float>
@@ -30,6 +33,8 @@ struct MToonMaterialParameters {
     var emissiveFactor: SIMD4<Float>
     var lightColor = SIMD4<Float>(1, 1, 1, 1)
     var ambientColor = SIMD4<Float>(0, 0, 0, 1)
+    var samplers = Array(repeating: MToonMaterialParameters.defaultSampler,
+                         count: MToonMaterialParameters.samplerRowCount)
     var lightDirection: SIMD3<Float> = MToonMaterialParameters.defaultLightDirection
     var elapsedTime: Float = 0
 
@@ -106,6 +111,10 @@ struct MToonMaterialParameters {
         }
     }
 
+    mutating func setSampler(_ sampler: SIMD4<Float>, for slot: MToonTextureSlot) {
+        samplers[slot.rawValue] = sampler
+    }
+
     @MainActor
     func textureResource() throws -> TextureResource {
         let rows = [
@@ -123,7 +132,7 @@ struct MToonMaterialParameters {
             emissiveFactor,
             lightColor,
             ambientColor
-        ]
+        ] + samplers
         precondition(rows.count == Self.textureRowCount)
         let data = rows.withUnsafeBufferPointer { Data(buffer: $0) }
         let mip = TextureResource.Contents.MipmapLevel.mip(
@@ -134,6 +143,18 @@ struct MToonMaterialParameters {
                                    format: .raw(pixelFormat: .rgba32Float),
                                    contents: .init(mipmapLevels: [mip]))
     }
+}
+
+enum MToonTextureSlot: Int, CaseIterable {
+    case base
+    case shade
+    case shadingShift
+    case normal
+    case matcap
+    case emissive
+    case rim
+    case outlineWidth
+    case uvAnimationMask
 }
 
 private extension GLTF.Material.AlphaMode {

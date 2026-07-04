@@ -47,13 +47,13 @@ struct VRM1RealityKitTests {
         let packedMaskSample = SIMD4<Float>(0.125, 0.5, 0.875, 1.0)
 
         #expect(try sampledChannelValue(in: shader,
-                                        marker: "textures.specular().sample(mtoonShadingShiftSampler, uv)",
+                                        marker: "mtoonSample(textures.specular(), uv, shadingShiftSampler)",
                                         sample: packedMaskSample) == packedMaskSample.x)
         #expect(try sampledChannelValue(in: shader,
-                                        marker: "params.textures().clearcoat().sample(mtoonOutlineWidthSampler, widthUV)",
+                                        marker: "mtoonSample(params.textures().clearcoat(), widthUV, outlineWidthSampler)",
                                         sample: packedMaskSample) == packedMaskSample.y)
         #expect(try sampledChannelValue(in: shader,
-                                        marker: "params.textures().ambient_occlusion().sample(mtoonUvAnimationMaskSampler, maskUV)",
+                                        marker: "mtoonSample(params.textures().ambient_occlusion(), maskUV, uvAnimationMaskSampler)",
                                         sample: packedMaskSample) == packedMaskSample.z)
     }
 
@@ -67,10 +67,14 @@ struct VRM1RealityKitTests {
         let texture = try parameters.textureResource()
         let shader = try mtoonShaderSource()
 
-        #expect(MToonMaterialParameters.textureRowCount == 14)
+        #expect(MToonMaterialParameters.baseParameterRowCount == 14)
+        #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
+        #expect(MToonMaterialParameters.textureRowCount == 23)
+        #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
         #expect(texture.width == MToonMaterialParameters.textureRowCount)
         #expect(texture.height == 1)
-        #expect(shader.contains("constant float mtoonParameterTextureWidth = 14.0;"))
+        #expect(shader.contains("constant float mtoonParameterTextureWidth = 23.0;"))
+        #expect(shader.contains("constant float mtoonSamplerParameterStart = 14.0;"))
     }
 
     @Test
@@ -116,12 +120,37 @@ struct VRM1RealityKitTests {
 
         #expect(shader.contains("mtoonLinearstep(-1.0 + shadingToony"))
         #expect(shader.contains("shift += float(shadingShift) * float(uvAnimation.w);"))
-        #expect(shader.contains("textures.clearcoat_roughness().sample(mtoonRimSampler"))
-        #expect(shader.contains("textures.emissive_color().sample(mtoonEmissiveSampler"))
+        #expect(shader.contains("mtoonSample(textures.clearcoat_roughness(), uv, rimSampler)"))
+        #expect(shader.contains("mtoonSample(textures.emissive_color(), uv, emissiveSampler)"))
         #expect(shader.contains("float3 direct = mix(shadeColor, litColor, shading) * lightColor;"))
         #expect(shader.contains("float3 indirect = litColor * giColor;"))
         #expect(!shader.contains("* 2.0 - 1.0) * float(uvAnimation.w)"))
         #expect(!shader.contains("dot(normal, lightDirection) * 0.5 + 0.5"))
+    }
+
+    @Test
+    func testMToonShaderUsesPrecompiledSafeSamplerParameters() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let shader = try mtoonShaderSource()
+
+        #expect(shader.contains("mtoonLinearClampSampler"))
+        #expect(shader.contains("mtoonNearestClampSampler"))
+        #expect(shader.contains("mtoonWrappedCoordinate"))
+        #expect(shader.contains("mtoonSamplerParameter(textures, 0.0)"))
+        #expect(!shader.contains("mtoonBaseSampler"))
+        #expect(!shader.contains("mtoonShadeSampler"))
+    }
+
+    @Test
+    func testMToonLoaderUsesBundledDefaultLibraryOnly() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let source = try realityKitLoaderSource()
+
+        #expect(source.contains("makeDefaultLibrary(bundle: .module)"))
+        #expect(!source.contains("makeLibrary(source:"))
+        #expect(!source.contains("SDKROOT"))
+        #expect(!source.contains("DEVELOPER_DIR"))
+        #expect(!source.contains("/usr/bin/xcrun"))
     }
 
     @Test
@@ -264,6 +293,19 @@ struct VRM1RealityKitTests {
             .appendingPathComponent("Shaders")
             .appendingPathComponent("MToon.metal")
         return try String(contentsOf: shaderURL, encoding: .utf8)
+    }
+
+    private func realityKitLoaderSource() throws -> String {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let packageRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let loaderURL = packageRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("VRMRealityKit")
+            .appendingPathComponent("VRMEntityLoader.swift")
+        return try String(contentsOf: loaderURL, encoding: .utf8)
     }
 }
 

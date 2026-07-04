@@ -20,8 +20,6 @@ open class VRMEntityLoader {
     private static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "MToon")
     // VRMEntityLoader is @MainActor-isolated, so these mutable shader caches are only touched on the main actor.
     private static let mtoonShaderDevice = MTLCreateSystemDefaultDevice()
-    private static let mtoonShaderSource = loadMToonShaderSource()
-    private static var mtoonLibraryCache: [MToonSamplerVariant: MTLLibrary] = [:]
     private static var mtoonDefaultLibraryCache: MTLLibrary?
     private static let requiredMToonFunctionNames: Set<String> = [
         "mtoonSurface",
@@ -504,7 +502,7 @@ open class VRMEntityLoader {
         }()
 
 #if !os(visionOS)
-        if let mtoon, let library = try mtoonShaderLibrary(for: mtoon) {
+        if let mtoon, let library = mtoonShaderLibrary() {
             let material = try customMToonMaterial(mtoon, library: library)
             entityData.materials[index] = material
             return material
@@ -648,7 +646,7 @@ open class VRMEntityLoader {
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         material.faceCulling = .none
 
-        let parameters = MToonMaterialParameters(mtoon)
+        let parameters = try mtoonParameters(for: mtoon)
         material.custom.value = parameters.customValue
         material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
         return material
@@ -674,7 +672,7 @@ open class VRMEntityLoader {
         }
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         material.blending = .opaque
-        let parameters = MToonMaterialParameters(mtoon)
+        let parameters = try mtoonParameters(for: mtoon)
         material.custom.value = parameters.customValue
         material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
         return material
@@ -696,8 +694,22 @@ open class VRMEntityLoader {
         guard let descriptor = try mtoonDescriptor(withMaterialIndex: index) else {
             return nil
         }
-        let parameters = MToonMaterialParameters(descriptor)
+        let parameters = try mtoonParameters(for: descriptor)
         mtoonParameterCache[index] = parameters
+        return parameters
+    }
+
+    private func mtoonParameters(for descriptor: MToonMaterialDescriptor) throws -> MToonMaterialParameters {
+        var parameters = MToonMaterialParameters(descriptor)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.baseColorTexture), for: .base)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadeMultiplyTexture ?? descriptor.baseColorTexture), for: .shade)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadingShiftTexture), for: .shadingShift)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.normalTexture), for: .normal)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.matcapTexture), for: .matcap)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.emissiveTexture), for: .emissive)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.rimMultiplyTexture), for: .rim)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.outlineWidthMultiplyTexture), for: .outlineWidth)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.uvAnimationMaskTexture), for: .uvAnimationMask)
         return parameters
     }
 
@@ -710,7 +722,7 @@ open class VRMEntityLoader {
         }
         guard let descriptor = try mtoonDescriptor(withMaterialIndex: index),
               descriptor.hasOutline,
-              let library = try mtoonShaderLibrary(for: descriptor) else {
+              let library = mtoonShaderLibrary() else {
             return nil
         }
         let material = try customMToonOutlineMaterial(descriptor, library: library)
@@ -733,35 +745,12 @@ open class VRMEntityLoader {
         return MToonMaterialDescriptor(material: gltfMaterial, materialProperty: materialProperty)
     }
 
-    private func mtoonShaderLibrary(for mtoon: MToonMaterialDescriptor) throws -> MTLLibrary? {
-        let variant = try mtoonSamplerVariant(for: mtoon)
-        if let library = Self.mtoonLibraryCache[variant] {
-            return library
-        }
+    private func mtoonShaderLibrary() -> MTLLibrary? {
         guard let device = Self.mtoonShaderDevice else {
             Self.logger.error("Failed to create Metal device for MToon shader.")
             return nil
         }
-#if (os(iOS) || os(visionOS)) && !targetEnvironment(simulator)
-        // Runtime Metal source compilation is not used on physical iOS or visionOS devices.
-        // The precompiled default library cannot specialize sampler constexpr values, so glTF
-        // wrap/filter variants fall back to the shader's default sampler settings on devices.
-        if let library = Self.mtoonDefaultLibrary(device: device) {
-            Self.mtoonLibraryCache[variant] = library
-            return library
-        }
-#endif
-        guard let source = Self.mtoonShaderSource else {
-            return Self.mtoonDefaultLibrary(device: device)
-        }
-        do {
-            let library = try device.makeLibrary(source: source.applying(variant), options: nil)
-            Self.mtoonLibraryCache[variant] = library
-            return library
-        } catch {
-            Self.logger.error("Failed to compile MToon shader: \(error.localizedDescription, privacy: .public)")
-            return Self.mtoonDefaultLibrary(device: device)
-        }
+        return Self.mtoonDefaultLibrary(device: device)
     }
 
     private static func mtoonDefaultLibrary(device: MTLDevice) -> MTLLibrary? {
@@ -781,130 +770,6 @@ open class VRMEntityLoader {
             return nil
         }
     }
-
-    private static func loadMToonShaderSource() -> String? {
-        guard let url = Bundle.module.url(forResource: "MToon",
-                                          withExtension: "metal",
-                                          subdirectory: "Shaders") else {
-            logger.error("Failed to find MToon.metal resource.")
-            return nil
-        }
-        do {
-            let source = try String(contentsOf: url)
-            guard let header = realityKitShaderHeaderSource() else {
-                logger.warning("Failed to find RealityKit shader header; falling back to default MToon library.")
-                return nil
-            }
-            return source.replacingOccurrences(of: "#include <RealityKit/RealityKit.h>",
-                                                with: header)
-        } catch {
-            logger.error("Failed to read MToon shader: \(error.localizedDescription, privacy: .public)")
-            return nil
-        }
-    }
-
-    private static func realityKitShaderHeaderSource() -> String? {
-        guard let headerDirectory = realityKitHeaderDirectory() else { return nil }
-        let headerNames = [
-            "RealityKitTypes.h",
-            "RealityKitMaterialParameters.h",
-            "RealityKitTextures.h",
-            "RealityKitGeometryModifier.h",
-            "RealityKitSurfaceShader.h"
-        ]
-        do {
-            let headers = try headerNames.map { name -> String in
-                let url = headerDirectory.appendingPathComponent(name)
-                let source = try String(contentsOf: url)
-                return source
-                    .components(separatedBy: .newlines)
-                    .filter { !$0.contains("<RealityKit/") }
-                    .joined(separator: "\n")
-            }.joined(separator: "\n")
-            return """
-            #define __REALITYKIT_INDIRECT
-            \(headers)
-            #undef __REALITYKIT_INDIRECT
-            """
-        } catch {
-            logger.error("Failed to read RealityKit shader headers: \(error.localizedDescription, privacy: .public)")
-            return nil
-        }
-    }
-
-    private static func realityKitHeaderDirectory() -> URL? {
-        let fileManager = FileManager.default
-        let relativePath = "System/Library/Frameworks/RealityKit.framework/Headers"
-        let environment = ProcessInfo.processInfo.environment
-        var candidates: [URL] = []
-        if let sdkRoot = ProcessInfo.processInfo.environment["SDKROOT"] {
-            candidates.append(URL(fileURLWithPath: sdkRoot).appendingPathComponent(relativePath))
-        }
-        if let developerDirectory = environment["DEVELOPER_DIR"] {
-            candidates.append(contentsOf: developerSDKCandidates(developerDirectory: developerDirectory,
-                                                                 relativePath: relativePath))
-        }
-#if os(macOS)
-        candidates.append(contentsOf: xcrunSDKRootCandidates().map { $0.appendingPathComponent(relativePath) })
-#endif
-
-        var visited = Set<String>()
-        return candidates.first { candidate in
-            visited.insert(candidate.path).inserted &&
-            fileManager.fileExists(atPath: candidate.appendingPathComponent("RealityKit.h").path)
-        }
-    }
-
-    private static func developerSDKCandidates(developerDirectory: String, relativePath: String) -> [URL] {
-        let developerURL = URL(fileURLWithPath: developerDirectory)
-        let platformSDKs: [(platform: String, sdk: String)] = [
-            ("MacOSX.platform", "MacOSX.sdk"),
-            ("iPhoneOS.platform", "iPhoneOS.sdk"),
-            ("iPhoneSimulator.platform", "iPhoneSimulator.sdk"),
-            ("XROS.platform", "XROS.sdk"),
-            ("XRSimulator.platform", "XRSimulator.sdk")
-        ]
-        return platformSDKs.map { platform, sdk in
-            developerURL
-                .appendingPathComponent("Platforms")
-                .appendingPathComponent(platform)
-                .appendingPathComponent("Developer")
-                .appendingPathComponent("SDKs")
-                .appendingPathComponent(sdk)
-                .appendingPathComponent(relativePath)
-        }
-    }
-
-#if os(macOS)
-    private static func xcrunSDKRootCandidates() -> [URL] {
-        ["macosx", "iphoneos", "iphonesimulator", "xros", "xrsimulator"].compactMap { sdkName in
-            xcrunSDKRoot(sdkName: sdkName)
-        }
-    }
-
-    private static func xcrunSDKRoot(sdkName: String) -> URL? {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["--sdk", sdkName, "--show-sdk-path"]
-        process.standardOutput = output
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
-        }
-        guard process.terminationStatus == 0 else { return nil }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard let path = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !path.isEmpty else {
-            return nil
-        }
-        return URL(fileURLWithPath: path)
-    }
-#endif
 
     func texture(withTextureIndex index: Int, semantic: TextureResource.Semantic = .color) throws -> TextureResource {
         if semantic == .color, let cache = try entityData.load(\.textures, index: index) {
@@ -1051,34 +916,39 @@ open class VRMEntityLoader {
         descriptor.tAddressMode = metalWrap(.REPEAT)
     }
 
-    private func mtoonSamplerVariant(for mtoon: MToonMaterialDescriptor) throws -> MToonSamplerVariant {
-        try MToonSamplerVariant(base: mtoonSamplerKey(for: mtoon.baseColorTexture),
-                                shade: mtoonSamplerKey(for: mtoon.shadeMultiplyTexture ?? mtoon.baseColorTexture),
-                                shadingShift: mtoonSamplerKey(for: mtoon.shadingShiftTexture),
-                                normal: mtoonSamplerKey(for: mtoon.normalTexture),
-                                matcap: mtoonSamplerKey(for: mtoon.matcapTexture),
-                                emissive: mtoonSamplerKey(for: mtoon.emissiveTexture),
-                                rim: mtoonSamplerKey(for: mtoon.rimMultiplyTexture),
-                                outlineWidth: mtoonSamplerKey(for: mtoon.outlineWidthMultiplyTexture),
-                                uvAnimationMask: mtoonSamplerKey(for: mtoon.uvAnimationMaskTexture))
-    }
-
-    private func mtoonSamplerKey(for texture: MToonMaterialDescriptor.Texture?) throws -> MToonSamplerKey {
+    private func mtoonSamplerParameters(for texture: MToonMaterialDescriptor.Texture?) throws -> SIMD4<Float> {
         guard let texture else {
-            return .default
+            return MToonMaterialParameters.defaultSampler
         }
         let textures = try gltf.load(\.textures)
         guard textures.indices.contains(texture.index) else {
             throw VRMError._dataInconsistent("Texture index \(texture.index) out of bounds")
         }
         guard let samplerIndex = textures[texture.index].sampler else {
-            return .default
+            return MToonMaterialParameters.defaultSampler
         }
         let samplers = try gltf.load(\.samplers)
         guard samplers.indices.contains(samplerIndex) else {
             throw VRMError._dataInconsistent("Sampler index \(samplerIndex) out of bounds")
         }
-        return MToonSamplerKey(samplers[samplerIndex])
+        return mtoonSamplerParameters(samplers[samplerIndex])
+    }
+
+    private func mtoonSamplerParameters(_ sampler: GLTF.Sampler) -> SIMD4<Float> {
+        let minFilter = sampler.minFilter ?? .LINEAR_MIPMAP_LINEAR
+        let useNearest = sampler.magFilter == .NEAREST || minFilter.usesNearestMinification
+        return SIMD4<Float>(mtoonWrapMode(sampler.wrapS),
+                            mtoonWrapMode(sampler.wrapT),
+                            useNearest ? 1 : 0,
+                            0)
+    }
+
+    private func mtoonWrapMode(_ wrap: GLTF.Sampler.Wrap) -> Float {
+        switch wrap {
+        case .REPEAT: return 0
+        case .CLAMP_TO_EDGE: return 1
+        case .MIRRORED_REPEAT: return 2
+        }
     }
 
     private func metalFilter(_ filter: GLTF.Sampler.MagFilter) -> MTLSamplerMinMagFilter {
@@ -1960,116 +1830,14 @@ open class VRMEntityLoader {
     }
 }
 
-private struct MToonSamplerVariant: Hashable {
-    let base: MToonSamplerKey
-    let shade: MToonSamplerKey
-    let shadingShift: MToonSamplerKey
-    let normal: MToonSamplerKey
-    let matcap: MToonSamplerKey
-    let emissive: MToonSamplerKey
-    let rim: MToonSamplerKey
-    let outlineWidth: MToonSamplerKey
-    let uvAnimationMask: MToonSamplerKey
-}
-
-private struct MToonSamplerKey: Hashable {
-    static let `default` = MToonSamplerKey(wrapS: "repeat",
-                                          wrapT: "repeat",
-                                          magFilter: "linear",
-                                          minFilter: "linear",
-                                          mipFilter: "linear")
-
-    let wrapS: String
-    let wrapT: String
-    let magFilter: String
-    let minFilter: String
-    let mipFilter: String
-
-    init(_ sampler: GLTF.Sampler) {
-        let minFilters = Self.filters(sampler.minFilter ?? .LINEAR_MIPMAP_LINEAR)
-        wrapS = Self.wrap(sampler.wrapS)
-        wrapT = Self.wrap(sampler.wrapT)
-        magFilter = Self.filter(sampler.magFilter ?? .LINEAR)
-        minFilter = minFilters.min
-        mipFilter = minFilters.mip
-    }
-
-    private init(wrapS: String,
-                 wrapT: String,
-                 magFilter: String,
-                 minFilter: String,
-                 mipFilter: String) {
-        self.wrapS = wrapS
-        self.wrapT = wrapT
-        self.magFilter = magFilter
-        self.minFilter = minFilter
-        self.mipFilter = mipFilter
-    }
-
-    func source(named name: String) -> String {
-        """
-        constexpr sampler \(name)(coord::normalized,
-                                           s_address::\(wrapS),
-                                           t_address::\(wrapT),
-                                           mag_filter::\(magFilter),
-                                           min_filter::\(minFilter),
-                                           mip_filter::\(mipFilter));
-        """
-    }
-
-    private static func wrap(_ wrap: GLTF.Sampler.Wrap) -> String {
-        switch wrap {
-        case .CLAMP_TO_EDGE: return "clamp_to_edge"
-        case .MIRRORED_REPEAT: return "mirrored_repeat"
-        case .REPEAT: return "repeat"
+private extension GLTF.Sampler.MinFilter {
+    var usesNearestMinification: Bool {
+        switch self {
+        case .NEAREST, .NEAREST_MIPMAP_NEAREST, .NEAREST_MIPMAP_LINEAR:
+            return true
+        case .LINEAR, .LINEAR_MIPMAP_NEAREST, .LINEAR_MIPMAP_LINEAR:
+            return false
         }
-    }
-
-    private static func filter(_ filter: GLTF.Sampler.MagFilter) -> String {
-        switch filter {
-        case .NEAREST: return "nearest"
-        case .LINEAR: return "linear"
-        }
-    }
-
-    private static func filters(_ filter: GLTF.Sampler.MinFilter) -> (min: String, mip: String) {
-        switch filter {
-        case .NEAREST:
-            return ("nearest", "none")
-        case .LINEAR:
-            return ("linear", "none")
-        case .NEAREST_MIPMAP_NEAREST:
-            return ("nearest", "nearest")
-        case .LINEAR_MIPMAP_NEAREST:
-            return ("linear", "nearest")
-        case .NEAREST_MIPMAP_LINEAR:
-            return ("nearest", "linear")
-        case .LINEAR_MIPMAP_LINEAR:
-            return ("linear", "linear")
-        }
-    }
-}
-
-private extension String {
-    func applying(_ variant: MToonSamplerVariant) -> String {
-        replacingSampler(named: "mtoonBaseSampler", with: variant.base)
-            .replacingSampler(named: "mtoonShadeSampler", with: variant.shade)
-            .replacingSampler(named: "mtoonShadingShiftSampler", with: variant.shadingShift)
-            .replacingSampler(named: "mtoonNormalSampler", with: variant.normal)
-            .replacingSampler(named: "mtoonMatcapSampler", with: variant.matcap)
-            .replacingSampler(named: "mtoonEmissiveSampler", with: variant.emissive)
-            .replacingSampler(named: "mtoonRimSampler", with: variant.rim)
-            .replacingSampler(named: "mtoonOutlineWidthSampler", with: variant.outlineWidth)
-            .replacingSampler(named: "mtoonUvAnimationMaskSampler", with: variant.uvAnimationMask)
-    }
-
-    private func replacingSampler(named name: String, with key: MToonSamplerKey) -> String {
-        guard let start = range(of: "constexpr sampler \(name)("),
-              let end = range(of: ");", range: start.lowerBound..<endIndex) else {
-            return self
-        }
-        return replacingCharacters(in: start.lowerBound..<end.upperBound,
-                                   with: key.source(named: name))
     }
 }
 

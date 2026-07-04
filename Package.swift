@@ -22,7 +22,7 @@ let package = Package(
         .target(
             name: "VRMRealityKit",
             dependencies: ["VRMKit", "VRMKitRuntime"],
-            resources: [.copy("Shaders")]
+            exclude: ["Shaders/MToon.metal"]
         ),
 
         .testTarget(

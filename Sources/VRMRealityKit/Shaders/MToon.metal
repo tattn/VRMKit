@@ -2,54 +2,59 @@
 
 using namespace metal;
 
-constexpr sampler mtoonBaseSampler(coord::normalized,
-                                   address::repeat,
-                                   filter::linear,
-                                   mip_filter::nearest);
-constexpr sampler mtoonShadeSampler(coord::normalized,
-                                    address::repeat,
-                                    filter::linear,
-                                    mip_filter::nearest);
-constexpr sampler mtoonShadingShiftSampler(coord::normalized,
-                                           address::repeat,
-                                           filter::linear,
+constexpr sampler mtoonLinearClampSampler(coord::normalized,
+                                          address::clamp_to_edge,
+                                          filter::linear,
+                                          mip_filter::linear);
+constexpr sampler mtoonNearestClampSampler(coord::normalized,
+                                           address::clamp_to_edge,
+                                           filter::nearest,
                                            mip_filter::nearest);
-constexpr sampler mtoonNormalSampler(coord::normalized,
-                                     address::repeat,
-                                     filter::linear,
-                                     mip_filter::nearest);
-constexpr sampler mtoonMatcapSampler(coord::normalized,
-                                     address::repeat,
-                                     filter::linear,
-                                     mip_filter::nearest);
-constexpr sampler mtoonEmissiveSampler(coord::normalized,
-                                       address::repeat,
-                                       filter::linear,
-                                       mip_filter::nearest);
-constexpr sampler mtoonRimSampler(coord::normalized,
-                                  address::repeat,
-                                  filter::linear,
-                                  mip_filter::nearest);
-constexpr sampler mtoonOutlineWidthSampler(coord::normalized,
-                                           address::repeat,
-                                           filter::linear,
-                                           mip_filter::nearest);
-constexpr sampler mtoonUvAnimationMaskSampler(coord::normalized,
-                                              address::repeat,
-                                              filter::linear,
-                                              mip_filter::nearest);
 constexpr sampler mtoonParameterSampler(coord::normalized,
                                         address::clamp_to_edge,
                                         filter::nearest,
                                         mip_filter::none);
 
 constant float mtoonEpsilon = 0.00001;
-constant float mtoonParameterTextureWidth = 14.0;
+constant float mtoonParameterTextureWidth = 23.0;
+constant float mtoonSamplerParameterStart = 14.0;
 
 half4 mtoonParameter(realitykit::texture::textures textures, float row)
 {
     return textures.custom().sample(mtoonParameterSampler,
                                     float2((row + 0.5) / mtoonParameterTextureWidth, 0.5));
+}
+
+half4 mtoonSamplerParameter(realitykit::texture::textures textures, float slot)
+{
+    return mtoonParameter(textures, mtoonSamplerParameterStart + slot);
+}
+
+float mtoonWrappedCoordinate(float value, half wrapMode)
+{
+    if (wrapMode > 1.5h) {
+        float mirrored = fract(value * 0.5) * 2.0;
+        return 1.0 - abs(mirrored - 1.0);
+    }
+    if (wrapMode > 0.5h) {
+        return clamp(value, 0.0, 1.0);
+    }
+    return fract(value);
+}
+
+float2 mtoonWrappedUV(float2 uv, half4 samplerParameters)
+{
+    return float2(mtoonWrappedCoordinate(uv.x, samplerParameters.x),
+                  mtoonWrappedCoordinate(uv.y, samplerParameters.y));
+}
+
+half4 mtoonSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
+{
+    float2 wrappedUV = mtoonWrappedUV(uv, samplerParameters);
+    if (samplerParameters.z > 0.5h) {
+        return texture.sample(mtoonNearestClampSampler, wrappedUV);
+    }
+    return texture.sample(mtoonLinearClampSampler, wrappedUV);
 }
 
 float mtoonLinearstep(float a, float b, float t)
@@ -77,13 +82,16 @@ float2 mtoonMatcapUV(float3 normal, float4x4 modelToView)
     return float2(viewNormal.x * 0.5 + 0.5, 0.5 - viewNormal.y * 0.5);
 }
 
-float3 mtoonShadingNormal(realitykit::surface_parameters params, float2 uv, half4 extraFlags)
+float3 mtoonShadingNormal(realitykit::surface_parameters params,
+                           float2 uv,
+                           half4 extraFlags,
+                           half4 normalSampler)
 {
     float3 geometryNormal = normalize(params.geometry().normal());
     if (extraFlags.x < 0.5h) {
         return geometryNormal;
     }
-    half3 tangentNormal = realitykit::unpack_normal(params.textures().normal().sample(mtoonNormalSampler, uv).rgb, 1.0h);
+    half3 tangentNormal = realitykit::unpack_normal(mtoonSample(params.textures().normal(), uv, normalSampler).rgb, 1.0h);
     float3 rawTangent = params.geometry().tangent();
     float3 rawBitangent = params.geometry().bitangent();
     if (dot(rawTangent, rawTangent) < 0.000001 || dot(rawBitangent, rawBitangent) < 0.000001) {
@@ -130,17 +138,24 @@ void mtoonSurface(realitykit::surface_parameters params)
     half4 emissiveFactor = mtoonParameter(textures, 11.0);
     half4 lightColorParameter = mtoonParameter(textures, 12.0);
     half4 giColorParameter = mtoonParameter(textures, 13.0);
+    half4 baseSampler = mtoonSamplerParameter(textures, 0.0);
+    half4 shadeSampler = mtoonSamplerParameter(textures, 1.0);
+    half4 shadingShiftSampler = mtoonSamplerParameter(textures, 2.0);
+    half4 normalSampler = mtoonSamplerParameter(textures, 3.0);
+    half4 matcapSampler = mtoonSamplerParameter(textures, 4.0);
+    half4 emissiveSampler = mtoonSamplerParameter(textures, 5.0);
+    half4 rimSampler = mtoonSamplerParameter(textures, 6.0);
 
-    half4 baseSample = textures.base_color().sample(mtoonBaseSampler, uv);
-    half4 shadeSample = textures.roughness().sample(mtoonShadeSampler, uv);
+    half4 baseSample = mtoonSample(textures.base_color(), uv, baseSampler);
+    half4 shadeSample = mtoonSample(textures.roughness(), uv, shadeSampler);
 
     float shift = float(shadeParams.x);
     if (featureFlags.z > 0.5h) {
-        half shadingShift = textures.specular().sample(mtoonShadingShiftSampler, uv).r;
+        half shadingShift = mtoonSample(textures.specular(), uv, shadingShiftSampler).r;
         shift += float(shadingShift) * float(uvAnimation.w);
     }
 
-    float3 normal = mtoonShadingNormal(params, uv, extraFlags);
+    float3 normal = mtoonShadingNormal(params, uv, extraFlags, normalSampler);
     float3 lightDirection = mtoonLightDirection(params.uniforms().custom_parameter());
     float shadingToony = clamp(float(shadeParams.y), 0.0, 1.0);
     float shading = mtoonLinearstep(-1.0 + shadingToony,
@@ -162,7 +177,7 @@ void mtoonSurface(realitykit::surface_parameters params)
     float3 rim = float3(0.0);
     if (featureFlags.x > 0.5h) {
         float2 matcapUV = mtoonMatcapUV(normal, params.uniforms().model_to_view());
-        rim += float3(textures.metallic().sample(mtoonMatcapSampler, matcapUV).rgb * matcapFactor.rgb);
+        rim += float3(mtoonSample(textures.metallic(), matcapUV, matcapSampler).rgb * matcapFactor.rgb);
     }
 
     float3 viewDirection = normalize(params.geometry().view_direction());
@@ -171,13 +186,13 @@ void mtoonSurface(realitykit::surface_parameters params)
     rim += parametricRim * float3(rimColorFactor.rgb);
 
     if (featureFlags.y > 0.5h) {
-        rim *= float3(textures.clearcoat_roughness().sample(mtoonRimSampler, uv).rgb);
+        rim *= float3(mtoonSample(textures.clearcoat_roughness(), uv, rimSampler).rgb);
     }
     rim *= mix(float3(1.0), direct + indirect, clamp(float(rimParams.z), 0.0, 1.0));
     color += rim;
 
     float3 emissiveTexture = extraFlags.z > 0.5h
-        ? float3(textures.emissive_color().sample(mtoonEmissiveSampler, uv).rgb)
+        ? float3(mtoonSample(textures.emissive_color(), uv, emissiveSampler).rgb)
         : float3(1.0);
     color += float3(emissiveFactor.rgb) * emissiveTexture;
 
@@ -220,13 +235,14 @@ void mtoonOutlineSurface(realitykit::surface_parameters params)
 float2 mtoonAnimatedUV(realitykit::geometry_parameters params,
                        float2 uv,
                        half4 uvAnimation,
-                       half4 featureFlags)
+                       half4 featureFlags,
+                       half4 uvAnimationMaskSampler)
 {
     float time = params.uniforms().custom_parameter().w;
     float mask = 1.0;
     if (featureFlags.w > 0.5h) {
         float2 maskUV = mtoonTextureUV(uv);
-        mask = float(params.textures().ambient_occlusion().sample(mtoonUvAnimationMaskSampler, maskUV).b);
+        mask = float(mtoonSample(params.textures().ambient_occlusion(), maskUV, uvAnimationMaskSampler).b);
     }
 
     float angle = float(uvAnimation.z) * time * mask;
@@ -246,7 +262,8 @@ void mtoonGeometry(realitykit::geometry_parameters params)
               + params.uniforms().uv0_offset();
     half4 uvAnimation = mtoonParameter(params.textures(), 8.0);
     half4 featureFlags = mtoonParameter(params.textures(), 9.0);
-    params.geometry().set_uv0(mtoonAnimatedUV(params, uv, uvAnimation, featureFlags));
+    half4 uvAnimationMaskSampler = mtoonSamplerParameter(params.textures(), 8.0);
+    params.geometry().set_uv0(mtoonAnimatedUV(params, uv, uvAnimation, featureFlags, uvAnimationMaskSampler));
 }
 
 float mtoonScreenOutlineWidth(realitykit::geometry_parameters params, float width, float3 modelNormal)
@@ -282,7 +299,8 @@ void mtoonOutlineGeometry(realitykit::geometry_parameters params)
               + params.uniforms().uv0_offset();
     half4 uvAnimation = mtoonParameter(params.textures(), 8.0);
     half4 featureFlags = mtoonParameter(params.textures(), 9.0);
-    uv = mtoonAnimatedUV(params, uv, uvAnimation, featureFlags);
+    half4 uvAnimationMaskSampler = mtoonSamplerParameter(params.textures(), 8.0);
+    uv = mtoonAnimatedUV(params, uv, uvAnimation, featureFlags, uvAnimationMaskSampler);
     params.geometry().set_uv0(uv);
 
     half4 outlineParams = mtoonParameter(params.textures(), 7.0);
@@ -291,7 +309,8 @@ void mtoonOutlineGeometry(realitykit::geometry_parameters params)
     }
 
     float2 widthUV = mtoonTextureUV(uv);
-    float widthMask = float(params.textures().clearcoat().sample(mtoonOutlineWidthSampler, widthUV).g);
+    half4 outlineWidthSampler = mtoonSamplerParameter(params.textures(), 7.0);
+    float widthMask = float(mtoonSample(params.textures().clearcoat(), widthUV, outlineWidthSampler).g);
     float width = max(0.0, float(outlineParams.x)) * widthMask;
     float3 modelNormal = normalize(params.geometry().normal());
     if (outlineParams.y > 1.5h) {
