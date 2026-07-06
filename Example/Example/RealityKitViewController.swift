@@ -142,7 +142,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
             loadedEntity = vrmEntity
             loadedAnchor = anchor
 
-            let rotationOffset = model.realityKitInitialRotation
+            let rotationOffset = model.initialRotation
 
             var time: TimeInterval = 0
             updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in

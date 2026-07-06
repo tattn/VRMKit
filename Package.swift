@@ -22,7 +22,9 @@ let package = Package(
         .target(
             name: "VRMRealityKit",
             dependencies: ["VRMKit", "VRMKitRuntime"],
-            exclude: ["Shaders/MToon.metal"],
+            // Shaders/MToon.metal is compiled offline into the per-platform
+            // metallibs under Resources by Scripts/build-mtoon-metallibs.sh.
+            exclude: ["Shaders"],
             resources: [.process("Resources")]
         ),
 

@@ -12,11 +12,13 @@ open class VRMSceneLoader {
 
     private var rootDirectory: URL? = nil
     private var outlineMaterialsByMaterialIndex: [Int: [SCNMaterial]] = [:]
+    public var isMToonEnabled: Bool
 
-    public init(vrm: VRM, rootDirectory: URL? = nil) {
+    public init(vrm: VRM, rootDirectory: URL? = nil, isMToonEnabled: Bool = true) {
         self.vrm = vrm
         self.gltf = vrm.gltf.jsonData
         self.rootDirectory = rootDirectory
+        self.isMToonEnabled = isMToonEnabled
         self.sceneData = SceneData(vrm: gltf)
     }
 
@@ -151,7 +153,8 @@ open class VRMSceneLoader {
         switch vrm {
         case .v0(let vrm0):
             guard let property = vrm0.materialPropertyNameMap[name] else { return nil }
-            if let material = try gltf.load(\.materials).first(where: { $0.name == name }),
+            if isMToonEnabled,
+               let material = try gltf.load(\.materials).first(where: { $0.name == name }),
                let descriptor = MToonMaterialDescriptor(material: material, materialProperty: property) {
                 return mtoonRenderQueue(alphaMode: descriptor.alphaMode,
                                         transparentWithZWrite: descriptor.transparentWithZWrite,

@@ -74,7 +74,7 @@ class ViewController: UIViewController {
             let node = scene.vrmNode
             self.vrmNode = node
 
-            let rotationOffset = CGFloat(model.sceneKitInitialRotation)
+            let rotationOffset = CGFloat(model.initialRotation)
             node.eulerAngles = SCNVector3(0, rotationOffset, 0)
             node.setMToonLightDirection(SceneKitExampleLighting.direction)
             node.setExampleExpression(currentExpression, value: 1.0)

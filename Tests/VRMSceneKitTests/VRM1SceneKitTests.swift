@@ -108,6 +108,28 @@ struct VRM1SceneLoaderTests {
     }
 
     @Test
+    func testVRM1MToonRenderingCanBeDisabled() throws {
+        let defaultLoader = try vrmLoader()
+        let defaultMaterial = try defaultLoader.material(withMaterialIndex: 0)
+        #expect(defaultMaterial.shaderModifiers?[.surface]?.contains("mtoonLinearstepA") == true)
+        #expect(defaultMaterial.mtoonOutlineMaterial() != nil)
+
+        let disabledLoader = try vrmLoader()
+        disabledLoader.isMToonEnabled = false
+        let disabledMaterial = try disabledLoader.material(withMaterialIndex: 0)
+        #expect(disabledMaterial.shaderModifiers?[.surface] == nil)
+        #expect(disabledMaterial.value(forKey: MToonUniform.shadeParams) == nil)
+        #expect(disabledMaterial.mtoonColor(forKey: MToonUniform.shadeColor) == nil)
+        #expect(disabledMaterial.mtoonOutlineMaterial() == nil)
+
+        let disabledScene = try disabledLoader.loadScene()
+        let outlineNodes = disabledScene.rootNode.allNodes.filter {
+            $0.geometry?.materials.first?.name?.hasSuffix("_outline") == true
+        }
+        #expect(outlineNodes.isEmpty)
+    }
+
+    @Test
     func testVRM1MToonOutlineNodeIsCreated() throws {
         let vrmLoader = try vrmLoader()
         let scene = try vrmLoader.loadScene()

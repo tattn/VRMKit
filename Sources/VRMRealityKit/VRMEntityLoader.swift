@@ -36,13 +36,15 @@ open class VRMEntityLoader {
     private var mtoonParameterCache: [Int: MToonMaterialParameters] = [:]
     private var mtoonOutlineMaterialCache: [Int: Material] = [:]
     private var enableNormalTangentBlendShape = false // NOTE: Setting this to true currently has no effect
+    public var isMToonEnabled: Bool
 
-    public init(vrm: VRM, rootDirectory: URL? = nil) {
+    public init(vrm: VRM, rootDirectory: URL? = nil, isMToonEnabled: Bool = true) {
         self.vrm = vrm
         self.gltf = vrm.gltf.jsonData
         self.rootDirectory = rootDirectory
         self.entityName = vrm.meta.title
         self.entityData = EntityData(vrm: gltf)
+        self.isMToonEnabled = isMToonEnabled
     }
 
     public func loadEntity() throws -> VRMEntity {
@@ -502,7 +504,7 @@ open class VRMEntityLoader {
         }()
 
 #if !os(visionOS)
-        if let mtoon, let library = mtoonShaderLibrary() {
+        if isMToonEnabled, let mtoon, let library = mtoonShaderLibrary() {
             let material = try customMToonMaterial(mtoon, library: library)
             entityData.materials[index] = material
             return material
@@ -688,6 +690,9 @@ open class VRMEntityLoader {
     }
 
     private func mtoonParameters(withMaterialIndex index: Int) throws -> MToonMaterialParameters? {
+        guard isMToonEnabled else {
+            return nil
+        }
         if let parameters = mtoonParameterCache[index] {
             return parameters
         }
@@ -717,6 +722,9 @@ open class VRMEntityLoader {
 #if os(visionOS)
         return nil
 #else
+        guard isMToonEnabled else {
+            return nil
+        }
         if let material = mtoonOutlineMaterialCache[index] {
             return material
         }
@@ -753,20 +761,49 @@ open class VRMEntityLoader {
         return Self.mtoonDefaultLibrary(device: device)
     }
 
+    // The MToon shader is precompiled offline into per-platform metallibs by
+    // Scripts/build-mtoon-metallibs.sh and bundled as package resources.
+    // This avoids depending on the consumer's build system compiling the
+    // package's .metal source (unsupported by `swift build`, and unreliable
+    // on Xcode versions where the Metal Toolchain is a separate download),
+    // and is safe for App Store / sandboxed distribution.
+    private static let bundledMToonLibraryResourceName: String? = {
+#if os(macOS) && !targetEnvironment(macCatalyst)
+        return "MToon-macos"
+#elseif os(iOS) && targetEnvironment(simulator)
+        return "MToon-iossim"
+#elseif os(iOS) && !targetEnvironment(macCatalyst)
+        return "MToon-ios"
+#else
+        // No precompiled MToon library is bundled for this platform
+        // (e.g. Mac Catalyst); MToon rendering falls back to UnlitMaterial.
+        return nil
+#endif
+    }()
+
     private static func mtoonDefaultLibrary(device: MTLDevice) -> MTLLibrary? {
         if let library = mtoonDefaultLibraryCache {
             return library
         }
+        guard let resourceName = bundledMToonLibraryResourceName else {
+            logger.error("No precompiled MToon shader library is bundled for this platform.")
+            return nil
+        }
+        guard let libraryURL = Bundle.module.url(forResource: resourceName, withExtension: "metallib") else {
+            logger.error("Missing bundled MToon shader library resource: \(resourceName, privacy: .public).metallib")
+            return nil
+        }
         do {
-            let library = try device.makeDefaultLibrary(bundle: .module)
+            let library = try device.makeLibrary(URL: libraryURL)
             guard requiredMToonFunctionNames.isSubset(of: Set(library.functionNames)) else {
-                logger.warning("Compiled MToon shader library is unavailable for this SDK.")
+                logger.error("Bundled MToon shader library is missing required functions: \(library.functionNames, privacy: .public)")
                 return nil
             }
+            logger.notice("Loaded bundled MToon shader library: \(resourceName, privacy: .public).metallib")
             mtoonDefaultLibraryCache = library
             return library
         } catch {
-            logger.error("Failed to load compiled MToon shader library: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to load bundled MToon shader library: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }

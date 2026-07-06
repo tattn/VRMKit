@@ -204,7 +204,7 @@ final class RealityKitContentViewModel {
             let nextVRMEntity = try loader.loadEntity()
 
             nextVRMEntity.entity.transform.translation = SIMD3<Float>(0, -1, 0)
-            nextVRMEntity.entity.transform.rotation = simd_quatf(angle: model.realityKitInitialRotation, axis: SIMD3<Float>(0, 1, 0))
+            nextVRMEntity.entity.transform.rotation = simd_quatf(angle: model.initialRotation, axis: SIMD3<Float>(0, 1, 0))
             nextVRMEntity.setMToonLightDirection(MacExampleLighting.realityKitDirection)
             setUpCamera()
             setUpLight()
@@ -280,7 +280,7 @@ final class RealityKitContentViewModel {
             angle = -0.5 + 0.5 * progress
         }
 
-        vrmEntity.entity.transform.rotation = simd_quatf(angle: currentModel.realityKitInitialRotation + angle,
+        vrmEntity.entity.transform.rotation = simd_quatf(angle: currentModel.initialRotation + angle,
                                                          axis: SIMD3<Float>(0, 1, 0))
         vrmEntity.update(at: time)
     }
@@ -390,7 +390,7 @@ final class SceneKitContentViewModel {
             setUpCamera(in: scene)
 
             let node = scene.vrmNode
-            node.eulerAngles = SCNVector3(0, CGFloat(model.sceneKitInitialRotation), 0)
+            node.eulerAngles = SCNVector3(0, CGFloat(model.initialRotation), 0)
             node.setMToonLightDirection(MacExampleLighting.direction)
             applyPose(to: node)
             apply(expression, to: node)
@@ -437,7 +437,7 @@ final class SceneKitContentViewModel {
             angle = -0.5 + 0.5 * progress
         }
 
-        vrmNode.eulerAngles = SCNVector3(0, CGFloat(currentModel.sceneKitInitialRotation + angle), 0)
+        vrmNode.eulerAngles = SCNVector3(0, CGFloat(currentModel.initialRotation + angle), 0)
         vrmNode.update(at: time)
     }
 

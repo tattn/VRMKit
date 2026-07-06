@@ -31,15 +31,7 @@ enum MacExampleModel: String, CaseIterable, Identifiable {
         }
     }
 
-    var sceneKitInitialRotation: Float {
-        switch self {
-        case .alicia: return 0
-        case .vrm1: return .pi
-        }
-    }
-
-    // Keep RealityKit orientation offsets separate from SceneKit; renderer coordinate conventions differ.
-    var realityKitInitialRotation: Float {
+    var initialRotation: Float {
         switch self {
         case .alicia: return 0
         case .vrm1: return .pi

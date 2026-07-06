@@ -9,7 +9,9 @@ extension SCNMaterial {
         name = material.name
         let isUnlit = material.extensions?.materialsUnlit != nil
         let materialProperty = name.flatMap(loader.vrm0MaterialProperty(named:))
-        let mtoon = MToonMaterialDescriptor(material: material, materialProperty: materialProperty)
+        let mtoon = loader.isMToonEnabled
+            ? MToonMaterialDescriptor(material: material, materialProperty: materialProperty)
+            : nil
         let isMToon = mtoon != nil
         let isVRM0: Bool
         switch loader.vrm {

@@ -1,2 +1,0 @@
-VRMRealityKit uses this resource only to force SwiftPM to generate Bundle.module
-on toolchains that do not expose it for Metal-only resource bundles.
