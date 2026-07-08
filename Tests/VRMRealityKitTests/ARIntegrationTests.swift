@@ -30,6 +30,18 @@ struct ARIntegrationTests {
     }
 
     @Test
+    func arModePreservesMToonBlendAlphaMode() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try seedSanURL()
+        let loader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let opaqueMaterial = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
+        let blendMaterial = try #require(loader.material(withMaterialIndex: 4) as? CustomMaterial)
+
+        #expect(isOpaque(opaqueMaterial.blending))
+        #expect(isTransparent(blendMaterial.blending))
+    }
+
+    @Test
     func arModeEntitiesHaveShadowCastingDisabled() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try seedSanURL()
@@ -137,6 +149,20 @@ struct ARIntegrationTests {
             return false
         }
         return entity.children.allSatisfy { noOutlineEntities(in: $0) }
+    }
+
+    private func isOpaque(_ blending: CustomMaterial.Blending) -> Bool {
+        if case .opaque = blending {
+            return true
+        }
+        return false
+    }
+
+    private func isTransparent(_ blending: CustomMaterial.Blending) -> Bool {
+        if case .transparent = blending {
+            return true
+        }
+        return false
     }
 #endif
 }

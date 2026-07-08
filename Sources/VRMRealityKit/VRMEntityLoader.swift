@@ -673,10 +673,6 @@ open class VRMEntityLoader {
 
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         material.faceCulling = .none
-        if !includeGeometryModifier {
-            // Avoid programmable blending shadow-caster path in AR.
-            material.blending = .opaque
-        }
 
         let parameters = try mtoonParameters(for: mtoon)
         material.custom.value = parameters.customValue
