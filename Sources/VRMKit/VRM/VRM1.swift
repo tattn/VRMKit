@@ -155,6 +155,26 @@ public extension VRM1 {
         public let meshAnnotations: [MeshAnnotation]
         public let extensions: CodableAny?
         public let extras: CodableAny?
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            meshAnnotations = try container.decodeIfPresent([MeshAnnotation].self, forKey: .meshAnnotations) ?? []
+            extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
+            extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(meshAnnotations, forKey: .meshAnnotations)
+            try container.encodeIfPresent(extensions, forKey: .extensions)
+            try container.encodeIfPresent(extras, forKey: .extras)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case meshAnnotations
+            case extensions
+            case extras
+        }
         
         public struct MeshAnnotation: Codable {
             public let type: FirstPersonType

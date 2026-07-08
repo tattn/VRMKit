@@ -269,6 +269,10 @@ public final class VRMEntity {
         modelEntitiesByMaterialIndex[materialIndex, default: []].append(modelEntity)
     }
 
+    /// Advances spring bones, node constraints, skinning, and MToon runtime state.
+    ///
+    /// Call this every frame from a ``SceneEvents/Update`` subscription.
+    /// Without periodic updates, MToon UV animation and spring bones will not animate correctly.
     public func update(at time: TimeInterval) {
         let deltaTime = lastUpdateTime.map { max(0, time - $0) } ?? 0
         lastUpdateTime = time

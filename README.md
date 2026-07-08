@@ -67,6 +67,8 @@ vrm.gltf.jsonData.nodes[0].name
 
 ## Render VRM
 
+RealityKit examples use `cameraMode: .nonAR` because they render offline previews with the full MToon path (geometry modifiers and outlines). When placing a model in a live AR session, pass `renderingMode: .ar` and call `VRMEntity.update(at:)` every frame.
+
 ```swift
 import RealityKit
 import VRMKit
@@ -80,6 +82,36 @@ let anchor = AnchorEntity(world: .zero)
 anchor.addChild(vrmEntity.entity)
 arView.scene.addAnchor(anchor)
 ```
+
+### AR session integration
+
+Use `renderingMode: .ar` with the default `ARView` camera mode. This keeps MToon `CustomMaterial` rendering but omits geometry modifiers and outline child entities that are incompatible with RealityKit's AR shadow-caster passes.
+
+`VRMEntity.update(at:)` is required every frame for spring bones, constraints, skinning, and MToon UV animation. Subscribe to `SceneEvents.Update` from the host scene:
+
+```swift
+import Combine
+import RealityKit
+import VRMRealityKit
+
+let loader = try VRMEntityLoader(
+    named: "model.vrm",
+    renderingMode: .ar
+)
+let vrmEntity = try loader.loadEntity()
+
+var elapsedTime: TimeInterval = 0
+let subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { event in
+    elapsedTime += event.deltaTime
+    vrmEntity.update(at: elapsedTime)
+}
+
+let anchor = AnchorEntity(world: transform)
+anchor.addChild(vrmEntity.entity)
+arView.scene.addAnchor(anchor)
+```
+
+Set `isMToonEnabled: false` only when you want to disable MToon entirely and use the legacy Unlit / PBR conversion instead. This remains a supported workaround, but AR apps should prefer `renderingMode: .ar` with MToon left enabled.
 
 ### Render VRM (SwiftUI)
 

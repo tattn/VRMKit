@@ -36,15 +36,22 @@ open class VRMEntityLoader {
     private var mtoonParameterCache: [Int: MToonMaterialParameters] = [:]
     private var mtoonOutlineMaterialCache: [Int: Material] = [:]
     private var enableNormalTangentBlendShape = false // NOTE: Setting this to true currently has no effect
+    /// When `false`, MToon materials are not created and the loader falls back to Unlit / PBR materials.
     public var isMToonEnabled: Bool
+    /// Controls AR-safe vs full MToon rendering. Ignored when ``isMToonEnabled`` is `false`.
+    public var renderingMode: VRMRenderingMode
 
-    public init(vrm: VRM, rootDirectory: URL? = nil, isMToonEnabled: Bool = true) {
+    public init(vrm: VRM,
+                rootDirectory: URL? = nil,
+                isMToonEnabled: Bool = true,
+                renderingMode: VRMRenderingMode = .nonAR) {
         self.vrm = vrm
         self.gltf = vrm.gltf.jsonData
         self.rootDirectory = rootDirectory
         self.entityName = vrm.meta.title
         self.entityData = EntityData(vrm: gltf)
         self.isMToonEnabled = isMToonEnabled
+        self.renderingMode = renderingMode
     }
 
     public func loadEntity() throws -> VRMEntity {
@@ -353,6 +360,9 @@ open class VRMEntityLoader {
         }
 
         let modelEntity = ModelEntity(mesh: mesh, materials: [material])
+        if renderingMode == .ar {
+            configureAREntityRendering(modelEntity)
+        }
         if let materialIndex = primitive.material {
             modelEntity.components.set(VRMMaterialIndexComponent(materialIndex: materialIndex))
             if let parameters = try mtoonParameters(withMaterialIndex: materialIndex) {
@@ -505,7 +515,9 @@ open class VRMEntityLoader {
 
 #if !os(visionOS)
         if isMToonEnabled, let mtoon, let library = mtoonShaderLibrary() {
-            let material = try customMToonMaterial(mtoon, library: library)
+            let material = try customMToonMaterial(mtoon,
+                                                   library: library,
+                                                   includeGeometryModifier: renderingMode == .nonAR)
             entityData.materials[index] = material
             return material
         }
@@ -584,14 +596,21 @@ open class VRMEntityLoader {
 
 #if !os(visionOS)
     private func customMToonMaterial(_ mtoon: MToonMaterialDescriptor,
-                                     library: MTLLibrary) throws -> Material {
+                                     library: MTLLibrary,
+                                     includeGeometryModifier: Bool) throws -> Material {
         // RealityKit has no material-level render queue offset hook in this loader.
         // MToon renderQueueOffsetNumber is applied by the SceneKit renderer only.
         let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: library)
-        let geometry = CustomMaterial.GeometryModifier(named: "mtoonGeometry", in: library)
-        var material = try CustomMaterial(surfaceShader: surface,
+        var material: CustomMaterial
+        if includeGeometryModifier {
+            let geometry = CustomMaterial.GeometryModifier(named: "mtoonGeometry", in: library)
+            material = try CustomMaterial(surfaceShader: surface,
                                           geometryModifier: geometry,
                                           lightingModel: .unlit)
+        } else {
+            material = try CustomMaterial(surfaceShader: surface,
+                                          lightingModel: .unlit)
+        }
         if let baseTexture = mtoon.baseColorTexture {
             let textureParam = try customTexture(withTextureIndex: baseTexture.index, semantic: .color)
             material.baseColor = .init(tint: .white, texture: textureParam)
@@ -652,6 +671,11 @@ open class VRMEntityLoader {
         material.custom.value = parameters.customValue
         material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
         return material
+    }
+
+    private func configureAREntityRendering(_ modelEntity: ModelEntity) {
+        // Geometry modifiers and outline child entities are omitted in .ar mode because RealityKit's
+        // AR shadow-caster passes do not bind the buffers those shaders require.
     }
 
     private func customMToonOutlineMaterial(_ mtoon: MToonMaterialDescriptor,
@@ -723,6 +747,9 @@ open class VRMEntityLoader {
         return nil
 #else
         guard isMToonEnabled else {
+            return nil
+        }
+        guard renderingMode == .nonAR else {
             return nil
         }
         if let material = mtoonOutlineMaterialCache[index] {
