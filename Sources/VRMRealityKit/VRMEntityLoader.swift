@@ -630,8 +630,6 @@ open class VRMEntityLoader {
 
         if let shadeTexture = mtoon.shadeMultiplyTexture {
             material.roughness.texture = try customTexture(withTextureIndex: shadeTexture.index, semantic: .color)
-        } else if let baseTexture = mtoon.baseColorTexture {
-            material.roughness.texture = try customTexture(withTextureIndex: baseTexture.index, semantic: .color)
         } else {
             material.roughness.texture = try whiteCustomTexture()
         }
@@ -764,7 +762,7 @@ open class VRMEntityLoader {
                                        offset: textureTransform.offset,
                                        rotation: textureTransform.rotation)
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.baseColorTexture), for: .base)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadeMultiplyTexture ?? descriptor.baseColorTexture), for: .shade)
+        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadeMultiplyTexture), for: .shade)
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadingShiftTexture), for: .shadingShift)
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.normalTexture), for: .normal)
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.matcapTexture), for: .matcap)

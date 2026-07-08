@@ -125,6 +125,19 @@ struct VRM1RealityKitTests {
     }
 
     @Test
+    func testMToonShadeMultiplyTextureFallsBackToWhite() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try seedSanURLWithNonDefaultEyeSampler()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let vrmLoader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let vrmEntity = try vrmLoader.loadEntity()
+        let eyeTransparentParameters = try mtoonParameters(in: vrmEntity.entity, materialIndex: 4)
+
+        #expect(eyeTransparentParameters.samplers[MToonTextureSlot.base.rawValue] != MToonMaterialParameters.defaultSampler)
+        #expect(eyeTransparentParameters.samplers[MToonTextureSlot.shade.rawValue] == MToonMaterialParameters.defaultSampler)
+    }
+
+    @Test
     func testSetMToonLightAndAmbientColorUpdateParameterRows() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
@@ -368,6 +381,7 @@ struct VRM1RealityKitTests {
         throw VRMError.dataInconsistent("Expected MToon parameters for material \(materialIndex)")
     }
 
+#if !os(visionOS)
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func customMaterial(in root: Entity, materialIndex: Int) throws -> CustomMaterial {
         for modelEntity in modelEntities(in: root) {
@@ -380,6 +394,7 @@ struct VRM1RealityKitTests {
         }
         throw VRMError.dataInconsistent("Expected CustomMaterial for material \(materialIndex)")
     }
+#endif
 
     private func modelEntities(in root: Entity) -> [ModelEntity] {
         var result: [ModelEntity] = []
@@ -468,6 +483,101 @@ struct VRM1RealityKitTests {
             .deletingLastPathComponent()
         let manifestURL = packageRoot.appendingPathComponent("Package.swift")
         return try String(contentsOf: manifestURL, encoding: .utf8)
+    }
+
+    private func seedSanURLWithNonDefaultEyeSampler() throws -> URL {
+        let sourceURL = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"),
+                                     "Failed to load Seed-san.vrm resource from test bundle.")
+        let data = try Data(contentsOf: sourceURL)
+        guard data.count >= 20,
+              Array(data.prefix(4)) == [0x67, 0x6c, 0x54, 0x46] else {
+            throw VRMError.dataInconsistent("Expected GLB test asset")
+        }
+
+        let version = data.readUInt32LE(at: 4)
+        var offset = 12
+        var chunks: [(type: UInt32, data: Data)] = []
+        while offset + 8 <= data.count {
+            let length = Int(data.readUInt32LE(at: offset))
+            let type = data.readUInt32LE(at: offset + 4)
+            offset += 8
+            guard offset + length <= data.count else {
+                throw VRMError.dataInconsistent("Invalid GLB chunk length")
+            }
+            chunks.append((type: type, data: Data(data[offset ..< offset + length])))
+            offset += length
+        }
+
+        guard let jsonIndex = chunks.firstIndex(where: { $0.type == 0x4e4f534a }) else {
+            throw VRMError.dataInconsistent("Missing GLB JSON chunk")
+        }
+        var jsonData = chunks[jsonIndex].data
+        while jsonData.last == 0x20 || jsonData.last == 0x00 {
+            jsonData.removeLast()
+        }
+        guard var json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              var samplers = json["samplers"] as? [[String: Any]],
+              samplers.indices.contains(7) else {
+            throw VRMError.dataInconsistent("Missing Seed-san sampler fixture data")
+        }
+        samplers[7]["magFilter"] = 9728
+        samplers[7]["minFilter"] = 9728
+        samplers[7]["wrapS"] = 33071
+        samplers[7]["wrapT"] = 33071
+        json["samplers"] = samplers
+
+        chunks[jsonIndex].data = try JSONSerialization
+            .data(withJSONObject: json)
+            .paddedGLBChunk(padding: 0x20)
+
+        var output = Data()
+        output.append(contentsOf: [0x67, 0x6c, 0x54, 0x46])
+        output.appendUInt32LE(version)
+        output.appendUInt32LE(0)
+        for chunk in chunks {
+            output.appendUInt32LE(UInt32(chunk.data.count))
+            output.appendUInt32LE(chunk.type)
+            output.append(chunk.data)
+        }
+        output.writeUInt32LE(UInt32(output.count), at: 8)
+
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Seed-san-nondefault-eye-sampler-\(UUID().uuidString)")
+            .appendingPathExtension("vrm")
+        try output.write(to: url)
+        return url
+    }
+}
+
+private extension Data {
+    func readUInt32LE(at offset: Int) -> UInt32 {
+        var value = UInt32(self[offset])
+        value |= UInt32(self[offset + 1]) << 8
+        value |= UInt32(self[offset + 2]) << 16
+        value |= UInt32(self[offset + 3]) << 24
+        return value
+    }
+
+    mutating func appendUInt32LE(_ value: UInt32) {
+        append(UInt8(value & 0xff))
+        append(UInt8((value >> 8) & 0xff))
+        append(UInt8((value >> 16) & 0xff))
+        append(UInt8((value >> 24) & 0xff))
+    }
+
+    mutating func writeUInt32LE(_ value: UInt32, at offset: Int) {
+        self[offset] = UInt8(value & 0xff)
+        self[offset + 1] = UInt8((value >> 8) & 0xff)
+        self[offset + 2] = UInt8((value >> 16) & 0xff)
+        self[offset + 3] = UInt8((value >> 24) & 0xff)
+    }
+
+    func paddedGLBChunk(padding: UInt8) -> Data {
+        var padded = self
+        while padded.count % 4 != 0 {
+            padded.append(padding)
+        }
+        return padded
     }
 }
 
