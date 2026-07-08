@@ -684,22 +684,6 @@ open class VRMEntityLoader {
         return material
     }
 
-    private func configureAREntityRendering(_ modelEntity: ModelEntity) {
-        // AR shadow-caster passes (fsSurfaceMeshShadowCasterProgrammableBlending) abort when
-        // CustomMaterial participates. Opt out of all shadow casting/receiving on AR entities.
-        modelEntity.components.set(DynamicLightShadowComponent(castsShadow: false))
-        modelEntity.components.set(GroundingShadowComponent(castsShadow: false, receivesShadow: false))
-    }
-
-    private func configureAREntityTreeRendering(_ entity: Entity) {
-        if let modelEntity = entity as? ModelEntity {
-            configureAREntityRendering(modelEntity)
-        }
-        for child in entity.children {
-            configureAREntityTreeRendering(child)
-        }
-    }
-
     private func customMToonOutlineMaterial(_ mtoon: MToonMaterialDescriptor,
                                             library: MTLLibrary) throws -> Material {
         let surface = CustomMaterial.SurfaceShader(named: "mtoonOutlineSurface", in: library)
@@ -726,6 +710,26 @@ open class VRMEntityLoader {
         return material
     }
 #endif
+
+    private func configureAREntityRendering(_ modelEntity: ModelEntity) {
+#if !os(visionOS)
+        // AR shadow-caster passes (fsSurfaceMeshShadowCasterProgrammableBlending) abort when
+        // CustomMaterial participates. Opt out of all shadow casting/receiving on AR entities.
+        modelEntity.components.set(DynamicLightShadowComponent(castsShadow: false))
+        modelEntity.components.set(GroundingShadowComponent(castsShadow: false, receivesShadow: false))
+#else
+        _ = modelEntity
+#endif
+    }
+
+    private func configureAREntityTreeRendering(_ entity: Entity) {
+        if let modelEntity = entity as? ModelEntity {
+            configureAREntityRendering(modelEntity)
+        }
+        for child in entity.children {
+            configureAREntityTreeRendering(child)
+        }
+    }
 
     func currentMaterialColor(withMaterialIndex index: Int,
                               type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) throws -> SIMD4<Float> {
