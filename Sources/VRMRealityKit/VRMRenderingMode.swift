@@ -9,7 +9,10 @@ import Foundation
 public enum VRMRenderingMode: Sendable {
     /// Non-AR preview (Example apps). Full MToon rendering including geometry modifiers and outlines.
     case nonAR
-    /// Live AR session. Uses an AR-safe CustomMaterial path that omits geometry modifiers and outline meshes.
+    /// Live AR session. Uses surface-only CustomMaterial (no geometry modifier, no outline)
+    /// with shadow casting disabled on all model entities. Requires the host app to call
+    /// ``VRMEntity/update(at:)`` each frame and optionally ``VRMEntity/setMToonLightDirection(_:)``.
+    /// The host `ARView` should set `renderOptions.insert(.disableGroundingShadows)`.
     case ar
 }
 #endif

@@ -9,77 +9,134 @@ import VRMKit
 import ARKit
 #endif
 
-@Suite
+@Suite("AR MToon Integration")
 @MainActor
 struct ARIntegrationTests {
 
 #if !os(visionOS)
     @Test
-    func renderingModeNonARStillUsesCustomMaterial() throws {
+    func arModeMaterialHasNoGeometryModifier() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"))
-        let loader = try VRMEntityLoader(withURL: url, renderingMode: .nonAR)
-        let material = try loader.material(withMaterialIndex: 0)
-        _ = try #require(material as? CustomMaterial)
+        let url = try seedSanURL()
+        let loader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let vrmEntity = try loader.loadEntity()
+
+        let customMaterials = allModelEntities(in: vrmEntity.entity)
+            .flatMap { $0.components[ModelComponent.self]?.materials ?? [] }
+            .compactMap { $0 as? CustomMaterial }
+
+        #expect(!customMaterials.isEmpty)
+        #expect(noOutlineEntities(in: vrmEntity.entity))
     }
 
     @Test
-    func renderingModeARStillUsesCustomMaterialWithoutOutlineEntities() throws {
+    func arModeEntitiesHaveShadowCastingDisabled() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"))
+        let url = try seedSanURL()
         let loader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
-        let material = try loader.material(withMaterialIndex: 0)
-        _ = try #require(material as? CustomMaterial)
-
         let vrmEntity = try loader.loadEntity()
-        let outlineEntities = modelEntities(in: vrmEntity.entity).filter { modelEntity in
+
+        for modelEntity in allModelEntities(in: vrmEntity.entity) {
+            let dynamic = modelEntity.components[DynamicLightShadowComponent.self]
+            #expect(dynamic?.castsShadow == false)
+
+            let grounding = modelEntity.components[GroundingShadowComponent.self]
+            #expect(grounding?.castsShadow == false)
+            #expect(grounding?.receivesShadow == false)
+        }
+    }
+
+    @Test
+    func nonARModeStillUsesOutlineEntities() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try seedSanURL()
+        let loader = try VRMEntityLoader(withURL: url, renderingMode: .nonAR)
+        let vrmEntity = try loader.loadEntity()
+
+        let outlineEntities = allModelEntities(in: vrmEntity.entity).filter { modelEntity in
             guard let model = modelEntity.components[ModelComponent.self],
                   let outlineMaterial = model.materials.first as? CustomMaterial else {
                 return false
             }
             return outlineMaterial.faceCulling == .front
         }
-        #expect(outlineEntities.isEmpty)
+        #expect(!outlineEntities.isEmpty)
+    }
+
+    @Test
+    func arModeWithMToonDisabledUsesUnlitNotCustomMaterial() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try seedSanURL()
+        let loader = try VRMEntityLoader(withURL: url, isMToonEnabled: false, renderingMode: .ar)
+        let vrmEntity = try loader.loadEntity()
+
+        let hasCustom = allModelEntities(in: vrmEntity.entity)
+            .flatMap { $0.components[ModelComponent.self]?.materials ?? [] }
+            .contains { $0 is CustomMaterial }
+        #expect(!hasCustom)
+    }
+
+    @Test
+    func renderingModeNonARStillUsesCustomMaterial() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try seedSanURL()
+        let loader = try VRMEntityLoader(withURL: url, renderingMode: .nonAR)
+        let material = try loader.material(withMaterialIndex: 0)
+        _ = try #require(material as? CustomMaterial)
     }
 
 #if os(iOS) && !os(visionOS)
     @Test
-    func loadMToonEntityInARViewWithoutCrash() async throws {
+    func loadMToonEntityInARViewSurvivesRenderFrames() async throws {
         guard #available(iOS 18.0, *) else { return }
         let arView = ARView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        arView.renderOptions.insert(.disableGroundingShadows)
+
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal]
         arView.session.run(config)
 
-        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"))
+        let url = try seedSanURL()
         let loader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
         let vrmEntity = try loader.loadEntity()
 
-        var elapsedTime: TimeInterval = 0
+        var elapsed: TimeInterval = 0
         let subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { event in
-            elapsedTime += event.deltaTime
-            vrmEntity.update(at: elapsedTime)
+            elapsed += event.deltaTime
+            vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -1))
+            vrmEntity.update(at: elapsed)
         }
 
         let anchor = AnchorEntity(world: .zero)
         anchor.addChild(vrmEntity.entity)
         arView.scene.addAnchor(anchor)
 
-        try await Task.sleep(nanoseconds: 500_000_000)
+        try await Task.sleep(nanoseconds: 1_000_000_000)
 
         subscription.cancel()
     }
 #endif
 
-    private func modelEntities(in root: Entity) -> [ModelEntity] {
-        var results: [ModelEntity] = []
-        if let modelEntity = root as? ModelEntity {
-            results.append(modelEntity)
+    private func seedSanURL() throws -> URL {
+        try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"))
+    }
+
+    private func allModelEntities(in entity: Entity) -> [ModelEntity] {
+        var result: [ModelEntity] = []
+        if let model = entity as? ModelEntity {
+            result.append(model)
         }
-        for child in root.children {
-            results.append(contentsOf: modelEntities(in: child))
+        for child in entity.children {
+            result.append(contentsOf: allModelEntities(in: child))
         }
-        return results
+        return result
+    }
+
+    private func noOutlineEntities(in entity: Entity) -> Bool {
+        if entity.name.hasSuffix("_outline") {
+            return false
+        }
+        return entity.children.allSatisfy { noOutlineEntities(in: $0) }
     }
 #endif
 }

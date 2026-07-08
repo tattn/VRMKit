@@ -85,14 +85,22 @@ arView.scene.addAnchor(anchor)
 
 ### AR session integration
 
-Use `renderingMode: .ar` with the default `ARView` camera mode. This keeps MToon `CustomMaterial` rendering but omits geometry modifiers and outline child entities that are incompatible with RealityKit's AR shadow-caster passes.
+Use `renderingMode: .ar` with the default `ARView` camera mode. This keeps MToon `CustomMaterial` rendering (surface shader only) but omits geometry modifiers, outline child entities, and shadow casting that are incompatible with RealityKit's AR shadow-caster passes.
 
-`VRMEntity.update(at:)` is required every frame for spring bones, constraints, skinning, and MToon UV animation. Subscribe to `SceneEvents.Update` from the host scene:
+Disable grounding shadows on the host `ARView` and call `VRMEntity.update(at:)` every frame for spring bones, constraints, skinning, and MToon UV animation:
 
 ```swift
+import ARKit
 import Combine
 import RealityKit
 import VRMRealityKit
+
+let arView = ARView(frame: bounds)
+arView.renderOptions.insert(.disableGroundingShadows)
+
+let config = ARWorldTrackingConfiguration()
+config.planeDetection = [.horizontal]
+arView.session.run(config)
 
 let loader = try VRMEntityLoader(
     named: "model.vrm",
@@ -100,16 +108,20 @@ let loader = try VRMEntityLoader(
 )
 let vrmEntity = try loader.loadEntity()
 
-var elapsedTime: TimeInterval = 0
+var time: TimeInterval = 0
 let subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { event in
-    elapsedTime += event.deltaTime
-    vrmEntity.update(at: elapsedTime)
+    time += event.deltaTime
+    vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -1))
+    vrmEntity.update(at: time)
 }
 
 let anchor = AnchorEntity(world: transform)
 anchor.addChild(vrmEntity.entity)
 arView.scene.addAnchor(anchor)
 ```
+
+> In AR mode, outline meshes and UV-animation geometry modifiers are disabled.  
+> Calling `VRMEntity.update(at:)` every frame is required.
 
 Set `isMToonEnabled: false` only when you want to disable MToon entirely and use the legacy Unlit / PBR conversion instead. This remains a supported workaround, but AR apps should prefer `renderingMode: .ar` with MToon left enabled.
 

@@ -78,6 +78,10 @@ open class VRMEntityLoader {
         try vrmEntity.setUpSpringBones(loader: self)
         // TODO: animations.
 
+        if renderingMode == .ar {
+            configureAREntityTreeRendering(vrmEntity.entity)
+        }
+
         entityData.entities[index] = vrmEntity
         return vrmEntity
     }
@@ -595,6 +599,9 @@ open class VRMEntityLoader {
     }
 
 #if !os(visionOS)
+    /// AR-safe MToon uses surface-only CustomMaterial with shadow casting disabled.
+    /// Geometry modifiers and outline meshes are omitted because they trigger Metal
+    /// validation errors in AR shadow-caster passes.
     private func customMToonMaterial(_ mtoon: MToonMaterialDescriptor,
                                      library: MTLLibrary,
                                      includeGeometryModifier: Bool) throws -> Material {
@@ -666,6 +673,10 @@ open class VRMEntityLoader {
 
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         material.faceCulling = .none
+        if !includeGeometryModifier {
+            // Avoid programmable blending shadow-caster path in AR.
+            material.blending = .opaque
+        }
 
         let parameters = try mtoonParameters(for: mtoon)
         material.custom.value = parameters.customValue
@@ -674,8 +685,19 @@ open class VRMEntityLoader {
     }
 
     private func configureAREntityRendering(_ modelEntity: ModelEntity) {
-        // Geometry modifiers and outline child entities are omitted in .ar mode because RealityKit's
-        // AR shadow-caster passes do not bind the buffers those shaders require.
+        // AR shadow-caster passes (fsSurfaceMeshShadowCasterProgrammableBlending) abort when
+        // CustomMaterial participates. Opt out of all shadow casting/receiving on AR entities.
+        modelEntity.components.set(DynamicLightShadowComponent(castsShadow: false))
+        modelEntity.components.set(GroundingShadowComponent(castsShadow: false, receivesShadow: false))
+    }
+
+    private func configureAREntityTreeRendering(_ entity: Entity) {
+        if let modelEntity = entity as? ModelEntity {
+            configureAREntityRendering(modelEntity)
+        }
+        for child in entity.children {
+            configureAREntityTreeRendering(child)
+        }
     }
 
     private func customMToonOutlineMaterial(_ mtoon: MToonMaterialDescriptor,
