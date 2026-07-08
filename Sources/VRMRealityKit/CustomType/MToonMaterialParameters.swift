@@ -14,7 +14,7 @@ struct MToonMaterialParametersComponent: Component {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct MToonMaterialParameters {
     static let defaultLightDirection = simd_normalize(SIMD3<Float>(0.35, 0.55, 0.75))
-    static let baseParameterRowCount = 14
+    static let baseParameterRowCount = 16
     static let samplerRowCount = MToonTextureSlot.allCases.count
     static let textureRowCount = baseParameterRowCount + samplerRowCount
     static let defaultSampler = SIMD4<Float>(0, 0, 0, 0)
@@ -33,6 +33,8 @@ struct MToonMaterialParameters {
     var emissiveFactor: SIMD4<Float>
     var lightColor = SIMD4<Float>(1, 1, 1, 1)
     var ambientColor = SIMD4<Float>(0, 0, 0, 1)
+    var uvTransform = SIMD4<Float>(1, 1, 0, 0)
+    var uvTransformRotation = SIMD4<Float>(1, 0, 0, 0)
     var samplers = Array(repeating: MToonMaterialParameters.defaultSampler,
                          count: MToonMaterialParameters.samplerRowCount)
     var lightDirection: SIMD3<Float> = MToonMaterialParameters.defaultLightDirection
@@ -111,6 +113,13 @@ struct MToonMaterialParameters {
         }
     }
 
+    mutating func setTextureTransform(scale: SIMD2<Float>,
+                                      offset: SIMD2<Float>,
+                                      rotation: Float) {
+        uvTransform = SIMD4<Float>(scale.x, scale.y, offset.x, offset.y)
+        uvTransformRotation = SIMD4<Float>(cos(rotation), sin(rotation), 0, 0)
+    }
+
     mutating func setSampler(_ sampler: SIMD4<Float>, for slot: MToonTextureSlot) {
         samplers[slot.rawValue] = sampler
     }
@@ -131,7 +140,9 @@ struct MToonMaterialParameters {
             extraFlags,
             emissiveFactor,
             lightColor,
-            ambientColor
+            ambientColor,
+            uvTransform,
+            uvTransformRotation
         ] + samplers
         precondition(rows.count == Self.textureRowCount)
         let data = rows.withUnsafeBufferPointer { Data(buffer: $0) }

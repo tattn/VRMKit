@@ -97,14 +97,14 @@ struct VRM1RealityKitTests {
         let texture = try parameters.textureResource()
         let shader = try mtoonShaderSource()
 
-        #expect(MToonMaterialParameters.baseParameterRowCount == 14)
+        #expect(MToonMaterialParameters.baseParameterRowCount == 16)
         #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
-        #expect(MToonMaterialParameters.textureRowCount == 23)
+        #expect(MToonMaterialParameters.textureRowCount == 25)
         #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
         #expect(texture.width == MToonMaterialParameters.textureRowCount)
         #expect(texture.height == 1)
-        #expect(shader.contains("constant float mtoonParameterTextureWidth = 23.0;"))
-        #expect(shader.contains("constant float mtoonSamplerParameterStart = 14.0;"))
+        #expect(shader.contains("constant float mtoonParameterTextureWidth = 25.0;"))
+        #expect(shader.contains("constant float mtoonSamplerParameterStart = 16.0;"))
     }
 
     @Test
@@ -156,6 +156,35 @@ struct VRM1RealityKitTests {
         #expect(shader.contains("float3 indirect = litColor * giColor;"))
         #expect(!shader.contains("* 2.0 - 1.0) * float(uvAnimation.w)"))
         #expect(!shader.contains("dot(normal, lightDirection) * 0.5 + 0.5"))
+    }
+
+    @Test
+    func testMToonShaderAppliesTextureTransformInSurfaceShader() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let shader = try mtoonShaderSource()
+
+        let animatedUV = try #require(shader.range(of: "float2 uv = mtoonAnimatedSurfaceUV"))
+        let textureTransform = try #require(shader.range(of: "uv = mtoonTransformedUV(uv, uvTransform, uvTransformRotation);"))
+        #expect(animatedUV.lowerBound < textureTransform.lowerBound)
+        #expect(shader.contains("mtoonTextureUV(mtoonTransformedUV(uv, uvTransform, uvTransformRotation))"))
+        #expect(!shader.contains("params.uniforms().uv0_transform() * params.geometry().uv0()"))
+    }
+
+    @Test
+    func testMToonTextureTransformBindUpdatesParameterTexture() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
+        let vrmLoader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let vrmEntity = try vrmLoader.loadEntity()
+
+        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+
+        let parameters = try mtoonParameters(in: vrmEntity.entity, materialIndex: 11)
+        #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0.25, 0)))
+        #expect(parameters.uvTransformRotation.isApproximatelyEqual(to: SIMD4<Float>(1, 0, 0, 0)))
+        let material = try customMaterial(in: vrmEntity.entity, materialIndex: 11)
+        #expect(material.textureCoordinateTransform.offset == SIMD2<Float>(0.25, 0))
+        #expect(material.textureCoordinateTransform.scale == SIMD2<Float>(1, 1))
     }
 
     @Test
@@ -325,6 +354,31 @@ struct VRM1RealityKitTests {
             }
         }
         throw VRMError.dataInconsistent("Expected at least one MToon parameters component")
+    }
+
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func mtoonParameters(in root: Entity, materialIndex: Int) throws -> MToonMaterialParameters {
+        for modelEntity in modelEntities(in: root) {
+            guard modelEntity.components[VRMMaterialIndexComponent.self]?.materialIndex == materialIndex,
+                  let component = modelEntity.components[MToonMaterialParametersComponent.self] else {
+                continue
+            }
+            return component.parameters
+        }
+        throw VRMError.dataInconsistent("Expected MToon parameters for material \(materialIndex)")
+    }
+
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func customMaterial(in root: Entity, materialIndex: Int) throws -> CustomMaterial {
+        for modelEntity in modelEntities(in: root) {
+            guard modelEntity.components[VRMMaterialIndexComponent.self]?.materialIndex == materialIndex,
+                  let model = modelEntity.components[ModelComponent.self],
+                  let material = model.materials.first as? CustomMaterial else {
+                continue
+            }
+            return material
+        }
+        throw VRMError.dataInconsistent("Expected CustomMaterial for material \(materialIndex)")
     }
 
     private func modelEntities(in root: Entity) -> [ModelEntity] {

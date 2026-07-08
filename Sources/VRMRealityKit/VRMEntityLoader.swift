@@ -519,7 +519,9 @@ open class VRMEntityLoader {
 
 #if !os(visionOS)
         if isMToonEnabled, let mtoon, let library = mtoonShaderLibrary() {
+            let textureTransform = try mtoonTextureTransform(withMaterialIndex: index)
             let material = try customMToonMaterial(mtoon,
+                                                   textureTransform: textureTransform,
                                                    library: library,
                                                    includeGeometryModifier: renderingMode == .nonAR)
             entityData.materials[index] = material
@@ -603,6 +605,7 @@ open class VRMEntityLoader {
     /// Geometry modifiers and outline meshes are omitted because they trigger Metal
     /// validation errors in AR shadow-caster passes.
     private func customMToonMaterial(_ mtoon: MToonMaterialDescriptor,
+                                     textureTransform: MaterialParameterTypes.TextureCoordinateTransform,
                                      library: MTLLibrary,
                                      includeGeometryModifier: Bool) throws -> Material {
         // RealityKit has no material-level render queue offset hook in this loader.
@@ -673,14 +676,16 @@ open class VRMEntityLoader {
 
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         material.faceCulling = .none
+        material.textureCoordinateTransform = textureTransform
 
-        let parameters = try mtoonParameters(for: mtoon)
+        let parameters = try mtoonParameters(for: mtoon, textureTransform: textureTransform)
         material.custom.value = parameters.customValue
         material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
         return material
     }
 
     private func customMToonOutlineMaterial(_ mtoon: MToonMaterialDescriptor,
+                                            textureTransform: MaterialParameterTypes.TextureCoordinateTransform,
                                             library: MTLLibrary) throws -> Material {
         let surface = CustomMaterial.SurfaceShader(named: "mtoonOutlineSurface", in: library)
         let geometry = CustomMaterial.GeometryModifier(named: "mtoonOutlineGeometry", in: library)
@@ -700,7 +705,8 @@ open class VRMEntityLoader {
         }
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         material.blending = .opaque
-        let parameters = try mtoonParameters(for: mtoon)
+        material.textureCoordinateTransform = textureTransform
+        let parameters = try mtoonParameters(for: mtoon, textureTransform: textureTransform)
         material.custom.value = parameters.customValue
         material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
         return material
@@ -745,13 +751,18 @@ open class VRMEntityLoader {
         guard let descriptor = try mtoonDescriptor(withMaterialIndex: index) else {
             return nil
         }
-        let parameters = try mtoonParameters(for: descriptor)
+        let parameters = try mtoonParameters(for: descriptor,
+                                             textureTransform: mtoonTextureTransform(withMaterialIndex: index))
         mtoonParameterCache[index] = parameters
         return parameters
     }
 
-    private func mtoonParameters(for descriptor: MToonMaterialDescriptor) throws -> MToonMaterialParameters {
+    private func mtoonParameters(for descriptor: MToonMaterialDescriptor,
+                                 textureTransform: MaterialParameterTypes.TextureCoordinateTransform) throws -> MToonMaterialParameters {
         var parameters = MToonMaterialParameters(descriptor)
+        parameters.setTextureTransform(scale: textureTransform.scale,
+                                       offset: textureTransform.offset,
+                                       rotation: textureTransform.rotation)
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.baseColorTexture), for: .base)
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadeMultiplyTexture ?? descriptor.baseColorTexture), for: .shade)
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadingShiftTexture), for: .shadingShift)
@@ -762,6 +773,49 @@ open class VRMEntityLoader {
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.outlineWidthMultiplyTexture), for: .outlineWidth)
         try parameters.setSampler(mtoonSamplerParameters(for: descriptor.uvAnimationMaskTexture), for: .uvAnimationMask)
         return parameters
+    }
+
+    private func mtoonTextureTransform(withMaterialIndex index: Int) throws -> MaterialParameterTypes.TextureCoordinateTransform {
+        let materials = try gltf.load(\.materials)
+        guard materials.indices.contains(index) else {
+            throw VRMError._dataInconsistent("Material index \(index) out of bounds")
+        }
+        let material = materials[index]
+        let mtoon = material.extensions?.materialsMToon
+        // RealityKit MToon keeps one material-level UV transform so expression
+        // textureTransformBinds update every UV-accessed slot consistently. If
+        // individual KHR_texture_transform values differ per textureInfo, the
+        // first MToon-relevant transform is used as the material transform.
+        let extensionCandidates: [CodableAny?] = [
+            material.pbrMetallicRoughness?.baseColorTexture?.extensions,
+            mtoon?.shadeMultiplyTexture?.extensions,
+            mtoon?.shadingShiftTexture?.extensions,
+            material.normalTexture?.extensions,
+            mtoon?.matcapTexture?.extensions,
+            material.emissiveTexture?.extensions,
+            mtoon?.rimMultiplyTexture?.extensions,
+            mtoon?.outlineWidthMultiplyTexture?.extensions,
+            mtoon?.uvAnimationMaskTexture?.extensions
+        ]
+        for extensions in extensionCandidates {
+            if let transform = textureTransform(from: extensions) {
+                return transform
+            }
+        }
+        return MaterialParameterTypes.TextureCoordinateTransform()
+    }
+
+    private func textureTransform(from extensions: CodableAny?) -> MaterialParameterTypes.TextureCoordinateTransform? {
+        guard let extensions = extensions?.value as? [String: Any],
+              let transform = extensions["KHR_texture_transform"] as? [String: Any] else {
+            return nil
+        }
+        let offset = transform.simd2Value(forKey: "offset", default: SIMD2<Float>(0, 0))
+        let scale = transform.simd2Value(forKey: "scale", default: SIMD2<Float>(1, 1))
+        let rotation = transform.floatValue(forKey: "rotation", default: 0)
+        return MaterialParameterTypes.TextureCoordinateTransform(offset: offset,
+                                                                 scale: scale,
+                                                                 rotation: rotation)
     }
 
     private func mtoonOutlineMaterial(withMaterialIndex index: Int) throws -> Material? {
@@ -782,7 +836,9 @@ open class VRMEntityLoader {
               let library = mtoonShaderLibrary() else {
             return nil
         }
-        let material = try customMToonOutlineMaterial(descriptor, library: library)
+        let material = try customMToonOutlineMaterial(descriptor,
+                                                      textureTransform: mtoonTextureTransform(withMaterialIndex: index),
+                                                      library: library)
         mtoonOutlineMaterialCache[index] = material
         return material
 #endif
@@ -1924,6 +1980,41 @@ private extension GLTF.Sampler.MinFilter {
         case .LINEAR, .LINEAR_MIPMAP_NEAREST, .LINEAR_MIPMAP_LINEAR:
             return false
         }
+    }
+}
+
+private extension Dictionary where Key == String, Value == Any {
+    func simd2Value(forKey key: String, default defaultValue: SIMD2<Float>) -> SIMD2<Float> {
+        guard let values = self[key] as? [Any] else { return defaultValue }
+        return SIMD2<Float>(values.float(at: 0, default: defaultValue.x),
+                            values.float(at: 1, default: defaultValue.y))
+    }
+
+    func floatValue(forKey key: String, default defaultValue: Float) -> Float {
+        guard let value = self[key] else { return defaultValue }
+        return numericFloatValue(value, default: defaultValue)
+    }
+}
+
+private extension Array where Element == Any {
+    func float(at index: Int, default defaultValue: Float) -> Float {
+        guard indices.contains(index) else { return defaultValue }
+        return numericFloatValue(self[index], default: defaultValue)
+    }
+}
+
+private func numericFloatValue(_ value: Any, default defaultValue: Float) -> Float {
+    switch value {
+    case let value as Float:
+        return value
+    case let value as Double:
+        return Float(value)
+    case let value as Int:
+        return Float(value)
+    case let value as NSNumber:
+        return value.floatValue
+    default:
+        return defaultValue
     }
 }
 

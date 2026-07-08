@@ -129,6 +129,7 @@ public final class VRMEntity {
                         return TextureTransformBinding(materialIndex: bind.material,
                                                        baseScale: base.scale,
                                                        baseOffset: base.offset,
+                                                       baseRotation: base.rotation,
                                                        targetScale: SIMD2<Float>(bind.scale, default: 1.0),
                                                        targetOffset: SIMD2<Float>(bind.offset, default: 0.0))
                     } ?? []
@@ -447,13 +448,15 @@ public final class VRMEntity {
 
     fileprivate func applyTextureTransform(scale: SIMD2<Float>,
                                            offset: SIMD2<Float>,
+                                           rotation: Float,
                                            materialIndex: Int) {
         guard let models = modelEntitiesByMaterialIndex[materialIndex] else { return }
         for modelEntity in models {
             guard var component = modelEntity.components[ModelComponent.self] else { continue }
             component.materials = component.materials.map { material in
-                material.settingTextureTransform(scale: scale, offset: offset)
+                material.settingTextureTransform(scale: scale, offset: offset, rotation: rotation)
             }
+            updateMToonTextureTransform(scale: scale, offset: offset, rotation: rotation, on: modelEntity, modelComponent: &component)
             modelEntity.components.set(component)
         }
     }
@@ -505,6 +508,23 @@ public final class VRMEntity {
         applyMToonParameters(state.parameters, to: &modelComponent, updateParameterTexture: true)
         modelEntity.components.set(state)
         return true
+#endif
+    }
+
+    private func updateMToonTextureTransform(scale: SIMD2<Float>,
+                                             offset: SIMD2<Float>,
+                                             rotation: Float,
+                                             on modelEntity: ModelEntity,
+                                             modelComponent: inout ModelComponent) {
+#if !os(visionOS)
+        guard var state = modelEntity.components[MToonMaterialParametersComponent.self] else { return }
+        state.parameters.setTextureTransform(scale: scale, offset: offset, rotation: rotation)
+        state.parameters.lightColor = SIMD4<Float>(mtoonLightColor.x, mtoonLightColor.y, mtoonLightColor.z, 1)
+        state.parameters.ambientColor = SIMD4<Float>(mtoonAmbientColor.x, mtoonAmbientColor.y, mtoonAmbientColor.z, 1)
+        state.parameters.lightDirection = mtoonLightDirection
+        state.parameters.elapsedTime = mtoonElapsedTime
+        applyMToonParameters(state.parameters, to: &modelComponent, updateParameterTexture: true)
+        modelEntity.components.set(state)
 #endif
     }
 
@@ -823,6 +843,7 @@ private struct TextureTransformBinding {
     let materialIndex: Int
     let baseScale: SIMD2<Float>
     let baseOffset: SIMD2<Float>
+    let baseRotation: Float
     let targetScale: SIMD2<Float>
     let targetOffset: SIMD2<Float>
 
@@ -832,6 +853,7 @@ private struct TextureTransformBinding {
         let offset = baseOffset + (targetOffset - baseOffset) * value
         entity.applyTextureTransform(scale: scale,
                                      offset: offset,
+                                     rotation: baseRotation,
                                      materialIndex: materialIndex)
     }
 }
@@ -911,8 +933,8 @@ extension Material {
         }
     }
 
-    func settingTextureTransform(scale: SIMD2<Float>, offset: SIMD2<Float>) -> Material {
-        let transform = MaterialParameterTypes.TextureCoordinateTransform(offset: offset, scale: scale)
+    func settingTextureTransform(scale: SIMD2<Float>, offset: SIMD2<Float>, rotation: Float = 0) -> Material {
+        let transform = MaterialParameterTypes.TextureCoordinateTransform(offset: offset, scale: scale, rotation: rotation)
         switch self {
         case var material as UnlitMaterial:
             material.textureCoordinateTransform = transform
