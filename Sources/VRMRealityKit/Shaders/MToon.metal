@@ -194,7 +194,9 @@ void mtoonSurface(realitykit::surface_parameters params)
     uv = mtoonTextureUV(uv);
 
     half4 baseSample = mtoonSample(textures.base_color(), uv, baseSampler);
-    half4 shadeSample = mtoonSample(textures.roughness(), uv, shadeSampler);
+    half4 shadeSample = extraFlags.y > 0.5h
+        ? mtoonSample(textures.roughness(), uv, shadeSampler)
+        : half4(1.0h);
 
     float shift = float(shadeParams.x);
     if (featureFlags.z > 0.5h) {
@@ -263,11 +265,28 @@ void mtoonOutlineSurface(realitykit::surface_parameters params)
     half4 outlineColor = mtoonParameter(textures, 4.0);
     half4 shadeParams = mtoonParameter(textures, 5.0);
     half4 outlineParams = mtoonParameter(textures, 7.0);
+    half4 uvAnimation = mtoonParameter(textures, 8.0);
+    half4 featureFlags = mtoonParameter(textures, 9.0);
     half4 extraFlags = mtoonParameter(textures, 10.0);
     half4 lightColorParameter = mtoonParameter(textures, 12.0);
+    half4 uvTransform = mtoonParameter(textures, 14.0);
+    half4 uvTransformRotation = mtoonParameter(textures, 15.0);
+    half4 baseSampler = mtoonSamplerParameter(textures, 0.0);
+    half4 uvAnimationMaskSampler = mtoonSamplerParameter(textures, 8.0);
+
+    float2 uv = mtoonAnimatedSurfaceUV(params,
+                                       params.geometry().uv0(),
+                                       uvAnimation,
+                                       featureFlags,
+                                       uvAnimationMaskSampler,
+                                       uvTransform,
+                                       uvTransformRotation);
+    uv = mtoonTextureUV(mtoonTransformedUV(uv, uvTransform, uvTransformRotation));
+    half4 baseSample = mtoonSample(textures.base_color(), uv, baseSampler);
+    half4 baseColorFactor = mtoonParameter(textures, 0.0);
 
     float cutoff = material.opacity_threshold() > 0.0 ? material.opacity_threshold() : float(shadeParams.w);
-    float opacity = mtoonAlpha(float(extraFlags.w), float(outlineColor.a), cutoff);
+    float opacity = mtoonAlpha(float(extraFlags.w), float(baseSample.a * baseColorFactor.a), cutoff);
     // RealityKit does not expose the fully evaluated lit term here; use runtime light color as the lit approximation.
     float3 outlineLit = mix(float3(1.0), float3(lightColorParameter.rgb), clamp(float(outlineParams.z), 0.0, 1.0));
     float3 finalColor = float3(outlineColor.rgb) * outlineLit;
@@ -302,11 +321,6 @@ float2 mtoonAnimatedUV(realitykit::geometry_parameters params,
     float2 rotated = float2(centered.x * c - centered.y * s,
                             centered.x * s + centered.y * c) + center;
     return rotated + float2(float(uvAnimation.x), float(uvAnimation.y)) * time * mask;
-}
-
-[[visible]]
-void mtoonGeometry(realitykit::geometry_parameters params)
-{
 }
 
 float mtoonScreenOutlineWidth(realitykit::geometry_parameters params, float width, float3 modelNormal)

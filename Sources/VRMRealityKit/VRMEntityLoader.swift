@@ -23,7 +23,6 @@ open class VRMEntityLoader {
     private static var mtoonDefaultLibraryCache: MTLLibrary?
     private static let requiredMToonFunctionNames: Set<String> = [
         "mtoonSurface",
-        "mtoonGeometry",
         "mtoonOutlineSurface",
         "mtoonOutlineGeometry"
     ]
@@ -35,23 +34,31 @@ open class VRMEntityLoader {
     private var neutralNormalTextureCache: TextureResource?
     private var mtoonParameterCache: [Int: MToonMaterialParameters] = [:]
     private var mtoonOutlineMaterialCache: [Int: Material] = [:]
+    private var loggedMToonUVLimitations: Set<Int> = []
     private var enableNormalTangentBlendShape = false // NOTE: Setting this to true currently has no effect
     /// When `false`, MToon materials are not created and the loader falls back to Unlit / PBR materials.
-    public var isMToonEnabled: Bool
-    /// Controls AR-safe vs full MToon rendering. Ignored when ``isMToonEnabled`` is `false`.
-    public var renderingMode: VRMRenderingMode
+    /// visionOS always uses the fallback because `CustomMaterial` is unavailable there.
+    public let isMToonEnabled: Bool
+    /// Controls creation of MToon's inverted-hull outline entities.
+    /// visionOS does not create MToon outlines because `CustomMaterial` is unavailable there.
+    public let isOutlineEnabled: Bool
+    /// Controls whether loaded model entities participate in RealityKit shadow passes.
+    /// This option has no effect on visionOS, where the required shadow components are unavailable.
+    public let isShadowCastingEnabled: Bool
 
     public init(vrm: VRM,
                 rootDirectory: URL? = nil,
                 isMToonEnabled: Bool = true,
-                renderingMode: VRMRenderingMode = .nonAR) {
+                isOutlineEnabled: Bool = true,
+                isShadowCastingEnabled: Bool = true) {
         self.vrm = vrm
         self.gltf = vrm.gltf.jsonData
         self.rootDirectory = rootDirectory
         self.entityName = vrm.meta.title
         self.entityData = EntityData(vrm: gltf)
         self.isMToonEnabled = isMToonEnabled
-        self.renderingMode = renderingMode
+        self.isOutlineEnabled = isOutlineEnabled
+        self.isShadowCastingEnabled = isShadowCastingEnabled
     }
 
     public func loadEntity() throws -> VRMEntity {
@@ -78,8 +85,8 @@ open class VRMEntityLoader {
         try vrmEntity.setUpSpringBones(loader: self)
         // TODO: animations.
 
-        if renderingMode == .ar {
-            configureAREntityTreeRendering(vrmEntity.entity)
+        if !isShadowCastingEnabled {
+            disableShadowCasting(in: vrmEntity.entity)
         }
 
         entityData.entities[index] = vrmEntity
@@ -364,9 +371,6 @@ open class VRMEntityLoader {
         }
 
         let modelEntity = ModelEntity(mesh: mesh, materials: [material])
-        if renderingMode == .ar {
-            configureAREntityRendering(modelEntity)
-        }
         if let materialIndex = primitive.material {
             modelEntity.components.set(VRMMaterialIndexComponent(materialIndex: materialIndex))
             if let parameters = try mtoonParameters(withMaterialIndex: materialIndex) {
@@ -522,8 +526,7 @@ open class VRMEntityLoader {
             let textureTransform = try mtoonTextureTransform(withMaterialIndex: index)
             let material = try customMToonMaterial(mtoon,
                                                    textureTransform: textureTransform,
-                                                   library: library,
-                                                   includeGeometryModifier: renderingMode == .nonAR)
+                                                   library: library)
             entityData.materials[index] = material
             return material
         }
@@ -601,26 +604,13 @@ open class VRMEntityLoader {
     }
 
 #if !os(visionOS)
-    /// AR-safe MToon uses surface-only CustomMaterial with shadow casting disabled.
-    /// Geometry modifiers and outline meshes are omitted because they trigger Metal
-    /// validation errors in AR shadow-caster passes.
     private func customMToonMaterial(_ mtoon: MToonMaterialDescriptor,
                                      textureTransform: MaterialParameterTypes.TextureCoordinateTransform,
-                                     library: MTLLibrary,
-                                     includeGeometryModifier: Bool) throws -> Material {
-        // RealityKit has no material-level render queue offset hook in this loader.
-        // MToon renderQueueOffsetNumber is applied by the SceneKit renderer only.
+                                     library: MTLLibrary) throws -> Material {
+        // RealityKit has no material-level draw-order hook, so
+        // MToon renderQueueOffsetNumber falls back to 0 in this renderer.
         let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: library)
-        var material: CustomMaterial
-        if includeGeometryModifier {
-            let geometry = CustomMaterial.GeometryModifier(named: "mtoonGeometry", in: library)
-            material = try CustomMaterial(surfaceShader: surface,
-                                          geometryModifier: geometry,
-                                          lightingModel: .unlit)
-        } else {
-            material = try CustomMaterial(surfaceShader: surface,
-                                          lightingModel: .unlit)
-        }
+        var material = try CustomMaterial(surfaceShader: surface, lightingModel: .unlit)
         if let baseTexture = mtoon.baseColorTexture {
             let textureParam = try customTexture(withTextureIndex: baseTexture.index, semantic: .color)
             material.baseColor = .init(tint: .white, texture: textureParam)
@@ -673,7 +663,7 @@ open class VRMEntityLoader {
         }
 
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
-        material.faceCulling = .none
+        material.faceCulling = mtoon.doubleSided ? .none : .back
         material.textureCoordinateTransform = textureTransform
 
         let parameters = try mtoonParameters(for: mtoon, textureTransform: textureTransform)
@@ -691,6 +681,13 @@ open class VRMEntityLoader {
                                           geometryModifier: geometry,
                                           lightingModel: .unlit)
         material.faceCulling = .front
+        if let baseTexture = mtoon.baseColorTexture {
+            material.baseColor = .init(tint: .white,
+                                       texture: try customTexture(withTextureIndex: baseTexture.index,
+                                                                  semantic: .color))
+        } else {
+            material.baseColor = .init(tint: .white, texture: try whiteCustomTexture())
+        }
         if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
             material.clearcoat.texture = try customTexture(withTextureIndex: outlineWidthTexture.index, semantic: .color)
         } else {
@@ -702,7 +699,6 @@ open class VRMEntityLoader {
             material.ambientOcclusion.texture = try whiteCustomTexture()
         }
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
-        material.blending = .opaque
         material.textureCoordinateTransform = textureTransform
         let parameters = try mtoonParameters(for: mtoon, textureTransform: textureTransform)
         material.custom.value = parameters.customValue
@@ -711,10 +707,8 @@ open class VRMEntityLoader {
     }
 #endif
 
-    private func configureAREntityRendering(_ modelEntity: ModelEntity) {
+    private func disableShadowCasting(on modelEntity: ModelEntity) {
 #if !os(visionOS)
-        // AR shadow-caster passes (fsSurfaceMeshShadowCasterProgrammableBlending) abort when
-        // CustomMaterial participates. Opt out of all shadow casting/receiving on AR entities.
         modelEntity.components.set(DynamicLightShadowComponent(castsShadow: false))
         modelEntity.components.set(GroundingShadowComponent(castsShadow: false, receivesShadow: false))
 #else
@@ -722,12 +716,12 @@ open class VRMEntityLoader {
 #endif
     }
 
-    private func configureAREntityTreeRendering(_ entity: Entity) {
+    private func disableShadowCasting(in entity: Entity) {
         if let modelEntity = entity as? ModelEntity {
-            configureAREntityRendering(modelEntity)
+            disableShadowCasting(on: modelEntity)
         }
         for child in entity.children {
-            configureAREntityTreeRendering(child)
+            disableShadowCasting(in: child)
         }
     }
 
@@ -780,27 +774,42 @@ open class VRMEntityLoader {
         }
         let material = materials[index]
         let mtoon = material.extensions?.materialsMToon
-        // RealityKit MToon keeps one material-level UV transform so expression
-        // textureTransformBinds update every UV-accessed slot consistently. If
-        // individual KHR_texture_transform values differ per textureInfo, the
-        // first MToon-relevant transform is used as the material transform.
-        let extensionCandidates: [CodableAny?] = [
-            material.pbrMetallicRoughness?.baseColorTexture?.extensions,
-            mtoon?.shadeMultiplyTexture?.extensions,
-            mtoon?.shadingShiftTexture?.extensions,
-            material.normalTexture?.extensions,
-            mtoon?.matcapTexture?.extensions,
-            material.emissiveTexture?.extensions,
-            mtoon?.rimMultiplyTexture?.extensions,
-            mtoon?.outlineWidthMultiplyTexture?.extensions,
-            mtoon?.uvAnimationMaskTexture?.extensions
-        ]
-        for extensions in extensionCandidates {
-            if let transform = textureTransform(from: extensions) {
-                return transform
+        // Custom meshes on the minimum supported RealityKit versions expose only
+        // TEXCOORD_0 and CustomMaterial has one material-level UV transform. Use
+        // the first UV-accessed MToon transform deterministically. Expression
+        // textureTransformBinds still update every UV-accessed texture together,
+        // as required by VRMC_vrm.
+        let textureInfos: [(texCoord: Int, extensions: CodableAny?)] = [
+            material.pbrMetallicRoughness?.baseColorTexture.map { ($0.texCoord, $0.extensions) },
+            mtoon?.shadeMultiplyTexture.map { ($0.texCoord ?? 0, $0.extensions) },
+            mtoon?.shadingShiftTexture.map { ($0.texCoord ?? 0, $0.extensions) },
+            material.normalTexture.map { ($0.texCoord, $0.extensions) },
+            material.emissiveTexture.map { ($0.texCoord, $0.extensions) },
+            mtoon?.rimMultiplyTexture.map { ($0.texCoord ?? 0, $0.extensions) },
+            mtoon?.outlineWidthMultiplyTexture.map { ($0.texCoord ?? 0, $0.extensions) },
+            mtoon?.uvAnimationMaskTexture.map { ($0.texCoord ?? 0, $0.extensions) }
+        ].compactMap { $0 }
+
+        let transforms = textureInfos.compactMap { textureTransform(from: $0.extensions) }
+        let selectedTransform = transforms.first ?? MaterialParameterTypes.TextureCoordinateTransform()
+        let usesUnsupportedTexCoord = textureInfos.contains {
+            textureCoordinate(from: $0.extensions, default: $0.texCoord) != 0
+        }
+        let hasDifferentTransforms = textureInfos.contains {
+            let transform = textureTransform(from: $0.extensions)
+                ?? MaterialParameterTypes.TextureCoordinateTransform()
+            return textureTransform(transform, differsFrom: selectedTransform)
+        }
+        if (usesUnsupportedTexCoord || hasDifferentTransforms),
+           loggedMToonUVLimitations.insert(index).inserted {
+            if usesUnsupportedTexCoord {
+                Self.logger.warning("MToon material \(index, privacy: .public) requests a nonzero texCoord; RealityKit uses TEXCOORD_0 on supported deployment targets.")
+            }
+            if hasDifferentTransforms {
+                Self.logger.warning("MToon material \(index, privacy: .public) has per-texture KHR_texture_transform values; RealityKit uses the first UV-accessed transform for all MToon textures.")
             }
         }
-        return MaterialParameterTypes.TextureCoordinateTransform()
+        return selectedTransform
     }
 
     private func textureTransform(from extensions: CodableAny?) -> MaterialParameterTypes.TextureCoordinateTransform? {
@@ -816,6 +825,20 @@ open class VRMEntityLoader {
                                                                  rotation: rotation)
     }
 
+    private func textureCoordinate(from extensions: CodableAny?, default defaultValue: Int) -> Int {
+        guard let extensions = extensions?.value as? [String: Any],
+              let transform = extensions["KHR_texture_transform"] as? [String: Any],
+              let texCoord = transform["texCoord"] else {
+            return defaultValue
+        }
+        return Int(numericFloatValue(texCoord, default: Float(defaultValue)))
+    }
+
+    private func textureTransform(_ lhs: MaterialParameterTypes.TextureCoordinateTransform,
+                                  differsFrom rhs: MaterialParameterTypes.TextureCoordinateTransform) -> Bool {
+        lhs.scale != rhs.scale || lhs.offset != rhs.offset || abs(lhs.rotation - rhs.rotation) > 0.000_001
+    }
+
     private func mtoonOutlineMaterial(withMaterialIndex index: Int) throws -> Material? {
 #if os(visionOS)
         return nil
@@ -823,7 +846,7 @@ open class VRMEntityLoader {
         guard isMToonEnabled else {
             return nil
         }
-        guard renderingMode == .nonAR else {
+        guard isOutlineEnabled else {
             return nil
         }
         if let material = mtoonOutlineMaterialCache[index] {

@@ -68,6 +68,7 @@ struct VRM1RealityKitTests {
 
         #expect(shader.contains("surface.set_base_color(half3(0.0h));\n    surface.set_emissive_color(half3(color));"))
         #expect(shader.contains("surface.set_base_color(half3(0.0h));\n    surface.set_emissive_color(half3(finalColor));"))
+        #expect(!shader.contains("void mtoonGeometry"))
     }
 
     @Test
@@ -129,12 +130,110 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try seedSanURLWithNonDefaultEyeSampler()
         defer { try? FileManager.default.removeItem(at: url) }
-        let vrmLoader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let vrmLoader = try VRMEntityLoader(withURL: url, isOutlineEnabled: false)
         let vrmEntity = try vrmLoader.loadEntity()
         let eyeTransparentParameters = try mtoonParameters(in: vrmEntity.entity, materialIndex: 4)
 
         #expect(eyeTransparentParameters.samplers[MToonTextureSlot.base.rawValue] != MToonMaterialParameters.defaultSampler)
         #expect(eyeTransparentParameters.samplers[MToonTextureSlot.shade.rawValue] == MToonMaterialParameters.defaultSampler)
+        #expect(try mtoonShaderSource().contains("extraFlags.y > 0.5h"))
+    }
+
+    @Test
+    func testMToonRespectsDoubleSidedMaterialFlag() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let sourceURL = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"))
+        let singleSidedLoader = try VRMEntityLoader(withURL: sourceURL, isOutlineEnabled: false)
+        let singleSided = try #require(singleSidedLoader.material(withMaterialIndex: 0) as? CustomMaterial)
+        #expect(singleSided.faceCulling == .back)
+
+        let doubleSidedURL = try modifiedSeedSanURL(fileName: "double-sided") { json in
+            guard var materials = json["materials"] as? [[String: Any]],
+                  materials.indices.contains(0) else {
+                throw VRMError.dataInconsistent("Missing Seed-san material fixture data")
+            }
+            materials[0]["doubleSided"] = true
+            json["materials"] = materials
+        }
+        defer { try? FileManager.default.removeItem(at: doubleSidedURL) }
+
+        let doubleSidedLoader = try VRMEntityLoader(withURL: doubleSidedURL, isOutlineEnabled: false)
+        let doubleSided = try #require(doubleSidedLoader.material(withMaterialIndex: 0) as? CustomMaterial)
+        #expect(doubleSided.faceCulling == .none)
+    }
+
+    @Test
+    func testTransparentOutlinePreservesBaseTextureAlpha() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try modifiedSeedSanURL(fileName: "transparent-outline") { json in
+            guard var materials = json["materials"] as? [[String: Any]],
+                  materials.indices.contains(0) else {
+                throw VRMError.dataInconsistent("Missing Seed-san material fixture data")
+            }
+            materials[0]["alphaMode"] = "BLEND"
+            var pbr = materials[0]["pbrMetallicRoughness"] as? [String: Any] ?? [:]
+            pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 0.5]
+            materials[0]["pbrMetallicRoughness"] = pbr
+            json["materials"] = materials
+        }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = try VRMEntityLoader(withURL: url)
+        let vrmEntity = try loader.loadEntity()
+        let outline = try customMaterial(in: vrmEntity.entity,
+                                         materialIndex: 0,
+                                         faceCulling: .front)
+        #expect(isTransparent(outline.blending))
+        #expect(outline.baseColor.texture != nil)
+
+        let shader = try mtoonShaderSource()
+        #expect(shader.contains("baseSample.a * baseColorFactor.a"))
+        #expect(shader.contains("mtoonAlpha(float(extraFlags.w)"))
+    }
+
+    @Test
+    func testMToonUsesFirstUVTransformWhenTextureSlotsDiffer() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try modifiedSeedSanURL(fileName: "different-uv-transforms") { json in
+            guard var materials = json["materials"] as? [[String: Any]],
+                  materials.indices.contains(0),
+                  var pbr = materials[0]["pbrMetallicRoughness"] as? [String: Any],
+                  var baseTexture = pbr["baseColorTexture"] as? [String: Any],
+                  var extensions = materials[0]["extensions"] as? [String: Any],
+                  var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any],
+                  var shadeTexture = mtoon["shadeMultiplyTexture"] as? [String: Any] else {
+                throw VRMError.dataInconsistent("Missing Seed-san MToon texture fixture data")
+            }
+            baseTexture["texCoord"] = 1
+            baseTexture["extensions"] = [
+                "KHR_texture_transform": [
+                    "offset": [0.25, 0.5],
+                    "scale": [0.75, 0.5],
+                    "rotation": 0.2,
+                    "texCoord": 1
+                ]
+            ]
+            pbr["baseColorTexture"] = baseTexture
+            materials[0]["pbrMetallicRoughness"] = pbr
+
+            shadeTexture["extensions"] = [
+                "KHR_texture_transform": [
+                    "offset": [0.9, 0.8],
+                    "scale": [0.4, 0.3]
+                ]
+            ]
+            mtoon["shadeMultiplyTexture"] = shadeTexture
+            extensions["VRMC_materials_mtoon"] = mtoon
+            materials[0]["extensions"] = extensions
+            json["materials"] = materials
+        }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = try VRMEntityLoader(withURL: url, isOutlineEnabled: false)
+        let material = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
+        #expect(material.textureCoordinateTransform.offset.isApproximatelyEqual(to: SIMD2<Float>(0.25, 0.5)))
+        #expect(material.textureCoordinateTransform.scale.isApproximatelyEqual(to: SIMD2<Float>(0.75, 0.5)))
+        #expect(abs(material.textureCoordinateTransform.rotation - 0.2) < 0.0001)
     }
 
     @Test
@@ -187,7 +286,7 @@ struct VRM1RealityKitTests {
     func testMToonTextureTransformBindUpdatesParameterTexture() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
-        let vrmLoader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let vrmLoader = try VRMEntityLoader(withURL: url, isOutlineEnabled: false)
         let vrmEntity = try vrmLoader.loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
@@ -225,6 +324,8 @@ struct VRM1RealityKitTests {
         #expect(!source.contains("SDKROOT"))
         #expect(!source.contains("DEVELOPER_DIR"))
         #expect(!source.contains("/usr/bin/xcrun"))
+        #expect(!source.contains("includeGeometryModifier"))
+        #expect(!source.contains("\"mtoonGeometry\""))
     }
 
     @Test
@@ -384,10 +485,20 @@ struct VRM1RealityKitTests {
 #if !os(visionOS)
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func customMaterial(in root: Entity, materialIndex: Int) throws -> CustomMaterial {
+        try customMaterial(in: root, materialIndex: materialIndex, faceCulling: nil)
+    }
+
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func customMaterial(in root: Entity,
+                                materialIndex: Int,
+                                faceCulling: CustomMaterial.FaceCulling?) throws -> CustomMaterial {
         for modelEntity in modelEntities(in: root) {
             guard modelEntity.components[VRMMaterialIndexComponent.self]?.materialIndex == materialIndex,
                   let model = modelEntity.components[ModelComponent.self],
                   let material = model.materials.first as? CustomMaterial else {
+                continue
+            }
+            if let faceCulling, material.faceCulling != faceCulling {
                 continue
             }
             return material
@@ -486,6 +597,21 @@ struct VRM1RealityKitTests {
     }
 
     private func seedSanURLWithNonDefaultEyeSampler() throws -> URL {
+        try modifiedSeedSanURL(fileName: "nondefault-eye-sampler") { json in
+            guard var samplers = json["samplers"] as? [[String: Any]],
+                  samplers.indices.contains(7) else {
+                throw VRMError.dataInconsistent("Missing Seed-san sampler fixture data")
+            }
+            samplers[7]["magFilter"] = 9728
+            samplers[7]["minFilter"] = 9728
+            samplers[7]["wrapS"] = 33071
+            samplers[7]["wrapT"] = 33071
+            json["samplers"] = samplers
+        }
+    }
+
+    private func modifiedSeedSanURL(fileName: String,
+                                    modify: (inout [String: Any]) throws -> Void) throws -> URL {
         let sourceURL = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"),
                                      "Failed to load Seed-san.vrm resource from test bundle.")
         let data = try Data(contentsOf: sourceURL)
@@ -515,16 +641,10 @@ struct VRM1RealityKitTests {
         while jsonData.last == 0x20 || jsonData.last == 0x00 {
             jsonData.removeLast()
         }
-        guard var json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              var samplers = json["samplers"] as? [[String: Any]],
-              samplers.indices.contains(7) else {
-            throw VRMError.dataInconsistent("Missing Seed-san sampler fixture data")
+        guard var json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            throw VRMError.dataInconsistent("Invalid Seed-san JSON fixture data")
         }
-        samplers[7]["magFilter"] = 9728
-        samplers[7]["minFilter"] = 9728
-        samplers[7]["wrapS"] = 33071
-        samplers[7]["wrapT"] = 33071
-        json["samplers"] = samplers
+        try modify(&json)
 
         chunks[jsonIndex].data = try JSONSerialization
             .data(withJSONObject: json)
@@ -542,11 +662,21 @@ struct VRM1RealityKitTests {
         output.writeUInt32LE(UInt32(output.count), at: 8)
 
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Seed-san-nondefault-eye-sampler-\(UUID().uuidString)")
+            .appendingPathComponent("Seed-san-\(fileName)-\(UUID().uuidString)")
             .appendingPathExtension("vrm")
         try output.write(to: url)
         return url
     }
+
+#if !os(visionOS)
+    @available(iOS 18.0, macOS 15.0, *)
+    private func isTransparent(_ blending: CustomMaterial.Blending) -> Bool {
+        if case .transparent = blending {
+            return true
+        }
+        return false
+    }
+#endif
 }
 
 private extension Data {
@@ -609,6 +739,12 @@ private extension SIMD3 where Scalar == Float {
         abs(x - other.x) < tolerance &&
         abs(y - other.y) < tolerance &&
         abs(z - other.z) < tolerance
+    }
+}
+
+private extension SIMD2 where Scalar == Float {
+    func isApproximatelyEqual(to other: SIMD2<Float>, tolerance: Float = 0.0001) -> Bool {
+        abs(x - other.x) < tolerance && abs(y - other.y) < tolerance
     }
 }
 

@@ -99,7 +99,7 @@ private extension MToonMaterialDescriptor {
     init(vrm1 mtoon: GLTF.Material.MaterialExtensions.MaterialsMToon, material: GLTF.Material) {
         let pbr = material.pbrMetallicRoughness
         let baseColor = (pbr?.baseColorFactor).map(SIMD4<Float>.init) ?? SIMD4<Float>(1, 1, 1, 1)
-        let shadeColor = SIMD4<Float>(mtoon.shadeColorFactor, default: SIMD4<Float>(1, 1, 1, 1))
+        let shadeColor = SIMD4<Float>(mtoon.shadeColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
         let matcapFactor = SIMD3<Float>(mtoon.matcapFactor, default: SIMD3<Float>(1, 1, 1))
         let rimColor = SIMD4<Float>(mtoon.parametricRimColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
         let outlineColor = SIMD4<Float>(mtoon.outlineColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
@@ -114,7 +114,7 @@ private extension MToonMaterialDescriptor {
         self.matcapFactor = matcapFactor
         self.parametricRimColorFactor = rimColor
         self.rimLightingMixFactor = Float(mtoon.rimLightingMixFactor ?? 1)
-        self.parametricRimFresnelPowerFactor = Float(mtoon.parametricRimFresnelPowerFactor ?? 1)
+        self.parametricRimFresnelPowerFactor = Float(mtoon.parametricRimFresnelPowerFactor ?? 5)
         self.parametricRimLiftFactor = Float(mtoon.parametricRimLiftFactor ?? 0)
         self.outlineWidthMode = .init(vrm1: mtoon.outlineWidthMode)
         self.outlineWidthFactor = Float(mtoon.outlineWidthFactor ?? 0)
@@ -185,7 +185,8 @@ private extension MToonMaterialDescriptor {
         self.doubleSided = doubleSided
         self.baseColorTexture = textures["_MainTex"].map(MToonMaterialDescriptor.Texture.init)
         self.emissiveTexture = textures["_EmissionMap"].map(MToonMaterialDescriptor.Texture.init)
-        self.shadeMultiplyTexture = textures["_ShadeTexture"].map(MToonMaterialDescriptor.Texture.init)
+        self.shadeMultiplyTexture = (textures["_ShadeTexture"] ?? textures["_MainTex"])
+            .map(MToonMaterialDescriptor.Texture.init)
         self.shadingShiftTexture = nil
         self.normalTexture = textures["_BumpMap"].map(MToonMaterialDescriptor.Texture.init) ?? material.normalTexture.map(MToonMaterialDescriptor.Texture.init)
         self.matcapTexture = textures["_SphereAdd"].map(MToonMaterialDescriptor.Texture.init)

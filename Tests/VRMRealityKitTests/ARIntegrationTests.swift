@@ -15,25 +15,36 @@ struct ARIntegrationTests {
 
 #if !os(visionOS)
     @Test
-    func arModeMaterialHasNoGeometryModifier() throws {
+    func outlineAndShadowOptionsAreIndependent() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try seedSanURL()
-        let loader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
-        let vrmEntity = try loader.loadEntity()
 
-        let customMaterials = allModelEntities(in: vrmEntity.entity)
-            .flatMap { $0.components[ModelComponent.self]?.materials ?? [] }
-            .compactMap { $0 as? CustomMaterial }
+        let noOutlineLoader = try VRMEntityLoader(withURL: url,
+                                                  isOutlineEnabled: false,
+                                                  isShadowCastingEnabled: true)
+        let noOutlineEntity = try noOutlineLoader.loadEntity()
+        #expect(noOutlineLoader.isOutlineEnabled == false)
+        #expect(noOutlineLoader.isShadowCastingEnabled)
+        #expect(noOutlineEntities(in: noOutlineEntity.entity))
+        #expect(hasCustomMaterial(in: noOutlineEntity.entity))
 
-        #expect(!customMaterials.isEmpty)
-        #expect(noOutlineEntities(in: vrmEntity.entity))
+        let noShadowLoader = try VRMEntityLoader(withURL: url,
+                                                 isOutlineEnabled: true,
+                                                 isShadowCastingEnabled: false)
+        let noShadowEntity = try noShadowLoader.loadEntity()
+        #expect(noShadowLoader.isOutlineEnabled)
+        #expect(noShadowLoader.isShadowCastingEnabled == false)
+        #expect(hasOutlineEntities(in: noShadowEntity.entity))
+        assertShadowCastingDisabled(in: noShadowEntity.entity)
     }
 
     @Test
-    func arModePreservesMToonBlendAlphaMode() throws {
+    func mtoonMaterialsPreserveAlphaModeWhenAROptionsAreDisabled() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try seedSanURL()
-        let loader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let loader = try VRMEntityLoader(withURL: url,
+                                         isOutlineEnabled: false,
+                                         isShadowCastingEnabled: false)
         let opaqueMaterial = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
         let blendMaterial = try #require(loader.material(withMaterialIndex: 4) as? CustomMaterial)
 
@@ -42,59 +53,31 @@ struct ARIntegrationTests {
     }
 
     @Test
-    func arModeEntitiesHaveShadowCastingDisabled() throws {
+    func disabledMToonUsesFallbackMaterialWithAROptions() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try seedSanURL()
-        let loader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let loader = try VRMEntityLoader(withURL: url,
+                                         isMToonEnabled: false,
+                                         isOutlineEnabled: false,
+                                         isShadowCastingEnabled: false)
         let vrmEntity = try loader.loadEntity()
 
-        for modelEntity in allModelEntities(in: vrmEntity.entity) {
-            let dynamic = modelEntity.components[DynamicLightShadowComponent.self]
-            #expect(dynamic?.castsShadow == false)
-
-            let grounding = modelEntity.components[GroundingShadowComponent.self]
-            #expect(grounding?.castsShadow == false)
-            #expect(grounding?.receivesShadow == false)
-        }
+        #expect(!hasCustomMaterial(in: vrmEntity.entity))
+        assertShadowCastingDisabled(in: vrmEntity.entity)
     }
 
     @Test
-    func nonARModeStillUsesOutlineEntities() throws {
+    func defaultOptionsUseMToonAndOutlineEntities() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try seedSanURL()
-        let loader = try VRMEntityLoader(withURL: url, renderingMode: .nonAR)
+        let loader = try VRMEntityLoader(withURL: url)
         let vrmEntity = try loader.loadEntity()
 
-        let outlineEntities = allModelEntities(in: vrmEntity.entity).filter { modelEntity in
-            guard let model = modelEntity.components[ModelComponent.self],
-                  let outlineMaterial = model.materials.first as? CustomMaterial else {
-                return false
-            }
-            return outlineMaterial.faceCulling == .front
-        }
-        #expect(!outlineEntities.isEmpty)
-    }
-
-    @Test
-    func arModeWithMToonDisabledUsesUnlitNotCustomMaterial() throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let url = try seedSanURL()
-        let loader = try VRMEntityLoader(withURL: url, isMToonEnabled: false, renderingMode: .ar)
-        let vrmEntity = try loader.loadEntity()
-
-        let hasCustom = allModelEntities(in: vrmEntity.entity)
-            .flatMap { $0.components[ModelComponent.self]?.materials ?? [] }
-            .contains { $0 is CustomMaterial }
-        #expect(!hasCustom)
-    }
-
-    @Test
-    func renderingModeNonARStillUsesCustomMaterial() throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let url = try seedSanURL()
-        let loader = try VRMEntityLoader(withURL: url, renderingMode: .nonAR)
-        let material = try loader.material(withMaterialIndex: 0)
-        _ = try #require(material as? CustomMaterial)
+        #expect(loader.isMToonEnabled)
+        #expect(loader.isOutlineEnabled)
+        #expect(loader.isShadowCastingEnabled)
+        #expect(hasCustomMaterial(in: vrmEntity.entity))
+        #expect(hasOutlineEntities(in: vrmEntity.entity))
     }
 
 #if os(iOS) && !os(visionOS)
@@ -109,7 +92,9 @@ struct ARIntegrationTests {
         arView.session.run(config)
 
         let url = try seedSanURL()
-        let loader = try VRMEntityLoader(withURL: url, renderingMode: .ar)
+        let loader = try VRMEntityLoader(withURL: url,
+                                         isOutlineEnabled: false,
+                                         isShadowCastingEnabled: false)
         let vrmEntity = try loader.loadEntity()
 
         var elapsed: TimeInterval = 0
@@ -144,11 +129,33 @@ struct ARIntegrationTests {
         return result
     }
 
+    private func hasCustomMaterial(in entity: Entity) -> Bool {
+        allModelEntities(in: entity)
+            .flatMap { $0.components[ModelComponent.self]?.materials ?? [] }
+            .contains { $0 is CustomMaterial }
+    }
+
     private func noOutlineEntities(in entity: Entity) -> Bool {
         if entity.name.hasSuffix("_outline") {
             return false
         }
         return entity.children.allSatisfy { noOutlineEntities(in: $0) }
+    }
+
+    private func hasOutlineEntities(in entity: Entity) -> Bool {
+        !noOutlineEntities(in: entity)
+    }
+
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func assertShadowCastingDisabled(in entity: Entity) {
+        for modelEntity in allModelEntities(in: entity) {
+            let dynamic = modelEntity.components[DynamicLightShadowComponent.self]
+            #expect(dynamic?.castsShadow == false)
+
+            let grounding = modelEntity.components[GroundingShadowComponent.self]
+            #expect(grounding?.castsShadow == false)
+            #expect(grounding?.receivesShadow == false)
+        }
     }
 
     private func isOpaque(_ blending: CustomMaterial.Blending) -> Bool {
@@ -163,6 +170,21 @@ struct ARIntegrationTests {
             return true
         }
         return false
+    }
+#endif
+
+#if os(visionOS)
+    @Test
+    func visionOSUsesFallbackMaterialWhenMToonIsRequested() throws {
+        guard #available(visionOS 2.0, *) else { return }
+        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"))
+        let loader = try VRMEntityLoader(withURL: url)
+        let material = try loader.material(withMaterialIndex: 0)
+
+        #expect(loader.isMToonEnabled)
+        #expect(loader.isOutlineEnabled)
+        #expect(loader.isShadowCastingEnabled)
+        #expect(material is UnlitMaterial || material is PhysicallyBasedMaterial)
     }
 #endif
 }
