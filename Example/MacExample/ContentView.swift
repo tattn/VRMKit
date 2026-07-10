@@ -391,7 +391,6 @@ final class SceneKitContentViewModel {
 
             let node = scene.vrmNode
             node.eulerAngles = SCNVector3(0, CGFloat(model.initialRotation), 0)
-            node.setMToonLightDirection(MacExampleLighting.direction)
             applyPose(to: node)
             apply(expression, to: node)
 

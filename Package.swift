@@ -38,8 +38,7 @@ let package = Package(
             dependencies: ["VRMSceneKit"],
             resources: [
                 .copy("../VRMKitTests/Assets/AliciaSolid.vrm"),
-                .copy("../VRMKitTests/Assets/Seed-san.vrm"),
-                .copy("../VRMKitTests/Assets/VRM1_Constraint_Twist_Sample.vrm")
+                .copy("../VRMKitTests/Assets/Seed-san.vrm")
             ]
         ),
         .testTarget(

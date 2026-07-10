@@ -11,14 +11,11 @@ open class VRMSceneLoader {
     private let sceneData: SceneData
 
     private var rootDirectory: URL? = nil
-    private var outlineMaterialsByMaterialIndex: [Int: [SCNMaterial]] = [:]
-    public var isMToonEnabled: Bool
 
-    public init(vrm: VRM, rootDirectory: URL? = nil, isMToonEnabled: Bool = true) {
+    public init(vrm: VRM, rootDirectory: URL? = nil) {
         self.vrm = vrm
         self.gltf = vrm.gltf.jsonData
         self.rootDirectory = rootDirectory
-        self.isMToonEnabled = isMToonEnabled
         self.sceneData = SceneData(vrm: gltf)
     }
 
@@ -135,14 +132,6 @@ open class VRMSceneLoader {
         return material
     }
 
-    func materials(withMaterialIndex index: Int) throws -> [SCNMaterial] {
-        [try material(withMaterialIndex: index)] + (outlineMaterialsByMaterialIndex[index] ?? [])
-    }
-
-    func registerMToonOutlineMaterial(_ material: SCNMaterial, materialIndex: Int) {
-        outlineMaterialsByMaterialIndex[materialIndex, default: []].append(material)
-    }
-
     func vrm0MaterialProperty(named name: String) -> VRM0.MaterialProperty? {
         guard case .v0(let vrm0) = vrm else { return nil }
         return vrm0.materialPropertyNameMap[name]
@@ -152,39 +141,22 @@ open class VRMSceneLoader {
         guard let name else { return nil }
         switch vrm {
         case .v0(let vrm0):
-            guard let property = vrm0.materialPropertyNameMap[name] else { return nil }
-            if isMToonEnabled,
-               let material = try gltf.load(\.materials).first(where: { $0.name == name }),
-               let descriptor = MToonMaterialDescriptor(material: material, materialProperty: property) {
-                return mtoonRenderQueue(alphaMode: descriptor.alphaMode,
-                                        transparentWithZWrite: descriptor.transparentWithZWrite,
-                                        offset: descriptor.renderQueueOffsetNumber)
-            }
-            return property.renderQueue
+            return vrm0.materialPropertyNameMap[name]?.renderQueue
         case .v1:
             guard let material = try gltf.load(\.materials).first(where: { $0.name == name }) else {
                 return nil
             }
-            let mtoon = material.extensions?.materialsMToon
-            return mtoonRenderQueue(alphaMode: material.alphaMode,
-                                    transparentWithZWrite: mtoon?.transparentWithZWrite == true,
-                                    offset: mtoon?.renderQueueOffsetNumber ?? 0)
+            let baseQueue: Int
+            switch material.alphaMode {
+            case .OPAQUE:
+                baseQueue = 2000
+            case .MASK:
+                baseQueue = 2450
+            case .BLEND:
+                baseQueue = material.extensions?.materialsMToon?.transparentWithZWrite == true ? 2501 : 3000
+            }
+            return baseQueue + (material.extensions?.materialsMToon?.renderQueueOffsetNumber ?? 0)
         }
-    }
-
-    private func mtoonRenderQueue(alphaMode: GLTF.Material.AlphaMode,
-                                  transparentWithZWrite: Bool,
-                                  offset: Int) -> Int {
-        let baseQueue: Int
-        switch alphaMode {
-        case .OPAQUE:
-            baseQueue = 2000
-        case .MASK:
-            baseQueue = 2450
-        case .BLEND:
-            baseQueue = transparentWithZWrite ? 2501 : 3000
-        }
-        return baseQueue + offset
     }
 
     func texture(withTextureIndex index: Int) throws -> SCNMaterialProperty {

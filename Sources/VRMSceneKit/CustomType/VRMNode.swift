@@ -9,9 +9,6 @@ open class VRMNode: SCNNode {
     public let humanoid = Humanoid()
     private let timer = Timer()
     private var springBones: [VRMSpringBone] = []
-    private var mtoonLightDirection = SIMD3<Float>(0.35, 0.55, 0.75)
-    private var mtoonLightColor = SIMD3<Float>(1, 1, 1)
-    private var mtoonAmbientColor = SIMD3<Float>(0, 0, 0)
 
     var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
@@ -81,12 +78,11 @@ open class VRMNode: SCNNode {
                                                  isBinary: expressionClip.expression.isBinary ?? false)
                 expressionClips[runtimeClip.key] = runtimeClip
 
-                let colorBindings: [MaterialColorBinding] = try expressionClip.expression.materialColorBinds?
+                let colorBindings: [MaterialColorBinding] = expressionClip.expression.materialColorBinds?
                     .compactMap { bind in
                         guard bind.targetValue.count >= 3 else { return nil }
-                        let materials = try loader.materials(withMaterialIndex: bind.material)
-                        guard let material = materials.first else { return nil }
-                        return MaterialColorBinding(materials: materials,
+                        guard let material = try? loader.material(withMaterialIndex: bind.material) else { return nil }
+                        return MaterialColorBinding(material: material,
                                                     type: bind.type,
                                                     targetValue: SIMD4<Float>(bind.targetValue, default: 1.0),
                                                     baseValue: material.currentColor(for: bind.type))
@@ -95,12 +91,11 @@ open class VRMNode: SCNNode {
                     materialColorClips[runtimeClip.key] = colorBindings
                 }
 
-                let transformBindings: [TextureTransformBinding] = try expressionClip.expression.textureTransformBinds?
+                let transformBindings: [TextureTransformBinding] = expressionClip.expression.textureTransformBinds?
                     .compactMap { bind in
-                        let materials = try loader.materials(withMaterialIndex: bind.material)
-                        guard let material = materials.first else { return nil }
+                        guard let material = try? loader.material(withMaterialIndex: bind.material) else { return nil }
                         let base = material.diffuse.scaleOffset
-                        return TextureTransformBinding(materials: materials,
+                        return TextureTransformBinding(material: material,
                                                        baseScale: base.scale,
                                                        baseOffset: base.offset,
                                                        targetScale: SIMD2<Float>(bind.scale, default: 1.0),
@@ -294,24 +289,6 @@ open class VRMNode: SCNNode {
         }
     }
 
-    public func setMToonLightDirection(_ direction: SIMD3<Float>) {
-        let length = simd_length(direction)
-        mtoonLightDirection = length > 0.001 ? direction / length : SIMD3<Float>(0.35, 0.55, 0.75)
-        updateMToonMaterials()
-    }
-
-    /// Sets the explicit main light color used by MToon shader modifiers. The default is white.
-    public func setMToonLightColor(_ color: SIMD3<Float>) {
-        mtoonLightColor = color
-        updateMToonMaterials()
-    }
-
-    /// Sets the explicit ambient color used by the MToon GI approximation. The default is black.
-    public func setMToonAmbientColor(_ color: SIMD3<Float>) {
-        mtoonAmbientColor = color
-        updateMToonMaterials()
-    }
-
     private func expressionClip(for key: ExpressionKey) -> ExpressionClip? {
         if let clip = expressionClips[key] { return clip }
         if let legacyKey = key.legacyBlendShapeKey,
@@ -337,30 +314,6 @@ open class VRMNode: SCNNode {
             return textureTransformClips[expressionKey] ?? []
         }
         return []
-    }
-
-    private func updateMToonMaterials() {
-        enumerateHierarchy { node, _ in
-            guard let materials = node.geometry?.materials else { return }
-            for material in materials {
-                guard material.value(forKey: MToonUniform.shadeParams) != nil else { continue }
-                material.setValue(SCNVector4(SCNFloat(mtoonLightDirection.x),
-                                             SCNFloat(mtoonLightDirection.y),
-                                             SCNFloat(mtoonLightDirection.z),
-                                             0),
-                                  forKey: MToonUniform.lightDirection)
-                material.setValue(SCNVector4(SCNFloat(mtoonLightColor.x),
-                                             SCNFloat(mtoonLightColor.y),
-                                             SCNFloat(mtoonLightColor.z),
-                                             1),
-                                  forKey: MToonUniform.lightColor)
-                material.setValue(SCNVector4(SCNFloat(mtoonAmbientColor.x),
-                                             SCNFloat(mtoonAmbientColor.y),
-                                             SCNFloat(mtoonAmbientColor.z),
-                                             1),
-                                  forKey: MToonUniform.ambientColor)
-            }
-        }
     }
 }
 
@@ -451,21 +404,18 @@ private struct NodeConstraintBinding {
 }
 
 private struct MaterialColorBinding {
-    let materials: [SCNMaterial]
+    let material: SCNMaterial
     let type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType
     let targetValue: SIMD4<Float>
     let baseValue: SIMD4<Float>
 
     func apply(value: Float) {
-        let color = baseValue + (targetValue - baseValue) * value
-        for material in materials {
-            material.setColor(color, for: type)
-        }
+        material.setColor(baseValue + (targetValue - baseValue) * value, for: type)
     }
 }
 
 private struct TextureTransformBinding {
-    let materials: [SCNMaterial]
+    let material: SCNMaterial
     let baseScale: SIMD2<Float>
     let baseOffset: SIMD2<Float>
     let targetScale: SIMD2<Float>
@@ -474,9 +424,7 @@ private struct TextureTransformBinding {
     func apply(value: Float) {
         let scale = baseScale + (targetScale - baseScale) * value
         let offset = baseOffset + (targetOffset - baseOffset) * value
-        for material in materials {
-            material.setTextureTransform(scale: scale, offset: offset)
-        }
+        material.diffuse.contentsTransform = SCNMatrix4(scale: scale, offset: offset)
     }
 }
 
@@ -510,52 +458,13 @@ private extension SCNNode {
     }
 }
 
-extension SCNMaterial {
+private extension SCNMaterial {
     func currentColor(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> SIMD4<Float> {
-        if let color = mtoonColor(for: type) {
-            return color
-        }
-        guard type != .shadeColor, type != .outlineColor else {
-            return SIMD4<Float>(1, 1, 1, 1)
-        }
-        return colorProperty(for: type).simdColor
+        colorProperty(for: type).simdColor
     }
 
     func setColor(_ color: SIMD4<Float>, for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) {
-        if setMToonColor(color, for: type) { return }
-        guard type != .shadeColor, type != .outlineColor else { return }
         colorProperty(for: type).contents = VRMColor(simd: color)
-    }
-
-    private func mtoonColor(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> SIMD4<Float>? {
-        guard let key = mtoonUniformKey(for: type) else { return nil }
-        return mtoonColor(forKey: key)
-    }
-
-    private func setMToonColor(_ color: SIMD4<Float>, for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> Bool {
-        guard let key = mtoonUniformKey(for: type),
-              mtoonColor(forKey: key) != nil else {
-            return false
-        }
-        setMToonColor(color, forKey: key)
-        return true
-    }
-
-    private func mtoonUniformKey(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> String? {
-        switch type {
-        case .color:
-            return MToonUniform.baseColor
-        case .emissionColor:
-            return MToonUniform.emissiveColor
-        case .shadeColor:
-            return MToonUniform.shadeColor
-        case .matcapColor:
-            return MToonUniform.matcapColor
-        case .rimColor:
-            return MToonUniform.rimColor
-        case .outlineColor:
-            return MToonUniform.outlineColor
-        }
     }
 
     private func colorProperty(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> SCNMaterialProperty {
@@ -573,26 +482,6 @@ extension SCNMaterial {
         case .outlineColor:
             return transparent
         }
-    }
-
-    fileprivate func setTextureTransform(scale: SIMD2<Float>, offset: SIMD2<Float>) {
-        let transform = SCNMatrix4(scale: scale, offset: offset)
-        for property in mtoonTextureProperties {
-            guard property.contents != nil else { continue }
-            property.contentsTransform = transform
-        }
-    }
-
-    private var mtoonTextureProperties: [SCNMaterialProperty] {
-        [diffuse, normal] + [
-            MToonUniform.shadeMultiplyTexture,
-            MToonUniform.shadingShiftTexture,
-            MToonUniform.matcapTexture,
-            MToonUniform.rimMultiplyTexture,
-            MToonUniform.emissiveTexture,
-            MToonUniform.outlineWidthMultiplyTexture,
-            MToonUniform.uvAnimationMaskTexture
-        ].compactMap { value(forKey: $0) as? SCNMaterialProperty }
     }
 }
 
