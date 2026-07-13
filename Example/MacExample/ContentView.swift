@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var selectedRenderer: MacExampleRenderer = .realityKit
     @State private var selectedModel: MacExampleModel = .alicia
     @State private var selectedExpression: MacExampleExpression = .neutral
+    @State private var isMToonEnabled = true
     @State private var hasShownSceneKit = false
     @State private var hasShownRealityKit = true
 
@@ -46,6 +47,10 @@ struct ContentView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+
+                Toggle("MToon", isOn: $isMToonEnabled)
+                    .toggleStyle(.switch)
+                    .disabled(selectedRenderer != .realityKit)
             }
             .padding([.top, .horizontal])
 
@@ -62,7 +67,8 @@ struct ContentView: View {
                 if hasShownRealityKit {
                     RealityKitRendererView(viewModel: realityKitViewModel,
                                            selectedModel: selectedModel,
-                                           selectedExpression: selectedExpression)
+                                           selectedExpression: selectedExpression,
+                                           isMToonEnabled: isMToonEnabled)
                         .opacity(selectedRenderer == .realityKit ? 1 : 0)
                         .allowsHitTesting(selectedRenderer == .realityKit)
                         .zIndex(selectedRenderer == .realityKit ? 1 : 0)
@@ -85,6 +91,11 @@ private struct RealityKitRendererView: View {
     let viewModel: RealityKitContentViewModel
     let selectedModel: MacExampleModel
     let selectedExpression: MacExampleExpression
+    let isMToonEnabled: Bool
+
+    private var loadConfiguration: RealityKitLoadConfiguration {
+        RealityKitLoadConfiguration(model: selectedModel, isMToonEnabled: isMToonEnabled)
+    }
 
     var body: some View {
         RealityView { content in
@@ -92,8 +103,11 @@ private struct RealityKitRendererView: View {
         }
         .background(Color.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: selectedModel) {
-            await viewModel.loadEntity(model: selectedModel, expression: selectedExpression, forceReload: true)
+        .task(id: loadConfiguration) {
+            await viewModel.loadEntity(model: selectedModel,
+                                       expression: selectedExpression,
+                                       isMToonEnabled: isMToonEnabled,
+                                       forceReload: true)
         }
         .onAppear {
             viewModel.resumeUpdates()
@@ -110,6 +124,11 @@ private struct RealityKitRendererView: View {
             }
         }
     }
+}
+
+private struct RealityKitLoadConfiguration: Hashable {
+    let model: MacExampleModel
+    let isMToonEnabled: Bool
 }
 
 private struct SceneKitRendererView: View {
@@ -185,6 +204,7 @@ final class RealityKitContentViewModel {
     func loadEntity(
         model: MacExampleModel,
         expression: MacExampleExpression,
+        isMToonEnabled: Bool,
         forceReload: Bool = false
     ) async {
         if !forceReload, currentModel == model, let vrmEntity {
@@ -200,7 +220,7 @@ final class RealityKitContentViewModel {
         do {
             errorMessage = nil
 
-            let loader = try VRMEntityLoader(named: model.rawValue)
+            let loader = try VRMEntityLoader(named: model.rawValue, isMToonEnabled: isMToonEnabled)
             let nextVRMEntity = try loader.loadEntity()
 
             nextVRMEntity.entity.transform.translation = SIMD3<Float>(0, -1, 0)
@@ -282,7 +302,7 @@ final class RealityKitContentViewModel {
 
         vrmEntity.entity.transform.rotation = simd_quatf(angle: currentModel.initialRotation + angle,
                                                          axis: SIMD3<Float>(0, 1, 0))
-        vrmEntity.update(at: time)
+        vrmEntity.update(deltaTime: deltaTime)
     }
 
     private func setUpLight() {

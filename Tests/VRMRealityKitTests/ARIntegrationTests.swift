@@ -97,11 +97,9 @@ struct ARIntegrationTests {
                                          isShadowCastingEnabled: false)
         let vrmEntity = try loader.loadEntity()
 
-        var elapsed: TimeInterval = 0
         let subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { event in
-            elapsed += event.deltaTime
             vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -1))
-            vrmEntity.update(at: elapsed)
+            vrmEntity.update(deltaTime: event.deltaTime)
         }
 
         let anchor = AnchorEntity(world: .zero)

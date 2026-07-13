@@ -3,6 +3,12 @@ import simd
 import VRMKit
 
 package struct MToonMaterialDescriptor {
+    package enum CullMode {
+        case none
+        case front
+        case back
+    }
+
     package enum OutlineWidthMode {
         case none
         case worldCoordinates
@@ -46,7 +52,8 @@ package struct MToonMaterialDescriptor {
     package let renderQueueOffsetNumber: Int
     package let alphaMode: GLTF.Material.AlphaMode
     package let alphaCutoff: Float
-    package let doubleSided: Bool
+    package let cullMode: CullMode
+    package let normalScale: Float
     package let baseColorTexture: Texture?
     package let emissiveTexture: Texture?
     package let shadeMultiplyTexture: Texture?
@@ -127,7 +134,8 @@ private extension MToonMaterialDescriptor {
         self.renderQueueOffsetNumber = mtoon.renderQueueOffsetNumber ?? 0
         self.alphaMode = material.alphaMode
         self.alphaCutoff = material.alphaCutoff
-        self.doubleSided = material.doubleSided
+        self.cullMode = material.doubleSided ? .none : .back
+        self.normalScale = Float(material.normalTexture?.scale ?? 1)
         self.baseColorTexture = pbr?.baseColorTexture.map(MToonMaterialDescriptor.Texture.init)
         self.emissiveTexture = material.emissiveTexture.map(MToonMaterialDescriptor.Texture.init)
         self.shadeMultiplyTexture = mtoon.shadeMultiplyTexture.map(MToonMaterialDescriptor.Texture.init)
@@ -151,7 +159,18 @@ private extension MToonMaterialDescriptor {
         let outlineColor = vectors.simd4("_OutlineColor") ?? SIMD4<Float>(0, 0, 0, 1)
         let alphaMode = GLTF.Material.AlphaMode(vrm0: property, fallback: material.alphaMode)
         let transparentWithZWrite = property.keywordMap["_ZWRITE_ON"] ?? false
-        let doubleSided = material.doubleSided || floats.float("_CullMode") == 0
+        let cullMode: CullMode
+        switch floats.float("_CullMode") {
+        case .some(0):
+            cullMode = .none
+        case .some(1):
+            cullMode = .front
+        case .some(2):
+            cullMode = .back
+        default:
+            cullMode = material.doubleSided ? .none : .back
+        }
+        let hasMToonNormalTexture = textures["_BumpMap"] != nil
         let shadeShift0 = floats.float("_ShadeShift") ?? 0
         let shadeToony0 = floats.float("_ShadeToony") ?? 0.9
         let rangeMin = shadeShift0
@@ -182,7 +201,10 @@ private extension MToonMaterialDescriptor {
                                                                   transparentWithZWrite: transparentWithZWrite)
         self.alphaMode = alphaMode
         self.alphaCutoff = floats.float("_Cutoff") ?? material.alphaCutoff
-        self.doubleSided = doubleSided
+        self.cullMode = cullMode
+        self.normalScale = hasMToonNormalTexture
+            ? (floats.float("_BumpScale") ?? 1)
+            : Float(material.normalTexture?.scale ?? 1)
         self.baseColorTexture = textures["_MainTex"].map(MToonMaterialDescriptor.Texture.init)
         self.emissiveTexture = textures["_EmissionMap"].map(MToonMaterialDescriptor.Texture.init)
         self.shadeMultiplyTexture = (textures["_ShadeTexture"] ?? textures["_MainTex"])

@@ -21,6 +21,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
     private var currentModel: VRMExampleModel = .alicia
     private var currentExpression: ExampleExpression = .neutral
+    private var isMToonEnabled = true
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -65,11 +66,24 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         view.addSubview(expressionSegmentedControl)
         self.expressionSegmentedControl = expressionSegmentedControl
 
+        let mtoonLabel = UILabel()
+        mtoonLabel.text = "MToon"
+        let mtoonSwitch = UISwitch()
+        mtoonSwitch.isOn = isMToonEnabled
+        mtoonSwitch.addTarget(self, action: #selector(mtoonChanged(_:)), for: .valueChanged)
+        let mtoonControl = UIStackView(arrangedSubviews: [mtoonLabel, mtoonSwitch])
+        mtoonControl.axis = .horizontal
+        mtoonControl.spacing = 8
+        mtoonControl.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(mtoonControl)
+
         NSLayoutConstraint.activate([
             segmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             segmentedControl.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -50),
             expressionSegmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            expressionSegmentedControl.bottomAnchor.constraint(equalTo: segmentedControl.topAnchor, constant: -20)
+            expressionSegmentedControl.bottomAnchor.constraint(equalTo: segmentedControl.topAnchor, constant: -20),
+            mtoonControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            mtoonControl.bottomAnchor.constraint(equalTo: expressionSegmentedControl.topAnchor, constant: -16)
         ])
     }
 
@@ -83,6 +97,11 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         loadedEntity?.setExampleExpression(currentExpression, value: 0.0)
         currentExpression = expression
         loadedEntity?.setExampleExpression(currentExpression, value: 1.0)
+    }
+
+    @objc private func mtoonChanged(_ sender: UISwitch) {
+        isMToonEnabled = sender.isOn
+        loadVRM(model: currentModel)
     }
 
     private func loadVRM(model: VRMExampleModel) {
@@ -101,7 +120,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         }
 
         do {
-            let loader = try VRMEntityLoader(named: model.rawValue)
+            let loader = try VRMEntityLoader(named: model.rawValue, isMToonEnabled: isMToonEnabled)
             let vrmEntity = try loader.loadEntity()
             vrmEntity.setMToonLightDirection(RealityKitExampleLighting.direction)
 
@@ -162,7 +181,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
 
                 loadedEntity.entity.transform.rotation = simd_quatf(angle: rotationOffset + angle, axis: SIMD3<Float>(0, 1, 0))
 
-                loadedEntity.update(at: time)
+                loadedEntity.update(deltaTime: event.deltaTime)
             }
         } catch {
             print(error)

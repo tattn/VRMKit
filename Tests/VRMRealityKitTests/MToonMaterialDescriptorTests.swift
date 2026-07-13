@@ -130,6 +130,61 @@ struct MToonMaterialDescriptorTests {
 
         #expect(descriptor.shadeColorFactor == SIMD4<Float>(0, 0, 0, 1))
         #expect(descriptor.parametricRimFresnelPowerFactor == 5)
+        #expect(descriptor.cullMode == .back)
+        #expect(descriptor.normalScale == 1)
+    }
+
+    @Test
+    func testVRM0CullModePreservesFrontBackAndDisabledValues() throws {
+        let expected: [(Float, MToonMaterialDescriptor.CullMode)] = [
+            (0, .none),
+            (1, .front),
+            (2, .back)
+        ]
+
+        for (value, cullMode) in expected {
+            let descriptor = try #require(MToonMaterialDescriptor(
+                material: material(),
+                materialProperty: vrm0MaterialProperty(floats: #"{"_CullMode": \#(value)}"#)
+            ))
+            #expect(descriptor.cullMode == cullMode)
+        }
+    }
+
+    @Test
+    func testVRM0InvalidCullModeUsesMaterialFallback() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(floats: #"{"_CullMode": 1.5}"#)
+        ))
+
+        #expect(descriptor.cullMode == .back)
+    }
+
+    @Test
+    func testVRM1DoubleSidedDisablesCulling() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(#"{"doubleSided": true, "extensions": {"VRMC_materials_mtoon": {"specVersion": "1.0"}}}"#),
+            materialProperty: nil
+        ))
+
+        #expect(descriptor.cullMode == .none)
+    }
+
+    @Test
+    func testNormalScaleUsesVRM0AndVRM1MaterialValues() throws {
+        let vrm0 = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(floats: #"{"_BumpScale": 0.4}"#,
+                                                   textures: #"{"_BumpMap": 1}"#)
+        ))
+        let vrm1 = try #require(MToonMaterialDescriptor(
+            material: material(#"{"normalTexture": {"index": 1, "scale": 0.65}, "extensions": {"VRMC_materials_mtoon": {"specVersion": "1.0"}}}"#),
+            materialProperty: nil
+        ))
+
+        #expect(vrm0.normalScale.isApproximatelyEqual(to: 0.4))
+        #expect(vrm1.normalScale.isApproximatelyEqual(to: 0.65))
     }
 
     @Test

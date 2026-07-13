@@ -33,6 +33,7 @@ public final class VRMEntity {
 
     var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
+    private var expressionWeights: [ExpressionKey: Float] = [:]
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
@@ -44,7 +45,6 @@ public final class VRMEntity {
     private var mtoonLightColor = SIMD3<Float>(1, 1, 1)
     private var mtoonAmbientColor = SIMD3<Float>(0, 0, 0)
     private var mtoonElapsedTime: Float = 0
-    private var lastUpdateTime: TimeInterval?
 
     struct SkinBinding {
         let modelEntity: ModelEntity
@@ -69,6 +69,7 @@ public final class VRMEntity {
     func setUpBlendShapes(nodes: [Entity?], meshes: [Entity?], loader: VRMEntityLoader) throws {
         blendShapeClips = [:]
         expressionClips = [:]
+        expressionWeights = [:]
         materialColorClips = [:]
         textureTransformClips = [:]
 
@@ -270,18 +271,20 @@ public final class VRMEntity {
         modelEntitiesByMaterialIndex[materialIndex, default: []].append(modelEntity)
     }
 
-    /// Advances spring bones, node constraints, skinning, and MToon runtime state.
+    /// Advances spring bones, node constraints, skinning, and MToon runtime state by one frame.
     ///
-    /// Call this every frame from a ``SceneEvents/Update`` subscription.
-    /// Without periodic updates, MToon UV animation and spring bones will not animate correctly.
-    public func update(at time: TimeInterval) {
-        let deltaTime = lastUpdateTime.map { max(0, time - $0) } ?? 0
-        lastUpdateTime = time
-
+    /// Pass ``SceneEvents/Update/deltaTime`` when calling this from a RealityKit update subscription.
+    public func update(deltaTime: TimeInterval) {
+        let deltaTime = max(0, deltaTime)
         updateMToonRuntime(deltaTime: Float(deltaTime))
         nodeConstraints.forEach { $0.apply() }
         updateSkinning()
         springBones.forEach { $0.update(deltaTime: deltaTime) }
+    }
+
+    /// Compatibility entry point. The argument is interpreted as elapsed time since the previous frame.
+    public func update(at deltaTime: TimeInterval) {
+        update(deltaTime: deltaTime)
     }
 
     public func setMToonLightDirection(_ direction: SIMD3<Float>) {
@@ -401,24 +404,20 @@ public final class VRMEntity {
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
-        guard let clip = expressionClip(for: key) else { return }
+        guard let key = canonicalExpressionKey(for: key),
+              let clip = expressionClips[key] else { return }
         let normalized = max(0.0, min(1.0, clip.isBinary ? round(value) : value))
-        for binding in clip.values {
-            let weight = Float(binding.weight / 100.0) * Float(normalized)
-            applyBlendShapeWeight(weight, targetIndex: binding.index, on: binding.mesh)
+        if normalized > 0 {
+            expressionWeights[key] = Float(normalized)
+        } else {
+            expressionWeights.removeValue(forKey: key)
         }
-        for binding in materialColorClip(for: key) {
-            binding.apply(value: Float(normalized), on: self)
-        }
-        for binding in textureTransformClip(for: key) {
-            binding.apply(value: Float(normalized), on: self)
-        }
+        applyExpressions()
     }
 
     public func expression(for key: ExpressionKey) -> CGFloat {
-        guard let clip = expressionClip(for: key),
-              let binding = clip.values.first else { return 0 }
-        return CGFloat(readBlendShapeWeight(targetIndex: binding.index, on: binding.mesh))
+        guard let key = canonicalExpressionKey(for: key) else { return 0 }
+        return CGFloat(expressionWeights[key] ?? 0)
     }
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
@@ -547,31 +546,90 @@ public final class VRMEntity {
     }
 #endif
 
-    private func expressionClip(for key: ExpressionKey) -> ExpressionClip? {
-        if let clip = expressionClips[key] { return clip }
+    private func canonicalExpressionKey(for key: ExpressionKey) -> ExpressionKey? {
+        if expressionClips[key] != nil { return key }
         if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return expressionClips[expressionKey]
+           let expressionKey = legacyKey.expressionKey,
+           expressionClips[expressionKey] != nil {
+            return expressionKey
         }
         return nil
     }
 
-    private func materialColorClip(for key: ExpressionKey) -> [MaterialColorBinding] {
-        if let clip = materialColorClips[key] { return clip }
-        if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return materialColorClips[expressionKey] ?? []
+    private func applyExpressions() {
+        var morphBindings: [MorphBindingKey: BlendShapeBinding] = [:]
+        var morphWeights: [MorphBindingKey: Float] = [:]
+        for clip in expressionClips.values {
+            for binding in clip.values {
+                let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
+                morphBindings[key] = binding
+                morphWeights[key] = 0
+            }
         }
-        return []
-    }
+        for (expressionKey, expressionWeight) in expressionWeights {
+            guard let clip = expressionClips[expressionKey] else { continue }
+            for binding in clip.values {
+                let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
+                morphWeights[key, default: 0] += Float(binding.weight / 100.0) * expressionWeight
+            }
+        }
+        for (key, binding) in morphBindings {
+            applyBlendShapeWeight(morphWeights[key] ?? 0,
+                                  targetIndex: binding.index,
+                                  on: binding.mesh)
+        }
+        if enableNormalTangentBlendShape {
+            let meshes = morphBindings.values.reduce(into: [ObjectIdentifier: Entity]()) {
+                $0[ObjectIdentifier($1.mesh)] = $1.mesh
+            }
+            meshes.values.forEach(updateBlendShapeNormalsAndTangents)
+        }
 
-    private func textureTransformClip(for key: ExpressionKey) -> [TextureTransformBinding] {
-        if let clip = textureTransformClips[key] { return clip }
-        if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return textureTransformClips[expressionKey] ?? []
+        var colorBindings: [MaterialColorBindingKey: MaterialColorBinding] = [:]
+        var colors: [MaterialColorBindingKey: SIMD4<Float>] = [:]
+        for bindings in materialColorClips.values {
+            for binding in bindings {
+                let key = binding.key
+                colorBindings[key] = binding
+                colors[key] = binding.baseValue
+            }
         }
-        return []
+        for (expressionKey, expressionWeight) in expressionWeights {
+            for binding in materialColorClips[expressionKey] ?? [] {
+                colors[binding.key, default: binding.baseValue] +=
+                    (binding.targetValue - binding.baseValue) * expressionWeight
+            }
+        }
+        for (key, binding) in colorBindings {
+            applyMaterialColor(colors[key] ?? binding.baseValue,
+                               type: binding.type,
+                               materialIndex: binding.materialIndex)
+        }
+
+        var transformBindings: [Int: TextureTransformBinding] = [:]
+        var scales: [Int: SIMD2<Float>] = [:]
+        var offsets: [Int: SIMD2<Float>] = [:]
+        for bindings in textureTransformClips.values {
+            for binding in bindings {
+                transformBindings[binding.materialIndex] = binding
+                scales[binding.materialIndex] = binding.baseScale
+                offsets[binding.materialIndex] = binding.baseOffset
+            }
+        }
+        for (expressionKey, expressionWeight) in expressionWeights {
+            for binding in textureTransformClips[expressionKey] ?? [] {
+                scales[binding.materialIndex, default: binding.baseScale] +=
+                    (binding.targetScale - binding.baseScale) * expressionWeight
+                offsets[binding.materialIndex, default: binding.baseOffset] +=
+                    (binding.targetOffset - binding.baseOffset) * expressionWeight
+            }
+        }
+        for (materialIndex, binding) in transformBindings {
+            applyTextureTransform(scale: scales[materialIndex] ?? binding.baseScale,
+                                  offset: offsets[materialIndex] ?? binding.baseOffset,
+                                  rotation: binding.baseRotation,
+                                  materialIndex: materialIndex)
+        }
     }
 
     private func modelEntities(in root: Entity) -> [ModelEntity] {
@@ -824,17 +882,31 @@ private struct NodeConstraintBinding {
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+private struct MorphBindingKey: Hashable {
+    let mesh: ObjectIdentifier
+    let targetIndex: Int
+
+    init(mesh: Entity, targetIndex: Int) {
+        self.mesh = ObjectIdentifier(mesh)
+        self.targetIndex = targetIndex
+    }
+}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+private struct MaterialColorBindingKey: Hashable {
+    let materialIndex: Int
+    let type: String
+}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 private struct MaterialColorBinding {
     let materialIndex: Int
     let type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType
     let targetValue: SIMD4<Float>
     let baseValue: SIMD4<Float>
 
-    @MainActor
-    func apply(value: Float, on entity: VRMEntity) {
-        entity.applyMaterialColor(baseValue + (targetValue - baseValue) * value,
-                                  type: type,
-                                  materialIndex: materialIndex)
+    var key: MaterialColorBindingKey {
+        MaterialColorBindingKey(materialIndex: materialIndex, type: type.rawValue)
     }
 }
 
@@ -847,15 +919,6 @@ private struct TextureTransformBinding {
     let targetScale: SIMD2<Float>
     let targetOffset: SIMD2<Float>
 
-    @MainActor
-    func apply(value: Float, on entity: VRMEntity) {
-        let scale = baseScale + (targetScale - baseScale) * value
-        let offset = baseOffset + (targetOffset - baseOffset) * value
-        entity.applyTextureTransform(scale: scale,
-                                     offset: offset,
-                                     rotation: baseRotation,
-                                     materialIndex: materialIndex)
-    }
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

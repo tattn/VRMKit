@@ -624,7 +624,7 @@ open class VRMEntityLoader {
             material.roughness.texture = try whiteCustomTexture()
         }
         if let shadingShiftTexture = mtoon.shadingShiftTexture {
-            material.specular.texture = try customTexture(withTextureIndex: shadingShiftTexture.index, semantic: .color)
+            material.specular.texture = try customTexture(withTextureIndex: shadingShiftTexture.index, semantic: .raw)
         } else {
             material.specular.texture = try whiteCustomTexture()
         }
@@ -652,18 +652,25 @@ open class VRMEntityLoader {
             material.clearcoatRoughness.texture = try whiteCustomTexture()
         }
         if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
-            material.clearcoat.texture = try customTexture(withTextureIndex: outlineWidthTexture.index, semantic: .color)
+            material.clearcoat.texture = try customTexture(withTextureIndex: outlineWidthTexture.index, semantic: .raw)
         } else {
             material.clearcoat.texture = try whiteCustomTexture()
         }
         if let uvMaskTexture = mtoon.uvAnimationMaskTexture {
-            material.ambientOcclusion.texture = try customTexture(withTextureIndex: uvMaskTexture.index, semantic: .color)
+            material.ambientOcclusion.texture = try customTexture(withTextureIndex: uvMaskTexture.index, semantic: .raw)
         } else {
             material.ambientOcclusion.texture = try whiteCustomTexture()
         }
 
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
-        material.faceCulling = mtoon.doubleSided ? .none : .back
+        switch mtoon.cullMode {
+        case .none:
+            material.faceCulling = .none
+        case .front:
+            material.faceCulling = .front
+        case .back:
+            material.faceCulling = .back
+        }
         material.textureCoordinateTransform = textureTransform
 
         let parameters = try mtoonParameters(for: mtoon, textureTransform: textureTransform)
@@ -689,12 +696,12 @@ open class VRMEntityLoader {
             material.baseColor = .init(tint: .white, texture: try whiteCustomTexture())
         }
         if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
-            material.clearcoat.texture = try customTexture(withTextureIndex: outlineWidthTexture.index, semantic: .color)
+            material.clearcoat.texture = try customTexture(withTextureIndex: outlineWidthTexture.index, semantic: .raw)
         } else {
             material.clearcoat.texture = try whiteCustomTexture()
         }
         if let uvMaskTexture = mtoon.uvAnimationMaskTexture {
-            material.ambientOcclusion.texture = try customTexture(withTextureIndex: uvMaskTexture.index, semantic: .color)
+            material.ambientOcclusion.texture = try customTexture(withTextureIndex: uvMaskTexture.index, semantic: .raw)
         } else {
             material.ambientOcclusion.texture = try whiteCustomTexture()
         }

@@ -16,8 +16,8 @@ constexpr sampler mtoonParameterSampler(coord::normalized,
                                         mip_filter::none);
 
 constant float mtoonEpsilon = 0.00001;
-constant float mtoonParameterTextureWidth = 25.0;
-constant float mtoonSamplerParameterStart = 16.0;
+constant float mtoonParameterTextureWidth = 26.0;
+constant float mtoonSamplerParameterStart = 17.0;
 
 half4 mtoonParameter(realitykit::texture::textures textures, float row)
 {
@@ -95,13 +95,15 @@ float2 mtoonMatcapUV(float3 normal, float4x4 modelToView)
 float3 mtoonShadingNormal(realitykit::surface_parameters params,
                            float2 uv,
                            half4 extraFlags,
+                           half normalScale,
                            half4 normalSampler)
 {
     float3 geometryNormal = normalize(params.geometry().normal());
     if (extraFlags.x < 0.5h) {
         return geometryNormal;
     }
-    half3 tangentNormal = realitykit::unpack_normal(mtoonSample(params.textures().normal(), uv, normalSampler).rgb, 1.0h);
+    half3 tangentNormal = realitykit::unpack_normal(mtoonSample(params.textures().normal(), uv, normalSampler).rgb,
+                                                    normalScale);
     float3 rawTangent = params.geometry().tangent();
     float3 rawBitangent = params.geometry().bitangent();
     if (dot(rawTangent, rawTangent) < 0.000001 || dot(rawBitangent, rawBitangent) < 0.000001) {
@@ -174,6 +176,7 @@ void mtoonSurface(realitykit::surface_parameters params)
     half4 giColorParameter = mtoonParameter(textures, 13.0);
     half4 uvTransform = mtoonParameter(textures, 14.0);
     half4 uvTransformRotation = mtoonParameter(textures, 15.0);
+    half4 normalParameters = mtoonParameter(textures, 16.0);
     half4 baseSampler = mtoonSamplerParameter(textures, 0.0);
     half4 shadeSampler = mtoonSamplerParameter(textures, 1.0);
     half4 shadingShiftSampler = mtoonSamplerParameter(textures, 2.0);
@@ -204,7 +207,7 @@ void mtoonSurface(realitykit::surface_parameters params)
         shift += float(shadingShift) * float(uvAnimation.w);
     }
 
-    float3 normal = mtoonShadingNormal(params, uv, extraFlags, normalSampler);
+    float3 normal = mtoonShadingNormal(params, uv, extraFlags, normalParameters.x, normalSampler);
     float3 lightDirection = mtoonLightDirection(params.uniforms().custom_parameter());
     float shadingToony = clamp(float(shadeParams.y), 0.0, 1.0);
     float shading = mtoonLinearstep(-1.0 + shadingToony,

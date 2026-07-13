@@ -98,14 +98,69 @@ struct VRM1RealityKitTests {
         let texture = try parameters.textureResource()
         let shader = try mtoonShaderSource()
 
-        #expect(MToonMaterialParameters.baseParameterRowCount == 16)
+        #expect(MToonMaterialParameters.baseParameterRowCount == 17)
         #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
-        #expect(MToonMaterialParameters.textureRowCount == 25)
+        #expect(MToonMaterialParameters.textureRowCount == 26)
         #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
         #expect(texture.width == MToonMaterialParameters.textureRowCount)
         #expect(texture.height == 1)
-        #expect(shader.contains("constant float mtoonParameterTextureWidth = 25.0;"))
-        #expect(shader.contains("constant float mtoonSamplerParameterStart = 16.0;"))
+        #expect(shader.contains("constant float mtoonParameterTextureWidth = 26.0;"))
+        #expect(shader.contains("constant float mtoonSamplerParameterStart = 17.0;"))
+    }
+
+    @Test
+    func testMToonNormalScaleIsPassedToShaderParameters() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try modifiedSeedSanURL(fileName: "normal-scale") { json in
+            guard var materials = json["materials"] as? [[String: Any]],
+                  materials.indices.contains(0) else {
+                throw VRMError.dataInconsistent("Missing Seed-san material fixture data")
+            }
+            materials[0]["normalTexture"] = ["index": 0, "scale": 0.35]
+            json["materials"] = materials
+        }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = try VRMEntityLoader(withURL: url, isOutlineEnabled: false)
+        let vrmEntity = try loader.loadEntity()
+        let parameters = try mtoonParameters(in: vrmEntity.entity, materialIndex: 0)
+
+        #expect(abs(parameters.normalParameters.x - 0.35) < 0.0001)
+        #expect(try mtoonShaderSource().contains("normalParameters.x, normalSampler"))
+    }
+
+    @Test
+    func testMToonMaskTexturesUseRawSemantic() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let textureIndex = 0
+        let url = try modifiedSeedSanURL(fileName: "raw-mask-textures") { json in
+            guard var materials = json["materials"] as? [[String: Any]],
+                  materials.indices.contains(0),
+                  var extensions = materials[0]["extensions"] as? [String: Any],
+                  var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any] else {
+                throw VRMError.dataInconsistent("Missing Seed-san MToon fixture data")
+            }
+            mtoon["shadingShiftTexture"] = ["index": textureIndex]
+            mtoon["outlineWidthMultiplyTexture"] = ["index": textureIndex]
+            mtoon["uvAnimationMaskTexture"] = ["index": textureIndex]
+            extensions["VRMC_materials_mtoon"] = mtoon
+            materials[0]["extensions"] = extensions
+            json["materials"] = materials
+        }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = try VRMEntityLoader(withURL: url, isOutlineEnabled: false)
+        let material = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
+        let rawTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .raw)
+        let colorTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .color)
+        let shadingShift = try #require(material.specular.texture?.resource)
+        let outlineWidth = try #require(material.clearcoat.texture?.resource)
+        let uvAnimationMask = try #require(material.ambientOcclusion.texture?.resource)
+
+        #expect(shadingShift === rawTexture)
+        #expect(outlineWidth === rawTexture)
+        #expect(uvAnimationMask === rawTexture)
+        #expect(rawTexture !== colorTexture)
     }
 
     @Test
@@ -300,6 +355,76 @@ struct VRM1RealityKitTests {
     }
 
     @Test
+    func testExpressionTextureTransformsAccumulateAndResetIndependently() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"))
+        let loader = try VRMEntityLoader(withURL: url, isOutlineEnabled: false)
+        let vrmEntity = try loader.loadEntity()
+
+        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+        vrmEntity.setExpression(value: 1, for: .preset(.angry))
+        var parameters = try mtoonParameters(in: vrmEntity.entity, materialIndex: 11)
+        #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0.75, 0)))
+        #expect(vrmEntity.expression(for: .preset(.happy)) == 1)
+        #expect(vrmEntity.expression(for: .preset(.angry)) == 1)
+
+        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+        parameters = try mtoonParameters(in: vrmEntity.entity, materialIndex: 11)
+        #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0.5, 0)))
+        #expect(vrmEntity.expression(for: .preset(.happy)) == 0)
+        #expect(vrmEntity.expression(for: .preset(.angry)) == 1)
+    }
+
+    @Test
+    func testExpressionMaterialColorsAccumulateAndResetIndependently() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let url = try modifiedSeedSanURL(fileName: "accumulated-material-colors") { json in
+            guard var materials = json["materials"] as? [[String: Any]],
+                  materials.indices.contains(0),
+                  var pbr = materials[0]["pbrMetallicRoughness"] as? [String: Any],
+                  var extensions = json["extensions"] as? [String: Any],
+                  var vrm = extensions["VRMC_vrm"] as? [String: Any],
+                  var expressions = vrm["expressions"] as? [String: Any],
+                  var preset = expressions["preset"] as? [String: Any],
+                  var happy = preset["happy"] as? [String: Any],
+                  var angry = preset["angry"] as? [String: Any] else {
+                throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
+            }
+            pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]
+            materials[0]["pbrMetallicRoughness"] = pbr
+            happy["materialColorBinds"] = [[
+                "material": 0,
+                "type": "color",
+                "targetValue": [0.8, 1.0, 1.0, 1.0]
+            ]]
+            angry["materialColorBinds"] = [[
+                "material": 0,
+                "type": "color",
+                "targetValue": [1.0, 0.6, 1.0, 1.0]
+            ]]
+            preset["happy"] = happy
+            preset["angry"] = angry
+            expressions["preset"] = preset
+            vrm["expressions"] = expressions
+            extensions["VRMC_vrm"] = vrm
+            json["extensions"] = extensions
+            json["materials"] = materials
+        }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let loader = try VRMEntityLoader(withURL: url, isOutlineEnabled: false)
+        let vrmEntity = try loader.loadEntity()
+        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+        vrmEntity.setExpression(value: 1, for: .preset(.angry))
+        var parameters = try mtoonParameters(in: vrmEntity.entity, materialIndex: 0)
+        #expect(parameters.baseColor.isApproximatelyEqual(to: SIMD4<Float>(0.8, 0.6, 1, 1)))
+
+        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+        parameters = try mtoonParameters(in: vrmEntity.entity, materialIndex: 0)
+        #expect(parameters.baseColor.isApproximatelyEqual(to: SIMD4<Float>(1, 0.6, 1, 1)))
+    }
+
+    @Test
     func testMToonShaderUsesPrecompiledSafeSamplerParameters() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let shader = try mtoonShaderSource()
@@ -427,19 +552,19 @@ struct VRM1RealityKitTests {
 
 #if !os(visionOS)
     @Test
-    func testUpdateAtUsesDeltaTimeForMToonRuntime() throws {
+    func testUpdateUsesDeltaTimeForMToonRuntime() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
         let vrmLoader = try VRMEntityLoader(withURL: url)
         let vrmEntity = try vrmLoader.loadEntity()
 
-        vrmEntity.update(at: 10.0)
+        vrmEntity.update(deltaTime: 0.25)
         let firstFrameMaterial = try firstCustomMaterial(in: vrmEntity.entity)
-        #expect(abs(firstFrameMaterial.custom.value.w) < 0.0001)
+        #expect(abs(firstFrameMaterial.custom.value.w - 0.25) < 0.0001)
 
-        vrmEntity.update(at: 10.5)
+        vrmEntity.update(at: 0.5)
         let secondFrameMaterial = try firstCustomMaterial(in: vrmEntity.entity)
-        #expect(abs(secondFrameMaterial.custom.value.w - 0.5) < 0.0001)
+        #expect(abs(secondFrameMaterial.custom.value.w - 0.75) < 0.0001)
     }
 
     @Test
