@@ -169,6 +169,17 @@ enum MToonTextureSlot: Int, CaseIterable {
     case rim
     case outlineWidth
     case uvAnimationMask
+
+    var semantic: TextureResource.Semantic {
+        switch self {
+        case .shadingShift, .outlineWidth, .uvAnimationMask:
+            return .raw
+        case .normal:
+            return .normal
+        case .base, .shade, .matcap, .emissive, .rim:
+            return .color
+        }
+    }
 }
 
 private extension GLTF.Material.AlphaMode {

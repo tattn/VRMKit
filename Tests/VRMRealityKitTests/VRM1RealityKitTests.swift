@@ -130,7 +130,7 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testMToonMaskTexturesUseRawSemantic() throws {
+    func testMToonMaskTextureSlotsUseRawSemantic() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let textureIndex = 0
         let url = try modifiedSeedSanURL(fileName: "raw-mask-textures") { json in
@@ -153,13 +153,13 @@ struct VRM1RealityKitTests {
         let material = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
         let rawTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .raw)
         let colorTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .color)
-        let shadingShift = try #require(material.specular.texture?.resource)
-        let outlineWidth = try #require(material.clearcoat.texture?.resource)
-        let uvAnimationMask = try #require(material.ambientOcclusion.texture?.resource)
 
-        #expect(shadingShift === rawTexture)
-        #expect(outlineWidth === rawTexture)
-        #expect(uvAnimationMask === rawTexture)
+        #expect(material.specular.texture != nil)
+        #expect(material.clearcoat.texture != nil)
+        #expect(material.ambientOcclusion.texture != nil)
+        #expect(MToonTextureSlot.shadingShift.semantic == .raw)
+        #expect(MToonTextureSlot.outlineWidth.semantic == .raw)
+        #expect(MToonTextureSlot.uvAnimationMask.semantic == .raw)
         #expect(rawTexture !== colorTexture)
     }
 

@@ -612,52 +612,56 @@ open class VRMEntityLoader {
         let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: library)
         var material = try CustomMaterial(surfaceShader: surface, lightingModel: .unlit)
         if let baseTexture = mtoon.baseColorTexture {
-            let textureParam = try customTexture(withTextureIndex: baseTexture.index, semantic: .color)
+            let textureParam = try customMToonTexture(withTextureIndex: baseTexture.index, slot: .base)
             material.baseColor = .init(tint: .white, texture: textureParam)
         } else {
             material.baseColor = .init(tint: .white, texture: try whiteCustomTexture())
         }
 
         if let shadeTexture = mtoon.shadeMultiplyTexture {
-            material.roughness.texture = try customTexture(withTextureIndex: shadeTexture.index, semantic: .color)
+            material.roughness.texture = try customMToonTexture(withTextureIndex: shadeTexture.index, slot: .shade)
         } else {
             material.roughness.texture = try whiteCustomTexture()
         }
         if let shadingShiftTexture = mtoon.shadingShiftTexture {
-            material.specular.texture = try customTexture(withTextureIndex: shadingShiftTexture.index, semantic: .raw)
+            material.specular.texture = try customMToonTexture(withTextureIndex: shadingShiftTexture.index,
+                                                               slot: .shadingShift)
         } else {
             material.specular.texture = try whiteCustomTexture()
         }
         if let matcapTexture = mtoon.matcapTexture {
-            material.metallic.texture = try customTexture(withTextureIndex: matcapTexture.index, semantic: .color)
+            material.metallic.texture = try customMToonTexture(withTextureIndex: matcapTexture.index, slot: .matcap)
         } else {
             material.metallic.texture = try whiteCustomTexture()
         }
 
         if let normalTexture = mtoon.normalTexture {
-            material.normal.texture = try customTexture(withTextureIndex: normalTexture.index, semantic: .normal)
+            material.normal.texture = try customMToonTexture(withTextureIndex: normalTexture.index, slot: .normal)
         } else {
             material.normal.texture = try neutralNormalCustomTexture()
         }
 
         if let emissiveTexture = mtoon.emissiveTexture {
-            let textureParam = try customTexture(withTextureIndex: emissiveTexture.index, semantic: .color)
+            let textureParam = try customMToonTexture(withTextureIndex: emissiveTexture.index, slot: .emissive)
             material.emissiveColor = .init(color: .white, texture: textureParam)
         } else {
             material.emissiveColor = .init(color: .white, texture: try whiteCustomTexture())
         }
         if let rimTexture = mtoon.rimMultiplyTexture {
-            material.clearcoatRoughness.texture = try customTexture(withTextureIndex: rimTexture.index, semantic: .color)
+            material.clearcoatRoughness.texture = try customMToonTexture(withTextureIndex: rimTexture.index,
+                                                                        slot: .rim)
         } else {
             material.clearcoatRoughness.texture = try whiteCustomTexture()
         }
         if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
-            material.clearcoat.texture = try customTexture(withTextureIndex: outlineWidthTexture.index, semantic: .raw)
+            material.clearcoat.texture = try customMToonTexture(withTextureIndex: outlineWidthTexture.index,
+                                                                slot: .outlineWidth)
         } else {
             material.clearcoat.texture = try whiteCustomTexture()
         }
         if let uvMaskTexture = mtoon.uvAnimationMaskTexture {
-            material.ambientOcclusion.texture = try customTexture(withTextureIndex: uvMaskTexture.index, semantic: .raw)
+            material.ambientOcclusion.texture = try customMToonTexture(withTextureIndex: uvMaskTexture.index,
+                                                                      slot: .uvAnimationMask)
         } else {
             material.ambientOcclusion.texture = try whiteCustomTexture()
         }
@@ -690,18 +694,20 @@ open class VRMEntityLoader {
         material.faceCulling = .front
         if let baseTexture = mtoon.baseColorTexture {
             material.baseColor = .init(tint: .white,
-                                       texture: try customTexture(withTextureIndex: baseTexture.index,
-                                                                  semantic: .color))
+                                       texture: try customMToonTexture(withTextureIndex: baseTexture.index,
+                                                                       slot: .base))
         } else {
             material.baseColor = .init(tint: .white, texture: try whiteCustomTexture())
         }
         if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
-            material.clearcoat.texture = try customTexture(withTextureIndex: outlineWidthTexture.index, semantic: .raw)
+            material.clearcoat.texture = try customMToonTexture(withTextureIndex: outlineWidthTexture.index,
+                                                                slot: .outlineWidth)
         } else {
             material.clearcoat.texture = try whiteCustomTexture()
         }
         if let uvMaskTexture = mtoon.uvAnimationMaskTexture {
-            material.ambientOcclusion.texture = try customTexture(withTextureIndex: uvMaskTexture.index, semantic: .raw)
+            material.ambientOcclusion.texture = try customMToonTexture(withTextureIndex: uvMaskTexture.index,
+                                                                      slot: .uvAnimationMask)
         } else {
             material.ambientOcclusion.texture = try whiteCustomTexture()
         }
@@ -973,6 +979,11 @@ open class VRMEntityLoader {
     private func customTexture(withTextureIndex index: Int,
                                semantic: TextureResource.Semantic = .color) throws -> CustomMaterial.Texture {
         CustomMaterial.Texture(try texture(withTextureIndex: index, semantic: semantic))
+    }
+
+    private func customMToonTexture(withTextureIndex index: Int,
+                                    slot: MToonTextureSlot) throws -> CustomMaterial.Texture {
+        try customTexture(withTextureIndex: index, semantic: slot.semantic)
     }
 #endif
 
