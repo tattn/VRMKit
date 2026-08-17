@@ -21,6 +21,10 @@ struct MainView: View {
             .pickerStyle(.segmented)
             .disabled(appModel.immersiveSpaceState == .inTransition)
 
+            Toggle("MToon", isOn: $appModel.isMToonEnabled)
+                .toggleStyle(.switch)
+                .disabled(appModel.immersiveSpaceState == .inTransition)
+
             Button {
                 Task {
                     switch appModel.immersiveSpaceState {
@@ -50,22 +54,28 @@ struct ImmersiveView: View {
     @Environment(AppModel.self) private var appModel
     @State private var viewModel = ImmersiveViewModel()
 
+    private var loadConfiguration: ImmersiveLoadConfiguration {
+        ImmersiveLoadConfiguration(model: appModel.selectedModelName,
+                                   isMToonEnabled: appModel.isMToonEnabled)
+    }
+
     var body: some View {
         RealityView { content in
             content.add(viewModel.rootEntity)
         }
-        .task {
-            await viewModel.loadEntity(model: appModel.selectedModelName)
-        }
-        .onChange(of: appModel.selectedModelName) { _, newValue in
-            Task {
-                await viewModel.loadEntity(model: newValue)
-            }
+        .task(id: loadConfiguration) {
+            await viewModel.loadEntity(model: appModel.selectedModelName,
+                                       isMToonEnabled: appModel.isMToonEnabled)
         }
         .onReceive(viewModel.updateTimer) { _ in
             viewModel.update()
         }
     }
+}
+
+private struct ImmersiveLoadConfiguration: Hashable {
+    let model: AppModel.ModelName
+    let isMToonEnabled: Bool
 }
 
 @MainActor
@@ -81,7 +91,7 @@ final class ImmersiveViewModel {
     
     let updateTimer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
-    func loadEntity(model: AppModel.ModelName) async {
+    func loadEntity(model: AppModel.ModelName, isMToonEnabled: Bool) async {
         let modelName = model.rawValue
         
         // Clean up previous
@@ -94,7 +104,7 @@ final class ImmersiveViewModel {
         baseRotation = model.initialRotation
         
         do {
-            let loader = try VRMEntityLoader(named: modelName)
+            let loader = try VRMEntityLoader(named: modelName, isMToonEnabled: isMToonEnabled)
             let vrmEntity = try loader.loadEntity()
             
             vrmEntity.entity.transform.translation = SIMD3<Float>(0, 0, -1.5)
@@ -156,6 +166,6 @@ final class ImmersiveViewModel {
         }
         
         vrmEntity.entity.transform.rotation = simd_quatf(angle: baseRotation + angle, axis: SIMD3<Float>(0, 1, 0))
-        vrmEntity.update(at: deltaTime)
+        vrmEntity.update(deltaTime: deltaTime)
     }
 }

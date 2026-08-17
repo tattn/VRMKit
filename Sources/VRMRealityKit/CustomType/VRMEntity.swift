@@ -1,6 +1,7 @@
 #if canImport(RealityKit)
 import CoreGraphics
 import Foundation
+import OSLog
 import RealityKit
 import simd
 import VRMKit
@@ -22,6 +23,8 @@ struct VRMMaterialIndexComponent: Component {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public final class VRMEntity {
+    private static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "MToon")
+
     public let vrm: VRM
     public let entity: Entity
     public let humanoid = Humanoid()
@@ -30,6 +33,7 @@ public final class VRMEntity {
 
     var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
+    private var expressionWeights: [ExpressionKey: Float] = [:]
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
@@ -37,6 +41,10 @@ public final class VRMEntity {
     private var modelEntitiesByMaterialIndex: [Int: [ModelEntity]] = [:]
     private var springBones: [VRMEntitySpringBone] = []
     private var nodeConstraints: [NodeConstraintBinding] = []
+    private var mtoonLightDirection = MToonMaterialParameters.defaultLightDirection
+    private var mtoonLightColor = SIMD3<Float>(1, 1, 1)
+    private var mtoonAmbientColor = SIMD3<Float>(0, 0, 0)
+    private var mtoonElapsedTime: Float = 0
 
     struct SkinBinding {
         let modelEntity: ModelEntity
@@ -61,6 +69,7 @@ public final class VRMEntity {
     func setUpBlendShapes(nodes: [Entity?], meshes: [Entity?], loader: VRMEntityLoader) throws {
         blendShapeClips = [:]
         expressionClips = [:]
+        expressionWeights = [:]
         materialColorClips = [:]
         textureTransformClips = [:]
 
@@ -101,14 +110,14 @@ public final class VRMEntity {
                                                  isBinary: expressionClip.expression.isBinary ?? false)
                 expressionClips[runtimeClip.key] = runtimeClip
 
-                let colorBindings: [MaterialColorBinding] = expressionClip.expression.materialColorBinds?
+                let colorBindings: [MaterialColorBinding] = try expressionClip.expression.materialColorBinds?
                     .compactMap { bind in
                         guard bind.targetValue.count >= 3 else { return nil }
-                        guard let material = try? loader.material(withMaterialIndex: bind.material) else { return nil }
                         return MaterialColorBinding(materialIndex: bind.material,
                                                     type: bind.type,
                                                     targetValue: SIMD4<Float>(bind.targetValue, default: 1.0),
-                                                    baseValue: material.currentColor(for: bind.type))
+                                                    baseValue: try loader.currentMaterialColor(withMaterialIndex: bind.material,
+                                                                                               type: bind.type))
                     } ?? []
                 if !colorBindings.isEmpty {
                     materialColorClips[runtimeClip.key] = colorBindings
@@ -121,6 +130,7 @@ public final class VRMEntity {
                         return TextureTransformBinding(materialIndex: bind.material,
                                                        baseScale: base.scale,
                                                        baseOffset: base.offset,
+                                                       baseRotation: base.rotation,
                                                        targetScale: SIMD2<Float>(bind.scale, default: 1.0),
                                                        targetOffset: SIMD2<Float>(bind.offset, default: 0.0))
                     } ?? []
@@ -261,10 +271,38 @@ public final class VRMEntity {
         modelEntitiesByMaterialIndex[materialIndex, default: []].append(modelEntity)
     }
 
-    public func update(at time: TimeInterval) {
+    /// Advances spring bones, node constraints, skinning, and MToon runtime state by one frame.
+    ///
+    /// Pass ``SceneEvents/Update/deltaTime`` when calling this from a RealityKit update subscription.
+    public func update(deltaTime: TimeInterval) {
+        let deltaTime = max(0, deltaTime)
+        updateMToonRuntime(deltaTime: Float(deltaTime))
         nodeConstraints.forEach { $0.apply() }
         updateSkinning()
-        springBones.forEach { $0.update(deltaTime: time) }
+        springBones.forEach { $0.update(deltaTime: deltaTime) }
+    }
+
+    /// Compatibility entry point. The argument is interpreted as elapsed time since the previous frame.
+    public func update(at deltaTime: TimeInterval) {
+        update(deltaTime: deltaTime)
+    }
+
+    public func setMToonLightDirection(_ direction: SIMD3<Float>) {
+        let length = simd_length(direction)
+        mtoonLightDirection = length > 0.001 ? direction / length : MToonMaterialParameters.defaultLightDirection
+        updateMToonRuntime(deltaTime: 0)
+    }
+
+    /// Sets the explicit main light color used by MToon CustomMaterial shaders. The default is white.
+    public func setMToonLightColor(_ color: SIMD3<Float>) {
+        mtoonLightColor = color
+        updateMToonLightingParameters()
+    }
+
+    /// Sets the explicit ambient color used by the MToon GI approximation. The default is black.
+    public func setMToonAmbientColor(_ color: SIMD3<Float>) {
+        mtoonAmbientColor = color
+        updateMToonLightingParameters()
     }
 
     private func updateSkinning() {
@@ -366,24 +404,20 @@ public final class VRMEntity {
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
-        guard let clip = expressionClip(for: key) else { return }
+        guard let key = canonicalExpressionKey(for: key),
+              let clip = expressionClips[key] else { return }
         let normalized = max(0.0, min(1.0, clip.isBinary ? round(value) : value))
-        for binding in clip.values {
-            let weight = Float(binding.weight / 100.0) * Float(normalized)
-            applyBlendShapeWeight(weight, targetIndex: binding.index, on: binding.mesh)
+        if normalized > 0 {
+            expressionWeights[key] = Float(normalized)
+        } else {
+            expressionWeights.removeValue(forKey: key)
         }
-        for binding in materialColorClip(for: key) {
-            binding.apply(value: Float(normalized), on: self)
-        }
-        for binding in textureTransformClip(for: key) {
-            binding.apply(value: Float(normalized), on: self)
-        }
+        applyExpressions()
     }
 
     public func expression(for key: ExpressionKey) -> CGFloat {
-        guard let clip = expressionClip(for: key),
-              let binding = clip.values.first else { return 0 }
-        return CGFloat(readBlendShapeWeight(targetIndex: binding.index, on: binding.mesh))
+        guard let key = canonicalExpressionKey(for: key) else { return 0 }
+        return CGFloat(expressionWeights[key] ?? 0)
     }
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
@@ -400,6 +434,10 @@ public final class VRMEntity {
         let vrmColor = VRMColor(simd: color)
         for modelEntity in models {
             guard var component = modelEntity.components[ModelComponent.self] else { continue }
+            if updateMToonColor(color, type: type, on: modelEntity, modelComponent: &component) {
+                modelEntity.components.set(component)
+                continue
+            }
             component.materials = component.materials.map { material in
                 material.settingColor(vrmColor, for: type)
             }
@@ -409,43 +447,189 @@ public final class VRMEntity {
 
     fileprivate func applyTextureTransform(scale: SIMD2<Float>,
                                            offset: SIMD2<Float>,
+                                           rotation: Float,
                                            materialIndex: Int) {
         guard let models = modelEntitiesByMaterialIndex[materialIndex] else { return }
-        let transform = MaterialParameterTypes.TextureCoordinateTransform(offset: offset, scale: scale)
         for modelEntity in models {
             guard var component = modelEntity.components[ModelComponent.self] else { continue }
             component.materials = component.materials.map { material in
-                material.settingTextureTransform(transform)
+                material.settingTextureTransform(scale: scale, offset: offset, rotation: rotation)
             }
+            updateMToonTextureTransform(scale: scale, offset: offset, rotation: rotation, on: modelEntity, modelComponent: &component)
             modelEntity.components.set(component)
         }
     }
 
-    private func expressionClip(for key: ExpressionKey) -> ExpressionClip? {
-        if let clip = expressionClips[key] { return clip }
+    private func updateMToonRuntime(deltaTime: Float) {
+#if !os(visionOS)
+        mtoonElapsedTime += deltaTime
+        for modelEntity in modelEntities(in: entity) {
+            guard var state = modelEntity.components[MToonMaterialParametersComponent.self],
+                  var component = modelEntity.components[ModelComponent.self] else { continue }
+            state.parameters.lightDirection = mtoonLightDirection
+            state.parameters.elapsedTime = mtoonElapsedTime
+            applyMToonParameters(state.parameters, to: &component, updateParameterTexture: false)
+            modelEntity.components.set(state)
+            modelEntity.components.set(component)
+        }
+#endif
+    }
+
+    private func updateMToonLightingParameters() {
+#if !os(visionOS)
+        for modelEntity in modelEntities(in: entity) {
+            guard var state = modelEntity.components[MToonMaterialParametersComponent.self],
+                  var component = modelEntity.components[ModelComponent.self] else { continue }
+            state.parameters.lightColor = SIMD4<Float>(mtoonLightColor.x, mtoonLightColor.y, mtoonLightColor.z, 1)
+            state.parameters.ambientColor = SIMD4<Float>(mtoonAmbientColor.x, mtoonAmbientColor.y, mtoonAmbientColor.z, 1)
+            state.parameters.lightDirection = mtoonLightDirection
+            state.parameters.elapsedTime = mtoonElapsedTime
+            applyMToonParameters(state.parameters, to: &component, updateParameterTexture: true)
+            modelEntity.components.set(state)
+            modelEntity.components.set(component)
+        }
+#endif
+    }
+
+    private func updateMToonColor(_ color: SIMD4<Float>,
+                                  type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
+                                  on modelEntity: ModelEntity,
+                                  modelComponent: inout ModelComponent) -> Bool {
+#if os(visionOS)
+        return false
+#else
+        guard var state = modelEntity.components[MToonMaterialParametersComponent.self] else { return false }
+        guard state.parameters.setColor(color, for: type) else { return false }
+        state.parameters.lightColor = SIMD4<Float>(mtoonLightColor.x, mtoonLightColor.y, mtoonLightColor.z, 1)
+        state.parameters.ambientColor = SIMD4<Float>(mtoonAmbientColor.x, mtoonAmbientColor.y, mtoonAmbientColor.z, 1)
+        state.parameters.lightDirection = mtoonLightDirection
+        state.parameters.elapsedTime = mtoonElapsedTime
+        applyMToonParameters(state.parameters, to: &modelComponent, updateParameterTexture: true)
+        modelEntity.components.set(state)
+        return true
+#endif
+    }
+
+    private func updateMToonTextureTransform(scale: SIMD2<Float>,
+                                             offset: SIMD2<Float>,
+                                             rotation: Float,
+                                             on modelEntity: ModelEntity,
+                                             modelComponent: inout ModelComponent) {
+#if !os(visionOS)
+        guard var state = modelEntity.components[MToonMaterialParametersComponent.self] else { return }
+        state.parameters.setTextureTransform(scale: scale, offset: offset, rotation: rotation)
+        state.parameters.lightColor = SIMD4<Float>(mtoonLightColor.x, mtoonLightColor.y, mtoonLightColor.z, 1)
+        state.parameters.ambientColor = SIMD4<Float>(mtoonAmbientColor.x, mtoonAmbientColor.y, mtoonAmbientColor.z, 1)
+        state.parameters.lightDirection = mtoonLightDirection
+        state.parameters.elapsedTime = mtoonElapsedTime
+        applyMToonParameters(state.parameters, to: &modelComponent, updateParameterTexture: true)
+        modelEntity.components.set(state)
+#endif
+    }
+
+#if !os(visionOS)
+    private func applyMToonParameters(_ parameters: MToonMaterialParameters,
+                                      to component: inout ModelComponent,
+                                      updateParameterTexture: Bool) {
+        component.materials = component.materials.map { material in
+            guard var material = material as? CustomMaterial else { return material }
+            material.custom.value = parameters.customValue
+            if updateParameterTexture {
+                do {
+                    material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
+                } catch {
+                    Self.logger.error("Failed to update MToon parameter texture: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            return material
+        }
+    }
+#endif
+
+    private func canonicalExpressionKey(for key: ExpressionKey) -> ExpressionKey? {
+        if expressionClips[key] != nil { return key }
         if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return expressionClips[expressionKey]
+           let expressionKey = legacyKey.expressionKey,
+           expressionClips[expressionKey] != nil {
+            return expressionKey
         }
         return nil
     }
 
-    private func materialColorClip(for key: ExpressionKey) -> [MaterialColorBinding] {
-        if let clip = materialColorClips[key] { return clip }
-        if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return materialColorClips[expressionKey] ?? []
+    private func applyExpressions() {
+        var morphBindings: [MorphBindingKey: BlendShapeBinding] = [:]
+        var morphWeights: [MorphBindingKey: Float] = [:]
+        for clip in expressionClips.values {
+            for binding in clip.values {
+                let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
+                morphBindings[key] = binding
+                morphWeights[key] = 0
+            }
         }
-        return []
-    }
+        for (expressionKey, expressionWeight) in expressionWeights {
+            guard let clip = expressionClips[expressionKey] else { continue }
+            for binding in clip.values {
+                let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
+                morphWeights[key, default: 0] += Float(binding.weight / 100.0) * expressionWeight
+            }
+        }
+        for (key, binding) in morphBindings {
+            applyBlendShapeWeight(morphWeights[key] ?? 0,
+                                  targetIndex: binding.index,
+                                  on: binding.mesh)
+        }
+        if enableNormalTangentBlendShape {
+            let meshes = morphBindings.values.reduce(into: [ObjectIdentifier: Entity]()) {
+                $0[ObjectIdentifier($1.mesh)] = $1.mesh
+            }
+            meshes.values.forEach(updateBlendShapeNormalsAndTangents)
+        }
 
-    private func textureTransformClip(for key: ExpressionKey) -> [TextureTransformBinding] {
-        if let clip = textureTransformClips[key] { return clip }
-        if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return textureTransformClips[expressionKey] ?? []
+        var colorBindings: [MaterialColorBindingKey: MaterialColorBinding] = [:]
+        var colors: [MaterialColorBindingKey: SIMD4<Float>] = [:]
+        for bindings in materialColorClips.values {
+            for binding in bindings {
+                let key = binding.key
+                colorBindings[key] = binding
+                colors[key] = binding.baseValue
+            }
         }
-        return []
+        for (expressionKey, expressionWeight) in expressionWeights {
+            for binding in materialColorClips[expressionKey] ?? [] {
+                colors[binding.key, default: binding.baseValue] +=
+                    (binding.targetValue - binding.baseValue) * expressionWeight
+            }
+        }
+        for (key, binding) in colorBindings {
+            applyMaterialColor(colors[key] ?? binding.baseValue,
+                               type: binding.type,
+                               materialIndex: binding.materialIndex)
+        }
+
+        var transformBindings: [Int: TextureTransformBinding] = [:]
+        var scales: [Int: SIMD2<Float>] = [:]
+        var offsets: [Int: SIMD2<Float>] = [:]
+        for bindings in textureTransformClips.values {
+            for binding in bindings {
+                transformBindings[binding.materialIndex] = binding
+                scales[binding.materialIndex] = binding.baseScale
+                offsets[binding.materialIndex] = binding.baseOffset
+            }
+        }
+        for (expressionKey, expressionWeight) in expressionWeights {
+            for binding in textureTransformClips[expressionKey] ?? [] {
+                scales[binding.materialIndex, default: binding.baseScale] +=
+                    (binding.targetScale - binding.baseScale) * expressionWeight
+                offsets[binding.materialIndex, default: binding.baseOffset] +=
+                    (binding.targetOffset - binding.baseOffset) * expressionWeight
+            }
+        }
+        for (materialIndex, binding) in transformBindings {
+            applyTextureTransform(scale: scales[materialIndex] ?? binding.baseScale,
+                                  offset: offsets[materialIndex] ?? binding.baseOffset,
+                                  rotation: binding.baseRotation,
+                                  materialIndex: materialIndex)
+        }
     }
 
     private func modelEntities(in root: Entity) -> [ModelEntity] {
@@ -698,17 +882,31 @@ private struct NodeConstraintBinding {
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+private struct MorphBindingKey: Hashable {
+    let mesh: ObjectIdentifier
+    let targetIndex: Int
+
+    init(mesh: Entity, targetIndex: Int) {
+        self.mesh = ObjectIdentifier(mesh)
+        self.targetIndex = targetIndex
+    }
+}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+private struct MaterialColorBindingKey: Hashable {
+    let materialIndex: Int
+    let type: String
+}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 private struct MaterialColorBinding {
     let materialIndex: Int
     let type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType
     let targetValue: SIMD4<Float>
     let baseValue: SIMD4<Float>
 
-    @MainActor
-    func apply(value: Float, on entity: VRMEntity) {
-        entity.applyMaterialColor(baseValue + (targetValue - baseValue) * value,
-                                  type: type,
-                                  materialIndex: materialIndex)
+    var key: MaterialColorBindingKey {
+        MaterialColorBindingKey(materialIndex: materialIndex, type: type.rawValue)
     }
 }
 
@@ -717,17 +915,10 @@ private struct TextureTransformBinding {
     let materialIndex: Int
     let baseScale: SIMD2<Float>
     let baseOffset: SIMD2<Float>
+    let baseRotation: Float
     let targetScale: SIMD2<Float>
     let targetOffset: SIMD2<Float>
 
-    @MainActor
-    func apply(value: Float, on entity: VRMEntity) {
-        let scale = baseScale + (targetScale - baseScale) * value
-        let offset = baseOffset + (targetOffset - baseOffset) * value
-        entity.applyTextureTransform(scale: scale,
-                                     offset: offset,
-                                     materialIndex: materialIndex)
-    }
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -753,11 +944,15 @@ private extension Entity {
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-private extension Material {
+extension Material {
     var currentTextureTransform: MaterialParameterTypes.TextureCoordinateTransform {
         switch self {
         case let material as UnlitMaterial:
             return material.textureCoordinateTransform
+#if !os(visionOS)
+        case let material as CustomMaterial:
+            return material.textureCoordinateTransform
+#endif
         case let material as PhysicallyBasedMaterial:
             return material.textureCoordinateTransform
         default:
@@ -768,22 +963,55 @@ private extension Material {
     func currentColor(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> SIMD4<Float> {
         switch self {
         case let material as UnlitMaterial:
-            return material.color.tint.simd
+            switch type {
+            case .color:
+                return material.color.tint.simd
+            case .emissionColor, .shadeColor, .matcapColor, .rimColor, .outlineColor:
+                return SIMD4<Float>(1, 1, 1, 1)
+            }
+#if !os(visionOS)
+        case let material as CustomMaterial:
+            switch type {
+            case .color:
+                return material.baseColor.tint.simd
+            case .rimColor:
+                return material.emissiveColor.color.simd
+            case .emissionColor, .shadeColor, .matcapColor, .outlineColor:
+                return SIMD4<Float>(1, 1, 1, 1)
+            }
+#endif
         case let material as PhysicallyBasedMaterial:
             switch type {
             case .color:
                 return material.baseColor.tint.simd
             case .emissionColor:
                 return material.emissiveColor.color.simd
-            case .shadeColor:
-                return material.baseColor.tint.simd
             case .matcapColor, .rimColor:
                 return material.emissiveColor.color.simd
-            case .outlineColor:
-                return material.baseColor.tint.simd
+            case .shadeColor, .outlineColor:
+                return SIMD4<Float>(1, 1, 1, 1)
             }
         default:
             return SIMD4<Float>(1, 1, 1, 1)
+        }
+    }
+
+    func settingTextureTransform(scale: SIMD2<Float>, offset: SIMD2<Float>, rotation: Float = 0) -> Material {
+        let transform = MaterialParameterTypes.TextureCoordinateTransform(offset: offset, scale: scale, rotation: rotation)
+        switch self {
+        case var material as UnlitMaterial:
+            material.textureCoordinateTransform = transform
+            return material
+#if !os(visionOS)
+        case var material as CustomMaterial:
+            material.textureCoordinateTransform = transform
+            return material
+#endif
+        case var material as PhysicallyBasedMaterial:
+            material.textureCoordinateTransform = transform
+            return material
+        default:
+            return self
         }
     }
 
@@ -791,16 +1019,35 @@ private extension Material {
                       for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> Material {
         switch self {
         case var material as UnlitMaterial:
-            material.color.tint = color
+            switch type {
+            case .color:
+                material.color.tint = color
+            case .emissionColor, .shadeColor, .matcapColor, .rimColor, .outlineColor:
+                break
+            }
             return material
+#if !os(visionOS)
+        case var material as CustomMaterial:
+            switch type {
+            case .color:
+                material.baseColor.tint = color
+            case .rimColor:
+                material.emissiveColor.color = color
+            case .shadeColor, .emissionColor, .matcapColor, .outlineColor:
+                break
+            }
+            return material
+#endif
         case var material as PhysicallyBasedMaterial:
             switch type {
-            case .color, .shadeColor, .outlineColor:
+            case .color:
                 material.baseColor.tint = color
             case .emissionColor:
                 material.emissiveColor.color = color
             case .matcapColor, .rimColor:
                 material.emissiveColor.color = color
+            case .shadeColor, .outlineColor:
+                break
             }
             return material
         default:
@@ -808,18 +1055,5 @@ private extension Material {
         }
     }
 
-    func settingTextureTransform(_ transform: MaterialParameterTypes.TextureCoordinateTransform) -> Material {
-        switch self {
-        case var material as UnlitMaterial:
-            material.textureCoordinateTransform = transform
-            return material
-        case var material as PhysicallyBasedMaterial:
-            material.textureCoordinateTransform = transform
-            return material
-        default:
-            return self
-        }
-    }
 }
-
 #endif

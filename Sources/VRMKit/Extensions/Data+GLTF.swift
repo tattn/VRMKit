@@ -31,7 +31,7 @@ package extension Data {
             return subdata(in: offset..<offset + dataSize)
         }
 
-        var indexData = Data(capacity: dataSize)
+        var indexData = Data(count: dataSize)
 
         indexData.withUnsafeMutableBytes { rawDst in
             guard let dst = rawDst.bindMemory(to: UInt8.self).baseAddress else { return }

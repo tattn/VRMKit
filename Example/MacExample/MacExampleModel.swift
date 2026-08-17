@@ -33,13 +33,6 @@ enum MacExampleModel: String, CaseIterable, Identifiable {
 
     var initialRotation: Float {
         switch self {
-        case .alicia: return .pi
-        case .vrm1: return 0
-        }
-    }
-
-    var sceneKitInitialRotation: Float {
-        switch self {
         case .alicia: return 0
         case .vrm1: return .pi
         }

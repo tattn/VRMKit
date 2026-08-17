@@ -67,6 +67,8 @@ vrm.gltf.jsonData.nodes[0].name
 
 ## Render VRM
 
+VRMRealityKit enables MToon by default on iOS and macOS. visionOS uses the existing Unlit / PBR fallback because RealityKit's `CustomMaterial` is unavailable there. VRMSceneKit is deprecated and also keeps its existing fallback material conversion rather than implementing the new MToon renderer.
+
 ```swift
 import RealityKit
 import VRMKit
@@ -80,6 +82,52 @@ let anchor = AnchorEntity(world: .zero)
 anchor.addChild(vrmEntity.entity)
 arView.scene.addAnchor(anchor)
 ```
+
+### AR session integration
+
+Outline creation and shadow casting are independent loader options. For a conservative live-AR configuration, disable both while keeping the MToon surface shader enabled.
+
+On visionOS, MToon and outline creation fall back automatically, and `isShadowCastingEnabled` has no effect because the required RealityKit APIs are unavailable.
+
+Disable grounding shadows on the host `ARView` and call `VRMEntity.update(at:)` every frame for spring bones, constraints, skinning, and MToon UV animation:
+
+```swift
+import ARKit
+import Combine
+import RealityKit
+import VRMRealityKit
+
+let arView = ARView(frame: bounds)
+arView.renderOptions.insert(.disableGroundingShadows)
+
+let config = ARWorldTrackingConfiguration()
+config.planeDetection = [.horizontal]
+arView.session.run(config)
+
+let loader = try VRMEntityLoader(
+    named: "model.vrm",
+    isOutlineEnabled: false,
+    isShadowCastingEnabled: false
+)
+let vrmEntity = try loader.loadEntity()
+
+var time: TimeInterval = 0
+let subscription = arView.scene.subscribe(to: SceneEvents.Update.self) { event in
+    time += event.deltaTime
+    vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -1))
+    vrmEntity.update(at: time)
+}
+
+let anchor = AnchorEntity(world: transform)
+anchor.addChild(vrmEntity.entity)
+arView.scene.addAnchor(anchor)
+```
+
+> Calling `VRMEntity.update(at:)` every frame is required for skinning, constraints, spring bones, and MToon UV animation.
+
+Set `isMToonEnabled: false` only when you want to disable MToon entirely and use the legacy Unlit / PBR conversion instead.
+
+On the package's minimum supported RealityKit versions, custom meshes expose only `TEXCOORD_0` and `CustomMaterial` has one material-level UV transform. MToon textures that request another UV set therefore use `TEXCOORD_0`. If UV-accessed texture slots specify different `KHR_texture_transform` values, VRMRealityKit applies the first transform in material-slot order to all UV-accessed MToon textures and logs a warning. Expression texture transform binds still update all UV-accessed textures together as required by VRMC_vrm.
 
 ### Render VRM (SwiftUI)
 
@@ -193,7 +241,7 @@ let image = try loader.loadThumbnail(from: vrm)
   - [x] Decoding VRM 1.0 file
   - [x] Render an avatar by RealityKit (as VRM 0.x)
   - [x] Render an avatar by RealityKit (as VRM 1.x)
-- [ ] VRM shaders support (MToon)
+- [x] VRM shaders support (MToon, RealityKit)
 - [ ] Improve rendering quality
 - [ ] Animation support (vrma)
 - [ ] VRM editing function

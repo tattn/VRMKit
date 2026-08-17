@@ -1,6 +1,7 @@
 import Combine
 import UIKit
 import RealityKit
+import simd
 internal import VRMKit
 internal import VRMRealityKit
 
@@ -9,8 +10,10 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     private var arView: ARView?
     private var updateSubscription: Cancellable?
     private var loadedEntity: VRMEntity?
+    private var loadedAnchor: AnchorEntity?
     private var cameraAnchor: AnchorEntity?
     private var cameraEntity: PerspectiveCamera?
+    private var lightEntity: DirectionalLight?
     private var expressionSegmentedControl: UISegmentedControl?
     private var orbitYaw: Float = 0
     private var orbitPitch: Float = -0.1
@@ -18,11 +21,12 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
     private var currentModel: VRMExampleModel = .alicia
     private var currentExpression: ExampleExpression = .neutral
+    private var isMToonEnabled = true
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "RealityKit"
-        view.backgroundColor = .black
+        view.backgroundColor = .white
         setUpARView()
         setUpUI()
         loadVRM(model: .alicia)
@@ -31,7 +35,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     private func setUpARView() {
         let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         arView.translatesAutoresizingMaskIntoConstraints = false
-        arView.environment.background = .color(.black)
+        arView.environment.background = .color(.white)
         view.addSubview(arView)
 
         NSLayoutConstraint.activate([
@@ -61,12 +65,25 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         expressionSegmentedControl.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(expressionSegmentedControl)
         self.expressionSegmentedControl = expressionSegmentedControl
-        
+
+        let mtoonLabel = UILabel()
+        mtoonLabel.text = "MToon"
+        let mtoonSwitch = UISwitch()
+        mtoonSwitch.isOn = isMToonEnabled
+        mtoonSwitch.addTarget(self, action: #selector(mtoonChanged(_:)), for: .valueChanged)
+        let mtoonControl = UIStackView(arrangedSubviews: [mtoonLabel, mtoonSwitch])
+        mtoonControl.axis = .horizontal
+        mtoonControl.spacing = 8
+        mtoonControl.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(mtoonControl)
+
         NSLayoutConstraint.activate([
             segmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             segmentedControl.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -50),
             expressionSegmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            expressionSegmentedControl.bottomAnchor.constraint(equalTo: segmentedControl.topAnchor, constant: -20)
+            expressionSegmentedControl.bottomAnchor.constraint(equalTo: segmentedControl.topAnchor, constant: -20),
+            mtoonControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            mtoonControl.bottomAnchor.constraint(equalTo: expressionSegmentedControl.topAnchor, constant: -16)
         ])
     }
 
@@ -82,29 +99,40 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         loadedEntity?.setExampleExpression(currentExpression, value: 1.0)
     }
 
+    @objc private func mtoonChanged(_ sender: UISwitch) {
+        isMToonEnabled = sender.isOn
+        loadVRM(model: currentModel)
+    }
+
     private func loadVRM(model: VRMExampleModel) {
         guard let arView = arView else { return }
 
         currentModel = model
         updateExpressionLabels()
 
-        if let loadedEntity = loadedEntity {
+        if let loadedEntity {
             loadedEntity.entity.removeFromParent()
             self.loadedEntity = nil
         }
+        if let loadedAnchor {
+            arView.scene.removeAnchor(loadedAnchor)
+            self.loadedAnchor = nil
+        }
 
         do {
-            let loader = try VRMEntityLoader(named: model.rawValue)
+            let loader = try VRMEntityLoader(named: model.rawValue, isMToonEnabled: isMToonEnabled)
             let vrmEntity = try loader.loadEntity()
+            vrmEntity.setMToonLightDirection(RealityKitExampleLighting.direction)
 
             let anchor = AnchorEntity(world: .zero)
             vrmEntity.entity.transform.translation = SIMD3<Float>(0, -1.0, -1.5)
             anchor.addChild(vrmEntity.entity)
             arView.scene.addAnchor(anchor)
+            setUpLight(in: arView)
             normalizeScale(for: vrmEntity.entity)
             updateOrbitTarget(for: vrmEntity.entity, adjustDistance: false)
             updateCameraTransform()
-            
+
             let neck = vrmEntity.humanoid.node(for: .neck)
             let leftArm: Entity?
             let rightArm: Entity?
@@ -116,7 +144,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
                 leftArm = vrmEntity.humanoid.node(for: .leftUpperArm)
                 rightArm = vrmEntity.humanoid.node(for: .rightUpperArm)
             }
-            
+
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
             let armRotation = simd_quatf(angle: 40 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
             if let neck {
@@ -129,17 +157,18 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
                 rightArm.transform.rotation = rightArm.transform.rotation * armRotation
             }
             vrmEntity.setExampleExpression(currentExpression, value: 1.0)
-            
+
             loadedEntity = vrmEntity
-            
+            loadedAnchor = anchor
+
             let rotationOffset = model.initialRotation
 
             var time: TimeInterval = 0
             updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
                 guard let loadedEntity = self?.loadedEntity else { return }
-                
+
                 time += event.deltaTime
-                
+
                 let cycle = time.truncatingRemainder(dividingBy: 1.0)
                 let angle: Float
                 if cycle < 0.5 {
@@ -149,10 +178,10 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
                     let progress = Float(cycle - 0.5) / 0.5
                     angle = -0.5 + 0.5 * progress
                 }
-                
+
                 loadedEntity.entity.transform.rotation = simd_quatf(angle: rotationOffset + angle, axis: SIMD3<Float>(0, 1, 0))
-                
-                loadedEntity.update(at: event.deltaTime)
+
+                loadedEntity.update(deltaTime: event.deltaTime)
             }
         } catch {
             print(error)
@@ -180,6 +209,19 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         self.cameraAnchor = cameraAnchor
         self.cameraEntity = cameraEntity
         updateCameraTransform()
+    }
+
+    private func setUpLight(in arView: ARView) {
+        if lightEntity != nil { return }
+        let lightAnchor = AnchorEntity(world: .zero)
+        let light = DirectionalLight()
+        light.light.intensity = 1200
+        light.look(at: .zero,
+                   from: -RealityKitExampleLighting.direction,
+                   relativeTo: nil)
+        lightAnchor.addChild(light)
+        arView.scene.addAnchor(lightAnchor)
+        lightEntity = light
     }
 
     private func setUpGestures() {
@@ -249,7 +291,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard let arView = arView, let cameraEntity = cameraEntity else { return }
         let translation = gesture.translation(in: arView)
-        let panSpeed: Float = 0.002 * orbitDistance
+        let panSpeed = Float(0.002) * orbitDistance
 
         let transform = cameraEntity.transform.matrix
         let right = SIMD3<Float>(transform.columns.0.x, transform.columns.0.y, transform.columns.0.z)
@@ -274,4 +316,8 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         return true
     }
+}
+
+private enum RealityKitExampleLighting {
+    static let direction = simd_normalize(SIMD3<Float>(0, 0, -1))
 }
