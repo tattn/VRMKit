@@ -12,6 +12,24 @@ class VRM1Tests: XCTestCase {
     func testSpecVersion() {
         XCTAssertEqual(vrm.specVersion, "1.0")
     }
+
+    /// A missing or mistyped specVersion has to surface as a thrown error rather
+    /// than trapping in the initializer.
+    func testMalformedSpecVersionThrowsInsteadOfCrashing() throws {
+        XCTAssertThrowsError(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion(nil)))
+        XCTAssertThrowsError(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion(1.0)))
+        XCTAssertThrowsError(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion(["1.0"])))
+    }
+
+    func testUnsupportedSpecVersionIsRejected() throws {
+        XCTAssertTrue(VRM1.supports(specVersion: "1.0"))
+        XCTAssertTrue(VRM1.supports(specVersion: "1.0-beta"))
+        XCTAssertFalse(VRM1.supports(specVersion: "2.0"))
+        XCTAssertFalse(VRM1.supports(specVersion: "1.0-draft"))
+
+        XCTAssertNoThrow(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion("1.0-beta")))
+        XCTAssertThrowsError(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion("2.0")))
+    }
     
     
     func testMeta() {

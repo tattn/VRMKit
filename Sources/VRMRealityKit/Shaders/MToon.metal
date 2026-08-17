@@ -1,28 +1,82 @@
 #include <RealityKit/RealityKit.h>
 
+#include "MToonCore.h"
+
 using namespace metal;
 
-constexpr sampler mtoonLinearClampSampler(coord::normalized,
-                                          address::clamp_to_edge,
-                                          filter::linear,
-                                          mip_filter::linear);
-constexpr sampler mtoonNearestClampSampler(coord::normalized,
-                                           address::clamp_to_edge,
-                                           filter::nearest,
-                                           mip_filter::nearest);
+// This file is the RealityKit adapter for the MToon specification math in
+// MToonCore.h. Functions named realityKitApproximate* are approximations
+// imposed by RealityKit's CustomMaterial constraints, not MToon semantics.
+
+// Metal allows at most 16 constant samplers per shader entry point, and the
+// budget is shared with the shaders RealityKit generates. Exceeding it only
+// shows up at runtime, as a pipeline that never builds, so the samplers below
+// are spent on addressing alone: a coordinate wrapped in the shader and handed
+// to a clamping sampler cannot filter across a REPEAT seam. glTF's
+// magnification, minification and mip filters are applied to the sample
+// instead; see mtoonFilteredSample.
 constexpr sampler mtoonParameterSampler(coord::normalized,
                                         address::clamp_to_edge,
                                         filter::nearest,
                                         mip_filter::none);
 
-constant float mtoonEpsilon = 0.00001;
+#define MTOON_SAMPLER(name, sMode, tMode)                                            \
+    constexpr sampler name(coord::normalized,                                        \
+                           s_address::sMode, t_address::tMode,                       \
+                           mag_filter::linear, min_filter::linear, mip_filter::linear);
+
+MTOON_SAMPLER(mtoonRepeatRepeat, repeat, repeat)
+MTOON_SAMPLER(mtoonRepeatClamp, repeat, clamp_to_edge)
+MTOON_SAMPLER(mtoonRepeatMirror, repeat, mirrored_repeat)
+MTOON_SAMPLER(mtoonClampRepeat, clamp_to_edge, repeat)
+MTOON_SAMPLER(mtoonClampClamp, clamp_to_edge, clamp_to_edge)
+MTOON_SAMPLER(mtoonClampMirror, clamp_to_edge, mirrored_repeat)
+MTOON_SAMPLER(mtoonMirrorRepeat, mirrored_repeat, repeat)
+MTOON_SAMPLER(mtoonMirrorClamp, mirrored_repeat, clamp_to_edge)
+MTOON_SAMPLER(mtoonMirrorMirror, mirrored_repeat, mirrored_repeat)
+
 constant float mtoonParameterTextureWidth = 26.0;
+
+// Parameter rows, mirroring MToonParameterRow on the Swift side.
+constant float mtoonRowBaseColor = 0.0;
+constant float mtoonRowShadeColor = 1.0;
+constant float mtoonRowRimColor = 2.0;
+constant float mtoonRowMatcapColor = 3.0;
+constant float mtoonRowOutlineColor = 4.0;
+constant float mtoonRowShadeParams = 5.0;
+constant float mtoonRowRimParams = 6.0;
+constant float mtoonRowOutlineParams = 7.0;
+constant float mtoonRowUvAnimation = 8.0;
+constant float mtoonRowFeatureFlags = 9.0;
+constant float mtoonRowExtraFlags = 10.0;
+constant float mtoonRowEmissiveFactor = 11.0;
+constant float mtoonRowLightColor = 12.0;
+constant float mtoonRowAmbientColor = 13.0;
+constant float mtoonRowUvTransform = 14.0;
+constant float mtoonRowUvTransformRotation = 15.0;
+constant float mtoonRowNormalParameters = 16.0;
 constant float mtoonSamplerParameterStart = 17.0;
 
+// Sampler parameter slots, mirroring MToonTextureSlot on the Swift side.
+constant float mtoonSamplerSlotBase = 0.0;
+constant float mtoonSamplerSlotShade = 1.0;
+constant float mtoonSamplerSlotShadingShift = 2.0;
+constant float mtoonSamplerSlotNormal = 3.0;
+constant float mtoonSamplerSlotMatcap = 4.0;
+constant float mtoonSamplerSlotEmissive = 5.0;
+constant float mtoonSamplerSlotRim = 6.0;
+constant float mtoonSamplerSlotOutlineWidth = 7.0;
+constant float mtoonSamplerSlotUvAnimationMask = 8.0;
+
+// The parameter texture is a 1-row lookup table, so sample it at an explicit
+// LOD: an implicit-LOD sample would need derivatives from uniform control flow,
+// which prevents the compiler from sinking these fetches into the branches that
+// actually consume them.
 half4 mtoonParameter(realitykit::texture::textures textures, float row)
 {
     return textures.custom().sample(mtoonParameterSampler,
-                                    float2((row + 0.5) / mtoonParameterTextureWidth, 0.5));
+                                    float2((row + 0.5) / mtoonParameterTextureWidth, 0.5),
+                                    level(0));
 }
 
 half4 mtoonSamplerParameter(realitykit::texture::textures textures, float slot)
@@ -30,38 +84,162 @@ half4 mtoonSamplerParameter(realitykit::texture::textures textures, float slot)
     return mtoonParameter(textures, mtoonSamplerParameterStart + slot);
 }
 
-float mtoonWrappedCoordinate(float value, half wrapMode)
+// The LOD a sample resolves to. The query needs the screen-space derivatives only
+// a fragment function has, so specializing -- rather than branching -- keeps the
+// derivative instruction out of the code the vertex stage links against.
+template <bool ImplicitLOD>
+struct MToonSampledLOD {
+    static float of(texture2d<half> texture, sampler textureSampler, float2 uv);
+};
+
+template <>
+struct MToonSampledLOD<true> {
+    static float of(texture2d<half> texture, sampler textureSampler, float2 uv)
+    {
+        return texture.calculate_clamped_lod(textureSampler, uv);
+    }
+};
+
+template <>
+struct MToonSampledLOD<false> {
+    static float of(texture2d<half>, sampler, float2)
+    {
+        return 0.0;
+    }
+};
+
+// glTF's filter modes, applied to the sample rather than baked into sampler
+// state. `filterIndex` is MToonSamplerFilter.index on the Swift side:
+// (magnification * 2 + minification) * 3 + mip, where the texel filters are
+// 0 = linear, 1 = nearest and the mip filter is 0 = none, 1 = nearest,
+// 2 = linear.
+template <bool ImplicitLOD>
+half4 mtoonFilteredSample(texture2d<half> texture,
+                          sampler textureSampler,
+                          float2 uv,
+                          int filterIndex)
 {
-    if (wrapMode > 1.5h) {
-        float mirrored = fract(value * 0.5) * 2.0;
-        return 1.0 - abs(mirrored - 1.0);
+    const int mipFilter = filterIndex % 3;
+    const bool nearestMinification = (filterIndex / 3) % 2 != 0;
+    const bool nearestMagnification = filterIndex / 6 != 0;
+
+    // Sampling at an explicit LOD leaves the mip filter to this function. The
+    // outline geometry modifier has no implicit LOD at all, so it samples level 0.
+    const float sampledLod = MToonSampledLOD<ImplicitLOD>::of(texture, textureSampler, uv);
+    // glTF's NEAREST and LINEAR minFilters do not mipmap, so they are level 0;
+    // the MIPMAP_NEAREST filters take the nearest level; the MIPMAP_LINEAR
+    // filters blend the two levels the fractional LOD falls between.
+    const float lod = mipFilter == 0 ? 0.0 : (mipFilter == 1 ? round(sampledLod) : sampledLod);
+    // Magnification and minification are independent glTF filters; the LOD the
+    // sampler resolved is what decides which of the two applies here.
+    const bool nearest = sampledLod > 0.0 ? nearestMinification : nearestMagnification;
+
+    float2 sampleUV = uv;
+    if (nearest) {
+        // A linear sampler returns one texel exactly when the coordinate sits at
+        // that texel's centre, so NEAREST costs a coordinate snap instead of a
+        // sampler of its own. It is approximate only where two levels are blended.
+        const float2 levelSize = float2(texture.get_width(uint(lod)), texture.get_height(uint(lod)));
+        sampleUV = (floor(uv * levelSize) + 0.5) / levelSize;
     }
-    if (wrapMode > 0.5h) {
-        return clamp(value, 0.0, 1.0);
-    }
-    return fract(value);
+    return texture.sample(textureSampler, sampleUV, level(lod));
 }
 
-float2 mtoonWrappedUV(float2 uv, half4 samplerParameters)
+// The sampler parameter row is (wrapS, wrapT, filterIndex, 0). The wrap modes
+// are encoded as 0 = repeat, 1 = clamp to edge, 2 = mirrored repeat by
+// VRMEntityLoader.mtoonWrapMode(_:), and filterIndex by MToonSamplerFilter.
+#define MTOON_SAMPLE_CASE(name, index)                                               \
+    case (index): return mtoonFilteredSample<ImplicitLOD>(texture, name, uv, filterIndex);
+
+template <bool ImplicitLOD>
+half4 mtoonWrappedSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
 {
-    return float2(mtoonWrappedCoordinate(uv.x, samplerParameters.x),
-                  mtoonWrappedCoordinate(uv.y, samplerParameters.y));
+    const int wrapS = int(float(samplerParameters.x) + 0.5);
+    const int wrapT = int(float(samplerParameters.y) + 0.5);
+    const int filterIndex = int(float(samplerParameters.z) + 0.5);
+    switch (wrapS * 3 + wrapT) {
+        MTOON_SAMPLE_CASE(mtoonRepeatRepeat, 0)
+        MTOON_SAMPLE_CASE(mtoonRepeatClamp, 1)
+        MTOON_SAMPLE_CASE(mtoonRepeatMirror, 2)
+        MTOON_SAMPLE_CASE(mtoonClampRepeat, 3)
+        MTOON_SAMPLE_CASE(mtoonClampClamp, 4)
+        MTOON_SAMPLE_CASE(mtoonClampMirror, 5)
+        MTOON_SAMPLE_CASE(mtoonMirrorRepeat, 6)
+        MTOON_SAMPLE_CASE(mtoonMirrorClamp, 7)
+        MTOON_SAMPLE_CASE(mtoonMirrorMirror, 8)
+        default: return mtoonFilteredSample<ImplicitLOD>(texture, mtoonRepeatRepeat, uv, filterIndex);
+    }
 }
 
+// Fragment-stage sampling: the LOD comes from the screen-space derivatives.
 half4 mtoonSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
 {
-    float2 wrappedUV = mtoonWrappedUV(uv, samplerParameters);
-    if (samplerParameters.z > 0.5h) {
-        return texture.sample(mtoonNearestClampSampler, wrappedUV);
-    }
-    return texture.sample(mtoonLinearClampSampler, wrappedUV);
+    return mtoonWrappedSample<true>(texture, uv, samplerParameters);
 }
 
-float mtoonLinearstep(float a, float b, float t)
+// Vertex-stage sampling for the geometry modifier, which has no derivatives.
+half4 mtoonVertexSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
 {
-    return saturate((t - a) / max(b - a, mtoonEpsilon));
+    return mtoonWrappedSample<false>(texture, uv, samplerParameters);
 }
 
+// RealityKit tone maps every CustomMaterial draw; this inverts it.
+constant float mtoonRealityKitInverseToneMap[65] = {
+    0.0000, 0.0040, 0.0075, 0.0106, 0.0135, 0.0169, 0.0209, 0.0251,
+    0.0298, 0.0344, 0.0395, 0.0451, 0.0512, 0.0574, 0.0641, 0.0714,
+    0.0791, 0.0873, 0.0958, 0.1047, 0.1142, 0.1247, 0.1365, 0.1488,
+    0.1615, 0.1747, 0.1885, 0.2025, 0.2170, 0.2324, 0.2499, 0.2682,
+    0.2872, 0.3068, 0.3272, 0.3482, 0.3699, 0.3924, 0.4158, 0.4400,
+    0.4661, 0.4939, 0.5225, 0.5523, 0.5805, 0.6128, 0.6528, 0.6925,
+    0.7323, 0.7721, 0.8151, 0.8649, 0.9147, 0.9694, 1.0304, 1.0875,
+    1.1516, 1.2234, 1.3086, 1.3939, 1.4796, 1.5861, 1.7011, 1.8490,
+    2.0000
+};
+
+float realityKitInverseToneMapChannel(float target)
+{
+    const float encoded = target <= 0.0031308f
+        ? target * 12.92f
+        : 1.055f * metal::pow(target, 1.0f / 2.4f) - 0.055f;
+    const float scaled = saturate(encoded) * 64.0f;
+    const int index = min(int(scaled), 63);
+    return mix(mtoonRealityKitInverseToneMap[index],
+               mtoonRealityKitInverseToneMap[index + 1],
+               scaled - float(index));
+}
+
+float3 realityKitInverseToneMap(float3 color)
+{
+    return float3(realityKitInverseToneMapChannel(color.x),
+                  realityKitInverseToneMapChannel(color.y),
+                  realityKitInverseToneMapChannel(color.z));
+}
+
+// MToon's rim term is modulated by the *lighting*, never by the surface's own
+// base/shade colors, so mtoonDirectLighting()'s result cannot be reused here.
+// RealityKit does not hand a CustomMaterial the scene's evaluated irradiance,
+// so the runtime's explicit light stands in: toon-shaded direct light plus the
+// ambient term.
+float3 realityKitApproximateRimLighting(float3 lightColor, float3 giColor, float shading)
+{
+    return lightColor * shading + giColor;
+}
+
+// RealityKit does not expose the fully evaluated lit term to the outline
+// pass; use the runtime light color as the lit approximation.
+float3 realityKitApproximateOutlineLighting(float3 lightColor, float outlineLightingMix)
+{
+    return mix(float3(1.0), lightColor, saturate(outlineLightingMix));
+}
+
+// Converts RealityKit's mesh UV (v pointing up, as VRMEntityLoader writes it)
+// into the glTF / MToon UV space that KHR_texture_transform, MToon UV animation
+// and Metal texture sampling all share (v pointing down).
+//
+// This runs once, *before* any UV math: MToon's animation and
+// KHR_texture_transform are both defined in glTF UV space, so flipping
+// afterwards would invert Y offsets and the rotation direction, and shift
+// anything with a Y scale.
 float2 mtoonTextureUV(float2 uv)
 {
     return float2(uv.x, 1.0 - uv.y);
@@ -79,17 +257,12 @@ float2 mtoonTransformedUV(float2 uv, half4 uvTransform, half4 uvTransformRotatio
 
 float3 mtoonLightDirection(float4 customValue)
 {
-    float len = length(customValue.xyz);
-    if (len < 0.001) {
-        return normalize(float3(0.35, 0.55, 0.75));
+    // VRMEntity always sends a normalized direction, so this only guards against
+    // an uninitialized custom value; renormalizing would cost every fragment.
+    if (all(customValue.xyz == 0.0)) {
+        return float3(0.0, 0.0, 1.0);
     }
-    return customValue.xyz / len;
-}
-
-float2 mtoonMatcapUV(float3 normal, float4x4 modelToView)
-{
-    float3 viewNormal = normalize((modelToView * float4(normal, 0.0)).xyz);
-    return float2(viewNormal.x * 0.5 + 0.5, 0.5 - viewNormal.y * 0.5);
+    return customValue.xyz;
 }
 
 float3 mtoonShadingNormal(realitykit::surface_parameters params,
@@ -130,29 +303,79 @@ float mtoonAlpha(float alphaMode, float baseAlpha, float cutoff)
     return baseAlpha;
 }
 
-float2 mtoonAnimatedSurfaceUV(realitykit::surface_parameters params,
-                              float2 uv,
-                              half4 uvAnimation,
-                              half4 featureFlags,
-                              half4 uvAnimationMaskSampler,
-                              half4 uvTransform,
-                              half4 uvTransformRotation)
+// Both surface entry points resolve opacity and write their result the same way.
+float mtoonOpacity(float opacityThreshold,
+                   half4 baseSample,
+                   half4 baseColorFactor,
+                   half4 extraFlags,
+                   half4 shadeParams)
 {
-    float time = params.uniforms().custom_parameter().w;
-    float mask = 1.0;
-    if (featureFlags.w > 0.5h) {
-        float2 maskUV = mtoonTextureUV(mtoonTransformedUV(uv, uvTransform, uvTransformRotation));
-        mask = float(mtoonSample(params.textures().ambient_occlusion(), maskUV, uvAnimationMaskSampler).b);
+    const float cutoff = opacityThreshold > 0.0 ? opacityThreshold : float(shadeParams.w);
+    return mtoonAlpha(float(extraFlags.w), float(baseSample.a * baseColorFactor.a), cutoff);
+}
+
+template <bool ImplicitLOD>
+float2 mtoonAnimatedUVImpl(realitykit::texture::textures textures,
+                           float time,
+                           float2 uv,
+                           half4 uvAnimation,
+                           half4 featureFlags,
+                           half4 uvAnimationMaskSampler,
+                           half4 uvTransform,
+                           half4 uvTransformRotation)
+{
+    // Most materials animate nothing, so skip the mask sample and the rotation.
+    if (all(uvAnimation.xyz == 0.0h)) {
+        return uv;
     }
 
-    float angle = float(uvAnimation.z) * time * mask;
-    float2 center = float2(0.5, 0.5);
-    float2 centered = uv - center;
-    float s = sin(angle);
-    float c = cos(angle);
-    float2 rotated = float2(centered.x * c - centered.y * s,
-                            centered.x * s + centered.y * c) + center;
-    return rotated + float2(float(uvAnimation.x), float(uvAnimation.y)) * time * mask;
+    // `uv` is already in glTF UV space, so the mask only needs the transform.
+    float mask = 1.0;
+    if (featureFlags.w > 0.5h) {
+        float2 maskUV = mtoonTransformedUV(uv, uvTransform, uvTransformRotation);
+        mask = float(mtoonWrappedSample<ImplicitLOD>(textures.ambient_occlusion(), maskUV, uvAnimationMaskSampler).b);
+    }
+
+    // Scrolling without rotation is the common case, so the rotation is its own
+    // branch rather than a sin/cos of a zero angle.
+    float2 animated = uv;
+    if (uvAnimation.z != 0.0h) {
+        float angle = float(uvAnimation.z) * time * mask;
+        float2 center = float2(0.5, 0.5);
+        float2 centered = uv - center;
+        float s = sin(angle);
+        float c = cos(angle);
+        animated = float2(centered.x * c - centered.y * s,
+                          centered.x * s + centered.y * c) + center;
+    }
+    return animated + float2(float(uvAnimation.x), float(uvAnimation.y)) * time * mask;
+}
+
+float2 mtoonAnimatedUV(realitykit::texture::textures textures,
+                       float time,
+                       float2 uv,
+                       half4 uvAnimation,
+                       half4 featureFlags,
+                       half4 uvAnimationMaskSampler,
+                       half4 uvTransform,
+                       half4 uvTransformRotation)
+{
+    return mtoonAnimatedUVImpl<true>(textures, time, uv, uvAnimation, featureFlags,
+                                     uvAnimationMaskSampler, uvTransform, uvTransformRotation);
+}
+
+// The geometry modifier's counterpart: same animation, sampled at level 0.
+float2 mtoonVertexAnimatedUV(realitykit::texture::textures textures,
+                             float time,
+                             float2 uv,
+                             half4 uvAnimation,
+                             half4 featureFlags,
+                             half4 uvAnimationMaskSampler,
+                             half4 uvTransform,
+                             half4 uvTransformRotation)
+{
+    return mtoonAnimatedUVImpl<false>(textures, time, uv, uvAnimation, featureFlags,
+                                      uvAnimationMaskSampler, uvTransform, uvTransformRotation);
 }
 
 [[visible]]
@@ -162,39 +385,41 @@ void mtoonSurface(realitykit::surface_parameters params)
     auto surface = params.surface();
     auto material = params.material_constants();
 
-    half4 baseColorFactor = mtoonParameter(textures, 0.0);
-    half4 shadeColorFactor = mtoonParameter(textures, 1.0);
-    half4 rimColorFactor = mtoonParameter(textures, 2.0);
-    half4 matcapFactor = mtoonParameter(textures, 3.0);
-    half4 shadeParams = mtoonParameter(textures, 5.0);
-    half4 rimParams = mtoonParameter(textures, 6.0);
-    half4 uvAnimation = mtoonParameter(textures, 8.0);
-    half4 featureFlags = mtoonParameter(textures, 9.0);
-    half4 extraFlags = mtoonParameter(textures, 10.0);
-    half4 emissiveFactor = mtoonParameter(textures, 11.0);
-    half4 lightColorParameter = mtoonParameter(textures, 12.0);
-    half4 giColorParameter = mtoonParameter(textures, 13.0);
-    half4 uvTransform = mtoonParameter(textures, 14.0);
-    half4 uvTransformRotation = mtoonParameter(textures, 15.0);
-    half4 normalParameters = mtoonParameter(textures, 16.0);
-    half4 baseSampler = mtoonSamplerParameter(textures, 0.0);
-    half4 shadeSampler = mtoonSamplerParameter(textures, 1.0);
-    half4 shadingShiftSampler = mtoonSamplerParameter(textures, 2.0);
-    half4 normalSampler = mtoonSamplerParameter(textures, 3.0);
-    half4 matcapSampler = mtoonSamplerParameter(textures, 4.0);
-    half4 emissiveSampler = mtoonSamplerParameter(textures, 5.0);
-    half4 rimSampler = mtoonSamplerParameter(textures, 6.0);
+    half4 baseColorFactor = mtoonParameter(textures, mtoonRowBaseColor);
+    half4 shadeColorFactor = mtoonParameter(textures, mtoonRowShadeColor);
+    half4 rimColorFactor = mtoonParameter(textures, mtoonRowRimColor);
+    half4 matcapFactor = mtoonParameter(textures, mtoonRowMatcapColor);
+    half4 shadeParams = mtoonParameter(textures, mtoonRowShadeParams);
+    half4 rimParams = mtoonParameter(textures, mtoonRowRimParams);
+    half4 uvAnimation = mtoonParameter(textures, mtoonRowUvAnimation);
+    half4 featureFlags = mtoonParameter(textures, mtoonRowFeatureFlags);
+    half4 extraFlags = mtoonParameter(textures, mtoonRowExtraFlags);
+    half4 emissiveFactor = mtoonParameter(textures, mtoonRowEmissiveFactor);
+    half4 lightColorParameter = mtoonParameter(textures, mtoonRowLightColor);
+    half4 giColorParameter = mtoonParameter(textures, mtoonRowAmbientColor);
+    half4 uvTransform = mtoonParameter(textures, mtoonRowUvTransform);
+    half4 uvTransformRotation = mtoonParameter(textures, mtoonRowUvTransformRotation);
+    half4 normalParameters = mtoonParameter(textures, mtoonRowNormalParameters);
+    half4 baseSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotBase);
+    half4 shadeSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotShade);
+    half4 shadingShiftSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotShadingShift);
+    half4 normalSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotNormal);
+    half4 matcapSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotMatcap);
+    half4 emissiveSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotEmissive);
+    half4 rimSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotRim);
 
-    half4 uvAnimationMaskSampler = mtoonSamplerParameter(textures, 8.0);
-    float2 uv = mtoonAnimatedSurfaceUV(params,
-                                       params.geometry().uv0(),
-                                       uvAnimation,
-                                       featureFlags,
-                                       uvAnimationMaskSampler,
-                                       uvTransform,
-                                       uvTransformRotation);
+    half4 uvAnimationMaskSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotUvAnimationMask);
+    // UV animation time comes from RealityKit's per-frame uniforms; no CPU-side
+    // material update is required to advance the animation.
+    float2 uv = mtoonAnimatedUV(textures,
+                                params.uniforms().time(),
+                                mtoonTextureUV(params.geometry().uv0()),
+                                uvAnimation,
+                                featureFlags,
+                                uvAnimationMaskSampler,
+                                uvTransform,
+                                uvTransformRotation);
     uv = mtoonTransformedUV(uv, uvTransform, uvTransformRotation);
-    uv = mtoonTextureUV(uv);
 
     half4 baseSample = mtoonSample(textures.base_color(), uv, baseSampler);
     half4 shadeSample = extraFlags.y > 0.5h
@@ -210,50 +435,55 @@ void mtoonSurface(realitykit::surface_parameters params)
     float3 normal = mtoonShadingNormal(params, uv, extraFlags, normalParameters.x, normalSampler);
     float3 lightDirection = mtoonLightDirection(params.uniforms().custom_parameter());
     float shadingToony = clamp(float(shadeParams.y), 0.0, 1.0);
-    float shading = mtoonLinearstep(-1.0 + shadingToony,
-                                    1.0 - shadingToony,
-                                    dot(normal, lightDirection) + shift);
+    float shading = mtoonShading(normal, lightDirection, shift, shadingToony);
 
     float3 litColor = float3(baseSample.rgb * baseColorFactor.rgb);
     float3 shadeColor = float3(shadeSample.rgb * shadeColorFactor.rgb);
     float3 lightColor = float3(lightColorParameter.rgb);
+    // MToon equalizes GI between the raw normal-direction sample and a
+    // direction-independent one. VRMEntity exposes a single uniform ambient
+    // color, so both samples are that color and the equalization is the identity.
     float3 giColor = float3(giColorParameter.rgb);
-    float giLuma = dot(giColor, float3(0.2126, 0.7152, 0.0722));
-    // RealityKit does not expose UniVRM's full GI pipeline; approximate giEqualization by neutralizing ambient hue only.
-    giColor = mix(giColor, float3(giLuma), clamp(float(shadeParams.z), 0.0, 1.0));
 
-    float3 direct = mix(shadeColor, litColor, shading) * lightColor;
-    float3 indirect = litColor * giColor;
+    float3 direct = mtoonDirectLighting(litColor, shadeColor, shading, lightColor);
+    float3 indirect = mtoonIndirectLighting(litColor, giColor);
     float3 color = direct + indirect;
 
-    float3 rim = float3(0.0);
-    if (featureFlags.x > 0.5h) {
-        float2 matcapUV = mtoonMatcapUV(normal, params.uniforms().model_to_view());
-        rim += float3(mtoonSample(textures.metallic(), matcapUV, matcapSampler).rgb * matcapFactor.rgb);
-    }
+    // Without a matcap and with a black parametric rim color the whole rim term
+    // is zero, so skip it (the majority of MToon materials).
+    if (featureFlags.x > 0.5h || any(rimColorFactor.rgb > 0.0h)) {
+        float3 rim = float3(0.0);
+        // `normal` and view_direction() are both world-space, which is what
+        // lets the matcap, the parametric rim and the shading term share one
+        // normal without any change of basis.
+        float3 viewDirection = normalize(params.geometry().view_direction());
+        if (featureFlags.x > 0.5h) {
+            float2 matcapUV = mtoonTextureUV(mtoonMatcapUV(normal, viewDirection));
+            rim += float3(mtoonSample(textures.metallic(), matcapUV, matcapSampler).rgb * matcapFactor.rgb);
+        }
 
-    float3 viewDirection = normalize(params.geometry().view_direction());
-    float rimBase = saturate(1.0 - dot(normal, viewDirection) + float(rimParams.y));
-    float parametricRim = pow(rimBase, max(float(rimParams.x), mtoonEpsilon));
-    rim += parametricRim * float3(rimColorFactor.rgb);
+        if (any(rimColorFactor.rgb > 0.0h)) {
+            float parametricRim = mtoonParametricRim(normal, viewDirection, float(rimParams.x), float(rimParams.y));
+            rim += parametricRim * float3(rimColorFactor.rgb);
+        }
 
-    if (featureFlags.y > 0.5h) {
-        rim *= float3(mtoonSample(textures.clearcoat_roughness(), uv, rimSampler).rgb);
+        if (featureFlags.y > 0.5h) {
+            rim *= float3(mtoonSample(textures.clearcoat_roughness(), uv, rimSampler).rgb);
+        }
+        float3 rimLighting = realityKitApproximateRimLighting(lightColor, giColor, shading);
+        rim *= mix(float3(1.0), rimLighting, clamp(float(rimParams.z), 0.0, 1.0));
+        color += rim;
     }
-    rim *= mix(float3(1.0), direct + indirect, clamp(float(rimParams.z), 0.0, 1.0));
-    color += rim;
 
     float3 emissiveTexture = extraFlags.z > 0.5h
         ? float3(mtoonSample(textures.emissive_color(), uv, emissiveSampler).rgb)
         : float3(1.0);
     color += float3(emissiveFactor.rgb) * emissiveTexture;
 
-    float baseAlpha = float(baseSample.a * baseColorFactor.a);
-    float cutoff = material.opacity_threshold() > 0.0 ? material.opacity_threshold() : float(shadeParams.w);
-    float opacity = mtoonAlpha(float(extraFlags.w), baseAlpha, cutoff);
+    float opacity = mtoonOpacity(material.opacity_threshold(), baseSample, baseColorFactor, extraFlags, shadeParams);
 
     surface.set_base_color(half3(0.0h));
-    surface.set_emissive_color(half3(color));
+    surface.set_emissive_color(half3(realityKitInverseToneMap(color)));
     surface.set_opacity(half(opacity));
     surface.set_roughness(1.0h);
     surface.set_metallic(0.0h);
@@ -265,68 +495,50 @@ void mtoonOutlineSurface(realitykit::surface_parameters params)
     auto textures = params.textures();
     auto surface = params.surface();
     auto material = params.material_constants();
-    half4 outlineColor = mtoonParameter(textures, 4.0);
-    half4 shadeParams = mtoonParameter(textures, 5.0);
-    half4 outlineParams = mtoonParameter(textures, 7.0);
-    half4 uvAnimation = mtoonParameter(textures, 8.0);
-    half4 featureFlags = mtoonParameter(textures, 9.0);
-    half4 extraFlags = mtoonParameter(textures, 10.0);
-    half4 lightColorParameter = mtoonParameter(textures, 12.0);
-    half4 uvTransform = mtoonParameter(textures, 14.0);
-    half4 uvTransformRotation = mtoonParameter(textures, 15.0);
-    half4 baseSampler = mtoonSamplerParameter(textures, 0.0);
-    half4 uvAnimationMaskSampler = mtoonSamplerParameter(textures, 8.0);
+    half4 outlineColor = mtoonParameter(textures, mtoonRowOutlineColor);
+    half4 shadeParams = mtoonParameter(textures, mtoonRowShadeParams);
+    half4 outlineParams = mtoonParameter(textures, mtoonRowOutlineParams);
+    half4 uvAnimation = mtoonParameter(textures, mtoonRowUvAnimation);
+    half4 featureFlags = mtoonParameter(textures, mtoonRowFeatureFlags);
+    half4 extraFlags = mtoonParameter(textures, mtoonRowExtraFlags);
+    half4 lightColorParameter = mtoonParameter(textures, mtoonRowLightColor);
+    half4 uvTransform = mtoonParameter(textures, mtoonRowUvTransform);
+    half4 uvTransformRotation = mtoonParameter(textures, mtoonRowUvTransformRotation);
+    half4 baseSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotBase);
+    half4 uvAnimationMaskSampler = mtoonSamplerParameter(textures, mtoonSamplerSlotUvAnimationMask);
 
-    float2 uv = mtoonAnimatedSurfaceUV(params,
-                                       params.geometry().uv0(),
-                                       uvAnimation,
-                                       featureFlags,
-                                       uvAnimationMaskSampler,
-                                       uvTransform,
-                                       uvTransformRotation);
-    uv = mtoonTextureUV(mtoonTransformedUV(uv, uvTransform, uvTransformRotation));
-    half4 baseSample = mtoonSample(textures.base_color(), uv, baseSampler);
-    half4 baseColorFactor = mtoonParameter(textures, 0.0);
-
-    float cutoff = material.opacity_threshold() > 0.0 ? material.opacity_threshold() : float(shadeParams.w);
-    float opacity = mtoonAlpha(float(extraFlags.w), float(baseSample.a * baseColorFactor.a), cutoff);
-    // RealityKit does not expose the fully evaluated lit term here; use runtime light color as the lit approximation.
-    float3 outlineLit = mix(float3(1.0), float3(lightColorParameter.rgb), clamp(float(outlineParams.z), 0.0, 1.0));
+    // Opaque outlines have opacity 1 regardless of the base texture, so the UV
+    // chain and the base-color sample only run for MASK / BLEND materials.
+    float opacity = 1.0;
+    if (extraFlags.w > 0.5h) {
+        // UV animation time comes from RealityKit's per-frame uniforms.
+        float2 uv = mtoonAnimatedUV(textures,
+                                    params.uniforms().time(),
+                                    mtoonTextureUV(params.geometry().uv0()),
+                                    uvAnimation,
+                                    featureFlags,
+                                    uvAnimationMaskSampler,
+                                    uvTransform,
+                                    uvTransformRotation);
+        uv = mtoonTransformedUV(uv, uvTransform, uvTransformRotation);
+        half4 baseSample = mtoonSample(textures.base_color(), uv, baseSampler);
+        half4 baseColorFactor = mtoonParameter(textures, mtoonRowBaseColor);
+        opacity = mtoonOpacity(material.opacity_threshold(), baseSample, baseColorFactor, extraFlags, shadeParams);
+    }
+    float3 outlineLit = realityKitApproximateOutlineLighting(float3(lightColorParameter.rgb), float(outlineParams.z));
     float3 finalColor = float3(outlineColor.rgb) * outlineLit;
 
     surface.set_base_color(half3(0.0h));
-    surface.set_emissive_color(half3(finalColor));
+    surface.set_emissive_color(half3(realityKitInverseToneMap(finalColor)));
     surface.set_opacity(half(opacity));
     surface.set_roughness(1.0h);
     surface.set_metallic(0.0h);
 }
 
-float2 mtoonAnimatedUV(realitykit::geometry_parameters params,
-                       float2 uv,
-                       half4 uvAnimation,
-                       half4 featureFlags,
-                       half4 uvAnimationMaskSampler,
-                       half4 uvTransform,
-                       half4 uvTransformRotation)
-{
-    float time = params.uniforms().custom_parameter().w;
-    float mask = 1.0;
-    if (featureFlags.w > 0.5h) {
-        float2 maskUV = mtoonTextureUV(mtoonTransformedUV(uv, uvTransform, uvTransformRotation));
-        mask = float(mtoonSample(params.textures().ambient_occlusion(), maskUV, uvAnimationMaskSampler).b);
-    }
-
-    float angle = float(uvAnimation.z) * time * mask;
-    float2 center = float2(0.5, 0.5);
-    float2 centered = uv - center;
-    float s = sin(angle);
-    float c = cos(angle);
-    float2 rotated = float2(centered.x * c - centered.y * s,
-                            centered.x * s + centered.y * c) + center;
-    return rotated + float2(float(uvAnimation.x), float(uvAnimation.y)) * time * mask;
-}
-
-float mtoonScreenOutlineWidth(realitykit::geometry_parameters params, float width, float3 modelNormal)
+// RealityKit's geometry_parameters exposes projection matrices but no viewport
+// height, so screen-coordinate outline width is treated as a fraction of
+// normalized screen height rather than a pixel count.
+float realityKitApproximateScreenOutlineWidth(realitykit::geometry_parameters params, float width, float3 modelNormal)
 {
     float4x4 modelToView = params.uniforms().model_to_view();
     float4x4 viewToProjection = params.uniforms().view_to_projection();
@@ -348,41 +560,55 @@ float mtoonScreenOutlineWidth(realitykit::geometry_parameters params, float widt
     if (ndcPerModelUnit < mtoonEpsilon) {
         return 0.0;
     }
-    // geometry_parameters has projection matrices but no viewport height, so this treats width as a normalized screen-height fraction.
     return (width * 2.0) / ndcPerModelUnit;
 }
 
 [[visible]]
 void mtoonOutlineGeometry(realitykit::geometry_parameters params)
 {
-    half4 uvTransform = mtoonParameter(params.textures(), 14.0);
-    half4 uvTransformRotation = mtoonParameter(params.textures(), 15.0);
-    float2 uv = params.geometry().uv0();
-    half4 uvAnimation = mtoonParameter(params.textures(), 8.0);
-    half4 featureFlags = mtoonParameter(params.textures(), 9.0);
-    half4 uvAnimationMaskSampler = mtoonSamplerParameter(params.textures(), 8.0);
-    uv = mtoonAnimatedUV(params,
-                         uv,
-                         uvAnimation,
-                         featureFlags,
-                         uvAnimationMaskSampler,
-                         uvTransform,
-                         uvTransformRotation);
-    uv = mtoonTransformedUV(uv, uvTransform, uvTransformRotation);
-    params.geometry().set_uv0(uv);
+    half4 outlineParams = mtoonParameter(params.textures(), mtoonRowOutlineParams);
 
-    half4 outlineParams = mtoonParameter(params.textures(), 7.0);
-    if (outlineParams.w < 0.5h) {
-        return;
+    // Without an outlineWidthMultiplyTexture the mask is a 1x1 white fallback,
+    // so skip the UV work and the fetch entirely.
+    float widthMask = 1.0;
+    half4 normalParameters = mtoonParameter(params.textures(), mtoonRowNormalParameters);
+    if (normalParameters.y > 0.5h) {
+        half4 uvTransform = mtoonParameter(params.textures(), mtoonRowUvTransform);
+        half4 uvTransformRotation = mtoonParameter(params.textures(), mtoonRowUvTransformRotation);
+        half4 uvAnimation = mtoonParameter(params.textures(), mtoonRowUvAnimation);
+        half4 featureFlags = mtoonParameter(params.textures(), mtoonRowFeatureFlags);
+        half4 uvAnimationMaskSampler = mtoonSamplerParameter(params.textures(), mtoonSamplerSlotUvAnimationMask);
+        // Computed locally for the width mask only: mtoonOutlineSurface applies
+        // the UV animation and transform itself, so writing the transformed UV
+        // back to uv0 would apply it twice.
+        float2 widthUV = mtoonVertexAnimatedUV(params.textures(),
+                                               params.uniforms().time(),
+                                               mtoonTextureUV(params.geometry().uv0()),
+                                               uvAnimation,
+                                               featureFlags,
+                                               uvAnimationMaskSampler,
+                                               uvTransform,
+                                               uvTransformRotation);
+        widthUV = mtoonTransformedUV(widthUV, uvTransform, uvTransformRotation);
+
+        half4 outlineWidthSampler = mtoonSamplerParameter(params.textures(), mtoonSamplerSlotOutlineWidth);
+        widthMask = float(mtoonVertexSample(params.textures().clearcoat(), widthUV, outlineWidthSampler).g);
     }
-
-    float2 widthUV = mtoonTextureUV(uv);
-    half4 outlineWidthSampler = mtoonSamplerParameter(params.textures(), 7.0);
-    float widthMask = float(mtoonSample(params.textures().clearcoat(), widthUV, outlineWidthSampler).g);
     float width = max(0.0, float(outlineParams.x)) * widthMask;
     float3 modelNormal = normalize(params.geometry().normal());
     if (outlineParams.y > 1.5h) {
-        width = mtoonScreenOutlineWidth(params, width, modelNormal);
+        // Screen coordinates: the width is resolved into a model-space offset.
+        params.geometry().set_model_position_offset(
+            modelNormal * realityKitApproximateScreenOutlineWidth(params, width, modelNormal));
+        return;
     }
-    params.geometry().set_model_position_offset(modelNormal * width);
+    // World coordinates: MToon defines the width as a distance in meters, so it
+    // must not inherit the entity's scale. Offsetting in world space keeps the
+    // outline the same thickness under any (including non-uniform) scale.
+    float3 worldNormal = params.uniforms().normal_to_world() * modelNormal;
+    float worldNormalLength = length(worldNormal);
+    if (worldNormalLength < mtoonEpsilon) {
+        return;
+    }
+    params.geometry().set_world_position_offset(worldNormal * (width / worldNormalLength));
 }

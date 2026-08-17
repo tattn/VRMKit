@@ -26,7 +26,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "RealityKit"
-        view.backgroundColor = .white
+        view.backgroundColor = .black
         setUpARView()
         setUpUI()
         loadVRM(model: .alicia)
@@ -35,7 +35,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     private func setUpARView() {
         let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         arView.translatesAutoresizingMaskIntoConstraints = false
-        arView.environment.background = .color(.white)
+        arView.environment.background = .color(.black)
         view.addSubview(arView)
 
         NSLayoutConstraint.activate([
@@ -110,14 +110,12 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         currentModel = model
         updateExpressionLabels()
 
-        if let loadedEntity {
-            loadedEntity.entity.removeFromParent()
-            self.loadedEntity = nil
-        }
+        // Removing the anchor takes the whole model hierarchy out of the scene.
         if let loadedAnchor {
             arView.scene.removeAnchor(loadedAnchor)
             self.loadedAnchor = nil
         }
+        loadedEntity = nil
 
         do {
             let loader = try VRMEntityLoader(named: model.rawValue, isMToonEnabled: isMToonEnabled)
@@ -125,12 +123,12 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
             vrmEntity.setMToonLightDirection(RealityKitExampleLighting.direction)
 
             let anchor = AnchorEntity(world: .zero)
-            vrmEntity.entity.transform.translation = SIMD3<Float>(0, -1.0, -1.5)
-            anchor.addChild(vrmEntity.entity)
+            vrmEntity.transform.translation = SIMD3<Float>(0, -1.0, -1.5)
+            anchor.addChild(vrmEntity)
             arView.scene.addAnchor(anchor)
             setUpLight(in: arView)
-            normalizeScale(for: vrmEntity.entity)
-            updateOrbitTarget(for: vrmEntity.entity, adjustDistance: false)
+            normalizeScale(for: vrmEntity)
+            updateOrbitTarget(for: vrmEntity, adjustDistance: false)
             updateCameraTransform()
 
             let neck = vrmEntity.humanoid.node(for: .neck)
@@ -179,9 +177,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
                     angle = -0.5 + 0.5 * progress
                 }
 
-                loadedEntity.entity.transform.rotation = simd_quatf(angle: rotationOffset + angle, axis: SIMD3<Float>(0, 1, 0))
-
-                loadedEntity.update(deltaTime: event.deltaTime)
+                loadedEntity.transform.rotation = simd_quatf(angle: rotationOffset + angle, axis: SIMD3<Float>(0, 1, 0))
             }
         } catch {
             print(error)
@@ -216,8 +212,10 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         let lightAnchor = AnchorEntity(world: .zero)
         let light = DirectionalLight()
         light.light.intensity = 1200
+        // `direction` points at the light, so place the light there and aim it
+        // at the origin.
         light.look(at: .zero,
-                   from: -RealityKitExampleLighting.direction,
+                   from: RealityKitExampleLighting.direction,
                    relativeTo: nil)
         lightAnchor.addChild(light)
         arView.scene.addAnchor(lightAnchor)
@@ -319,5 +317,6 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
 }
 
 private enum RealityKitExampleLighting {
+    /// Direction from the model toward the light, as `setMToonLightDirection(_:)` expects.
     static let direction = simd_normalize(SIMD3<Float>(0, 0, -1))
 }

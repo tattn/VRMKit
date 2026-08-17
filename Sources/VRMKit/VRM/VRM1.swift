@@ -1,6 +1,11 @@
 import Foundation
 
 public struct VRM1 {
+    /// The `VRMC_vrm` spec versions this type models.
+    public static func supports(specVersion: String) -> Bool {
+        specVersion == "1.0" || specVersion == "1.0-beta"
+    }
+
     public let gltf: BinaryGLTF
     public let specVersion: String
     public let meta: Meta
@@ -18,17 +23,20 @@ public struct VRM1 {
         let rawExtensions = try gltf.jsonData.extensions ??? .keyNotFound("extensions")
         let extensions = try rawExtensions.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
         let vrm = try extensions["VRMC_vrm"] ??? .keyNotFound("VRMC_vrm")
-        specVersion = vrm["specVersion"] as! String
+        specVersion = try vrm["specVersion"] as? String ??? .dataInconsistent("VRMC_vrm.specVersion is missing or not a string")
+        guard VRM1.supports(specVersion: specVersion) else {
+            throw VRMError._notSupported("VRMC_vrm specVersion \(specVersion)")
+        }
 
         let decoder = DictionaryDecoder()
         meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
         humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
-        firstPerson = vrm.keys.contains("firstPerson") ? try decoder.decode(FirstPerson.self, from: vrm["firstPerson"] ?? "".data(using: .utf8)!) : nil
-        lookAt = vrm.keys.contains("lookAt") ? try decoder.decode(LookAt.self, from: vrm["lookAt"] ?? "".data(using: .utf8)!) : nil
-        expressions = vrm.keys.contains("expressions") ? try decoder.decode(Expressions.self, from: vrm["expressions"] ?? "".data(using: .utf8)!) : nil
-        springBone = extensions.keys.contains("VRMC_springBone") ? try decoder.decode(SpringBone.self, from: extensions["VRMC_springBone"] ?? "".data(using: .utf8)!) : nil
-        self.extensions = vrm.keys.contains("extensions") ? try decoder.decode(CodableAny.self, from: vrm["extensions"] ?? "".data(using: .utf8)!) : nil
-        extras = vrm.keys.contains("extras") ? try decoder.decode(CodableAny.self, from: vrm["extras"] ?? "".data(using: .utf8)!) : nil
+        firstPerson = try decoder.decodeIfPresent(FirstPerson.self, from: vrm, forKey: "firstPerson")
+        lookAt = try decoder.decodeIfPresent(LookAt.self, from: vrm, forKey: "lookAt")
+        expressions = try decoder.decodeIfPresent(Expressions.self, from: vrm, forKey: "expressions")
+        springBone = try decoder.decodeIfPresent(SpringBone.self, from: extensions, forKey: "VRMC_springBone")
+        self.extensions = try decoder.decodeIfPresent(CodableAny.self, from: vrm, forKey: "extensions")
+        extras = try decoder.decodeIfPresent(CodableAny.self, from: vrm, forKey: "extras")
     }
 }
 
@@ -156,24 +164,12 @@ public extension VRM1 {
         public let extensions: CodableAny?
         public let extras: CodableAny?
 
+        // meshAnnotations is optional in practice, so decode it leniently.
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             meshAnnotations = try container.decodeIfPresent([MeshAnnotation].self, forKey: .meshAnnotations) ?? []
             extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
             extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
-        }
-
-        public func encode(to encoder: Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(meshAnnotations, forKey: .meshAnnotations)
-            try container.encodeIfPresent(extensions, forKey: .extensions)
-            try container.encodeIfPresent(extras, forKey: .extras)
-        }
-
-        private enum CodingKeys: String, CodingKey {
-            case meshAnnotations
-            case extensions
-            case extras
         }
         
         public struct MeshAnnotation: Codable {

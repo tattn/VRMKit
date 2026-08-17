@@ -235,7 +235,7 @@ open class VRMNode: SCNNode {
             return
         }
         guard let clip = blendShapeClips[key] else { return }
-        let value: CGFloat = clip.isBinary ? round(value) : value
+        let value = CGFloat(clip.normalizedWeight(Double(value)))
         for binding in clip.values {
             let weight = CGFloat(binding.weight / 100.0)
             for morpher in binding.mesh.allMorphers {
@@ -246,7 +246,7 @@ open class VRMNode: SCNNode {
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
         guard let clip = expressionClip(for: key) else { return }
-        let value = max(0.0, min(1.0, clip.isBinary ? round(value) : value))
+        let value = CGFloat(clip.normalizedWeight(Double(value)))
         for binding in clip.values {
             let weight = CGFloat(binding.weight / 100.0)
             for morpher in binding.mesh.allMorphers {

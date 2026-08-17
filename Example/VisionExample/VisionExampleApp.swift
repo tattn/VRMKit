@@ -29,7 +29,6 @@ struct VisionExampleApp: App {
 final class AppModel {
     let immersiveSpaceID = "ImmersiveSpace"
     var immersiveSpaceState: ImmersiveSpaceState = .closed
-    var isMToonEnabled = true
 
     enum ImmersiveSpaceState {
         case closed, inTransition, open

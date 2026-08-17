@@ -11,16 +11,7 @@ extension SCNGeometryElement {
         if usesFloatComponents { throw VRMError._dataInconsistent("index accessor cannot use float components") }
         if accessor.type != .SCALAR { throw VRMError._dataInconsistent("accessor type is not SCALAR") }
 
-        let (bufferView, dataStride): (Data, Int) = try {
-            if let bufferViewIndex = accessor.bufferView {
-                let bufferView = try loader.bufferView(withBufferViewIndex: bufferViewIndex)
-                return (bufferView.bufferView, bufferView.stride ?? bytesPerComponent)
-            } else {
-                return (Data(count: bytesPerComponent * accessor.count), bytesPerComponent)
-            }
-        }()
-
-        self.init(data: bufferView.subdata(offset: accessor.byteOffset, size: bytesPerComponent, stride: dataStride, count: accessor.count),
+        self.init(data: try accessor.packedData(bufferView: { try loader.bufferView(withBufferViewIndex: $0) }),
                   primitiveType: primitiveType,
                   primitiveCount: primitiveType.primitiveCount(ofCount: accessor.count),
                   bytesPerIndex: bytesPerComponent)

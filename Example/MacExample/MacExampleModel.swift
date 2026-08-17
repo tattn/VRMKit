@@ -86,11 +86,21 @@ enum MacExampleExpression: String, CaseIterable, Identifiable {
 
 extension VRMEntity {
     func setExampleExpression(_ expression: MacExampleExpression, value: CGFloat) {
+        setExampleExpressions([expression: value])
+    }
+
+    /// Applies several example expressions at once. On VRM 1.0 this routes through
+    /// `setExpressions(_:)`, so the runtime re-applies its bindings only once.
+    func setExampleExpressions(_ weights: [MacExampleExpression: CGFloat]) {
         switch vrm {
         case .v0:
-            setBlendShape(value: value, for: .preset(expression.blendShapePreset))
+            for (expression, value) in weights {
+                setBlendShape(value: value, for: .preset(expression.blendShapePreset))
+            }
         case .v1:
-            setExpression(value: value, for: .preset(expression.expressionPreset))
+            setExpressions(Dictionary(uniqueKeysWithValues: weights.map {
+                (ExpressionKey.preset($0.key.expressionPreset), $0.value)
+            }))
         }
     }
 }

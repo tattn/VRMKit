@@ -82,6 +82,32 @@ public enum ExpressionKey: Hashable {
     }
 }
 
+package extension ExpressionPreset {
+    /// The group whose weights VRMC_vrm expression overrides suppress, or nil
+    /// for presets no override applies to.
+    var overrideGroup: ExpressionOverrideGroup? {
+        switch self {
+        case .blink, .blinkLeft, .blinkRight:
+            return .blink
+        case .lookUp, .lookDown, .lookLeft, .lookRight:
+            return .lookAt
+        case .aa, .ih, .ou, .ee, .oh:
+            return .mouth
+        case .neutral, .happy, .angry, .sad, .relaxed, .surprised:
+            return nil
+        }
+    }
+}
+
+package extension ExpressionKey {
+    var overrideGroup: ExpressionOverrideGroup? {
+        switch self {
+        case .preset(let preset): return preset.overrideGroup
+        case .custom: return nil
+        }
+    }
+}
+
 package extension BlendShapePreset {
     /// Compatibility bridge from VRM 0.x blend shape presets to VRM 1.0 expressions.
     var expressionPreset: ExpressionPreset? {

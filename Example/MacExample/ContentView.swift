@@ -15,14 +15,10 @@ internal import Combine
 internal import VRMKit
 
 struct ContentView: View {
-    @State private var realityKitViewModel = RealityKitContentViewModel()
-    @State private var sceneKitViewModel = SceneKitContentViewModel()
     @State private var selectedRenderer: MacExampleRenderer = .realityKit
     @State private var selectedModel: MacExampleModel = .alicia
     @State private var selectedExpression: MacExampleExpression = .neutral
     @State private var isMToonEnabled = true
-    @State private var hasShownSceneKit = false
-    @State private var hasShownRealityKit = true
 
     var body: some View {
         VStack {
@@ -54,33 +50,17 @@ struct ContentView: View {
             }
             .padding([.top, .horizontal])
 
-            ZStack {
-                if hasShownSceneKit {
-                    SceneKitRendererView(viewModel: sceneKitViewModel,
-                                         selectedModel: selectedModel,
-                                         selectedExpression: selectedExpression)
-                        .opacity(selectedRenderer == .sceneKit ? 1 : 0)
-                        .allowsHitTesting(selectedRenderer == .sceneKit)
-                        .zIndex(selectedRenderer == .sceneKit ? 1 : 0)
-                }
-
-                if hasShownRealityKit {
-                    RealityKitRendererView(viewModel: realityKitViewModel,
-                                           selectedModel: selectedModel,
-                                           selectedExpression: selectedExpression,
-                                           isMToonEnabled: isMToonEnabled)
-                        .opacity(selectedRenderer == .realityKit ? 1 : 0)
-                        .allowsHitTesting(selectedRenderer == .realityKit)
-                        .zIndex(selectedRenderer == .realityKit ? 1 : 0)
-                }
-            }
-            .onChange(of: selectedRenderer) { _, renderer in
-                switch renderer {
-                case .sceneKit:
-                    hasShownSceneKit = true
-                case .realityKit:
-                    hasShownRealityKit = true
-                }
+            // Only the selected renderer is mounted: keeping the other alive
+            // behind `opacity(0)` would hold on to its scene graph, GPU resources
+            // and 60 Hz timer for a view nobody can see.
+            switch selectedRenderer {
+            case .sceneKit:
+                SceneKitRendererView(selectedModel: selectedModel,
+                                     selectedExpression: selectedExpression)
+            case .realityKit:
+                RealityKitRendererView(selectedModel: selectedModel,
+                                       selectedExpression: selectedExpression,
+                                       isMToonEnabled: isMToonEnabled)
             }
         }
         .frame(minWidth: 800, minHeight: 600)
@@ -88,7 +68,7 @@ struct ContentView: View {
 }
 
 private struct RealityKitRendererView: View {
-    let viewModel: RealityKitContentViewModel
+    @State private var viewModel = RealityKitContentViewModel()
     let selectedModel: MacExampleModel
     let selectedExpression: MacExampleExpression
     let isMToonEnabled: Bool
@@ -101,13 +81,12 @@ private struct RealityKitRendererView: View {
         RealityView { content in
             content.add(viewModel.makeRenderRootEntity())
         }
-        .background(Color.white)
+        .background(Color.black)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: loadConfiguration) {
             await viewModel.loadEntity(model: selectedModel,
                                        expression: selectedExpression,
-                                       isMToonEnabled: isMToonEnabled,
-                                       forceReload: true)
+                                       isMToonEnabled: isMToonEnabled)
         }
         .onAppear {
             viewModel.resumeUpdates()
@@ -132,7 +111,7 @@ private struct RealityKitLoadConfiguration: Hashable {
 }
 
 private struct SceneKitRendererView: View {
-    let viewModel: SceneKitContentViewModel
+    @State private var viewModel = SceneKitContentViewModel()
     let selectedModel: MacExampleModel
     let selectedExpression: MacExampleExpression
 
@@ -195,7 +174,7 @@ final class RealityKitContentViewModel {
             nextRootEntity.addChild(lightEntity)
         }
         if let vrmEntity {
-            nextRootEntity.addChild(vrmEntity.entity)
+            nextRootEntity.addChild(vrmEntity)
         }
         rootEntity = nextRootEntity
         return nextRootEntity
@@ -204,16 +183,8 @@ final class RealityKitContentViewModel {
     func loadEntity(
         model: MacExampleModel,
         expression: MacExampleExpression,
-        isMToonEnabled: Bool,
-        forceReload: Bool = false
+        isMToonEnabled: Bool
     ) async {
-        if !forceReload, currentModel == model, let vrmEntity {
-            apply(expression, to: vrmEntity)
-            currentExpression = expression
-            resumeUpdates()
-            return
-        }
-
         await Task.yield()
         guard !Task.isCancelled else { return }
 
@@ -223,13 +194,13 @@ final class RealityKitContentViewModel {
             let loader = try VRMEntityLoader(named: model.rawValue, isMToonEnabled: isMToonEnabled)
             let nextVRMEntity = try loader.loadEntity()
 
-            nextVRMEntity.entity.transform.translation = SIMD3<Float>(0, -1, 0)
-            nextVRMEntity.entity.transform.rotation = simd_quatf(angle: model.initialRotation, axis: SIMD3<Float>(0, 1, 0))
-            nextVRMEntity.setMToonLightDirection(MacExampleLighting.realityKitDirection)
+            nextVRMEntity.transform.translation = SIMD3<Float>(0, -1, 0)
+            nextVRMEntity.transform.rotation = simd_quatf(angle: model.initialRotation, axis: SIMD3<Float>(0, 1, 0))
+            nextVRMEntity.setMToonLightDirection(MacExampleLighting.towardLight)
             setUpCamera()
             setUpLight()
-            rootEntity.addChild(nextVRMEntity.entity)
-            normalizeScale(for: nextVRMEntity.entity)
+            rootEntity.addChild(nextVRMEntity)
+            normalizeScale(for: nextVRMEntity)
             updateCameraTransform()
 
             let neck = nextVRMEntity.humanoid.node(for: .neck)
@@ -255,11 +226,11 @@ final class RealityKitContentViewModel {
             if let rightArm {
                 rightArm.transform.rotation = rightArm.transform.rotation * armRotation
             }
-            apply(expression, to: nextVRMEntity)
+            apply(expression, replacing: nil, to: nextVRMEntity)
 
             let previousVRMEntity = self.vrmEntity
             self.vrmEntity = nextVRMEntity
-            previousVRMEntity?.entity.removeFromParent()
+            previousVRMEntity?.removeFromParent()
             self.currentModel = model
             self.currentExpression = expression
             self.time = 0
@@ -272,9 +243,10 @@ final class RealityKitContentViewModel {
 
     func setExpression(_ expression: MacExampleExpression) {
         guard expression != currentExpression else { return }
+        let previous = currentExpression
         currentExpression = expression
         guard let vrmEntity else { return }
-        apply(expression, to: vrmEntity)
+        apply(expression, replacing: previous, to: vrmEntity)
     }
 
     func resumeUpdates() {
@@ -300,9 +272,8 @@ final class RealityKitContentViewModel {
             angle = -0.5 + 0.5 * progress
         }
 
-        vrmEntity.entity.transform.rotation = simd_quatf(angle: currentModel.initialRotation + angle,
-                                                         axis: SIMD3<Float>(0, 1, 0))
-        vrmEntity.update(deltaTime: deltaTime)
+        vrmEntity.transform.rotation = simd_quatf(angle: currentModel.initialRotation + angle,
+                                                  axis: SIMD3<Float>(0, 1, 0))
     }
 
     private func setUpLight() {
@@ -312,8 +283,10 @@ final class RealityKitContentViewModel {
             rootEntity.addChild(light)
             lightEntity = light
         }
+        // `towardLight` points at the light, so place the light there and aim it
+        // at the origin.
         lightEntity?.look(at: .zero,
-                          from: -MacExampleLighting.realityKitDirection,
+                          from: MacExampleLighting.towardLight,
                           relativeTo: nil)
     }
 
@@ -340,7 +313,10 @@ final class RealityKitContentViewModel {
         orbitTarget = (bounds.min + bounds.max) * 0.5
         let extents = bounds.max - bounds.min
         let maxExtent = max(extents.x, max(extents.y, extents.z))
-        orbitDistance = max(0.2, maxExtent * 1.5)
+        // Both renderers use a 60° vertical field of view, so pulling back by the
+        // model's largest extent reproduces the framing the SceneKit camera gets
+        // from sitting one body height away from the model.
+        orbitDistance = max(0.2, maxExtent)
     }
 
     private func updateCameraTransform() {
@@ -349,15 +325,15 @@ final class RealityKitContentViewModel {
         cameraEntity.look(at: orbitTarget, from: position, relativeTo: nil)
     }
 
-    private func apply(_ expression: MacExampleExpression, to vrmEntity: VRMEntity) {
-        resetExpressions(on: vrmEntity)
-        vrmEntity.setExampleExpression(expression, value: 1.0)
-    }
-
-    private func resetExpressions(on vrmEntity: VRMEntity) {
-        for expression in MacExampleExpression.allCases {
-            vrmEntity.setExampleExpression(expression, value: 0.0)
+    /// Both weights are sent together so the runtime re-applies its bindings once.
+    private func apply(_ expression: MacExampleExpression,
+                       replacing previous: MacExampleExpression?,
+                       to vrmEntity: VRMEntity) {
+        var weights: [MacExampleExpression: CGFloat] = [expression: 1.0]
+        if let previous, previous != expression {
+            weights[previous] = 0.0
         }
+        vrmEntity.setExampleExpressions(weights)
     }
 }
 
@@ -393,7 +369,7 @@ final class SceneKitContentViewModel {
 
     func loadScene(model: MacExampleModel, expression: MacExampleExpression) async {
         if currentModel == model, let vrmNode {
-            apply(expression, to: vrmNode)
+            apply(expression, replacing: currentExpression, to: vrmNode)
             currentExpression = expression
             resumeUpdates()
             return
@@ -412,7 +388,7 @@ final class SceneKitContentViewModel {
             let node = scene.vrmNode
             node.eulerAngles = SCNVector3(0, CGFloat(model.initialRotation), 0)
             applyPose(to: node)
-            apply(expression, to: node)
+            apply(expression, replacing: nil, to: node)
 
             self.scene = scene
             self.vrmNode = node
@@ -428,9 +404,10 @@ final class SceneKitContentViewModel {
 
     func setExpression(_ expression: MacExampleExpression) {
         guard expression != currentExpression else { return }
+        let previous = currentExpression
         currentExpression = expression
         guard let vrmNode else { return }
-        apply(expression, to: vrmNode)
+        apply(expression, replacing: previous, to: vrmNode)
     }
 
     func resumeUpdates() {
@@ -488,26 +465,27 @@ final class SceneKitContentViewModel {
         lightNode.light = SCNLight()
         lightNode.light?.type = .directional
         lightNode.light?.intensity = 1200
-        lightNode.simdPosition = -MacExampleLighting.direction
+        lightNode.simdPosition = MacExampleLighting.towardLight
         lightNode.look(at: SCNVector3Zero)
         scene.rootNode.addChildNode(lightNode)
     }
 
-    private func apply(_ expression: MacExampleExpression, to vrmNode: VRMNode) {
-        resetExpressions(on: vrmNode)
-        vrmNode.setExampleExpression(expression, value: 1.0)
-    }
-
-    private func resetExpressions(on vrmNode: VRMNode) {
-        for expression in MacExampleExpression.allCases {
-            vrmNode.setExampleExpression(expression, value: 0.0)
+    /// Only the replaced expression needs clearing; this UI never has two active at once.
+    private func apply(_ expression: MacExampleExpression,
+                       replacing previous: MacExampleExpression?,
+                       to vrmNode: VRMNode) {
+        if let previous, previous != expression {
+            vrmNode.setExampleExpression(previous, value: 0.0)
         }
+        vrmNode.setExampleExpression(expression, value: 1.0)
     }
 }
 
 private enum MacExampleLighting {
-    static let direction = simd_normalize(SIMD3<Float>(0.35, 0.55, 0.75))
-    static let realityKitDirection = simd_normalize(SIMD3<Float>(0, 0, -1))
+    /// Direction from the model toward the light, as `setMToonLightDirection(_:)`
+    /// expects. Both renderers place their directional light here so that this
+    /// example differs only in the renderer.
+    static let towardLight = simd_normalize(SIMD3<Float>(-0.35, -0.55, -0.75))
 }
 
 #Preview {

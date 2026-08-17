@@ -18,39 +18,37 @@ open class VRMEntityLoader {
     private let entityName: String?
     private weak var currentEntity: VRMEntity?
     private static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "MToon")
-    // VRMEntityLoader is @MainActor-isolated, so these mutable shader caches are only touched on the main actor.
-    private static let mtoonShaderDevice = MTLCreateSystemDefaultDevice()
-    private static var mtoonDefaultLibraryCache: MTLLibrary?
-    private static let requiredMToonFunctionNames: Set<String> = [
-        "mtoonSurface",
-        "mtoonOutlineSurface",
-        "mtoonOutlineGeometry"
-    ]
     private var textureCacheBySemantic: [TextureResource.Semantic: [Int: TextureResource]] = [:]
     private var metallicRoughnessCache: [Int: (metal: TextureResource, rough: TextureResource)] = [:]
     private var samplerCache: [Int: MaterialParameters.Texture.Sampler] = [:]
-    private var defaultSamplerCache: MaterialParameters.Texture.Sampler?
-    private var whiteTextureCache: TextureResource?
-    private var neutralNormalTextureCache: TextureResource?
-    private var mtoonParameterCache: [Int: MToonMaterialParameters] = [:]
-    private var mtoonOutlineMaterialCache: [Int: Material] = [:]
+    private var fallbackTextureCache: [MToonTextureSlot.Fallback: TextureResource] = [:]
+    private var mtoonDescriptorCache: [Int: MToonMaterialDescriptor?] = [:]
+#if !os(visionOS)
+    /// Everything the RealityKit adapter derives from one MToon material. A
+    /// non-nil state is what "this material renders as MToon" means, and it is
+    /// shared by the surface material, the outline material and the parameters.
+    private struct MToonState {
+        let descriptor: MToonMaterialDescriptor
+        let parameters: MToonMaterialParameters
+        let parameterTexture: CustomMaterial.Texture
+        let library: MTLLibrary
+    }
+
+    private var mtoonStateCache: [Int: MToonState?] = [:]
+    private var mtoonOutlineMaterialCache: [Int: Material?] = [:]
+#endif
     private var loggedMToonUVLimitations: Set<Int> = []
-    private var enableNormalTangentBlendShape = false // NOTE: Setting this to true currently has no effect
+    private var loggedMToonLibraryError = false
     /// When `false`, MToon materials are not created and the loader falls back to Unlit / PBR materials.
     /// visionOS always uses the fallback because `CustomMaterial` is unavailable there.
     public let isMToonEnabled: Bool
     /// Controls creation of MToon's inverted-hull outline entities.
     /// visionOS does not create MToon outlines because `CustomMaterial` is unavailable there.
     public let isOutlineEnabled: Bool
-    /// Controls whether loaded model entities participate in RealityKit shadow passes.
-    /// This option has no effect on visionOS, where the required shadow components are unavailable.
-    public let isShadowCastingEnabled: Bool
-
     public init(vrm: VRM,
                 rootDirectory: URL? = nil,
                 isMToonEnabled: Bool = true,
-                isOutlineEnabled: Bool = true,
-                isShadowCastingEnabled: Bool = true) {
+                isOutlineEnabled: Bool = true) {
         self.vrm = vrm
         self.gltf = vrm.gltf.jsonData
         self.rootDirectory = rootDirectory
@@ -58,25 +56,29 @@ open class VRMEntityLoader {
         self.entityData = EntityData(vrm: gltf)
         self.isMToonEnabled = isMToonEnabled
         self.isOutlineEnabled = isOutlineEnabled
-        self.isShadowCastingEnabled = isShadowCastingEnabled
     }
 
     public func loadEntity() throws -> VRMEntity {
         return try loadEntity(withSceneIndex: gltf.scene)
     }
 
+    /// Loads one scene of the glTF as its own entity graph.
+    ///
+    /// Each scene builds its own entities, so a node shared by two scenes becomes
+    /// a separate `Entity` in each. Buffers, materials and textures are reused.
     public func loadEntity(withSceneIndex index: Int) throws -> VRMEntity {
         if let cache = try entityData.load(\.entities, index: index) { return cache }
-        let gltfScene = try gltf.load(\.scenes)[index]
+        let gltfScene = try gltf.load(\.scenes, at: index)
+        entityData.beginScene()
 
         let vrmEntity = VRMEntity(vrm: vrm)
         if let entityName {
-            vrmEntity.entity.name = entityName
+            vrmEntity.name = entityName
         }
         currentEntity = vrmEntity
         defer { currentEntity = nil }
         for node in gltfScene.nodes ?? [] {
-            vrmEntity.entity.addChild(try self.node(withNodeIndex: node))
+            vrmEntity.addChild(try self.node(withNodeIndex: node))
         }
         vrmEntity.setUpHumanoid(nodes: entityData.nodes)
         try vrmEntity.setUpBlendShapes(nodes: entityData.nodes, meshes: entityData.meshes, loader: self)
@@ -84,10 +86,6 @@ open class VRMEntityLoader {
         try vrmEntity.setUpNodeConstraints(gltfNodes: try gltf.load(\.nodes), loader: self)
         try vrmEntity.setUpSpringBones(loader: self)
         // TODO: animations.
-
-        if !isShadowCastingEnabled {
-            disableShadowCasting(in: vrmEntity.entity)
-        }
 
         entityData.entities[index] = vrmEntity
         return vrmEntity
@@ -101,7 +99,7 @@ open class VRMEntityLoader {
 
     func node(withNodeIndex index: Int) throws -> Entity {
         if let cache = try entityData.load(\.nodes, index: index) { return cache }
-        let gltfNode = try gltf.load(\.nodes)[index]
+        let gltfNode = try gltf.load(\.nodes, at: index)
 
         let entity = Entity()
         entity.name = gltfNode.name ?? "node_\(index)"
@@ -132,7 +130,7 @@ open class VRMEntityLoader {
     }
 
     private func applyCamera(withCameraIndex index: Int, to entity: Entity) throws {
-        let gltfCamera = try gltf.load(\.cameras)[index]
+        let gltfCamera = try gltf.load(\.cameras, at: index)
         switch gltfCamera.type {
         case .perspective:
             let perspective = try gltfCamera.perspective ??? .keyNotFound("perspective")
@@ -170,7 +168,7 @@ open class VRMEntityLoader {
             return clone
         }
 
-        let gltfMesh = try gltf.load(\.meshes)[index]
+        let gltfMesh = try gltf.load(\.meshes, at: index)
         let meshEntity = Entity()
         meshEntity.name = gltfMesh.name ?? "mesh_\(index)"
 
@@ -223,50 +221,40 @@ open class VRMEntityLoader {
 
         let positions = try vector3s(positionIndex)
 
-        var normals: [SIMD3<Float>]?
-        if let normalIndex = attributes[.NORMAL] {
-            normals = try vector3s(normalIndex)
-        }
-        var tangents: [SIMD3<Float>]?
-        if enableNormalTangentBlendShape, let tangentIndex = attributes[.TANGENT] {
-            let rawTangents = try vector4s(tangentIndex)
-            tangents = rawTangents.map { SIMD3<Float>($0.x, $0.y, $0.z) }
-        }
-        let texcoords: [SIMD2<Float>]? = {
-            if let uvIndex = attributes[.TEXCOORD_0] {
-                return try? vector2s(uvIndex)
+        // glTF requires every vertex attribute of a primitive to hold as many
+        // elements as POSITION, and nothing downstream re-checks it.
+        func vertexAttribute<Element>(_ key: GLTF.Mesh.Primitive.AttributeKey,
+                                      _ read: (Int) throws -> [Element]) throws -> [Element]? {
+            guard let accessorIndex = attributes[key] else { return nil }
+            let values = try read(accessorIndex)
+            guard values.count == positions.count else {
+                throw VRMError._dataInconsistent(
+                    "\(key) has \(values.count) elements but POSITION has \(positions.count)"
+                )
             }
-            return nil
-        }()
+            return values
+        }
+
+        let normals = try vertexAttribute(.NORMAL, vector3s)
+        let rawTangents = try vertexAttribute(.TANGENT, vector4s)
+        let texcoords = try vertexAttribute(.TEXCOORD_0, vector2s)
         let jointRemap: [Int]? = {
             guard let skinIndex else { return nil }
             return try? jointIndexRemap(forSkinIndex: skinIndex)
         }()
-        let skinJointInfluences: ([SIMD4<UInt32>], [SIMD4<Float>])? = {
+        let skinJointInfluences: ([SIMD4<UInt32>], [SIMD4<Float>])? = try {
             guard skinIndex != nil,
-                  let jointsIndex = attributes[.JOINTS_0],
-                  let weightsIndex = attributes[.WEIGHTS_0] else {
-                return nil
-            }
-            guard let joints = try? vector4UInts(jointsIndex),
-                  let weights = try? vector4s(weightsIndex) else {
+                  let joints = try vertexAttribute(.JOINTS_0, jointIndices),
+                  let weights = try vertexAttribute(.WEIGHTS_0, jointWeights) else {
                 return nil
             }
             return (joints, weights)
         }()
+        // Only POSITION morphs are applied: RealityKit blend shapes drive vertex
+        // positions, and NORMAL / TANGENT targets have no equivalent channel.
         var targetOffsets: [[SIMD3<Float>]] = []
-        var normalOffsets: [[SIMD3<Float>]] = []
-        var tangentOffsets: [[SIMD3<Float>]] = []
         if let targets = primitive.targets, !targets.isEmpty {
-            let hasNormalTargets = enableNormalTangentBlendShape && targets.contains { $0[.NORMAL] != nil }
-            let hasTangentTargets = enableNormalTangentBlendShape && targets.contains { $0[.TANGENT] != nil }
             targetOffsets.reserveCapacity(targets.count)
-            if hasNormalTargets {
-                normalOffsets.reserveCapacity(targets.count)
-            }
-            if hasTangentTargets {
-                tangentOffsets.reserveCapacity(targets.count)
-            }
             for target in targets {
                 if let positionAccessor = target[.POSITION] {
                     let offsets = try vector3s(positionAccessor)
@@ -277,28 +265,6 @@ open class VRMEntityLoader {
                 } else {
                     targetOffsets.append(Array(repeating: .zero, count: positions.count))
                 }
-                if hasNormalTargets {
-                    if let normalAccessor = target[.NORMAL] {
-                        let offsets = try vector3s(normalAccessor)
-                        guard offsets.count == positions.count else {
-                            throw VRMError._dataInconsistent("blend shape normal target count \(offsets.count) does not match vertex count \(positions.count)")
-                        }
-                        normalOffsets.append(offsets)
-                    } else {
-                        normalOffsets.append(Array(repeating: .zero, count: positions.count))
-                    }
-                }
-                if hasTangentTargets {
-                    if let tangentAccessor = target[.TANGENT] {
-                        let offsets = try vector3s(tangentAccessor)
-                        guard offsets.count == positions.count else {
-                            throw VRMError._dataInconsistent("blend shape tangent target count \(offsets.count) does not match vertex count \(positions.count)")
-                        }
-                        tangentOffsets.append(offsets)
-                    } else {
-                        tangentOffsets.append(Array(repeating: .zero, count: positions.count))
-                    }
-                }
             }
         }
 
@@ -308,113 +274,91 @@ open class VRMEntityLoader {
         } else {
             indexData = (0..<positions.count).map { UInt32($0) }
         }
-        indexData = triangulatedIndices(for: primitive.mode, indices: indexData)
-        guard !indexData.isEmpty else { return nil }
+        indexData = try triangulatedIndices(for: primitive.mode, indices: indexData)
+        // Validated once here so every consumer below — normal estimation, the
+        // mesh resource, blend-shape offsets — can index positions directly.
+        if let maxIndex = indexData.max(), Int(maxIndex) >= positions.count {
+            throw VRMError._dataInconsistent(
+                "triangle index \(maxIndex) is out of range for \(positions.count) vertices"
+            )
+        }
 
-        let prepared = prepareVertexData(positions: positions,
-                                                normals: normals,
-                                                tangents: tangents,
-                                                texcoords: texcoords,
-                                                joints: skinJointInfluences?.0,
-                                                weights: skinJointInfluences?.1,
-                                                targetOffsets: targetOffsets,
-                                                normalOffsets: normalOffsets,
-                                                tangentOffsets: tangentOffsets,
-                                                indexData: indexData)
+        // NORMAL is optional in glTF; everything else is used as-is.
+        let finalNormals = normals ?? smoothNormals(positions: positions, indices: indexData)
+        let finalTexcoords = texcoords ?? []
+        let tangentFrame = tangentFrame(rawTangents: rawTangents,
+                                        positions: positions,
+                                        normals: finalNormals,
+                                        texcoords: finalTexcoords,
+                                        indices: indexData,
+                                        materialIndex: primitive.material)
+        let finalJoints = skinJointInfluences?.0 ?? []
+        let finalWeights = skinJointInfluences?.1 ?? []
 
-        let finalPositions = prepared.positions
-        let finalNormals = prepared.normals
-        let finalTangents = prepared.tangents
-        let finalTexcoords = prepared.texcoords
-        let finalJoints = prepared.joints
-        let finalWeights = prepared.weights
-        let finalTargetOffsets = prepared.targetOffsets
-        let finalNormalOffsets = prepared.normalOffsets
-        let finalTangentOffsets = prepared.tangentOffsets
-        let finalIndexData = prepared.indexData
-
-        let material: Material = {
-            if let materialIndex = primitive.material {
-                return (try? self.material(withMaterialIndex: materialIndex)) ?? defaultMaterial()
+        // One unbuildable material must not fail the whole model: the primitive
+        // renders with the default material instead.
+        let material = primitive.material.flatMap { materialIndex -> Material? in
+            do {
+                return try self.material(withMaterialIndex: materialIndex)
+            } catch {
+                Self.logger.error("Failed to build the material \(materialIndex, privacy: .public); falling back to the default material: \(String(describing: error), privacy: .public)")
+                return nil
             }
-            return defaultMaterial()
-        }()
+        } ?? defaultMaterial()
 
         let hasSkinning = skinIndex != nil && !finalJoints.isEmpty
-        let hasBlendShapes = !finalTargetOffsets.isEmpty
+        let hasBlendShapes = !targetOffsets.isEmpty
         let mesh: MeshResource
         var boundSkeleton: MeshResource.Skeleton?
         if let skinIndex, hasSkinning {
             let influences = try makeJointInfluences(joints: finalJoints,
                                                      weights: finalWeights,
-                                                     vertexCount: finalPositions.count,
+                                                     vertexCount: positions.count,
                                                      jointIndexRemap: jointRemap)
             let skinSkeleton = try skeleton(withSkinIndex: skinIndex)
-            mesh = try meshResource(positions: finalPositions,
+            mesh = try meshResource(positions: positions,
                                     normals: finalNormals,
-                                    tangents: finalTangents,
+                                    tangentFrame: tangentFrame,
                                     texcoords: finalTexcoords,
-                                    indices: finalIndexData,
-                                    blendShapeOffsets: finalTargetOffsets,
+                                    indices: indexData,
+                                    blendShapeOffsets: targetOffsets,
                                     skeleton: skinSkeleton,
                                     jointInfluences: influences)
             boundSkeleton = skinSkeleton
         } else {
-            mesh = try meshResource(positions: finalPositions,
+            mesh = try meshResource(positions: positions,
                                     normals: finalNormals,
-                                    tangents: finalTangents,
+                                    tangentFrame: tangentFrame,
                                     texcoords: finalTexcoords,
-                                    indices: finalIndexData,
-                                    blendShapeOffsets: finalTargetOffsets,
+                                    indices: indexData,
+                                    blendShapeOffsets: targetOffsets,
                                     skeleton: nil,
                                     jointInfluences: nil)
         }
 
-        let modelEntity = ModelEntity(mesh: mesh, materials: [material])
-        if let materialIndex = primitive.material {
-            modelEntity.components.set(VRMMaterialIndexComponent(materialIndex: materialIndex))
-            if let parameters = try mtoonParameters(withMaterialIndex: materialIndex) {
-                modelEntity.components.set(MToonMaterialParametersComponent(parameters: parameters))
+        // The blend-shape mapping is derived from the mesh, so the model entity
+        // and its outline twin share one instance.
+        let blendShapeMapping = hasBlendShapes ? BlendShapeWeightsMapping(meshResource: mesh) : nil
+
+        func makeEntity(materials: [Material]) throws -> ModelEntity {
+            let entity = ModelEntity(mesh: mesh, materials: materials)
+            if let materialIndex = primitive.material {
+                entity.components.set(VRMMaterialIndexComponent(materialIndex: materialIndex))
             }
-        }
-        if hasBlendShapes {
-            let mapping = BlendShapeWeightsMapping(meshResource: mesh)
-            modelEntity.components.set(BlendShapeWeightsComponent(weightsMapping: mapping))
-        }
-        if enableNormalTangentBlendShape,
-           !finalNormalOffsets.isEmpty || !finalTangentOffsets.isEmpty {
-            let component = BlendShapeNormalTangentComponent(baseNormals: finalNormals,
-                                                             baseTangents: finalTangents,
-                                                             normalOffsets: finalNormalOffsets,
-                                                             tangentOffsets: finalTangentOffsets)
-            modelEntity.components.set(component)
-        }
-        if let skinIndex, let boundSkeleton {
-            try registerSkinBinding(modelEntity: modelEntity, skinIndex: skinIndex, skeleton: boundSkeleton)
-        }
-        if let materialIndex = primitive.material,
-           let outlineMaterial = try mtoonOutlineMaterial(withMaterialIndex: materialIndex) {
-            let outlineEntity = ModelEntity(mesh: mesh, materials: [outlineMaterial])
-            outlineEntity.name = "\(modelEntity.name)_outline"
-            outlineEntity.components.set(VRMMaterialIndexComponent(materialIndex: materialIndex))
-            if let parameters = try mtoonParameters(withMaterialIndex: materialIndex) {
-                outlineEntity.components.set(MToonMaterialParametersComponent(parameters: parameters))
-            }
-            if hasBlendShapes {
-                let mapping = BlendShapeWeightsMapping(meshResource: mesh)
-                outlineEntity.components.set(BlendShapeWeightsComponent(weightsMapping: mapping))
-            }
-            if enableNormalTangentBlendShape,
-               !finalNormalOffsets.isEmpty || !finalTangentOffsets.isEmpty {
-                let component = BlendShapeNormalTangentComponent(baseNormals: finalNormals,
-                                                                 baseTangents: finalTangents,
-                                                                 normalOffsets: finalNormalOffsets,
-                                                                 tangentOffsets: finalTangentOffsets)
-                outlineEntity.components.set(component)
+            if let blendShapeMapping {
+                entity.components.set(BlendShapeWeightsComponent(weightsMapping: blendShapeMapping))
             }
             if let skinIndex, let boundSkeleton {
-                try registerSkinBinding(modelEntity: outlineEntity, skinIndex: skinIndex, skeleton: boundSkeleton)
+                try registerSkinBinding(modelEntity: entity, skinIndex: skinIndex, skeleton: boundSkeleton)
             }
+            return entity
+        }
+
+        let modelEntity = try makeEntity(materials: [material])
+        if let materialIndex = primitive.material,
+           let outlineMaterial = try mtoonOutlineMaterial(withMaterialIndex: materialIndex) {
+            let outlineEntity = try makeEntity(materials: [outlineMaterial])
+            outlineEntity.name = "\(modelEntity.name)_outline"
             let container = Entity()
             container.name = "\(modelEntity.name)_container"
             container.addChild(outlineEntity)
@@ -433,14 +377,25 @@ open class VRMEntityLoader {
         }
     }
 
+    /// glTF requires a TRIANGLES primitive to hold a non-zero multiple of three
+    /// indices and a strip / fan to hold at least three, so a primitive that does
+    /// not fails the load rather than being quietly trimmed into a valid one.
     private func triangulatedIndices(for mode: GLTF.Mesh.Primitive.Mode,
-                                     indices: [UInt32]) -> [UInt32] {
+                                     indices: [UInt32]) throws -> [UInt32] {
         switch mode {
         case .TRIANGLES:
-            let count = indices.count / 3 * 3
-            return Array(indices.prefix(count))
+            guard !indices.isEmpty, indices.count.isMultiple(of: 3) else {
+                throw VRMError._dataInconsistent(
+                    "a TRIANGLES primitive needs a non-zero multiple of 3 indices, but has \(indices.count)"
+                )
+            }
+            return indices
         case .TRIANGLE_STRIP:
-            guard indices.count >= 3 else { return [] }
+            guard indices.count >= 3 else {
+                throw VRMError._dataInconsistent(
+                    "a TRIANGLE_STRIP primitive needs at least 3 indices, but has \(indices.count)"
+                )
+            }
             var result: [UInt32] = []
             result.reserveCapacity((indices.count - 2) * 3)
             for i in 0..<(indices.count - 2) {
@@ -455,7 +410,11 @@ open class VRMEntityLoader {
             }
             return result
         case .TRIANGLE_FAN:
-            guard indices.count >= 3 else { return [] }
+            guard indices.count >= 3 else {
+                throw VRMError._dataInconsistent(
+                    "a TRIANGLE_FAN primitive needs at least 3 indices, but has \(indices.count)"
+                )
+            }
             let base = indices[0]
             var result: [UInt32] = []
             result.reserveCapacity((indices.count - 2) * 3)
@@ -464,76 +423,47 @@ open class VRMEntityLoader {
             }
             return result
         case .POINTS, .LINES, .LINE_LOOP, .LINE_STRIP:
-            return []
+            // Filtered out by supportsTriangles() before the indices are read.
+            throw VRMError._notSupported("\(mode) primitives have no triangles")
         }
     }
 
     func material(withMaterialIndex index: Int) throws -> Material {
         if let cache = try entityData.load(\.materials, index: index) { return cache }
-        let materials = try gltf.load(\.materials)
-        guard materials.indices.contains(index) else {
-            throw VRMError._dataInconsistent("Material index \(index) out of bounds")
-        }
-        let gltfMaterial = materials[index]
-
-        let materialProperty: VRM0.MaterialProperty? = {
-            guard case .v0(let vrm0) = vrm,
-                  let name = gltfMaterial.name else { return nil }
-            return vrm0.materialPropertyNameMap[name]
-        }()
-        let shaderName = materialProperty?.shader.lowercased()
-        let mtoon = MToonMaterialDescriptor(material: gltfMaterial, materialProperty: materialProperty)
-        // MToon / Unlit variants are not PBR, so use UnlitMaterial for consistent rendering
-        // This matches SceneKit's behavior which uses lightingModel = .constant
-        let isMToon = mtoon != nil || shaderName?.contains("mtoon") == true || gltfMaterial.extensions?.materialsMToon != nil
-        let isUnlit = shaderName?.contains("unlit") == true || gltfMaterial.extensions?.materialsUnlit != nil
-        let useUnlit = isMToon || isUnlit
-        let hasAlphaPremultiply = materialProperty?.keywordMap["_ALPHAPREMULTIPLY_ON"] == true
-        let hasAlphaBlend = materialProperty?.keywordMap["_ALPHABLEND_ON"] == true
-        let hasAlphaTest = materialProperty?.keywordMap["_ALPHATEST_ON"] == true
-        let forceBlend = materialProperty?.vrmShader == .unlitTransparent || hasAlphaPremultiply || hasAlphaBlend
-        let resolvedAlphaMode: GLTF.Material.AlphaMode = {
-            if let renderType = materialProperty?.tagMap["RenderType"]?.lowercased() {
-                switch renderType {
-                case "opaque":
-                    return .OPAQUE
-                case "transparentcutout", "cutout":
-                    return .MASK
-                case "transparent":
-                    return .BLEND
-                default:
-                    break
-                }
-            }
-            if forceBlend { return .BLEND }
-            if hasAlphaTest { return .MASK }
-            return gltfMaterial.alphaMode
-        }()
-
-        let tint: VRMColor = {
-            guard let pbr = gltfMaterial.pbrMetallicRoughness else {
-                return .white
-            }
-            let factor = pbr.baseColorFactor
-            return VRMColor(red: CGFloat(factor.r),
-                           green: CGFloat(factor.g),
-                           blue: CGFloat(factor.b),
-                           alpha: CGFloat(factor.a))
-        }()
-
+        let (gltfMaterial, materialProperty) = try materialSource(withMaterialIndex: index)
 #if !os(visionOS)
-        if isMToonEnabled, let mtoon, let library = mtoonShaderLibrary() {
-            let textureTransform = try mtoonTextureTransform(withMaterialIndex: index)
-            let material = try customMToonMaterial(mtoon,
-                                                   textureTransform: textureTransform,
-                                                   library: library)
-            entityData.materials[index] = material
-            return material
+        do {
+            // Building the state reads the extension's textures and samplers, so
+            // it fails on the same malformed files the material build does.
+            if let state = try mtoonState(withMaterialIndex: index) {
+                let material = try customMToonMaterial(state)
+                entityData.materials[index] = material
+                return material
+            }
+        } catch {
+            // The caller falls back to a non-MToon material, so the state has
+            // to go with it: otherwise expression binds would keep writing
+            // parameter rows that nothing on screen reads.
+            discardMToonState(withMaterialIndex: index)
+            Self.logger.error("Failed to build the MToon material \(index, privacy: .public); falling back to Unlit / PBR: \(String(describing: error), privacy: .public)")
         }
 #endif
 
+        let shaderName = materialProperty?.shader.lowercased()
+        let isMToon = try mtoonDescriptor(withMaterialIndex: index) != nil
+        // MToon / Unlit variants are not PBR, so use UnlitMaterial for consistent rendering
+        // This matches SceneKit's behavior which uses lightingModel = .constant
+        let isUnlit = shaderName?.contains("unlit") == true || gltfMaterial.extensions?.materialsUnlit != nil
+        let useUnlit = isMToon || isUnlit
+        let resolvedAlphaMode = GLTF.Material.AlphaMode(vrm0: materialProperty,
+                                                        fallback: gltfMaterial.alphaMode)
+        let tint = gltfMaterial.pbrMetallicRoughness
+            .map { VRMColor(simd: SIMD4<Float>($0.baseColorFactor)) } ?? .white
+
         if useUnlit {
-            var material = UnlitMaterial()
+            // RealityKit tone maps everything it draws, and that curve visibly
+            // darkens flat art, so the unlit path opts out of it.
+            var material = UnlitMaterial(applyPostProcessToneMap: false)
             if let pbr = gltfMaterial.pbrMetallicRoughness,
                let baseTexture = pbr.baseColorTexture {
                 let textureParam = try materialTexture(withTextureIndex: baseTexture.index, semantic: .color)
@@ -604,139 +534,68 @@ open class VRMEntityLoader {
     }
 
 #if !os(visionOS)
-    private func customMToonMaterial(_ mtoon: MToonMaterialDescriptor,
-                                     textureTransform: MaterialParameterTypes.TextureCoordinateTransform,
-                                     library: MTLLibrary) throws -> Material {
-        // RealityKit has no material-level draw-order hook, so
-        // MToon renderQueueOffsetNumber falls back to 0 in this renderer.
-        let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: library)
+    private func customMToonMaterial(_ state: MToonState) throws -> Material {
+        // RealityKit has no material-level draw-order hook, so MToon's
+        // renderQueueOffsetNumber is not honored here.
+        let mtoon = state.descriptor
+        let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: state.library)
         var material = try CustomMaterial(surfaceShader: surface, lightingModel: .unlit)
-        if let baseTexture = mtoon.baseColorTexture {
-            let textureParam = try customMToonTexture(withTextureIndex: baseTexture.index, slot: .base)
-            material.baseColor = .init(tint: .white, texture: textureParam)
-        } else {
-            material.baseColor = .init(tint: .white, texture: try whiteCustomTexture())
-        }
-
-        if let shadeTexture = mtoon.shadeMultiplyTexture {
-            material.roughness.texture = try customMToonTexture(withTextureIndex: shadeTexture.index, slot: .shade)
-        } else {
-            material.roughness.texture = try whiteCustomTexture()
-        }
-        if let shadingShiftTexture = mtoon.shadingShiftTexture {
-            material.specular.texture = try customMToonTexture(withTextureIndex: shadingShiftTexture.index,
-                                                               slot: .shadingShift)
-        } else {
-            material.specular.texture = try whiteCustomTexture()
-        }
-        if let matcapTexture = mtoon.matcapTexture {
-            material.metallic.texture = try customMToonTexture(withTextureIndex: matcapTexture.index, slot: .matcap)
-        } else {
-            material.metallic.texture = try whiteCustomTexture()
-        }
-
-        if let normalTexture = mtoon.normalTexture {
-            material.normal.texture = try customMToonTexture(withTextureIndex: normalTexture.index, slot: .normal)
-        } else {
-            material.normal.texture = try neutralNormalCustomTexture()
-        }
-
-        if let emissiveTexture = mtoon.emissiveTexture {
-            let textureParam = try customMToonTexture(withTextureIndex: emissiveTexture.index, slot: .emissive)
-            material.emissiveColor = .init(color: .white, texture: textureParam)
-        } else {
-            material.emissiveColor = .init(color: .white, texture: try whiteCustomTexture())
-        }
-        if let rimTexture = mtoon.rimMultiplyTexture {
-            material.clearcoatRoughness.texture = try customMToonTexture(withTextureIndex: rimTexture.index,
-                                                                        slot: .rim)
-        } else {
-            material.clearcoatRoughness.texture = try whiteCustomTexture()
-        }
-        if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
-            material.clearcoat.texture = try customMToonTexture(withTextureIndex: outlineWidthTexture.index,
-                                                                slot: .outlineWidth)
-        } else {
-            material.clearcoat.texture = try whiteCustomTexture()
-        }
-        if let uvMaskTexture = mtoon.uvAnimationMaskTexture {
-            material.ambientOcclusion.texture = try customMToonTexture(withTextureIndex: uvMaskTexture.index,
-                                                                      slot: .uvAnimationMask)
-        } else {
-            material.ambientOcclusion.texture = try whiteCustomTexture()
-        }
+        // MToon needs more textures than CustomMaterial has semantic channels,
+        // so the extra slots ride on unrelated channels; MToon.metal reads them
+        // back through the same mapping.
+        material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base))
+        material.roughness.texture = try mtoonTexture(mtoon, slot: .shade)
+        material.specular.texture = try mtoonTexture(mtoon, slot: .shadingShift)
+        material.metallic.texture = try mtoonTexture(mtoon, slot: .matcap)
+        material.normal.texture = try mtoonTexture(mtoon, slot: .normal)
+        material.emissiveColor = .init(color: .white, texture: try mtoonTexture(mtoon, slot: .emissive))
+        material.clearcoatRoughness.texture = try mtoonTexture(mtoon, slot: .rim)
+        material.clearcoat.texture = try mtoonTexture(mtoon, slot: .outlineWidth)
+        material.ambientOcclusion.texture = try mtoonTexture(mtoon, slot: .uvAnimationMask)
 
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
-        switch mtoon.cullMode {
-        case .none:
-            material.faceCulling = .none
-        case .front:
-            material.faceCulling = .front
-        case .back:
-            material.faceCulling = .back
-        }
-        material.textureCoordinateTransform = textureTransform
-
-        let parameters = try mtoonParameters(for: mtoon, textureTransform: textureTransform)
-        material.custom.value = parameters.customValue
-        material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
+        applyDepthWrite(mtoon, to: &material)
+        material.faceCulling = mtoon.cullMode.faceCulling
+        applyMToonParameters(state, to: &material)
         return material
     }
 
-    private func customMToonOutlineMaterial(_ mtoon: MToonMaterialDescriptor,
-                                            textureTransform: MaterialParameterTypes.TextureCoordinateTransform,
-                                            library: MTLLibrary) throws -> Material {
-        let surface = CustomMaterial.SurfaceShader(named: "mtoonOutlineSurface", in: library)
-        let geometry = CustomMaterial.GeometryModifier(named: "mtoonOutlineGeometry", in: library)
+    private func customMToonOutlineMaterial(_ state: MToonState) throws -> Material {
+        let mtoon = state.descriptor
+        let surface = CustomMaterial.SurfaceShader(named: "mtoonOutlineSurface", in: state.library)
+        let geometry = CustomMaterial.GeometryModifier(named: "mtoonOutlineGeometry", in: state.library)
         var material = try CustomMaterial(surfaceShader: surface,
                                           geometryModifier: geometry,
                                           lightingModel: .unlit)
+        // The inverted hull is rendered with front faces culled.
         material.faceCulling = .front
-        if let baseTexture = mtoon.baseColorTexture {
-            material.baseColor = .init(tint: .white,
-                                       texture: try customMToonTexture(withTextureIndex: baseTexture.index,
-                                                                       slot: .base))
-        } else {
-            material.baseColor = .init(tint: .white, texture: try whiteCustomTexture())
-        }
-        if let outlineWidthTexture = mtoon.outlineWidthMultiplyTexture {
-            material.clearcoat.texture = try customMToonTexture(withTextureIndex: outlineWidthTexture.index,
-                                                                slot: .outlineWidth)
-        } else {
-            material.clearcoat.texture = try whiteCustomTexture()
-        }
-        if let uvMaskTexture = mtoon.uvAnimationMaskTexture {
-            material.ambientOcclusion.texture = try customMToonTexture(withTextureIndex: uvMaskTexture.index,
-                                                                      slot: .uvAnimationMask)
-        } else {
-            material.ambientOcclusion.texture = try whiteCustomTexture()
-        }
+        material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base))
+        material.clearcoat.texture = try mtoonTexture(mtoon, slot: .outlineWidth)
+        material.ambientOcclusion.texture = try mtoonTexture(mtoon, slot: .uvAnimationMask)
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
-        material.textureCoordinateTransform = textureTransform
-        let parameters = try mtoonParameters(for: mtoon, textureTransform: textureTransform)
-        material.custom.value = parameters.customValue
-        material.custom.texture = CustomMaterial.Texture(try parameters.textureResource())
+        applyDepthWrite(mtoon, to: &material)
+        applyMToonParameters(state, to: &material)
         return material
     }
-#endif
 
-    private func disableShadowCasting(on modelEntity: ModelEntity) {
-#if !os(visionOS)
-        modelEntity.components.set(DynamicLightShadowComponent(castsShadow: false))
-        modelEntity.components.set(GroundingShadowComponent(castsShadow: false, receivesShadow: false))
-#else
-        _ = modelEntity
-#endif
+    /// MToon.metal applies the UV transform from the parameter rows, so
+    /// `textureCoordinateTransform` is deliberately left at identity here:
+    /// setting it too would transform the primary UV a second time.
+    private func applyMToonParameters(_ state: MToonState, to material: inout CustomMaterial) {
+        material.custom.value = state.parameters.customValue
+        material.custom.texture = state.parameterTexture
     }
 
-    private func disableShadowCasting(in entity: Entity) {
-        if let modelEntity = entity as? ModelEntity {
-            disableShadowCasting(on: modelEntity)
+    /// Resolves the descriptor's texture for `slot`, falling back to the slot's
+    /// neutral texture when the material does not provide one.
+    private func mtoonTexture(_ descriptor: MToonMaterialDescriptor,
+                              slot: MToonTextureSlot) throws -> CustomMaterial.Texture {
+        guard let texture = descriptor.texture(for: slot) else {
+            return CustomMaterial.Texture(try fallbackTextureResource(slot.fallback))
         }
-        for child in entity.children {
-            disableShadowCasting(in: child)
-        }
+        return CustomMaterial.Texture(try self.texture(withTextureIndex: texture.index, semantic: slot.semantic))
     }
+#endif
 
     func currentMaterialColor(withMaterialIndex index: Int,
                               type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) throws -> SIMD4<Float> {
@@ -746,21 +605,65 @@ open class VRMEntityLoader {
         return try material(withMaterialIndex: index).currentColor(for: type)
     }
 
-    private func mtoonParameters(withMaterialIndex index: Int) throws -> MToonMaterialParameters? {
-        guard isMToonEnabled else {
-            return nil
+    /// The UV transform a `textureTransformBind` starts from. MToon keeps it in
+    /// its parameter rows, everything else in the RealityKit material.
+    func currentTextureTransform(withMaterialIndex index: Int) throws -> MaterialParameterTypes.TextureCoordinateTransform {
+        if let transform = try mtoonParameters(withMaterialIndex: index)?.textureTransform {
+            return transform
         }
-        if let parameters = mtoonParameterCache[index] {
-            return parameters
-        }
-        guard let descriptor = try mtoonDescriptor(withMaterialIndex: index) else {
-            return nil
-        }
-        let parameters = try mtoonParameters(for: descriptor,
-                                             textureTransform: mtoonTextureTransform(withMaterialIndex: index))
-        mtoonParameterCache[index] = parameters
-        return parameters
+        return try material(withMaterialIndex: index).currentTextureTransform
     }
+
+    func mtoonParameters(withMaterialIndex index: Int) throws -> MToonMaterialParameters? {
+#if os(visionOS)
+        return nil
+#else
+        // A nil state means the material does not render as MToon (disabled,
+        // no metallib, or not an MToon material).
+        return try mtoonState(withMaterialIndex: index)?.parameters
+#endif
+    }
+
+#if !os(visionOS)
+    private func mtoonState(withMaterialIndex index: Int) throws -> MToonState? {
+        if let cached = mtoonStateCache[index] {
+            return cached
+        }
+        let state = try makeMToonState(withMaterialIndex: index)
+        mtoonStateCache[index] = state
+        return state
+    }
+
+    /// Records that the material does not render as MToon after all, so every
+    /// MToon-derived path — surface, outline, runtime parameters — agrees.
+    private func discardMToonState(withMaterialIndex index: Int) {
+        mtoonStateCache.updateValue(nil, forKey: index)
+        mtoonOutlineMaterialCache.updateValue(nil, forKey: index)
+    }
+
+    private func makeMToonState(withMaterialIndex index: Int) throws -> MToonState? {
+        guard isMToonEnabled,
+              let descriptor = try mtoonDescriptor(withMaterialIndex: index),
+              let library = mtoonShaderLibrary() else {
+            return nil
+        }
+        let textureTransform = mtoonTextureTransform(withMaterialIndex: index, descriptor: descriptor)
+        let parameters = try mtoonParameters(for: descriptor, textureTransform: textureTransform)
+        logMToonUnsupportedFeatures(for: descriptor, index: index)
+        return MToonState(descriptor: descriptor,
+                          parameters: parameters,
+                          parameterTexture: CustomMaterial.Texture(try parameters.textureResource()),
+                          library: library)
+    }
+
+    /// MToon features that this renderer cannot express are reported once per
+    /// material instead of being dropped silently.
+    private func logMToonUnsupportedFeatures(for descriptor: MToonMaterialDescriptor, index: Int) {
+        if descriptor.renderQueueOffsetNumber != 0 {
+            Self.logger.warning("MToon material \(index, privacy: .public) requests renderQueueOffsetNumber \(descriptor.renderQueueOffsetNumber); RealityKit has no material-level draw-order hook, so it is ignored.")
+        }
+    }
+#endif
 
     private func mtoonParameters(for descriptor: MToonMaterialDescriptor,
                                  textureTransform: MaterialParameterTypes.TextureCoordinateTransform) throws -> MToonMaterialParameters {
@@ -768,50 +671,28 @@ open class VRMEntityLoader {
         parameters.setTextureTransform(scale: textureTransform.scale,
                                        offset: textureTransform.offset,
                                        rotation: textureTransform.rotation)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.baseColorTexture), for: .base)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadeMultiplyTexture), for: .shade)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.shadingShiftTexture), for: .shadingShift)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.normalTexture), for: .normal)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.matcapTexture), for: .matcap)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.emissiveTexture), for: .emissive)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.rimMultiplyTexture), for: .rim)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.outlineWidthMultiplyTexture), for: .outlineWidth)
-        try parameters.setSampler(mtoonSamplerParameters(for: descriptor.uvAnimationMaskTexture), for: .uvAnimationMask)
+        for slot in MToonTextureSlot.allCases {
+            try parameters.setSampler(mtoonSamplerParameters(for: descriptor.texture(for: slot)), for: slot)
+        }
         return parameters
     }
 
-    private func mtoonTextureTransform(withMaterialIndex index: Int) throws -> MaterialParameterTypes.TextureCoordinateTransform {
-        let materials = try gltf.load(\.materials)
-        guard materials.indices.contains(index) else {
-            throw VRMError._dataInconsistent("Material index \(index) out of bounds")
-        }
-        let material = materials[index]
-        let mtoon = material.extensions?.materialsMToon
-        // Custom meshes on the minimum supported RealityKit versions expose only
-        // TEXCOORD_0 and CustomMaterial has one material-level UV transform. Use
-        // the first UV-accessed MToon transform deterministically. Expression
-        // textureTransformBinds still update every UV-accessed texture together,
-        // as required by VRMC_vrm.
-        let textureInfos: [(texCoord: Int, extensions: CodableAny?)] = [
-            material.pbrMetallicRoughness?.baseColorTexture.map { ($0.texCoord, $0.extensions) },
-            mtoon?.shadeMultiplyTexture.map { ($0.texCoord ?? 0, $0.extensions) },
-            mtoon?.shadingShiftTexture.map { ($0.texCoord ?? 0, $0.extensions) },
-            material.normalTexture.map { ($0.texCoord, $0.extensions) },
-            material.emissiveTexture.map { ($0.texCoord, $0.extensions) },
-            mtoon?.rimMultiplyTexture.map { ($0.texCoord ?? 0, $0.extensions) },
-            mtoon?.outlineWidthMultiplyTexture.map { ($0.texCoord ?? 0, $0.extensions) },
-            mtoon?.uvAnimationMaskTexture.map { ($0.texCoord ?? 0, $0.extensions) }
-        ].compactMap { $0 }
-
-        let transforms = textureInfos.compactMap { textureTransform(from: $0.extensions) }
-        let selectedTransform = transforms.first ?? MaterialParameterTypes.TextureCoordinateTransform()
-        let usesUnsupportedTexCoord = textureInfos.contains {
-            textureCoordinate(from: $0.extensions, default: $0.texCoord) != 0
-        }
-        let hasDifferentTransforms = textureInfos.contains {
-            let transform = textureTransform(from: $0.extensions)
-                ?? MaterialParameterTypes.TextureCoordinateTransform()
-            return textureTransform(transform, differsFrom: selectedTransform)
+    /// Custom meshes expose only TEXCOORD_0 and `CustomMaterial` has a single
+    /// material-level UV transform, so the descriptor's first UV-accessed
+    /// transform is applied to every MToon texture.
+    private func mtoonTextureTransform(withMaterialIndex index: Int,
+                                       descriptor: MToonMaterialDescriptor) -> MaterialParameterTypes.TextureCoordinateTransform {
+        let textures = descriptor.uvAccessedTextures
+        // The first UV-accessed slot wins even when it has no transform of its
+        // own; letting a later slot's transform stand in would shift it.
+        let selectedTransform = textures.first?.transform
+            .map { MaterialParameterTypes.TextureCoordinateTransform(offset: $0.offset,
+                                                                     scale: $0.scale,
+                                                                     rotation: $0.rotation) }
+            ?? MaterialParameterTypes.TextureCoordinateTransform()
+        let usesUnsupportedTexCoord = textures.contains { $0.texCoord != 0 }
+        let hasDifferentTransforms = textures.contains {
+            textureTransform($0.transform ?? .init(), differsFrom: selectedTransform)
         }
         if (usesUnsupportedTexCoord || hasDifferentTransforms),
            loggedMToonUVLimitations.insert(index).inserted {
@@ -825,29 +706,7 @@ open class VRMEntityLoader {
         return selectedTransform
     }
 
-    private func textureTransform(from extensions: CodableAny?) -> MaterialParameterTypes.TextureCoordinateTransform? {
-        guard let extensions = extensions?.value as? [String: Any],
-              let transform = extensions["KHR_texture_transform"] as? [String: Any] else {
-            return nil
-        }
-        let offset = transform.simd2Value(forKey: "offset", default: SIMD2<Float>(0, 0))
-        let scale = transform.simd2Value(forKey: "scale", default: SIMD2<Float>(1, 1))
-        let rotation = transform.floatValue(forKey: "rotation", default: 0)
-        return MaterialParameterTypes.TextureCoordinateTransform(offset: offset,
-                                                                 scale: scale,
-                                                                 rotation: rotation)
-    }
-
-    private func textureCoordinate(from extensions: CodableAny?, default defaultValue: Int) -> Int {
-        guard let extensions = extensions?.value as? [String: Any],
-              let transform = extensions["KHR_texture_transform"] as? [String: Any],
-              let texCoord = transform["texCoord"] else {
-            return defaultValue
-        }
-        return Int(numericFloatValue(texCoord, default: Float(defaultValue)))
-    }
-
-    private func textureTransform(_ lhs: MaterialParameterTypes.TextureCoordinateTransform,
+    private func textureTransform(_ lhs: MToonMaterialDescriptor.UVTransform,
                                   differsFrom rhs: MaterialParameterTypes.TextureCoordinateTransform) -> Bool {
         lhs.scale != rhs.scale || lhs.offset != rhs.offset || abs(lhs.rotation - rhs.rotation) > 0.000_001
     }
@@ -856,93 +715,57 @@ open class VRMEntityLoader {
 #if os(visionOS)
         return nil
 #else
-        guard isMToonEnabled else {
-            return nil
-        }
         guard isOutlineEnabled else {
             return nil
         }
-        if let material = mtoonOutlineMaterialCache[index] {
-            return material
+        if let cached = mtoonOutlineMaterialCache[index] {
+            return cached
         }
-        guard let descriptor = try mtoonDescriptor(withMaterialIndex: index),
-              descriptor.hasOutline,
-              let library = mtoonShaderLibrary() else {
-            return nil
+        let material: Material?
+        if let state = try mtoonState(withMaterialIndex: index), state.descriptor.hasOutline {
+            material = try customMToonOutlineMaterial(state)
+        } else {
+            material = nil
         }
-        let material = try customMToonOutlineMaterial(descriptor,
-                                                      textureTransform: mtoonTextureTransform(withMaterialIndex: index),
-                                                      library: library)
         mtoonOutlineMaterialCache[index] = material
         return material
 #endif
     }
 
+    /// Memoized because both the material-type decision and the MToon state
+    /// need it, and building it runs the whole VRM 0.x migration.
     private func mtoonDescriptor(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor? {
-        let materials = try gltf.load(\.materials)
-        guard materials.indices.contains(index) else {
-            throw VRMError._dataInconsistent("Material index \(index) out of bounds")
+        if let cached = mtoonDescriptorCache[index] {
+            return cached
         }
-        let gltfMaterial = materials[index]
-        let materialProperty: VRM0.MaterialProperty? = {
-            guard case .v0(let vrm0) = vrm,
-                  let name = gltfMaterial.name else { return nil }
-            return vrm0.materialPropertyNameMap[name]
-        }()
+        let descriptor = try makeMToonDescriptor(withMaterialIndex: index)
+        mtoonDescriptorCache[index] = descriptor
+        return descriptor
+    }
+
+    private func makeMToonDescriptor(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor? {
+        let (gltfMaterial, materialProperty) = try materialSource(withMaterialIndex: index)
         return MToonMaterialDescriptor(material: gltfMaterial, materialProperty: materialProperty)
     }
 
-    private func mtoonShaderLibrary() -> MTLLibrary? {
-        guard let device = Self.mtoonShaderDevice else {
-            Self.logger.error("Failed to create Metal device for MToon shader.")
-            return nil
+    /// The glTF material and, for VRM 0.x, the Unity material property that
+    /// describes it. The VRM 0.x name lookup lives here only.
+    private func materialSource(withMaterialIndex index: Int) throws -> (GLTF.Material, VRM0.MaterialProperty?) {
+        let gltfMaterial = try gltf.load(\.materials, at: index)
+        guard case .v0(let vrm0) = vrm, let name = gltfMaterial.name else {
+            return (gltfMaterial, nil)
         }
-        return Self.mtoonDefaultLibrary(device: device)
+        return (gltfMaterial, vrm0.materialPropertyNameMap[name])
     }
 
-    // The MToon shader is precompiled offline into per-platform metallibs by
-    // Scripts/build-mtoon-metallibs.sh and bundled as package resources.
-    // This avoids depending on the consumer's build system compiling the
-    // package's .metal source (unsupported by `swift build`, and unreliable
-    // on Xcode versions where the Metal Toolchain is a separate download),
-    // and is safe for App Store / sandboxed distribution.
-    private static let bundledMToonLibraryResourceName: String? = {
-#if os(macOS) && !targetEnvironment(macCatalyst)
-        return "MToon-macos"
-#elseif os(iOS) && targetEnvironment(simulator)
-        return "MToon-iossim"
-#elseif os(iOS) && !targetEnvironment(macCatalyst)
-        return "MToon-ios"
-#else
-        // No precompiled MToon library is bundled for this platform
-        // (e.g. Mac Catalyst); MToon rendering falls back to UnlitMaterial.
-        return nil
-#endif
-    }()
-
-    private static func mtoonDefaultLibrary(device: MTLDevice) -> MTLLibrary? {
-        if let library = mtoonDefaultLibraryCache {
-            return library
-        }
-        guard let resourceName = bundledMToonLibraryResourceName else {
-            logger.error("No precompiled MToon shader library is bundled for this platform.")
-            return nil
-        }
-        guard let libraryURL = Bundle.module.url(forResource: resourceName, withExtension: "metallib") else {
-            logger.error("Missing bundled MToon shader library resource: \(resourceName, privacy: .public).metallib")
-            return nil
-        }
+    private func mtoonShaderLibrary() -> MTLLibrary? {
         do {
-            let library = try device.makeLibrary(URL: libraryURL)
-            guard requiredMToonFunctionNames.isSubset(of: Set(library.functionNames)) else {
-                logger.error("Bundled MToon shader library is missing required functions: \(library.functionNames, privacy: .public)")
-                return nil
-            }
-            logger.notice("Loaded bundled MToon shader library: \(resourceName, privacy: .public).metallib")
-            mtoonDefaultLibraryCache = library
-            return library
+            return try MToonShaderLibraryLoader.loadDefault()
         } catch {
-            logger.error("Failed to load bundled MToon shader library: \(error.localizedDescription, privacy: .public)")
+            if !loggedMToonLibraryError {
+                loggedMToonLibraryError = true
+                Self.logger.error("Failed to load bundled MToon shader library: \(String(describing: error), privacy: .public)")
+            }
             return nil
         }
     }
@@ -954,16 +777,14 @@ open class VRMEntityLoader {
         if semantic != .color, let cache = textureCacheBySemantic[semantic]?[index] {
             return cache
         }
-        let gltfTexture = try gltf.load(\.textures)[index]
+        let gltfTexture = try gltf.load(\.textures, at: index)
         let image = try image(withImageIndex: gltfTexture.source)
         let cgImage = try image.cgImage ??? .dataInconsistent("failed to load cgImage")
         let texture = try TextureResource(image: cgImage, options: .init(semantic: semantic))
         if semantic == .color {
             entityData.textures[index] = texture
         } else {
-            var cache = textureCacheBySemantic[semantic] ?? [:]
-            cache[index] = texture
-            textureCacheBySemantic[semantic] = cache
+            textureCacheBySemantic[semantic, default: [:]][index] = texture
         }
         return texture
     }
@@ -975,38 +796,25 @@ open class VRMEntityLoader {
         return MaterialParameters.Texture(texture, sampler: sampler)
     }
 
-#if !os(visionOS)
-    private func customTexture(withTextureIndex index: Int,
-                               semantic: TextureResource.Semantic = .color) throws -> CustomMaterial.Texture {
-        CustomMaterial.Texture(try texture(withTextureIndex: index, semantic: semantic))
-    }
-
-    private func customMToonTexture(withTextureIndex index: Int,
-                                    slot: MToonTextureSlot) throws -> CustomMaterial.Texture {
-        try customTexture(withTextureIndex: index, semantic: slot.semantic)
-    }
-#endif
-
-    private func whiteTextureParameter() throws -> MaterialParameters.Texture {
-        return MaterialParameters.Texture(try whiteTextureResource(), sampler: defaultSampler())
-    }
-
-#if !os(visionOS)
-    private func whiteCustomTexture() throws -> CustomMaterial.Texture {
-        CustomMaterial.Texture(try whiteTextureResource())
-    }
-
-    private func neutralNormalCustomTexture() throws -> CustomMaterial.Texture {
-        CustomMaterial.Texture(try neutralNormalTextureResource())
-    }
-#endif
-
-    private func whiteTextureResource() throws -> TextureResource {
-        if let whiteTextureCache {
-            return whiteTextureCache
+    /// The neutral 1x1 texture bound when a material omits an MToon slot.
+    private func fallbackTextureResource(_ fallback: MToonTextureSlot.Fallback) throws -> TextureResource {
+        if let cached = fallbackTextureCache[fallback] {
+            return cached
         }
-        let data = Data([255, 255, 255, 255])
-        guard let provider = CGDataProvider(data: data as CFData),
+        let texture: TextureResource
+        switch fallback {
+        case .white:
+            texture = try solidColorTextureResource(rgba: [255, 255, 255, 255], semantic: .color)
+        case .neutralNormal:
+            texture = try solidColorTextureResource(rgba: [128, 128, 255, 255], semantic: .normal)
+        }
+        fallbackTextureCache[fallback] = texture
+        return texture
+    }
+
+    private func solidColorTextureResource(rgba: [UInt8],
+                                           semantic: TextureResource.Semantic) throws -> TextureResource {
+        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
               let image = CGImage(width: 1,
                                   height: 1,
                                   bitsPerComponent: 8,
@@ -1018,109 +826,69 @@ open class VRMEntityLoader {
                                   decode: nil,
                                   shouldInterpolate: false,
                                   intent: .defaultIntent) else {
-            throw VRMError._dataInconsistent("failed to create white texture")
+            throw VRMError._dataInconsistent("failed to create 1x1 \(semantic) texture")
         }
-        let texture = try TextureResource(image: image, options: .init(semantic: .color))
-        whiteTextureCache = texture
-        return texture
-    }
-
-    private func neutralNormalTextureResource() throws -> TextureResource {
-        if let neutralNormalTextureCache {
-            return neutralNormalTextureCache
-        }
-        let data = Data([128, 128, 255, 255])
-        guard let provider = CGDataProvider(data: data as CFData),
-              let image = CGImage(width: 1,
-                                  height: 1,
-                                  bitsPerComponent: 8,
-                                  bitsPerPixel: 32,
-                                  bytesPerRow: 4,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                                  provider: provider,
-                                  decode: nil,
-                                  shouldInterpolate: false,
-                                  intent: .defaultIntent) else {
-            throw VRMError._dataInconsistent("failed to create neutral normal texture")
-        }
-        let texture = try TextureResource(image: image, options: .init(semantic: .normal))
-        neutralNormalTextureCache = texture
-        return texture
+        return try TextureResource(image: image, options: .init(semantic: semantic))
     }
 
     private func sampler(withTextureIndex index: Int) throws -> MaterialParameters.Texture.Sampler {
         if let cache = samplerCache[index] {
             return cache
         }
-        let gltfTexture = try gltf.load(\.textures)[index]
         let descriptor = MTLSamplerDescriptor()
-        if let samplerIndex = gltfTexture.sampler {
-            let sampler = try gltf.load(\.samplers)[samplerIndex]
-            applySampler(sampler, to: descriptor)
-        } else {
-            applyDefaultSampler(to: descriptor)
-        }
+        applySampler(try gltfSampler(withTextureIndex: index), to: descriptor)
         let sampler = MaterialParameters.Texture.Sampler(descriptor)
         samplerCache[index] = sampler
         return sampler
     }
 
-    private func defaultSampler() -> MaterialParameters.Texture.Sampler {
-        if let defaultSamplerCache {
-            return defaultSamplerCache
-        }
-        let descriptor = MTLSamplerDescriptor()
-        applyDefaultSampler(to: descriptor)
-        let sampler = MaterialParameters.Texture.Sampler(descriptor)
-        defaultSamplerCache = sampler
-        return sampler
-    }
-
-    private func applySampler(_ sampler: GLTF.Sampler, to descriptor: MTLSamplerDescriptor) {
-        let magFilter = sampler.magFilter ?? .LINEAR
-        let minFilter = sampler.minFilter ?? .LINEAR_MIPMAP_LINEAR
-        descriptor.magFilter = metalFilter(magFilter)
-        let (min, mip) = metalFilters(minFilter)
-        descriptor.minFilter = min
-        descriptor.mipFilter = mip
-        descriptor.sAddressMode = metalWrap(sampler.wrapS)
-        descriptor.tAddressMode = metalWrap(sampler.wrapT)
-    }
-
-    private func applyDefaultSampler(to descriptor: MTLSamplerDescriptor) {
-        descriptor.magFilter = metalFilter(.LINEAR)
-        let (min, mip) = metalFilters(.LINEAR_MIPMAP_LINEAR)
-        descriptor.minFilter = min
-        descriptor.mipFilter = mip
-        descriptor.sAddressMode = metalWrap(.REPEAT)
-        descriptor.tAddressMode = metalWrap(.REPEAT)
-    }
-
-    private func mtoonSamplerParameters(for texture: MToonMaterialDescriptor.Texture?) throws -> SIMD4<Float> {
-        guard let texture else {
-            return MToonMaterialParameters.defaultSampler
-        }
+    /// The glTF sampler a texture references, or nil when it relies on the
+    /// glTF default sampler.
+    private func gltfSampler(withTextureIndex index: Int) throws -> GLTF.Sampler? {
         let textures = try gltf.load(\.textures)
-        guard textures.indices.contains(texture.index) else {
-            throw VRMError._dataInconsistent("Texture index \(texture.index) out of bounds")
+        guard textures.indices.contains(index) else {
+            throw VRMError._dataInconsistent("Texture index \(index) out of bounds")
         }
-        guard let samplerIndex = textures[texture.index].sampler else {
-            return MToonMaterialParameters.defaultSampler
+        guard let samplerIndex = textures[index].sampler else {
+            return nil
         }
         let samplers = try gltf.load(\.samplers)
         guard samplers.indices.contains(samplerIndex) else {
             throw VRMError._dataInconsistent("Sampler index \(samplerIndex) out of bounds")
         }
-        return mtoonSamplerParameters(samplers[samplerIndex])
+        return samplers[samplerIndex]
     }
 
+    /// A nil sampler means the texture relies on the glTF defaults.
+    private func applySampler(_ sampler: GLTF.Sampler?, to descriptor: MTLSamplerDescriptor) {
+        descriptor.magFilter = metalFilter(sampler?.magFilter ?? .LINEAR)
+        let (min, mip) = metalFilters(sampler?.minFilter ?? .LINEAR_MIPMAP_LINEAR)
+        descriptor.minFilter = min
+        descriptor.mipFilter = mip
+        descriptor.sAddressMode = metalWrap(sampler?.wrapS ?? .REPEAT)
+        descriptor.tAddressMode = metalWrap(sampler?.wrapT ?? .REPEAT)
+    }
+
+    private func mtoonSamplerParameters(for texture: MToonMaterialDescriptor.Texture?) throws -> SIMD4<Float> {
+        guard let texture,
+              let sampler = try gltfSampler(withTextureIndex: texture.index) else {
+            return MToonMaterialParameters.defaultSampler
+        }
+        return mtoonSamplerParameters(sampler)
+    }
+
+    /// (wrapS, wrapT, filterIndex, 0), matching the sampler rows `MToon.metal`
+    /// selects its samplers with.
     private func mtoonSamplerParameters(_ sampler: GLTF.Sampler) -> SIMD4<Float> {
-        let minFilter = sampler.minFilter ?? .LINEAR_MIPMAP_LINEAR
-        let useNearest = sampler.magFilter == .NEAREST || minFilter.usesNearestMinification
+        let (minFilter, mipFilter) = metalFilters(sampler.minFilter ?? .LINEAR_MIPMAP_LINEAR)
+        let filter = MToonSamplerFilter(
+            magnification: metalFilter(sampler.magFilter ?? .LINEAR) == .nearest ? .nearest : .linear,
+            minification: minFilter == .nearest ? .nearest : .linear,
+            mip: MToonSamplerFilter.MipFilter(mipFilter)
+        )
         return SIMD4<Float>(mtoonWrapMode(sampler.wrapS),
                             mtoonWrapMode(sampler.wrapT),
-                            useNearest ? 1 : 0,
+                            Float(filter.index),
                             0)
     }
 
@@ -1166,7 +934,7 @@ open class VRMEntityLoader {
 
     func image(withImageIndex index: Int) throws -> VRMImage {
         if let cache = try entityData.load(\.images, index: index) { return cache }
-        let gltfImage = try gltf.load(\.images)[index]
+        let gltfImage = try gltf.load(\.images, at: index)
         let image = try VRMImage.from(gltfImage, relativeTo: rootDirectory) { index in
             try self.bufferView(withBufferViewIndex: index).bufferView
         }
@@ -1176,7 +944,7 @@ open class VRMEntityLoader {
 
     func bufferView(withBufferViewIndex index: Int) throws -> (bufferView: Data, stride: Int?) {
         if let cache = try entityData.load(\.bufferViews, index: index) {
-            let gltfBufferView = try gltf.load(\.bufferViews)[index]
+            let gltfBufferView = try gltf.load(\.bufferViews, at: index)
             return (cache, gltfBufferView.byteStride)
         }
         let result = try vrm.gltf.bufferViewData(at: index, relativeTo: rootDirectory)
@@ -1189,7 +957,7 @@ open class VRMEntityLoader {
         if let cache = metallicRoughnessCache[index] {
             resources = cache
         } else {
-            let gltfTexture = try gltf.load(\.textures)[index]
+            let gltfTexture = try gltf.load(\.textures, at: index)
             let image = try image(withImageIndex: gltfTexture.source)
             let textures = try createMetallicRoughnessTextures(from: image)
             metallicRoughnessCache[index] = textures
@@ -1276,53 +1044,54 @@ open class VRMEntityLoader {
         return image
     }
 
-    private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,
-                                alphaCutoff: Float,
-                                to material: inout UnlitMaterial) {
-        switch mode {
-        case .OPAQUE:
-            material.blending = .opaque
-            material.opacityThreshold = nil
-        case .MASK:
-            material.blending = .opaque
-            material.opacityThreshold = alphaCutoff
-        case .BLEND:
-            material.blending = .transparent(opacity: .init(scale: 1.0))
-            material.opacityThreshold = nil
+    /// The single glTF alpha-mode → RealityKit blending decision, shared by
+    /// every material type this loader builds.
+    private struct AlphaModeSettings {
+        let isTransparent: Bool
+        let opacityThreshold: Float?
+
+        init(_ mode: GLTF.Material.AlphaMode, alphaCutoff: Float) {
+            switch mode {
+            case .OPAQUE:
+                (isTransparent, opacityThreshold) = (false, nil)
+            case .MASK:
+                (isTransparent, opacityThreshold) = (false, alphaCutoff)
+            case .BLEND:
+                (isTransparent, opacityThreshold) = (true, nil)
+            }
         }
     }
 
     private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,
                                 alphaCutoff: Float,
+                                to material: inout UnlitMaterial) {
+        let settings = AlphaModeSettings(mode, alphaCutoff: alphaCutoff)
+        material.blending = settings.isTransparent ? .transparent(opacity: .init(scale: 1.0)) : .opaque
+        material.opacityThreshold = settings.opacityThreshold
+    }
+
+    private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,
+                                alphaCutoff: Float,
                                 to material: inout PhysicallyBasedMaterial) {
-        switch mode {
-        case .OPAQUE:
-            material.blending = .opaque
-            material.opacityThreshold = nil
-        case .MASK:
-            material.blending = .opaque
-            material.opacityThreshold = alphaCutoff
-        case .BLEND:
-            material.blending = .transparent(opacity: .init(scale: 1.0))
-            material.opacityThreshold = nil
-        }
+        let settings = AlphaModeSettings(mode, alphaCutoff: alphaCutoff)
+        material.blending = settings.isTransparent ? .transparent(opacity: .init(scale: 1.0)) : .opaque
+        material.opacityThreshold = settings.opacityThreshold
     }
 
 #if !os(visionOS)
     private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,
                                 alphaCutoff: Float,
                                 to material: inout CustomMaterial) {
-        switch mode {
-        case .OPAQUE:
-            material.blending = .opaque
-            material.opacityThreshold = nil
-        case .MASK:
-            material.blending = .opaque
-            material.opacityThreshold = alphaCutoff
-        case .BLEND:
-            material.blending = .transparent(opacity: .init(scale: 1.0))
-            material.opacityThreshold = nil
-        }
+        let settings = AlphaModeSettings(mode, alphaCutoff: alphaCutoff)
+        material.blending = settings.isTransparent ? .transparent(opacity: .init(scale: 1.0)) : .opaque
+        material.opacityThreshold = settings.opacityThreshold
+    }
+
+    /// MToon's `transparentWithZWrite` asks a blended material to still write
+    /// depth. Only BLEND materials can turn depth writing off, so every other
+    /// alpha mode keeps it on.
+    private func applyDepthWrite(_ mtoon: MToonMaterialDescriptor, to material: inout CustomMaterial) {
+        material.writesDepth = mtoon.alphaMode != .BLEND || mtoon.transparentWithZWrite
     }
 #endif
 
@@ -1339,31 +1108,14 @@ open class VRMEntityLoader {
         if let cache = try entityData.load(\.accessors, index: index) as? AccessorSlice {
             return cache
         }
-        let accessor = try gltf.load(\.accessors)[index]
-        let (componentsPerVector, bytesPerComponent, vectorSize) = accessor.components()
-
-        let baseData: Data = try {
-            if let bufferViewIndex = accessor.bufferView {
-                let bufferView = try self.bufferView(withBufferViewIndex: bufferViewIndex)
-                let dataStride = bufferView.stride ?? vectorSize
-                return bufferView.bufferView.subdata(offset: accessor.byteOffset,
-                                                     size: vectorSize,
-                                                     stride: dataStride,
-                                                     count: accessor.count)
-            }
-            return Data(count: vectorSize * accessor.count)
-        }()
-
-        var data = baseData
-        if let sparse = accessor.sparse {
-            try applySparse(sparse: sparse,
-                            accessorCount: accessor.count,
-                            vectorSize: vectorSize,
-                            data: &data)
+        let accessors = try gltf.load(\.accessors)
+        guard accessors.indices.contains(index) else {
+            throw VRMError._dataInconsistent("accessor index \(index) is out of range for \(accessors.count) accessors")
         }
-
+        let accessor = accessors[index]
+        let (componentsPerVector, bytesPerComponent, _) = accessor.components()
         let slice = AccessorSlice(
-            data: data,
+            data: try accessor.packedData(bufferView: { try self.bufferView(withBufferViewIndex: $0) }),
             componentsPerVector: componentsPerVector,
             bytesPerComponent: bytesPerComponent,
             count: accessor.count,
@@ -1372,68 +1124,6 @@ open class VRMEntityLoader {
         )
         entityData.accessors[index] = slice
         return slice
-    }
-
-    private func applySparse(sparse: GLTF.Accessor.Sparse,
-                             accessorCount: Int,
-                             vectorSize: Int,
-                             data: inout Data) throws {
-        guard sparse.count > 0 else { return }
-        let indices = try sparseIndices(sparse: sparse)
-        let values = try sparseValues(sparse: sparse, vectorSize: vectorSize)
-        let count = min(indices.count, sparse.count)
-        data.withUnsafeMutableBytes { rawDst in
-            guard let dst = rawDst.bindMemory(to: UInt8.self).baseAddress else { return }
-            values.withUnsafeBytes { rawSrc in
-                guard let src = rawSrc.bindMemory(to: UInt8.self).baseAddress else { return }
-                for i in 0..<count {
-                    let index = indices[i]
-                    guard index >= 0, index < accessorCount else { continue }
-                    let dstPos = index * vectorSize
-                    let srcPos = i * vectorSize
-                    memcpy(dst.advanced(by: dstPos), src.advanced(by: srcPos), vectorSize)
-                }
-            }
-        }
-    }
-
-    private func sparseIndices(sparse: GLTF.Accessor.Sparse) throws -> [Int] {
-        let bufferView = try self.bufferView(withBufferViewIndex: sparse.indices.bufferView)
-        let bytesPerIndex = bytes(of: sparse.indices.componentType)
-        let stride = bufferView.stride ?? bytesPerIndex
-        let indexData = bufferView.bufferView.subdata(offset: sparse.indices.byteOffset,
-                                                      size: bytesPerIndex,
-                                                      stride: stride,
-                                                      count: sparse.count)
-        var indices: [Int] = []
-        indices.reserveCapacity(sparse.count)
-        indexData.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            for i in 0..<sparse.count {
-                let offset = i * bytesPerIndex
-                switch sparse.indices.componentType {
-                case .unsignedByte:
-                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt8.self)))
-                case .unsignedShort:
-                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt16.self)))
-                case .unsignedInt:
-                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt32.self)))
-                default:
-                    break
-                }
-            }
-        }
-        return indices
-    }
-
-    private func sparseValues(sparse: GLTF.Accessor.Sparse,
-                              vectorSize: Int) throws -> Data {
-        let bufferView = try self.bufferView(withBufferViewIndex: sparse.values.bufferView)
-        let stride = bufferView.stride ?? vectorSize
-        return bufferView.bufferView.subdata(offset: sparse.values.byteOffset,
-                                             size: vectorSize,
-                                             stride: stride,
-                                             count: sparse.count)
     }
 
     private func vector2s(_ accessorIndex: Int) throws -> [SIMD2<Float>] {
@@ -1534,16 +1224,9 @@ open class VRMEntityLoader {
         slice.data.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return }
             for i in 0..<slice.count {
-                let baseOffset = i * slice.bytesPerComponent
-                let value: UInt32
-                switch slice.componentType {
-                case .unsignedByte:
-                    value = UInt32(base.load(fromByteOffset: baseOffset, as: UInt8.self))
-                case .unsignedShort:
-                    value = UInt32(base.load(fromByteOffset: baseOffset, as: UInt16.self))
-                case .unsignedInt:
-                    value = UInt32(base.load(fromByteOffset: baseOffset, as: UInt32.self))
-                case .byte, .short, .float:
+                guard let value = readIndexComponent(base: base,
+                                                     offset: i * slice.bytesPerComponent,
+                                                     componentType: slice.componentType) else {
                     return
                 }
                 result.append(value)
@@ -1586,9 +1269,12 @@ open class VRMEntityLoader {
         }
     }
 
+    /// One element of an index-valued accessor — mesh indices and `JOINTS_n`.
+    /// glTF defines both as unsigned integers, so a signed or floating point
+    /// component type is a malformed file and yields nil for the caller to throw on.
     private func readIndexComponent(base: UnsafeRawPointer,
                                     offset: Int,
-                                    componentType: GLTF.Accessor.ComponentType) -> UInt32 {
+                                    componentType: GLTF.Accessor.ComponentType) -> UInt32? {
         switch componentType {
         case .unsignedByte:
             return UInt32(base.load(fromByteOffset: offset, as: UInt8.self))
@@ -1596,12 +1282,8 @@ open class VRMEntityLoader {
             return UInt32(base.load(fromByteOffset: offset, as: UInt16.self))
         case .unsignedInt:
             return base.load(fromByteOffset: offset, as: UInt32.self)
-        case .byte:
-            return UInt32(Int32(base.load(fromByteOffset: offset, as: Int8.self)))
-        case .short:
-            return UInt32(Int32(base.load(fromByteOffset: offset, as: Int16.self)))
-        case .float:
-            return UInt32(base.load(fromByteOffset: offset, as: Float.self))
+        case .byte, .short, .float:
+            return nil
         }
     }
 
@@ -1616,18 +1298,20 @@ open class VRMEntityLoader {
             guard let base = raw.baseAddress else { return }
             for i in 0..<slice.count {
                 let baseOffset = i * slice.componentsPerVector * slice.bytesPerComponent
-                let x = readIndexComponent(base: base,
-                                           offset: baseOffset,
-                                           componentType: slice.componentType)
-                let y = readIndexComponent(base: base,
-                                           offset: baseOffset + slice.bytesPerComponent,
-                                           componentType: slice.componentType)
-                let z = readIndexComponent(base: base,
-                                           offset: baseOffset + slice.bytesPerComponent * 2,
-                                           componentType: slice.componentType)
-                let w = readIndexComponent(base: base,
-                                           offset: baseOffset + slice.bytesPerComponent * 3,
-                                           componentType: slice.componentType)
+                guard let x = readIndexComponent(base: base,
+                                                 offset: baseOffset,
+                                                 componentType: slice.componentType),
+                      let y = readIndexComponent(base: base,
+                                                 offset: baseOffset + slice.bytesPerComponent,
+                                                 componentType: slice.componentType),
+                      let z = readIndexComponent(base: base,
+                                                 offset: baseOffset + slice.bytesPerComponent * 2,
+                                                 componentType: slice.componentType),
+                      let w = readIndexComponent(base: base,
+                                                 offset: baseOffset + slice.bytesPerComponent * 3,
+                                                 componentType: slice.componentType) else {
+                    return
+                }
                 result.append(SIMD4<UInt32>(x, y, z, w))
             }
         }
@@ -1635,6 +1319,43 @@ open class VRMEntityLoader {
             throw VRMError._dataInconsistent("failed to read joint indices")
         }
         return result
+    }
+
+    /// JOINTS_n as glTF defines it: unsigned byte or short indices into the skin.
+    /// A wider or signed component type means the file indexes joints in a way
+    /// its own skin does not describe.
+    private func jointIndices(_ accessorIndex: Int) throws -> [SIMD4<UInt32>] {
+        let slice = try accessorSlice(accessorIndex)
+        switch slice.componentType {
+        case .unsignedByte, .unsignedShort:
+            return try vector4UInts(accessorIndex)
+        case .byte, .short, .unsignedInt, .float:
+            throw VRMError._dataInconsistent(
+                "JOINTS_0 must use unsigned byte or short components, not \(slice.componentType)"
+            )
+        }
+    }
+
+    /// WEIGHTS_n as glTF defines it: float, or normalized unsigned byte / short.
+    /// An unnormalized integer accessor would arrive as raw counts rather than
+    /// the 0...1 weights the influences are built from.
+    private func jointWeights(_ accessorIndex: Int) throws -> [SIMD4<Float>] {
+        let slice = try accessorSlice(accessorIndex)
+        switch slice.componentType {
+        case .float:
+            return try vector4s(accessorIndex)
+        case .unsignedByte, .unsignedShort:
+            guard slice.normalized else {
+                throw VRMError._dataInconsistent(
+                    "WEIGHTS_0 with \(slice.componentType) components must be normalized"
+                )
+            }
+            return try vector4s(accessorIndex)
+        case .byte, .short, .unsignedInt:
+            throw VRMError._dataInconsistent(
+                "WEIGHTS_0 must use float or normalized unsigned byte / short components, not \(slice.componentType)"
+            )
+        }
     }
 
     private func makeJointInfluences(joints: [SIMD4<UInt32>],
@@ -1651,6 +1372,17 @@ open class VRMEntityLoader {
         var influences: [MeshJointInfluence] = []
         influences.reserveCapacity(joints.count * 4)
         let remap = jointIndexRemap
+        // JOINTS_0 comes straight from the file, so an out-of-range index has to
+        // fail the load rather than reach the remap table or the skeleton.
+        func remapped(_ jointIndex: UInt32) throws -> Int {
+            guard let remap else { return Int(jointIndex) }
+            guard remap.indices.contains(Int(jointIndex)) else {
+                throw VRMError._dataInconsistent(
+                    "joint index \(jointIndex) is out of range for \(remap.count) skin joints"
+                )
+            }
+            return remap[Int(jointIndex)]
+        }
         for i in 0..<joints.count {
             let joint = joints[i]
             var w0 = weights[i].x
@@ -1664,14 +1396,10 @@ open class VRMEntityLoader {
                 w2 /= sum
                 w3 /= sum
             }
-            let j0 = remap.map { $0[Int(joint.x)] } ?? Int(joint.x)
-            let j1 = remap.map { $0[Int(joint.y)] } ?? Int(joint.y)
-            let j2 = remap.map { $0[Int(joint.z)] } ?? Int(joint.z)
-            let j3 = remap.map { $0[Int(joint.w)] } ?? Int(joint.w)
-            influences.append(MeshJointInfluence(jointIndex: j0, weight: w0))
-            influences.append(MeshJointInfluence(jointIndex: j1, weight: w1))
-            influences.append(MeshJointInfluence(jointIndex: j2, weight: w2))
-            influences.append(MeshJointInfluence(jointIndex: j3, weight: w3))
+            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.x), weight: w0))
+            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.y), weight: w1))
+            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.z), weight: w2))
+            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.w), weight: w3))
         }
 
         let buffer = MeshBuffer(influences)
@@ -1718,17 +1446,25 @@ open class VRMEntityLoader {
 
     private func skeleton(withSkinIndex index: Int) throws -> MeshResource.Skeleton {
         if let cache = try entityData.load(\.skins, index: index) { return cache }
-        let skin = try gltf.load(\.skins)[index]
+        let skin = try gltf.load(\.skins, at: index)
         let nodes = try gltf.load(\.nodes)
         let (parentIndices, order, remap) = computeSkinJointOrdering(skin: skin, nodes: nodes)
         entityData.skinJointRemaps[index] = remap
 
-        let inverseBindMatrices: [simd_float4x4] = {
-            guard let accessorIndex = skin.inverseBindMatrices else {
-                return Array(repeating: matrix_identity_float4x4, count: skin.joints.count)
+        // glTF defines an absent inverseBindMatrices as identity per joint, but a
+        // present one has to cover every joint: silently substituting identities
+        // for a broken accessor would bind the mesh to the wrong rest pose.
+        let inverseBindMatrices: [simd_float4x4]
+        if let accessorIndex = skin.inverseBindMatrices {
+            inverseBindMatrices = try matrix4s(accessorIndex)
+            guard inverseBindMatrices.count >= skin.joints.count else {
+                throw VRMError._dataInconsistent(
+                    "inverseBindMatrices has \(inverseBindMatrices.count) elements for \(skin.joints.count) skin joints"
+                )
             }
-            return (try? matrix4s(accessorIndex)) ?? Array(repeating: matrix_identity_float4x4, count: skin.joints.count)
-        }()
+        } else {
+            inverseBindMatrices = Array(repeating: matrix_identity_float4x4, count: skin.joints.count)
+        }
 
         var joints: [MeshResource.Skeleton.Joint] = []
         joints.reserveCapacity(order.count)
@@ -1741,7 +1477,7 @@ open class VRMEntityLoader {
             let parentNew = parentOld.map { remap[$0] }
 
             let restTransform = transform(from: node)
-            let ibm = oldIndex < inverseBindMatrices.count ? inverseBindMatrices[oldIndex] : matrix_identity_float4x4
+            let ibm = inverseBindMatrices[oldIndex]
             joints.append(.init(name: name,
                                 parentIndex: parentNew,
                                 inverseBindPoseMatrix: ibm,
@@ -1755,7 +1491,7 @@ open class VRMEntityLoader {
 
     private func jointIndexRemap(forSkinIndex index: Int) throws -> [Int] {
         if let cache = try entityData.load(\.skinJointRemaps, index: index) { return cache }
-        let skin = try gltf.load(\.skins)[index]
+        let skin = try gltf.load(\.skins, at: index)
         let nodes = try gltf.load(\.nodes)
         let (_, _, remap) = computeSkinJointOrdering(skin: skin, nodes: nodes)
         entityData.skinJointRemaps[index] = remap
@@ -1820,36 +1556,9 @@ open class VRMEntityLoader {
         return (parentIndices, order, remap)
     }
 
-    private func applySkinning(to mesh: MeshResource,
-                               skinIndex: Int,
-                               jointInfluences: MeshResource.JointInfluences) throws -> MeshResource.Skeleton {
-        let skeleton = try skeleton(withSkinIndex: skinIndex)
-        var contents = mesh.contents
-        var skeletons = contents.skeletons
-        _ = skeletons.insert(skeleton)
-        contents.skeletons = skeletons
-
-        var updatedModels = MeshModelCollection()
-        for model in contents.models {
-            var model = model
-            var updatedParts = MeshPartCollection()
-            for part in model.parts {
-                var part = part
-                part.skeletonID = skeleton.id
-                part.jointInfluences = jointInfluences
-                updatedParts.insert(part)
-            }
-            model.parts = updatedParts
-            updatedModels.insert(model)
-        }
-        contents.models = updatedModels
-        try mesh.replace(with: contents)
-        return skeleton
-    }
-
     private func meshResource(positions: [SIMD3<Float>],
                               normals: [SIMD3<Float>],
-                              tangents: [SIMD3<Float>],
+                              tangentFrame: TangentFrame,
                               texcoords: [SIMD2<Float>],
                               indices: [UInt32],
                               blendShapeOffsets: [[SIMD3<Float>]],
@@ -1860,8 +1569,9 @@ open class VRMEntityLoader {
         if !normals.isEmpty {
             part.normals = MeshBuffer(normals)
         }
-        if !tangents.isEmpty {
-            part.tangents = MeshBuffer(tangents)
+        if !tangentFrame.tangents.isEmpty {
+            part.tangents = MeshBuffer(tangentFrame.tangents)
+            part.bitangents = MeshBuffer(tangentFrame.bitangents)
         }
         if !texcoords.isEmpty {
             part.textureCoordinates = MeshBuffer(texcoords)
@@ -1904,7 +1614,7 @@ open class VRMEntityLoader {
                                      skinIndex: Int,
                                      skeleton: MeshResource.Skeleton) throws {
         guard let vrmEntity = currentEntity else { return }
-        let skin = try gltf.load(\.skins)[skinIndex]
+        let skin = try gltf.load(\.skins, at: skinIndex)
         var jointEntities = try skin.joints.map { try node(withNodeIndex: $0) }
         if let remap = try? jointIndexRemap(forSkinIndex: skinIndex), remap.count == jointEntities.count {
             var ordered: [Entity] = Array(repeating: jointEntities[0], count: jointEntities.count)
@@ -1920,13 +1630,13 @@ open class VRMEntityLoader {
 
     private func registerMaterialBindings(in root: Entity) {
         guard let vrmEntity = currentEntity else { return }
-        var stack: [Entity] = [root]
-        while let entity = stack.popLast() {
-            if let modelEntity = entity as? ModelEntity,
-               let materialIndex = modelEntity.components[VRMMaterialIndexComponent.self]?.materialIndex {
-                vrmEntity.registerMaterialBinding(modelEntity: modelEntity, materialIndex: materialIndex)
+        for modelEntity in root.modelEntitiesInHierarchy {
+            guard let materialIndex = modelEntity.components[VRMMaterialIndexComponent.self]?.materialIndex else {
+                continue
             }
-            stack.append(contentsOf: entity.children)
+            vrmEntity.registerMaterialBinding(modelEntity: modelEntity,
+                                              materialIndex: materialIndex,
+                                              loader: self)
         }
     }
 
@@ -1939,7 +1649,140 @@ open class VRMEntityLoader {
                          translation: node.translation.simd)
     }
 
-    private func estimateNormals(positions: [SIMD3<Float>], indices: [UInt32]) -> [SIMD3<Float>] {
+    /// A complete tangent basis. RealityKit stores tangents and bitangents as two
+    /// independent mesh buffers and derives neither from the other, so both are
+    /// filled together or left empty together.
+    private struct TangentFrame {
+        static let empty = TangentFrame(tangents: [], bitangents: [])
+
+        let tangents: [SIMD3<Float>]
+        let bitangents: [SIMD3<Float>]
+    }
+
+    /// The tangent basis a normal map needs: taken from glTF `TANGENT` when the
+    /// primitive has one, and otherwise derived from the UVs. Meshes whose
+    /// material never samples a normal map get no basis, since nothing reads it.
+    private func tangentFrame(rawTangents: [SIMD4<Float>]?,
+                              positions: [SIMD3<Float>],
+                              normals: [SIMD3<Float>],
+                              texcoords: [SIMD2<Float>],
+                              indices: [UInt32],
+                              materialIndex: Int?) -> TangentFrame {
+        if let rawTangents {
+            // glTF stores handedness in w; the bitangent it selects is what makes
+            // the basis match the normal map the asset was authored against.
+            var tangents = [SIMD3<Float>](repeating: .zero, count: positions.count)
+            var bitangents = tangents
+            for i in 0..<positions.count {
+                let raw = rawTangents[i]
+                let tangent = SIMD3<Float>(raw.x, raw.y, raw.z)
+                tangents[i] = tangent
+                bitangents[i] = simd_cross(normals[i], tangent) * (raw.w < 0 ? -1 : 1)
+            }
+            return TangentFrame(tangents: tangents, bitangents: bitangents)
+        }
+        guard texcoords.count == positions.count,
+              let materialIndex,
+              materialUsesNormalTexture(withMaterialIndex: materialIndex) else {
+            return .empty
+        }
+        return generatedTangentFrame(positions: positions,
+                                     normals: normals,
+                                     texcoords: texcoords,
+                                     indices: indices)
+    }
+
+    /// Whether the material samples a normal map. The MToon descriptor is asked
+    /// first because VRM 0.x carries its normal map in Unity's `_BumpMap`, which
+    /// the migration surfaces there and not on the glTF material.
+    private func materialUsesNormalTexture(withMaterialIndex index: Int) -> Bool {
+        if let descriptor = try? mtoonDescriptor(withMaterialIndex: index), descriptor.normalTexture != nil {
+            return true
+        }
+        guard let (gltfMaterial, _) = try? materialSource(withMaterialIndex: index) else { return false }
+        return gltfMaterial.normalTexture != nil
+    }
+
+    /// Per-triangle UV gradients accumulated per vertex, then orthonormalized
+    /// against the normal — the standard basis a normal map is authored against.
+    private func generatedTangentFrame(positions: [SIMD3<Float>],
+                                       normals: [SIMD3<Float>],
+                                       texcoords: [SIMD2<Float>],
+                                       indices: [UInt32]) -> TangentFrame {
+        var tangentSums = [SIMD3<Float>](repeating: .zero, count: positions.count)
+        var bitangentSums = tangentSums
+        let triangleCount = indices.count / 3
+        for i in 0..<triangleCount {
+            let base = i * 3
+            let i0 = Int(indices[base])
+            let i1 = Int(indices[base + 1])
+            let i2 = Int(indices[base + 2])
+
+            let edge1 = positions[i1] - positions[i0]
+            let edge2 = positions[i2] - positions[i0]
+            // `texcoords` point v up, while the normal map and the shader that
+            // samples it work in glTF UV space, where v points down. Negating the
+            // v gradients gives the same handedness as a TANGENT accessor's.
+            let deltaUV1 = gltfUVDelta(texcoords[i1] - texcoords[i0])
+            let deltaUV2 = gltfUVDelta(texcoords[i2] - texcoords[i0])
+
+            // A degenerate UV triangle carries no direction; neighbouring
+            // triangles still contribute to these vertices.
+            let determinant = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y
+            guard abs(determinant) > 1e-12 else { continue }
+            let scale = 1 / determinant
+            let tangent = (edge1 * deltaUV2.y - edge2 * deltaUV1.y) * scale
+            let bitangent = (edge2 * deltaUV1.x - edge1 * deltaUV2.x) * scale
+            tangentSums[i0] += tangent
+            tangentSums[i1] += tangent
+            tangentSums[i2] += tangent
+            bitangentSums[i0] += bitangent
+            bitangentSums[i1] += bitangent
+            bitangentSums[i2] += bitangent
+        }
+
+        var tangents = [SIMD3<Float>](repeating: .zero, count: positions.count)
+        var bitangents = tangents
+        for i in 0..<positions.count {
+            let normal = normals[i]
+            let tangent = orthonormalizedTangent(tangentSums[i], normal: normal)
+            tangents[i] = tangent
+            // Mirrored UV islands need the flipped bitangent, which is what the
+            // accumulated one indicates.
+            let bitangent = simd_cross(normal, tangent)
+            bitangents[i] = simd_dot(bitangent, bitangentSums[i]) < 0 ? -bitangent : bitangent
+        }
+        return TangentFrame(tangents: tangents, bitangents: bitangents)
+    }
+
+    /// A UV difference converted from the mesh's v-up texture coordinates back
+    /// into glTF UV space.
+    private func gltfUVDelta(_ delta: SIMD2<Float>) -> SIMD2<Float> {
+        SIMD2<Float>(delta.x, -delta.y)
+    }
+
+    /// Gram-Schmidt against the normal, falling back to any perpendicular axis
+    /// for vertices no usable triangle reached.
+    private func orthonormalizedTangent(_ tangent: SIMD3<Float>, normal: SIMD3<Float>) -> SIMD3<Float> {
+        let projected = tangent - normal * simd_dot(normal, tangent)
+        if simd_length_squared(projected) > 1e-12 {
+            return simd_normalize(projected)
+        }
+        let axis = abs(normal.x) < 0.9 ? SIMD3<Float>(1, 0, 0) : SIMD3<Float>(0, 1, 0)
+        return simd_normalize(simd_cross(normal, axis))
+    }
+
+    /// Vertex normals for a primitive that ships none, accumulated from the
+    /// unnormalized face normals: their length is twice the triangle area, which
+    /// is the weighting a smooth normal wants.
+    ///
+    /// This is a deliberate departure from glTF, which asks for flat normals —
+    /// and for TANGENT to be ignored — when NORMAL is absent. Flat normals need
+    /// a vertex per triangle, and splitting the vertices would break the index
+    /// buffer that blend-shape targets, joint influences and the outline twin all
+    /// address. Every VRM ships NORMAL, so this only ever runs for a plain glTF,
+    /// where a smooth-shaded model is the better failure mode than none at all.
+    private func smoothNormals(positions: [SIMD3<Float>], indices: [UInt32]) -> [SIMD3<Float>] {
         var normals = [SIMD3<Float>](repeating: .zero, count: positions.count)
         let triangleCount = indices.count / 3
         for i in 0..<triangleCount {
@@ -1948,17 +1791,16 @@ open class VRMEntityLoader {
             let i1 = Int(indices[base + 1])
             let i2 = Int(indices[base + 2])
 
-            let v0 = positions[i0]
-            let v1 = positions[i1]
-            let v2 = positions[i2]
-
-            let n = normal(v0, v1, v2)
-            normals[i0] += n
-            normals[i1] += n
-            normals[i2] += n
+            let faceNormal = simd_cross(positions[i1] - positions[i0], positions[i2] - positions[i0])
+            guard simd_length_squared(faceNormal) > 1e-24 else { continue }
+            normals[i0] += faceNormal
+            normals[i1] += faceNormal
+            normals[i2] += faceNormal
         }
-        for i in 0..<normals.count {
-            normals[i].normalize()
+        // Vertices no usable triangle reached keep a zero normal rather than a
+        // NaN one; RealityKit treats it as unlit, which is the lesser artifact.
+        for i in 0..<normals.count where simd_length_squared(normals[i]) > 1e-24 {
+            normals[i] = simd_normalize(normals[i])
         }
         return normals
     }
@@ -1969,101 +1811,6 @@ open class VRMEntityLoader {
         return material
     }
 
-    private struct PreparedMeshBuffers {
-        let positions: [SIMD3<Float>]
-        let normals: [SIMD3<Float>]
-        let tangents: [SIMD3<Float>]
-        let texcoords: [SIMD2<Float>]
-        let joints: [SIMD4<UInt32>]
-        let weights: [SIMD4<Float>]
-        let targetOffsets: [[SIMD3<Float>]]
-        let normalOffsets: [[SIMD3<Float>]]
-        let tangentOffsets: [[SIMD3<Float>]]
-        let indexData: [UInt32]
-    }
-
-    private func prepareVertexData(positions: [SIMD3<Float>],
-                                         normals: [SIMD3<Float>]?,
-                                         tangents: [SIMD3<Float>]?,
-                                         texcoords: [SIMD2<Float>]?,
-                                         joints: [SIMD4<UInt32>]?,
-                                         weights: [SIMD4<Float>]?,
-                                         targetOffsets: [[SIMD3<Float>]],
-                                         normalOffsets: [[SIMD3<Float>]],
-                                         tangentOffsets: [[SIMD3<Float>]],
-                                         indexData: [UInt32]) -> PreparedMeshBuffers {
-        let finalNormals: [SIMD3<Float>]
-        if let normals {
-            finalNormals = normals
-        } else {
-            finalNormals = estimateNormals(positions: positions, indices: indexData)
-        }
-        return PreparedMeshBuffers(positions: positions,
-                                    normals: finalNormals,
-                                    tangents: tangents ?? [],
-                                    texcoords: texcoords ?? [],
-                                    joints: joints ?? [],
-                                    weights: weights ?? [],
-                                    targetOffsets: targetOffsets,
-                                    normalOffsets: normalOffsets,
-                                    tangentOffsets: tangentOffsets,
-                                    indexData: indexData)
-    }
-}
-
-private extension GLTF.Sampler.MinFilter {
-    var usesNearestMinification: Bool {
-        switch self {
-        case .NEAREST, .NEAREST_MIPMAP_NEAREST, .NEAREST_MIPMAP_LINEAR:
-            return true
-        case .LINEAR, .LINEAR_MIPMAP_NEAREST, .LINEAR_MIPMAP_LINEAR:
-            return false
-        }
-    }
-}
-
-private extension Dictionary where Key == String, Value == Any {
-    func simd2Value(forKey key: String, default defaultValue: SIMD2<Float>) -> SIMD2<Float> {
-        guard let values = self[key] as? [Any] else { return defaultValue }
-        return SIMD2<Float>(values.float(at: 0, default: defaultValue.x),
-                            values.float(at: 1, default: defaultValue.y))
-    }
-
-    func floatValue(forKey key: String, default defaultValue: Float) -> Float {
-        guard let value = self[key] else { return defaultValue }
-        return numericFloatValue(value, default: defaultValue)
-    }
-}
-
-private extension Array where Element == Any {
-    func float(at index: Int, default defaultValue: Float) -> Float {
-        guard indices.contains(index) else { return defaultValue }
-        return numericFloatValue(self[index], default: defaultValue)
-    }
-}
-
-private func numericFloatValue(_ value: Any, default defaultValue: Float) -> Float {
-    switch value {
-    case let value as Float:
-        return value
-    case let value as Double:
-        return Float(value)
-    case let value as Int:
-        return Float(value)
-    case let value as NSNumber:
-        return value.floatValue
-    default:
-        return defaultValue
-    }
-}
-
-private extension VRMColor {
-    convenience init(simd color: SIMD4<Float>) {
-        self.init(red: CGFloat(color.x),
-                  green: CGFloat(color.y),
-                  blue: CGFloat(color.z),
-                  alpha: CGFloat(color.w))
-    }
 }
 
 #endif

@@ -5,6 +5,23 @@ import Testing
 
 @Suite
 struct MToonMaterialDescriptorTests {
+    /// JSON numbers reach the VRM extensions as `NSNumber`, and glTF indices
+    /// have to survive that intact: `Float` rounds `16_777_217` to its neighbour
+    /// and `Int32.max` past its own range.
+    @Test
+    func testIndexCoercionAcceptsOnlyExactNonNegativeInt32Values() {
+        #expect(numericIndexValue(0) == 0)
+        #expect(numericIndexValue(7) == 7)
+        #expect(numericIndexValue(16_777_217) == 16_777_217)
+        #expect(numericIndexValue(Int(Int32.max)) == Int(Int32.max))
+        #expect(numericIndexValue(Int(Int32.max) + 1) == nil)
+        #expect(numericIndexValue(-1) == nil)
+        #expect(numericIndexValue(1.5) == nil)
+        #expect(numericIndexValue(Double.nan) == nil)
+        #expect(numericIndexValue(true) == nil)
+        #expect(numericIndexValue("3") == nil)
+    }
+
     @Test
     func testVRM0DefaultValuesMigrateToMToon10Domain() throws {
         let descriptor = try #require(MToonMaterialDescriptor(material: material(),
@@ -13,7 +30,156 @@ struct MToonMaterialDescriptorTests {
         #expect(descriptor.shadingToonyFactor.isApproximatelyEqual(to: 0.95))
         #expect(descriptor.shadingShiftFactor.isApproximatelyEqual(to: -0.05))
         #expect(descriptor.giEqualizationFactor.isApproximatelyEqual(to: 0.9))
-        #expect(descriptor.rimLightingMixFactor == 0)
+        // UniVRM migrates rim lighting mix destructively to 1.0.
+        #expect(descriptor.rimLightingMixFactor == 1)
+    }
+
+    @Test
+    func testVRM0RimLightingMixIsMigratedDestructivelyLikeUniVRM() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(floats: #"{"_RimLightingMix": 0.3}"#)
+        ))
+
+        #expect(descriptor.rimLightingMixFactor == 1)
+    }
+
+    @Test
+    func testVRM0LitShadeRimOutlineColorsAreConvertedToLinear() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(vectors: #"""
+                {
+                  "_Color": [0.5, 0.5, 0.5, 0.5],
+                  "_ShadeColor": [0.5, 0.5, 0.5, 1.0],
+                  "_RimColor": [0.5, 0.5, 0.5, 1.0],
+                  "_OutlineColor": [0.5, 0.5, 0.5, 1.0],
+                  "_EmissionColor": [0.5, 0.5, 0.5, 1.0]
+                }
+                """#)
+        ))
+        let linearHalf = VRM0MToonMigrator.srgbToLinear(0.5)
+
+        #expect(linearHalf.isApproximatelyEqual(to: 0.21404114))
+        #expect(descriptor.baseColorFactor.isApproximatelyEqual(to: SIMD4<Float>(linearHalf, linearHalf, linearHalf, 0.5)))
+        #expect(descriptor.shadeColorFactor.isApproximatelyEqual(to: SIMD4<Float>(linearHalf, linearHalf, linearHalf, 1)))
+        #expect(descriptor.parametricRimColorFactor.isApproximatelyEqual(to: SIMD4<Float>(linearHalf, linearHalf, linearHalf, 1)))
+        #expect(descriptor.outlineColorFactor.isApproximatelyEqual(to: SIMD4<Float>(linearHalf, linearHalf, linearHalf, 1)))
+        // Emission is already linear in VRM 0.x and must be passed through.
+        #expect(descriptor.emissiveFactor.isApproximatelyEqual(to: SIMD3<Float>(0.5, 0.5, 0.5)))
+    }
+
+    @Test
+    func testVRM0UVAnimationScrollYIsInverted() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(floats: #"{"_UvAnimScrollX": 0.1, "_UvAnimScrollY": 0.25}"#)
+        ))
+
+        #expect(descriptor.uvAnimationScrollXSpeedFactor.isApproximatelyEqual(to: 0.1))
+        #expect(descriptor.uvAnimationScrollYSpeedFactor.isApproximatelyEqual(to: -0.25))
+    }
+
+    @Test
+    func testVRM0ScreenOutlineWidthIsHalved() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(floats: #"{"_OutlineWidthMode": 2, "_OutlineWidth": 10}"#)
+        ))
+
+        #expect(descriptor.outlineWidthMode == .screenCoordinates)
+        #expect(descriptor.outlineWidthFactor.isApproximatelyEqual(to: 10 * 0.01 * 0.5))
+    }
+
+    @Test
+    func testVRM0FixedOutlineColorModeRendersUnlit() throws {
+        let fixed = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(floats: #"{"_OutlineColorMode": 0, "_OutlineLightingMix": 0.8}"#)
+        ))
+        let mixed = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(floats: #"{"_OutlineColorMode": 1, "_OutlineLightingMix": 0.8}"#)
+        ))
+
+        #expect(fixed.outlineLightingMixFactor == 0)
+        #expect(mixed.outlineLightingMixFactor.isApproximatelyEqual(to: 0.8))
+    }
+
+    @Test
+    func testVRM0OutOfRangeAndBooleanNumbersFallBackToDefaults() throws {
+        // `1e100` overflows `Float` and JSON booleans bridge to `NSNumber`:
+        // neither is a usable value, and converting them to `Int` would trap.
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(floats: #"""
+                {
+                  "_OutlineWidthMode": 1e100,
+                  "_OutlineColorMode": 1e100,
+                  "_OutlineLightingMix": 0.8,
+                  "_ShadeToony": true
+                }
+                """#)
+        ))
+
+        #expect(descriptor.outlineWidthMode == .none)
+        #expect(descriptor.outlineWidthFactor == 0)
+        #expect(descriptor.outlineLightingMixFactor == 0)
+        #expect(descriptor.shadingToonyFactor.isApproximatelyEqual(to: 0.95))
+    }
+
+    @Test
+    func testVRM1OutOfRangeTextureTransformNumbersFallBackToDefaults() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(#"""
+                {
+                  "emissiveTexture": {
+                    "index": 5,
+                    "texCoord": 1,
+                    "extensions": {
+                      "KHR_texture_transform": { "texCoord": 1e100, "rotation": 1e100 }
+                    }
+                  },
+                  "extensions": {
+                    "VRMC_materials_mtoon": {
+                      "specVersion": "1.0"
+                    }
+                  }
+                }
+                """#),
+            materialProperty: nil
+        ))
+
+        // The unusable override is ignored, so the texture info's own texCoord wins.
+        #expect(descriptor.emissiveTexture?.texCoord == 1)
+        #expect(descriptor.emissiveTexture?.transform?.rotation == 0)
+    }
+
+    @Test
+    func testVRM0MainTextureTransformIsMigrated() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(textures: #"{"_MainTex": 2, "_ShadeTexture": 4}"#,
+                                                   vectors: #"{"_MainTex": [0.1, 0.2, 0.5, 0.4]}"#)
+        ))
+
+        let transform = try #require(descriptor.baseColorTexture?.transform)
+        #expect(transform.scale == SIMD2<Float>(0.5, 0.4))
+        #expect(transform.offset.isApproximatelyEqual(to: SIMD2<Float>(0.1, 1 - 0.2 - 0.4)))
+        #expect(transform.rotation == 0)
+        // MToon 0.x applies the material's _MainTex ST to every texture.
+        #expect(descriptor.shadeMultiplyTexture?.transform == transform)
+    }
+
+    @Test
+    func testVRM0IdentityMainTextureTransformStaysNil() throws {
+        let descriptor = try #require(MToonMaterialDescriptor(
+            material: material(),
+            materialProperty: vrm0MaterialProperty(textures: #"{"_MainTex": 2}"#,
+                                                   vectors: #"{"_MainTex": [0, 0, 1, 1]}"#)
+        ))
+
+        #expect(descriptor.baseColorTexture?.transform == nil)
     }
 
     @Test
@@ -35,31 +201,95 @@ struct MToonMaterialDescriptorTests {
     }
 
     @Test
-    func testVRM0RenderQueueOffsetMigratesTransparentQueues() throws {
-        let transparentNoZWrite = try descriptor(renderQueue: 2994,
-                                                 keywordMap: #"{"_ALPHABLEND_ON": true}"#,
-                                                 tagMap: #"{"RenderType": "Transparent"}"#)
-        #expect(transparentNoZWrite.renderQueueOffsetNumber == -6)
+    func testVRM0RenderQueueIsNotMigratedToAnOffset() throws {
+        // renderQueueOffsetNumber is a relative order among a model's transparent
+        // materials, so a per-material conversion of Unity's absolute renderQueue
+        // would fabricate an ordering; VRM 0.x stays neutral.
+        for renderQueue in [0, 2508, 2980, 2994, 3000, 3200] {
+            let transparent = try descriptor(renderQueue: renderQueue,
+                                             keywordMap: #"{"_ALPHABLEND_ON": true}"#,
+                                             tagMap: #"{"RenderType": "Transparent"}"#)
+            #expect(transparent.renderQueueOffsetNumber == 0)
 
-        let transparentNoZWriteClamped = try descriptor(renderQueue: 2980,
-                                                        keywordMap: #"{"_ALPHABLEND_ON": true}"#,
-                                                        tagMap: #"{"RenderType": "Transparent"}"#)
-        #expect(transparentNoZWriteClamped.renderQueueOffsetNumber == -9)
+            let zWrite = try descriptor(renderQueue: renderQueue,
+                                        floats: #"{"_BlendMode": 3, "_ZWrite": 1}"#,
+                                        keywordMap: #"{"_ALPHABLEND_ON": true}"#,
+                                        tagMap: #"{"RenderType": "Transparent"}"#)
+            #expect(zWrite.renderQueueOffsetNumber == 0)
+            // The TransparentWithZWrite render mode still reaches the descriptor.
+            #expect(zWrite.transparentWithZWrite)
+        }
+    }
 
-        let transparentZWrite = try descriptor(renderQueue: 2508,
-                                               keywordMap: #"{"_ALPHABLEND_ON": true, "_ZWRITE_ON": true}"#,
-                                               tagMap: #"{"RenderType": "Transparent"}"#)
-        #expect(transparentZWrite.renderQueueOffsetNumber == 7)
+    /// MToon 0.x carries its render mode in `_BlendMode`, not in a shader
+    /// keyword, so only mode 3 migrates to transparentWithZWrite.
+    @Test
+    func testVRM0TransparentWithZWriteComesFromTheBlendMode() throws {
+        let transparentTags = #"{"RenderType": "Transparent"}"#
+        let blend = #"{"_ALPHABLEND_ON": true}"#
 
-        let transparentZWriteClamped = try descriptor(renderQueue: 2520,
-                                                      keywordMap: #"{"_ALPHABLEND_ON": true, "_ZWRITE_ON": true}"#,
-                                                      tagMap: #"{"RenderType": "Transparent"}"#)
-        #expect(transparentZWriteClamped.renderQueueOffsetNumber == 9)
+        for blendMode in [0, 1, 2] {
+            let other = try descriptor(renderQueue: 3000,
+                                       floats: #"{"_BlendMode": \#(blendMode), "_ZWrite": 1}"#,
+                                       keywordMap: blend,
+                                       tagMap: transparentTags)
+            #expect(!other.transparentWithZWrite, "_BlendMode \(blendMode) is not TransparentWithZWrite")
+        }
 
-        let shaderDefaultQueue = try descriptor(renderQueue: 0,
-                                                keywordMap: #"{"_ALPHABLEND_ON": true}"#,
-                                                tagMap: #"{"RenderType": "Transparent"}"#)
-        #expect(shaderDefaultQueue.renderQueueOffsetNumber == 0)
+        // Without `_BlendMode`, `_ZWrite` is the only signal left, and it only
+        // separates the transparent modes.
+        let zWriteOnly = try descriptor(renderQueue: 3000,
+                                        floats: #"{"_ZWrite": 1}"#,
+                                        keywordMap: blend,
+                                        tagMap: transparentTags)
+        #expect(zWriteOnly.transparentWithZWrite)
+
+        let opaqueZWrite = try descriptor(renderQueue: 2000,
+                                          floats: #"{"_ZWrite": 1}"#,
+                                          keywordMap: "{}",
+                                          tagMap: #"{"RenderType": "Opaque"}"#)
+        #expect(!opaqueZWrite.transparentWithZWrite)
+    }
+
+    @Test
+    func testVRM0BaseColorFallsBackToLinearGltfFactor() throws {
+        // _Color is a Unity sRGB color and needs converting; the glTF
+        // baseColorFactor fallback is already a linear multiplier and must not
+        // be converted a second time.
+        let gltfMaterial = try material(#"""
+            {"pbrMetallicRoughness": {"baseColorFactor": [0.5, 0.5, 0.5, 1.0]}}
+            """#)
+        let fallback = try #require(MToonMaterialDescriptor(material: gltfMaterial,
+                                                            materialProperty: vrm0MaterialProperty()))
+        #expect(fallback.baseColorFactor.isApproximatelyEqual(to: SIMD4<Float>(0.5, 0.5, 0.5, 1)))
+
+        let unityColor = try #require(MToonMaterialDescriptor(
+            material: gltfMaterial,
+            materialProperty: vrm0MaterialProperty(vectors: #"{"_Color": [0.5, 0.5, 0.5, 1.0]}"#)
+        ))
+        #expect(unityColor.baseColorFactor.x < 0.5)
+        #expect(unityColor.baseColorFactor.x.isApproximatelyEqual(to: VRM0MToonMigrator.srgbToLinear(0.5)))
+        #expect(unityColor.baseColorFactor.w.isApproximatelyEqual(to: 1))
+    }
+
+    @Test
+    func testUnsupportedMToonSpecVersionFallsBackToNonMToon() throws {
+        // A future revision must not be reinterpreted with 1.0 semantics; the
+        // renderer falls back to Unlit / PBR instead.
+        for specVersion in ["1.0", "1.0-beta"] {
+            let supported = try material(#"""
+                {"extensions": {"VRMC_materials_mtoon": {"specVersion": "\#(specVersion)"}}}
+                """#)
+            #expect(MToonMaterialDescriptor(material: supported, materialProperty: nil) != nil,
+                    "specVersion \(specVersion) should be supported")
+        }
+        for specVersion in ["2.0", "0.9", ""] {
+            let unsupported = try material(#"""
+                {"extensions": {"VRMC_materials_mtoon": {"specVersion": "\#(specVersion)"}}}
+                """#)
+            #expect(MToonMaterialDescriptor(material: unsupported, materialProperty: nil) == nil,
+                    "specVersion \(specVersion) should not be treated as MToon 1.0")
+        }
     }
 
     @Test
@@ -209,11 +439,13 @@ struct MToonMaterialDescriptorTests {
     }
 
     private func descriptor(renderQueue: Int,
+                            floats: String = "{}",
                             keywordMap: String,
                             tagMap: String) throws -> MToonMaterialDescriptor {
         return try #require(MToonMaterialDescriptor(
             material: material(#"{"alphaMode": "OPAQUE"}"#),
             materialProperty: vrm0MaterialProperty(renderQueue: renderQueue,
+                                                   floats: floats,
                                                    keywordMap: keywordMap,
                                                    tagMap: tagMap)
         ))
@@ -254,19 +486,5 @@ struct MToonMaterialDescriptorTests {
             }
             """#
         return try JSONDecoder().decode(VRM0.MaterialProperty.self, from: Data(json.utf8))
-    }
-}
-
-private extension Float {
-    func isApproximatelyEqual(to other: Float, tolerance: Float = 0.0001) -> Bool {
-        return abs(self - other) < tolerance
-    }
-}
-
-private extension SIMD3 where Scalar == Float {
-    func isApproximatelyEqual(to other: SIMD3<Float>, tolerance: Float = 0.0001) -> Bool {
-        return abs(x - other.x) < tolerance &&
-            abs(y - other.y) < tolerance &&
-            abs(z - other.z) < tolerance
     }
 }
