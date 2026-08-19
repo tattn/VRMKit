@@ -72,6 +72,15 @@ extension DictionaryDecoder {
     public func decode<T : Decodable>(_ type: T.Type, from container: Any) throws -> T {
         return try unbox(container, as: T.self)
     }
+
+    /// Decodes an optional member of an untyped glTF object: a missing key
+    /// yields nil, while a present but malformed value still throws.
+    public func decodeIfPresent<T: Decodable>(_ type: T.Type,
+                                              from container: [String: Any],
+                                              forKey key: String) throws -> T? {
+        guard let value = container[key] else { return nil }
+        return try decode(type, from: value)
+    }
 }
 
 extension DictionaryDecoder {

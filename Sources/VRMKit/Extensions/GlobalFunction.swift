@@ -1,17 +1,5 @@
 import Foundation
 
-func read<T>(_ data: Data, offset: inout Int, size: Int) throws -> T {
-    defer { offset += size }
-    return try data.subdata(in: offset..<(offset+size)).withUnsafeBytes {
-        try $0.bindMemory(to: T.self).baseAddress?.pointee ??? VRMError._dataInconsistent("failed to read data")
-    }
-}
-
-func read(_ data: Data, offset: inout Int, size: Int) -> Data {
-    defer { offset += size }
-    return data.subdata(in: offset..<(offset+size))
-}
-
 infix operator ???
 
 package func ???<T>(lhs: T?,

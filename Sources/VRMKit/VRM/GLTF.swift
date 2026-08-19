@@ -52,10 +52,26 @@ extension GLTF {
 
 package extension GLTF {
     func load<T>(_ keyPath: KeyPath<GLTF, T?>) throws -> T {
+        try self[keyPath: keyPath] ??? .keyNotFound(Self.description(of: keyPath))
+    }
+
+    /// One element of a glTF array, throwing instead of trapping when the index
+    /// from the file is out of range.
+    func load<T>(_ keyPath: KeyPath<GLTF, [T]?>, at index: Int) throws -> T {
+        let values = try load(keyPath)
+        guard values.indices.contains(index) else {
+            throw VRMError._dataInconsistent(
+                "index \(index) is out of range for the \(values.count) elements of \(Self.description(of: keyPath))"
+            )
+        }
+        return values[index]
+    }
+
+    private static func description<T>(of keyPath: KeyPath<GLTF, T>) -> String {
         if #available(macOS 13.3, iOS 16.4, watchOS 9.4, *) {
-            return try self[keyPath: keyPath] ??? .keyNotFound(keyPath.debugDescription)
+            return keyPath.debugDescription
         } else {
-            return try self[keyPath: keyPath] ??? .keyNotFound("\(keyPath)")
+            return "\(keyPath)"
         }
     }
 }

@@ -14,6 +14,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-mtoon-metallibs:
+    name: Check MToon metallibs are up to date
+    # Only compares the recorded build inputs, so the cheap Linux runner is enough.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The bundled metallibs are stale when the shader sources or the compile
+      # settings change without re-running the build script. --check compares
+      # the recorded build inputs (metallib bytes vary across Metal toolchain
+      # versions) and needs no Metal toolchain, so it runs on the cheap runner
+      # ahead of the macOS jobs.
+      - name: Verify recorded metallib build inputs match sources
+        run: ./scripts/build-mtoon-metallibs.sh --check
+
   test-package:
     name: Test package (${{ matrix.platform }})
     runs-on: macos-26

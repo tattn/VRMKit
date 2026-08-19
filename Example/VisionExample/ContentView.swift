@@ -54,13 +54,8 @@ struct ImmersiveView: View {
         RealityView { content in
             content.add(viewModel.rootEntity)
         }
-        .task {
+        .task(id: appModel.selectedModelName) {
             await viewModel.loadEntity(model: appModel.selectedModelName)
-        }
-        .onChange(of: appModel.selectedModelName) { _, newValue in
-            Task {
-                await viewModel.loadEntity(model: newValue)
-            }
         }
         .onReceive(viewModel.updateTimer) { _ in
             viewModel.update()
@@ -86,7 +81,7 @@ final class ImmersiveViewModel {
         
         // Clean up previous
         if let current = vrmEntity {
-            current.entity.removeFromParent()
+            current.removeFromParent()
             vrmEntity = nil
         }
         
@@ -94,12 +89,14 @@ final class ImmersiveViewModel {
         baseRotation = model.initialRotation
         
         do {
+            // visionOS has no CustomMaterial, so MToon always falls back to
+            // Unlit / PBR here.
             let loader = try VRMEntityLoader(named: modelName)
             let vrmEntity = try loader.loadEntity()
             
-            vrmEntity.entity.transform.translation = SIMD3<Float>(0, 0, -1.5)
-            vrmEntity.entity.transform.rotation = simd_quatf(angle: baseRotation, axis: SIMD3<Float>(0, 1, 0))
-            rootEntity.addChild(vrmEntity.entity)
+            vrmEntity.transform.translation = SIMD3<Float>(0, 0, -1.5)
+            vrmEntity.transform.rotation = simd_quatf(angle: baseRotation, axis: SIMD3<Float>(0, 1, 0))
+            rootEntity.addChild(vrmEntity)
 
             // Adjust pose
             let neck = vrmEntity.humanoid.node(for: .neck)
@@ -155,7 +152,6 @@ final class ImmersiveViewModel {
             angle = -0.5 + 0.5 * progress
         }
         
-        vrmEntity.entity.transform.rotation = simd_quatf(angle: baseRotation + angle, axis: SIMD3<Float>(0, 1, 0))
-        vrmEntity.update(at: deltaTime)
+        vrmEntity.transform.rotation = simd_quatf(angle: baseRotation + angle, axis: SIMD3<Float>(0, 1, 0))
     }
 }

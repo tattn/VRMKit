@@ -55,5 +55,6 @@ xcuserdata/
 *.xcscmblueprint
 UserInterfaceState.xcuserstate
 
+docs
 .build
 

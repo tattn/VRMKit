@@ -1,0 +1,173 @@
+#if canImport(RealityKit)
+import Foundation
+import RealityKit
+import Testing
+import VRMKit
+import VRMTestSupport
+@testable import VRMRealityKit
+
+/// Shared fixtures and helpers for the VRMRealityKit test target.
+enum TestSupport {
+    /// The bundled Seed-san VRM 1.0 fixture, read once per test process.
+    static let seedSanData: Data = {
+        guard let url = Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"),
+              let data = try? Data(contentsOf: url) else {
+            fatalError("Failed to load Seed-san.vrm resource from test bundle.")
+        }
+        return data
+    }()
+
+    /// The bundled AliciaSolid VRM 0.x fixture, read once per test process.
+    /// The VRM 0.x loading paths need a 0.x model; Seed-san is 1.0.
+    static let aliciaSolidData: Data = {
+        guard let url = Bundle.module.url(forResource: "AliciaSolid", withExtension: "vrm"),
+              let data = try? Data(contentsOf: url) else {
+            fatalError("Failed to load AliciaSolid.vrm resource from test bundle.")
+        }
+        return data
+    }()
+
+    /// Rewrites the fixture's glTF JSON in memory. Loaders accept the returned
+    /// data directly, so no temporary files are written. `name` identifies the
+    /// variant in failure messages.
+    static func modifiedSeedSanData(name: String,
+                                    modify: (inout [String: Any]) throws -> Void) throws -> Data {
+        do {
+            return try GLBRewriter.rewritingJSON(of: seedSanData, modify)
+        } catch let error as GLBRewriter.Error {
+            throw VRMError.dataInconsistent("Invalid Seed-san fixture data for '\(name)': \(error)")
+        }
+    }
+
+    /// Rewrites the VRM 0.x fixture's glTF JSON in memory.
+    static func modifiedAliciaSolidData(name: String,
+                                        modify: (inout [String: Any]) throws -> Void) throws -> Data {
+        do {
+            return try GLBRewriter.rewritingJSON(of: aliciaSolidData, modify)
+        } catch let error as GLBRewriter.Error {
+            throw VRMError.dataInconsistent("Invalid AliciaSolid fixture data for '\(name)': \(error)")
+        }
+    }
+
+    /// Rewrites a single glTF material of the fixture. Wraps the repeated
+    /// unwrap/mutate/write-back dance the material tests all need.
+    static func modifiedSeedSanMaterial(name: String,
+                                        index: Int = 0,
+                                        modify: (inout [String: Any]) throws -> Void) throws -> Data {
+        try modifiedSeedSanData(name: name) { json in
+            guard var materials = json["materials"] as? [[String: Any]],
+                  materials.indices.contains(index) else {
+                throw VRMError.dataInconsistent("Missing Seed-san material \(index) for fixture '\(name)'")
+            }
+            try modify(&materials[index])
+            json["materials"] = materials
+        }
+    }
+
+    /// Rewrites a material's `VRMC_materials_mtoon` extension.
+    static func modifiedSeedSanMToonExtension(name: String,
+                                              index: Int = 0,
+                                              modify: (inout [String: Any]) throws -> Void) throws -> Data {
+        try modifiedSeedSanMaterial(name: name, index: index) { material in
+            guard var extensions = material["extensions"] as? [String: Any],
+                  var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any] else {
+                throw VRMError.dataInconsistent("Missing Seed-san MToon extension for fixture '\(name)'")
+            }
+            try modify(&mtoon)
+            extensions["VRMC_materials_mtoon"] = mtoon
+            material["extensions"] = extensions
+        }
+    }
+
+    /// Rewrites the fixture's `VRMC_vrm` preset expressions.
+    static func modifiedSeedSanExpressions(name: String,
+                                           modify: (inout [String: Any]) throws -> Void) throws -> Data {
+        try modifiedSeedSanData(name: name) { json in
+            try modifyExpressionPresets(in: &json, modify)
+        }
+    }
+
+    /// The unwrap/mutate/write-back dance for `extensions.VRMC_vrm.expressions.preset`.
+    static func modifyExpressionPresets(in json: inout [String: Any],
+                                        _ modify: (inout [String: Any]) throws -> Void) throws {
+        guard var extensions = json["extensions"] as? [String: Any],
+              var vrm = extensions["VRMC_vrm"] as? [String: Any],
+              var expressions = vrm["expressions"] as? [String: Any],
+              var preset = expressions["preset"] as? [String: Any] else {
+            throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
+        }
+        try modify(&preset)
+        expressions["preset"] = preset
+        vrm["expressions"] = expressions
+        extensions["VRMC_vrm"] = vrm
+        json["extensions"] = extensions
+    }
+
+    /// The MToon shader sources concatenated, read once per test process.
+    /// They are repository sources, not bundle resources: the shaders are
+    /// compiled offline into the bundled metallibs.
+    static let mtoonShaderSource: String = {
+        let shaders = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/VRMRealityKit/Shaders")
+        return ["MToonCore.h", "MToon.metal"]
+            .compactMap { try? String(contentsOf: shaders.appendingPathComponent($0), encoding: .utf8) }
+            .joined(separator: "\n")
+    }()
+
+    static let expectedCustomMaterialMessage: Comment =
+        "Expected default MToon rendering to load a CustomMaterial. Run scripts/build-mtoon-metallibs.sh and verify the package resources."
+
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func modelEntities(in root: Entity) -> [ModelEntity] {
+        root.modelEntitiesInHierarchy
+    }
+
+#if !os(visionOS)
+    /// Whether any model entity in the hierarchy renders with a CustomMaterial.
+    /// visionOS has no `CustomMaterial`, so this only exists where MToon does.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, *)
+    static func hasCustomMaterial(in root: Entity) -> Bool {
+        modelEntities(in: root)
+            .flatMap { $0.components[ModelComponent.self]?.materials ?? [] }
+            .contains { $0 is CustomMaterial }
+    }
+#endif
+
+    /// Whether any of the entity's materials carries MToon runtime state.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func hasMToonParameters(in vrmEntity: VRMEntity) -> Bool {
+        materialIndexes(in: vrmEntity).contains { vrmEntity.mtoonParameters(forMaterialIndex: $0) != nil }
+    }
+
+    /// Every glTF material index rendered by the hierarchy, in ascending order.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func materialIndexes(in root: Entity) -> [Int] {
+        Set(modelEntities(in: root).compactMap { $0.components[VRMMaterialIndexComponent.self]?.materialIndex })
+            .sorted()
+    }
+
+#if !os(visionOS)
+    static func isTransparent(_ blending: CustomMaterial.Blending) -> Bool {
+        if case .transparent = blending {
+            return true
+        }
+        return false
+    }
+
+    static func isOpaque(_ blending: CustomMaterial.Blending) -> Bool {
+        if case .opaque = blending {
+            return true
+        }
+        return false
+    }
+#endif
+
+}
+#endif

@@ -21,17 +21,32 @@ let package = Package(
         ),
         .target(
             name: "VRMRealityKit",
-            dependencies: ["VRMKit", "VRMKitRuntime"]
+            dependencies: ["VRMKit", "VRMKitRuntime"],
+            // Shaders/MToon.metal is compiled offline into the per-platform
+            // metallibs under Resources by scripts/build-mtoon-metallibs.sh.
+            exclude: ["Shaders"],
+            resources: [.process("Resources")]
         ),
+
+        // Test-only helpers shared by the test targets.
+        .target(name: "VRMTestSupport", path: "Tests/VRMTestSupport"),
 
         .testTarget(
             name: "VRMKitTests",
-            dependencies: ["VRMKit"],
+            dependencies: ["VRMKit", "VRMTestSupport"],
             resources: [.copy("Assets/AliciaSolid.vrm"), .copy("Assets/Seed-san.vrm")]
         ),
         .testTarget(
             name: "VRMSceneKitTests",
             dependencies: ["VRMSceneKit"],
+            resources: [
+                .copy("../VRMKitTests/Assets/AliciaSolid.vrm"),
+                .copy("../VRMKitTests/Assets/Seed-san.vrm")
+            ]
+        ),
+        .testTarget(
+            name: "VRMRealityKitTests",
+            dependencies: ["VRMRealityKit", "VRMTestSupport"],
             resources: [.copy("../VRMKitTests/Assets/AliciaSolid.vrm"), .copy("../VRMKitTests/Assets/Seed-san.vrm")]
         ),
     ]

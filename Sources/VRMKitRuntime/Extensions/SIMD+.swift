@@ -1,4 +1,5 @@
 import simd
+import VRMKit
 
 package extension SIMD3 where Scalar == Float {
     init(_ values: [Double]?, `default` defaultValue: SIMD3<Float>) {
@@ -9,6 +10,10 @@ package extension SIMD3 where Scalar == Float {
 
     init(_ values: [Double], `default` defaultValue: SIMD3<Float>) {
         self.init(Optional(values), default: defaultValue)
+    }
+
+    init(_ color: Color3) {
+        self.init(color.r, color.g, color.b)
     }
 
     var normalized: SIMD3 {
@@ -35,6 +40,21 @@ package extension SIMD4 where Scalar == Float {
                   Float(values[safe: 2] ?? 0),
                   Float(values[safe: 3] ?? Double(defaultAlpha)))
     }
+
+    init(_ color: GLTF.Color4) {
+        self.init(color.r, color.g, color.b, color.a)
+    }
+
+    init(_ values: [Double]?, `default` defaultValue: SIMD4<Float>) {
+        guard let values else {
+            self = defaultValue
+            return
+        }
+        self.init(Float(values[safe: 0] ?? Double(defaultValue.x)),
+                  Float(values[safe: 1] ?? Double(defaultValue.y)),
+                  Float(values[safe: 2] ?? Double(defaultValue.z)),
+                  Float(values[safe: 3] ?? Double(defaultValue.w)))
+    }
 }
 
 package extension SIMD2 where Scalar == Float {
@@ -51,16 +71,6 @@ package extension simd_quatf {
 }
 
 package let quat_identity_float = simd_quatf(matrix_identity_float4x4)
-
-package func cross(_ left: SIMD3<Float>, _ right: SIMD3<Float>) -> SIMD3<Float> {
-    simd_cross(left, right)
-}
-
-package func normal(_ v0: SIMD3<Float>, _ v1: SIMD3<Float>, _ v2: SIMD3<Float>) -> SIMD3<Float> {
-    let e1 = v1 - v0
-    let e2 = v2 - v0
-    return simd_normalize(simd_cross(e1, e2))
-}
 
 package extension simd_float4x4 {
     var translation: SIMD3<Float> {

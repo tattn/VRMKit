@@ -16,35 +16,6 @@ func semantic(of key: GLTF.Mesh.Primitive.AttributeKey) -> SCNGeometrySource.Sem
     }
 }
 
-func numberOfComponents(of type: GLTF.Accessor.`Type`) -> Int {
-    switch type {
-    case .SCALAR: return 1
-    case .VEC2: return 2
-    case .VEC3: return 3
-    case .VEC4: return 4
-    case .MAT2: return 4
-    case .MAT3: return 9
-    case .MAT4: return 16
-    }
-}
-
-func bytes(of type: GLTF.Accessor.ComponentType) -> Int {
-    switch type {
-    case .byte, .unsignedByte: return 1
-    case .short, .unsignedShort: return 2
-    case .unsignedInt, .float: return 4
-    }
-}
-
-extension GLTF.Accessor {
-    func components() -> (componentsPerVector: Int, bytesPerComponent: Int, vectorSize: Int) {
-        let componentsPerVector = numberOfComponents(of: type)
-        let bytesPerComponent = bytes(of: componentType)
-        let vectorSize = bytesPerComponent * componentsPerVector
-        return (componentsPerVector, bytesPerComponent, vectorSize)
-    }
-}
-
 extension SCNGeometryPrimitiveType {
     func primitiveCount(ofCount count: Int) -> Int {
         switch self {
