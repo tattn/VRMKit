@@ -20,36 +20,10 @@ package struct MToonMaterialDescriptor {
         case screenCoordinates
     }
 
-    /// KHR_texture_transform-style UV transform (glTF top-left origin).
-    package struct UVTransform: Equatable {
-        package var scale: SIMD2<Float>
-        package var offset: SIMD2<Float>
-        package var rotation: Float
-
-        package init(scale: SIMD2<Float> = SIMD2<Float>(1, 1),
-                     offset: SIMD2<Float> = SIMD2<Float>(0, 0),
-                     rotation: Float = 0) {
-            self.scale = scale
-            self.offset = offset
-            self.rotation = rotation
-        }
-    }
-
-    package struct Texture {
-        package let index: Int
-        /// UV set this texture samples, honoring a `KHR_texture_transform`
-        /// `texCoord` override when present.
-        package let texCoord: Int
-        /// UV transform carried by the source format (`KHR_texture_transform`
-        /// for VRM 1.0, the Unity `_MainTex` scale/offset for VRM 0.x).
-        package let transform: UVTransform?
-
-        package init(index: Int, texCoord: Int = 0, transform: UVTransform? = nil) {
-            self.index = index
-            self.texCoord = texCoord
-            self.transform = transform
-        }
-    }
+    /// Shared with the standard material paths; the aliases keep this
+    /// descriptor's vocabulary local.
+    package typealias UVTransform = GLTFUVTransform
+    package typealias Texture = GLTFSampledTexture
 
     package let baseColorFactor: SIMD4<Float>
     package let emissiveFactor: SIMD3<Float>
@@ -192,28 +166,6 @@ private extension MToonMaterialDescriptor.OutlineWidthMode {
 }
 
 private extension MToonMaterialDescriptor.Texture {
-    /// Builds a texture reference from a glTF texture info, decoding
-    /// `KHR_texture_transform` (including its optional `texCoord` override).
-    init(index: Int, texCoord: Int, extensions: CodableAny?) {
-        guard let transform = extensions?.dictionaryValue["KHR_texture_transform"] as? [String: Any] else {
-            self.init(index: index, texCoord: texCoord)
-            return
-        }
-        self.init(index: index,
-                  texCoord: transform.index("texCoord") ?? texCoord,
-                  transform: .init(scale: transform.simd2Value(forKey: "scale", default: SIMD2<Float>(1, 1)),
-                                   offset: transform.simd2Value(forKey: "offset", default: SIMD2<Float>(0, 0)),
-                                   rotation: transform.float("rotation") ?? 0))
-    }
-
-    init(_ textureInfo: GLTF.TextureInfo) {
-        self.init(index: textureInfo.index, texCoord: textureInfo.texCoord, extensions: textureInfo.extensions)
-    }
-
-    init(_ textureInfo: GLTF.Material.NormalTextureInfo) {
-        self.init(index: textureInfo.index, texCoord: textureInfo.texCoord, extensions: textureInfo.extensions)
-    }
-
     init(_ textureInfo: GLTF.Material.MaterialExtensions.MaterialsMToon.MaterialsMToonTextureInfo) {
         self.init(index: textureInfo.index, texCoord: textureInfo.texCoord ?? 0, extensions: textureInfo.extensions)
     }

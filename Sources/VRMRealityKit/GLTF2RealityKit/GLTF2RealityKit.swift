@@ -2,6 +2,7 @@
 import CoreGraphics
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 extension GLTF.Vector3 {
     var simd: SIMD3<Float> {
@@ -10,11 +11,10 @@ extension GLTF.Vector3 {
 }
 
 extension GLTF.Vector4 {
+    /// glTF requires a unit quaternion, so an off-unit one is renormalized and a
+    /// degenerate one falls back to identity instead of collapsing the node.
     var simdQuat: simd_quatf {
-        if x == 0 && y == 0 && z == 0 && w == 0 {
-            return simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
-        }
-        return simd_quatf(ix: x, iy: y, iz: z, r: w)
+        simd_quatf(ix: x, iy: y, iz: z, r: w).safelyNormalized
     }
 }
 

@@ -20,7 +20,7 @@ open class VRMSceneLoader {
     }
 
     public func loadScene() throws -> VRMScene {
-        return try loadScene(withSceneIndex: gltf.scene)
+        return try loadScene(withSceneIndex: gltf.scene ?? 0)
     }
 
     public func loadScene(withSceneIndex index: Int) throws -> VRMScene {

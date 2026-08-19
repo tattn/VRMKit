@@ -1,4 +1,5 @@
 import VRMKit
+import VRMTestSupport
 @testable import VRMSceneKit
 import SceneKit
 import simd
@@ -8,8 +9,7 @@ import Testing
 struct VRM1SceneLoaderTests {
 
     func vrmLoader() throws -> VRMSceneLoader {
-        let url = try #require(Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"), "Failed to load Seed-san.vrm resource from test bundle.")
-        return try VRMSceneLoader(withURL: url)
+        try VRMSceneLoader(withURL: VRMSampleAsset.seedSan.url)
     }
 
     @Test

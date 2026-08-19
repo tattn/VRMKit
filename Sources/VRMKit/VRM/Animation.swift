@@ -11,26 +11,39 @@ extension GLTF {
         public let extras: CodableAny?
 
         public struct Channel: Codable {
-            let sampler: Int
-            let target: Target
-            let extensions: CodableAny?
-            let extras: CodableAny?
+            package let sampler: Int
+            package let target: Target
+            package let extensions: CodableAny?
+            package let extras: CodableAny?
 
             public struct Target: Codable {
-                let node: Int?
-                let path: String
-                let extensions: CodableAny?
-                let extras: CodableAny?
+                package let node: Int?
+                package let path: String
+                package let extensions: CodableAny?
+                package let extras: CodableAny?
+
+                /// The animated property, typed for the runtime. Nil for paths this
+                /// library does not know, such as extension-defined ones.
+                package var targetPath: TargetPath? {
+                    TargetPath(rawValue: path)
+                }
+
+                package enum TargetPath: String {
+                    case translation
+                    case rotation
+                    case scale
+                    case weights
+                }
             }
         }
 
         public struct Sampler: Codable {
-            let input: Int
+            package let input: Int
             let _interpolation: Interpolation?
-            var interpolation: Interpolation { return _interpolation ?? .LINEAR }
-            let output: Int
-            let extensions: CodableAny?
-            let extras: CodableAny?
+            package var interpolation: Interpolation { return _interpolation ?? .LINEAR }
+            package let output: Int
+            package let extensions: CodableAny?
+            package let extras: CodableAny?
             private enum CodingKeys: String, CodingKey {
                 case input
                 case _interpolation = "interpolation"

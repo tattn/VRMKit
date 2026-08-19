@@ -202,7 +202,8 @@ RealityKit constrains what the MToon renderer can express. Each case below logs 
 
 </details>
 
-## Frame updates
+<details>
+<summary>Frame updates</summary>
 
 `VRMUpdateSystem` (a RealityKit `System` registered on load) calls `VRMEntity.update(deltaTime:)` on every render frame. To control the timing yourself, opt out and call it manually:
 
@@ -215,6 +216,39 @@ vrmEntity.update(deltaTime: deltaTime)
 
 To run your own animation code in a guaranteed order relative to the VRM update (e.g. posing joints that the same frame's skinning should reflect), put it in a custom `System` declared with `SystemDependency.before(VRMUpdateSystem.self)`.
 
+</details>
+
+<details>
+<summary>Render glTF / GLB</summary>
+
+VRMRealityKit can also render plain glTF assets (`.glb` and JSON `.gltf`, including external resources and data URIs).
+
+```swift
+let entity: GLTFEntity = try GLTFEntityLoader(withURL: url).loadEntity()
+content.add(entity)
+
+entity.animations          // [GLTFAnimation] — index, name, duration
+let controller = try entity.playAnimation(at: 0, loops: true)
+controller.speed = 2       // a negative speed plays backwards
+controller.seek(to: 0.5)
+controller.stop()
+```
+
+`loadEntity()` renders the asset's default scene, and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance.
+
+### RealityKit renderer limitations
+
+The renderer builds RealityKit meshes and materials, so a few parts of glTF have no place to go:
+
+- Only triangle primitives are drawn; `POINTS` and `LINES` primitives are skipped.
+- `COLOR_0` vertex colors are ignored: the `MeshResource.Part` buffers this renderer builds carry no vertex-color channel.
+- One UV set per material: the first UV-accessed texture decides both the `TEXCOORD_n` set and the single `KHR_texture_transform` every texture of that material is sampled with. An asset that merely lists `KHR_texture_transform` in `extensionsUsed` renders through that approximation and logs it; one that lists it in `extensionsRequired` and gives a material's textures different transforms is rejected instead of drawn wrong.
+- Tangents for a primitive without `TANGENT` are averaged from its UV gradients rather than generated with MikkTSpace, which the spec recommends, so a normal map baked against MikkTSpace can differ slightly along UV seams.
+- Blend shapes morph `POSITION` only, since RealityKit blend shapes have no `NORMAL` / `TANGENT` channel.
+- Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints; the further sets a glTF may carry (`JOINTS_1` and up) are ignored, which the spec allows and which can change the result of an animation.
+
+</details>
+
 # ToDo
 
 - [x] VRM 1.0 support
@@ -225,7 +259,7 @@ To run your own animation code in a guaranteed order relative to the VRM update 
 - [ ] Improve rendering quality
 - [ ] Animation support (vrma)
 - [ ] VRM editing function
-- [ ] GLTF renderer support
+- [x] glTF renderer / animation support (RealityKit)
 
 # Contributing
 

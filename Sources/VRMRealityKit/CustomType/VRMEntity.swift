@@ -7,11 +7,6 @@ import simd
 import VRMKit
 import VRMKitRuntime
 
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-struct VRMMaterialIndexComponent: Component {
-    let materialIndex: Int
-}
-
 /// Carries the loaded VRM on the entity, so the copies `clone(recursive:)` makes
 /// through `init()` still answer ``VRMEntity/vrm``.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -25,7 +20,7 @@ struct VRMComponent: Component {
 /// the parent entity owns it, and ``VRMUpdateSystem`` animates it for as long as
 /// it stays in the scene.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-public final class VRMEntity: Entity {
+public final class VRMEntity: GLTFEntity {
     private static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "MToon")
 
     /// The VRM this entity was loaded from.
@@ -47,7 +42,6 @@ public final class VRMEntity: Entity {
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
-    private var skinBindings: [SkinBinding] = []
     /// Everything the runtime tracks per glTF material. Keying this by material
     /// index — rather than copying it onto every entity — is what keeps the
     /// MToon parameter rows single-source.
@@ -77,12 +71,6 @@ public final class VRMEntity: Entity {
     private var mtoonLightColor = SIMD3<Float>(1, 1, 1)
     private var mtoonAmbientColor = SIMD3<Float>(0, 0, 0)
 
-    struct SkinBinding {
-        let modelEntity: ModelEntity
-        let skeleton: MeshResource.Skeleton
-        let jointEntities: [Entity]
-    }
-
     /// Registers the components and the system this entity relies on. RealityKit
     /// instantiates registered systems for every scene, including scenes that
     /// already exist, so registering on first use is enough; `static let` runs
@@ -90,12 +78,11 @@ public final class VRMEntity: Entity {
     @MainActor private static let registerRealityKitTypes: Void = {
         VRMComponent.registerComponent()
         VRMUpdateComponent.registerComponent()
-        VRMMaterialIndexComponent.registerComponent()
         VRMUpdateSystem.registerSystem()
     }()
 
-    init(vrm: VRM) {
-        super.init()
+    init(vrm: VRM, document: GLTFDocument, sceneIndex: Int) {
+        super.init(document: document, sceneIndex: sceneIndex)
         _ = Self.registerRealityKitTypes
         components.set(VRMComponent(vrm: vrm))
         components.set(VRMUpdateComponent())
@@ -123,6 +110,10 @@ public final class VRMEntity: Entity {
         }
     }
 
+    /// ``update(deltaTime:)`` ends in ``updateSkinning()``, so while the VRM
+    /// runtime drives this entity the animation tick must not solve it too.
+    override var refreshesSkinningPerFrame: Bool { isAutomaticUpdateEnabled }
+
     func setUpHumanoid(nodes: [Entity?]) {
         switch vrm {
         case .v0:
@@ -132,19 +123,18 @@ public final class VRMEntity: Entity {
         }
     }
 
-    /// Called once per entity, right after its node hierarchy is built.
-    func setUpBlendShapes(nodes: [Entity?], meshes: [Entity?], loader: VRMEntityLoader) throws {
+    /// Called once per entity, right after its node hierarchy is built. A VRM 0.x
+    /// bind names a mesh index, so it drives every entity `meshes` has for it.
+    func setUpBlendShapes(nodes: [Entity?], meshes: [Int: [Entity]], loader: VRMEntityLoader) throws {
         switch vrm {
         case .v0:
             blendShapeClips = vrm.blendShapeMaster.blendShapeGroups
                 .map { group in
                     let blendShapeBinding: [BlendShapeBinding] = group.binds?
-                        .compactMap {
-                            guard meshes.indices.contains($0.mesh),
-                                  let mesh = meshes[$0.mesh] else {
-                                return nil
+                        .flatMap { bind in
+                            (meshes[bind.mesh] ?? []).map {
+                                BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
                             }
-                            return BlendShapeBinding(mesh: mesh, index: $0.index, weight: $0.weight)
                         } ?? []
                     return BlendShapeClip(name: group.name,
                                           preset: BlendShapePreset(name: group.presetName),
@@ -239,18 +229,18 @@ public final class VRMEntity: Entity {
         }
     }
 
-    func setUpFirstPerson(nodes: [Entity?], meshes: [Entity?]) {
+    func setUpFirstPerson(nodes: [Entity?], meshes: [Int: [Entity]]) {
         switch vrm {
         case .v0:
-            firstPersonAnnotations = vrm.firstPerson.meshAnnotations.compactMap { annotation in
-                guard meshes.indices.contains(annotation.mesh),
-                      let mesh = meshes[annotation.mesh],
-                      let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
-                    return nil
+            firstPersonAnnotations = vrm.firstPerson.meshAnnotations.flatMap { annotation in
+                guard let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
+                    return [FirstPersonAnnotation]()
                 }
-                return FirstPersonAnnotation(entity: mesh,
-                                             type: type,
-                                             hidesAutoInFirstPerson: false)
+                return (meshes[annotation.mesh] ?? []).map {
+                    FirstPersonAnnotation(entity: $0,
+                                          type: type,
+                                          hidesAutoInFirstPerson: false)
+                }
             }
         case .v1(let vrm1):
             let head = humanoid.node(for: .head)
@@ -268,7 +258,7 @@ public final class VRMEntity: Entity {
         setFirstPersonRenderMode(.thirdPerson)
     }
 
-    func setUpNodeConstraints(gltfNodes: [GLTF.Node], loader: VRMEntityLoader) throws {
+    func setUpNodeConstraints(gltfNodes: [GLTF.Node], loader: GLTFEntityLoader) throws {
         guard case .v1 = vrm else {
             nodeConstraints = []
             return
@@ -299,7 +289,7 @@ public final class VRMEntity: Entity {
         nodeConstraints = try NodeConstraintBinding.ordered(bindings)
     }
 
-    func setUpSpringBones(loader: VRMEntityLoader) throws {
+    func setUpSpringBones(loader: GLTFEntityLoader) throws {
         var springBones: [VRMEntitySpringBone] = []
         switch vrm {
         case .v0:
@@ -355,19 +345,9 @@ public final class VRMEntity: Entity {
         self.springBones = springBones
     }
 
-    func registerSkinBinding(modelEntity: ModelEntity,
-                             skeleton: MeshResource.Skeleton,
-                             jointEntities: [Entity]) {
-        let binding = SkinBinding(modelEntity: modelEntity,
-                                  skeleton: skeleton,
-                                  jointEntities: jointEntities)
-        skinBindings.append(binding)
-        initializeSkinPose(for: binding)
-    }
-
     /// Registers an entity as a renderer of `materialIndex`. The MToon parameter
     /// rows are resolved once per material, so every entity sharing it shares them.
-    func registerMaterialBinding(modelEntity: ModelEntity, materialIndex: Int, loader: VRMEntityLoader) {
+    override func registerMaterialBinding(modelEntity: ModelEntity, materialIndex: Int, loader: GLTFEntityLoader) {
         if materialStates[materialIndex] == nil {
             materialStates[materialIndex] = MaterialRuntimeState(
                 mtoonParameters: try? loader.mtoonParameters(withMaterialIndex: materialIndex)
@@ -428,68 +408,6 @@ public final class VRMEntity: Entity {
         guard color != mtoonAmbientColor else { return }
         mtoonAmbientColor = color
         updateMToonLightingRows()
-    }
-
-    private func updateSkinning() {
-        // Bindings that share a skeleton and model world transform — a mesh and
-        // its MToon outline twin, or primitives of the same skinned mesh —
-        // resolve to identical joint transforms, so solve them once per frame.
-        var solved: [String: (modelWorld: simd_float4x4, transforms: JointTransforms)] = [:]
-        for binding in skinBindings {
-            let modelWorld = binding.modelEntity.transformMatrix(relativeTo: nil)
-            let transforms: JointTransforms
-            if let cached = solved[binding.skeleton.id], cached.modelWorld == modelWorld {
-                transforms = cached.transforms
-            } else {
-                transforms = jointTransforms(for: binding, modelWorld: modelWorld)
-                solved[binding.skeleton.id] = (modelWorld, transforms)
-            }
-            setSkinPose(transforms, for: binding)
-        }
-    }
-
-    private func initializeSkinPose(for binding: SkinBinding) {
-        let modelWorld = binding.modelEntity.transformMatrix(relativeTo: nil)
-        setSkinPose(jointTransforms(for: binding, modelWorld: modelWorld), for: binding)
-    }
-
-    private func setSkinPose(_ transforms: JointTransforms, for binding: SkinBinding) {
-        let existing = binding.modelEntity.components[SkeletalPosesComponent.self]
-        var pose = existing?.poses[binding.skeleton.id]
-            ?? existing?.poses.default
-            ?? SkeletalPose(id: binding.skeleton.id, from: binding.skeleton)
-        pose.jointTransforms = transforms
-
-        var component = existing ?? SkeletalPosesComponent(poses: [pose])
-        component.poses[pose.id] = pose
-        component.poses.default = pose
-        binding.modelEntity.components.set(component)
-    }
-
-    private func jointTransforms(for binding: SkinBinding,
-                                 modelWorld: simd_float4x4) -> JointTransforms {
-        let jointEntities = binding.jointEntities
-        let joints = binding.skeleton.joints
-        var transforms: [Transform] = []
-        transforms.reserveCapacity(jointEntities.count)
-
-        let modelWorldInverse = simd_inverse(modelWorld)
-        // Each joint's world matrix is also its children's parent matrix, so
-        // resolve them once instead of walking the ancestor chain twice.
-        let jointWorlds = jointEntities.map { $0.transformMatrix(relativeTo: nil) }
-
-        for index in 0..<jointEntities.count {
-            let jointWorld = jointWorlds[index]
-            let localMatrix: simd_float4x4
-            if index < joints.count, let parentIndex = joints[index].parentIndex, parentIndex < jointEntities.count {
-                localMatrix = simd_mul(simd_inverse(jointWorlds[parentIndex]), jointWorld)
-            } else {
-                localMatrix = simd_mul(modelWorldInverse, jointWorld)
-            }
-            transforms.append(Transform(matrix: localMatrix))
-        }
-
-        return JointTransforms(transforms)
     }
 
     public func setBlendShape(value: CGFloat, for key: BlendShapeKey) {
@@ -995,22 +913,6 @@ private struct FirstPersonAnnotation {
     let entity: Entity
     let type: FirstPersonAnnotationType
     let hidesAutoInFirstPerson: Bool
-}
-
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-extension Entity {
-    /// Every `ModelEntity` in this entity's hierarchy, including itself.
-    var modelEntitiesInHierarchy: [ModelEntity] {
-        var result: [ModelEntity] = []
-        var stack: [Entity] = [self]
-        while let entity = stack.popLast() {
-            if let modelEntity = entity as? ModelEntity {
-                result.append(modelEntity)
-            }
-            stack.append(contentsOf: entity.children)
-        }
-        return result
-    }
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
