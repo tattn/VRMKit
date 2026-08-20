@@ -8,24 +8,30 @@ import VRMTestSupport
 
 /// Shared fixtures and helpers for the VRMRealityKit test target.
 enum TestSupport {
-    /// The bundled Seed-san VRM 1.0 fixture, read once per test process.
-    static let seedSanData: Data = {
-        guard let url = Bundle.module.url(forResource: "Seed-san", withExtension: "vrm"),
-              let data = try? Data(contentsOf: url) else {
-            fatalError("Failed to load Seed-san.vrm resource from test bundle.")
-        }
-        return data
-    }()
+    /// Loads one of the bundled glTF sample assets through the generic loader.
+    /// Reading it from its URL is what exercises external-resource resolution.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    @MainActor
+    static func loadEntity(_ asset: GLTFSampleAsset) throws -> GLTFEntity {
+        try GLTFEntityLoader(withURL: asset.url).loadEntity()
+    }
 
-    /// The bundled AliciaSolid VRM 0.x fixture, read once per test process.
-    /// The VRM 0.x loading paths need a 0.x model; Seed-san is 1.0.
-    static let aliciaSolidData: Data = {
-        guard let url = Bundle.module.url(forResource: "AliciaSolid", withExtension: "vrm"),
-              let data = try? Data(contentsOf: url) else {
-            fatalError("Failed to load AliciaSolid.vrm resource from test bundle.")
-        }
-        return data
-    }()
+    /// Loads a bundled glTF sample asset with its JSON rewritten in memory, so a
+    /// test can feed the loader an unusual or malformed variant of a fixture
+    /// without shipping one.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    @MainActor
+    static func loader(_ asset: GLTFSampleAsset,
+                       rewritingJSON modify: (inout [String: Any]) throws -> Void) throws -> GLTFEntityLoader {
+        try GLTFEntityLoader(withData: asset.rewritingJSON(modify), rootDirectory: asset.rootDirectory)
+    }
+
+    /// The bundled Seed-san VRM 1.0 fixture.
+    static var seedSanData: Data { VRMSampleAsset.seedSan.data }
+
+    /// The bundled AliciaSolid VRM 0.x fixture. The VRM 0.x loading paths need
+    /// a 0.x model; Seed-san is 1.0.
+    static var aliciaSolidData: Data { VRMSampleAsset.aliciaSolid.data }
 
     /// Rewrites the fixture's glTF JSON in memory. Loaders accept the returned
     /// data directly, so no temporary files are written. `name` identifies the
@@ -33,7 +39,7 @@ enum TestSupport {
     static func modifiedSeedSanData(name: String,
                                     modify: (inout [String: Any]) throws -> Void) throws -> Data {
         do {
-            return try GLBRewriter.rewritingJSON(of: seedSanData, modify)
+            return try VRMSampleAsset.seedSan.rewritingJSON(modify)
         } catch let error as GLBRewriter.Error {
             throw VRMError.dataInconsistent("Invalid Seed-san fixture data for '\(name)': \(error)")
         }
@@ -43,7 +49,7 @@ enum TestSupport {
     static func modifiedAliciaSolidData(name: String,
                                         modify: (inout [String: Any]) throws -> Void) throws -> Data {
         do {
-            return try GLBRewriter.rewritingJSON(of: aliciaSolidData, modify)
+            return try VRMSampleAsset.aliciaSolid.rewritingJSON(modify)
         } catch let error as GLBRewriter.Error {
             throw VRMError.dataInconsistent("Invalid AliciaSolid fixture data for '\(name)': \(error)")
         }
@@ -126,6 +132,18 @@ enum TestSupport {
         root.modelEntitiesInHierarchy
     }
 
+    /// Whether `entity` hangs under `ancestor`, i.e. whether it is part of that
+    /// entity graph at all.
+    @MainActor
+    static func isDescendant(_ entity: Entity, of ancestor: Entity) -> Bool {
+        var current: Entity? = entity
+        while let entity = current {
+            if entity === ancestor { return true }
+            current = entity.parent
+        }
+        return false
+    }
+
 #if !os(visionOS)
     /// Whether any model entity in the hierarchy renders with a CustomMaterial.
     /// visionOS has no `CustomMaterial`, so this only exists where MToon does.
@@ -149,7 +167,7 @@ enum TestSupport {
     @MainActor
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     static func materialIndexes(in root: Entity) -> [Int] {
-        Set(modelEntities(in: root).compactMap { $0.components[VRMMaterialIndexComponent.self]?.materialIndex })
+        Set(modelEntities(in: root).compactMap { $0.components[GLTFMaterialIndexComponent.self]?.materialIndex })
             .sorted()
     }
 

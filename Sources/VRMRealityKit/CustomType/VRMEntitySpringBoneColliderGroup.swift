@@ -7,14 +7,14 @@ import VRMKit
 final class VRMEntitySpringBoneColliderGroup {
     let colliders: [Collider]
 
-    init(colliderGroup: VRM0.SecondaryAnimation.ColliderGroup, loader: VRMEntityLoader) throws {
+    init(colliderGroup: VRM0.SecondaryAnimation.ColliderGroup, loader: GLTFEntityLoader) throws {
         let node = try loader.node(withNodeIndex: colliderGroup.node)
         self.colliders = colliderGroup.colliders.map { Collider(node: node, collider: $0) }
     }
 
     init(colliderGroup: VRM1.SpringBone.ColliderGroup,
          springBone: VRM1.SpringBone,
-         loader: VRMEntityLoader) throws {
+         loader: GLTFEntityLoader) throws {
         let sourceColliders = springBone.colliders ?? []
         self.colliders = try colliderGroup.colliders.compactMap { colliderIndex in
             guard sourceColliders.indices.contains(colliderIndex) else { return nil }
@@ -42,7 +42,7 @@ final class VRMEntitySpringBoneColliderGroup {
             self.radius = Float(collider.radius)
         }
 
-        init(collider: VRM1.SpringBone.Collider, loader: VRMEntityLoader) throws {
+        init(collider: VRM1.SpringBone.Collider, loader: GLTFEntityLoader) throws {
             self.node = try loader.node(withNodeIndex: collider.node)
             if let sphere = collider.shape.sphere {
                 self.offset = SIMD3<Float>(sphere.offset, default: .zero)

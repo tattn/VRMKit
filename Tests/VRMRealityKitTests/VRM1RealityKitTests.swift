@@ -558,7 +558,7 @@ struct VRM1RealityKitTests {
 
         var checkedParts = 0
         for modelEntity in TestSupport.modelEntities(in: vrmEntity)
-        where modelEntity.components[VRMMaterialIndexComponent.self]?.materialIndex == materialIndex {
+        where modelEntity.components[GLTFMaterialIndexComponent.self]?.materialIndex == materialIndex {
             guard let mesh = modelEntity.components[ModelComponent.self]?.mesh else { continue }
             for part in mesh.contents.models.flatMap(\.parts) {
                 let tangents = try #require(part.tangents?.elements)
@@ -1111,8 +1111,15 @@ struct VRM1RealityKitTests {
         #expect(morphWeight(in: firstScene, targetIndex: 33) == 1)
         #expect(morphWeight(in: secondScene, targetIndex: 33) == 0)
 
-        // Re-requesting a scene returns the same instance rather than rebuilding.
-        #expect(try loader.loadEntity(withSceneIndex: 0) === firstScene)
+        // Loading a scene again builds another independent entity, so one loader
+        // can hand out several animatable copies of the same scene.
+        let reloaded = try loader.loadEntity(withSceneIndex: 0)
+        #expect(reloaded !== firstScene)
+        #expect(reloaded.hasRuntimeBindings)
+        #expect(Set(TestSupport.modelEntities(in: reloaded).map(ObjectIdentifier.init))
+            .isDisjoint(with: firstModels))
+        #expect(morphWeight(in: reloaded, targetIndex: 33) == 0)
+        #expect(morphWeight(in: firstScene, targetIndex: 33) == 1)
     }
 
     @Test
@@ -1356,7 +1363,7 @@ struct VRM1RealityKitTests {
                                 materialIndex: Int,
                                 faceCulling: CustomMaterial.FaceCulling? = nil) throws -> CustomMaterial {
         for modelEntity in TestSupport.modelEntities(in: root) {
-            guard modelEntity.components[VRMMaterialIndexComponent.self]?.materialIndex == materialIndex,
+            guard modelEntity.components[GLTFMaterialIndexComponent.self]?.materialIndex == materialIndex,
                   let model = modelEntity.components[ModelComponent.self],
                   let material = model.materials.first as? CustomMaterial else {
                 continue

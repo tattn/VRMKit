@@ -1,9 +1,10 @@
 import XCTest
 import VRMKit
+import VRMTestSupport
 
 class VRM1Tests: XCTestCase {
     
-    let vrm = try! VRM1(data: Resources.seedSan.data)
+    let vrm = try! VRM1(data: VRMSampleAsset.seedSan.data)
     
     override func setUp() {
         super.setUp()
@@ -16,9 +17,9 @@ class VRM1Tests: XCTestCase {
     /// A missing or mistyped specVersion has to surface as a thrown error rather
     /// than trapping in the initializer.
     func testMalformedSpecVersionThrowsInsteadOfCrashing() throws {
-        XCTAssertThrowsError(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion(nil)))
-        XCTAssertThrowsError(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion(1.0)))
-        XCTAssertThrowsError(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion(["1.0"])))
+        XCTAssertThrowsError(try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion(nil)))
+        XCTAssertThrowsError(try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion(1.0)))
+        XCTAssertThrowsError(try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion(["1.0"])))
     }
 
     func testUnsupportedSpecVersionIsRejected() throws {
@@ -27,8 +28,8 @@ class VRM1Tests: XCTestCase {
         XCTAssertFalse(VRM1.supports(specVersion: "2.0"))
         XCTAssertFalse(VRM1.supports(specVersion: "1.0-draft"))
 
-        XCTAssertNoThrow(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion("1.0-beta")))
-        XCTAssertThrowsError(try VRM1(data: try Resources.seedSan.withVRMCSpecVersion("2.0")))
+        XCTAssertNoThrow(try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion("1.0-beta")))
+        XCTAssertThrowsError(try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion("2.0")))
     }
     
     

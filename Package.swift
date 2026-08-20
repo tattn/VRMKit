@@ -10,7 +10,10 @@ let package = Package(
         .library(name: "VRMRealityKit", targets: ["VRMRealityKit"])
     ],
     targets: [
-        .target(name: "VRMKit"),
+        .target(
+            name: "VRMKit",
+            exclude: ["Extensions/MoreCodable/LICENSE"]
+        ),
         .target(
             name: "VRMKitRuntime",
             dependencies: ["VRMKit"]
@@ -29,25 +32,26 @@ let package = Package(
         ),
 
         // Test-only helpers shared by the test targets.
-        .target(name: "VRMTestSupport", path: "Tests/VRMTestSupport"),
+        .target(
+            name: "VRMTestSupport",
+            path: "Tests/VRMTestSupport",
+            resources: [
+                .copy("../Assets/GLTF"),
+                .copy("../Assets/VRM")
+            ]
+        ),
 
         .testTarget(
             name: "VRMKitTests",
-            dependencies: ["VRMKit", "VRMTestSupport"],
-            resources: [.copy("Assets/AliciaSolid.vrm"), .copy("Assets/Seed-san.vrm")]
+            dependencies: ["VRMKit", "VRMTestSupport"]
         ),
         .testTarget(
             name: "VRMSceneKitTests",
-            dependencies: ["VRMSceneKit"],
-            resources: [
-                .copy("../VRMKitTests/Assets/AliciaSolid.vrm"),
-                .copy("../VRMKitTests/Assets/Seed-san.vrm")
-            ]
+            dependencies: ["VRMSceneKit", "VRMTestSupport"]
         ),
         .testTarget(
             name: "VRMRealityKitTests",
-            dependencies: ["VRMRealityKit", "VRMTestSupport"],
-            resources: [.copy("../VRMKitTests/Assets/AliciaSolid.vrm"), .copy("../VRMKitTests/Assets/Seed-san.vrm")]
+            dependencies: ["VRMRealityKit", "VRMTestSupport"]
         ),
     ]
 )

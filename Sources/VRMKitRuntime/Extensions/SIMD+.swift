@@ -65,6 +65,14 @@ package extension SIMD2 where Scalar == Float {
 }
 
 package extension simd_quatf {
+    /// The unit quaternion with the same orientation, or identity when the vector
+    /// is degenerate. Decoding and interpolation both produce off-unit values.
+    var safelyNormalized: simd_quatf {
+        let lengthSquared = simd_dot(vector, vector)
+        guard lengthSquared > Float.ulpOfOne else { return quat_identity_float }
+        return simd_quatf(vector: vector / sqrt(lengthSquared))
+    }
+
     static func * (_ left: simd_quatf, _ right: SIMD3<Float>) -> SIMD3<Float> {
         simd_act(left, right)
     }

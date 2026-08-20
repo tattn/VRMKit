@@ -1,4 +1,5 @@
 import XCTest
+import VRMTestSupport
 @testable import VRMSceneKit
 import SceneKit
 
@@ -61,8 +62,6 @@ class VRMSceneKitTests: XCTestCase {
     }
 
     func loadVRMLoader() -> VRMSceneLoader {
-        let url = Bundle.module.url(forResource: "AliciaSolid", withExtension: "vrm")!
-        let data = try! Data(contentsOf: url)
-        return try! VRMSceneLoader(withData: data)
+        try! VRMSceneLoader(withData: VRMSampleAsset.aliciaSolid.data)
     }
 }

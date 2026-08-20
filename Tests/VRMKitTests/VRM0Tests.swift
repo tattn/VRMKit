@@ -1,9 +1,10 @@
 import XCTest
 import VRMKit
+import VRMTestSupport
 
 class VRM0Tests: XCTestCase {
 
-    let vrm = try! VRM(data: Resources.aliciaSolid.data)
+    let vrm = try! VRM(data: VRMSampleAsset.aliciaSolid.data)
 
     override func setUp() {
         super.setUp()

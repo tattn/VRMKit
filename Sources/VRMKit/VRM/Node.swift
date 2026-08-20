@@ -14,7 +14,7 @@ extension GLTF {
         public let mesh: Int?
         let _rotation: Vector4?
         public var rotation: Vector4 {
-            return self._rotation ?? .zero
+            return self._rotation ?? .identity
         }
         let _scale: Vector3?
         public var scale: Vector3 {

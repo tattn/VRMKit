@@ -7,6 +7,12 @@ extension Float {
     }
 }
 
+extension Double {
+    func isApproximatelyEqual(to other: Double, tolerance: Double = 0.0001) -> Bool {
+        abs(self - other) < tolerance
+    }
+}
+
 extension SIMD where Scalar == Float {
     func isApproximatelyEqual(to other: Self, tolerance: Float = 0.0001) -> Bool {
         indices.allSatisfy { abs(self[$0] - other[$0]) < tolerance }

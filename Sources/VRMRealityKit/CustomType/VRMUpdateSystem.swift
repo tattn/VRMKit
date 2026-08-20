@@ -22,13 +22,24 @@ struct VRMUpdateComponent: Component {}
 /// `System` with `SystemDependency.before(VRMUpdateSystem.self)`.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct VRMUpdateSystem: System {
+    /// Runs after the glTF animation tick, so the VRM runtime sees this frame's
+    /// animated pose.
+    public static var dependencies: [SystemDependency] { [.after(GLTFAnimationSystem.self)] }
+
     private static let query = EntityQuery(where: .has(VRMUpdateComponent.self))
 
     public init(scene: Scene) {}
 
     public func update(context: SceneUpdateContext) {
         for entity in context.entities(matching: Self.query, updatingSystemWhen: .rendering) {
-            (entity as? VRMEntity)?.update(deltaTime: context.deltaTime)
+            guard let vrmEntity = entity as? VRMEntity else { continue }
+            // A clone inherits the marker component but not the runtime bindings
+            // `update(deltaTime:)` drives, so it has nothing left to tick.
+            guard vrmEntity.hasRuntimeBindings else {
+                vrmEntity.components.remove(VRMUpdateComponent.self)
+                continue
+            }
+            vrmEntity.update(deltaTime: context.deltaTime)
         }
     }
 }

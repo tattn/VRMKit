@@ -1,12 +1,13 @@
 import Testing
 import VRMKit
 import Foundation
+import VRMTestSupport
 
 struct VRM1MigrationTests {
 
     @Test("Meta: VRM1 -> VRM0")
     func migrationMetaVRM1toVRM0() throws {
-        let vrm = try VRM(data: Resources.seedSan.data)
+        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
 
         // VRM1 data accessed via VRM0 format migration
         #expect(vrm.meta.title == "Seed-san")
@@ -22,7 +23,7 @@ struct VRM1MigrationTests {
 
     @Test("Humanoid: VRM1 -> VRM0")
     func migrationHumanoidVRM1toVRM0() throws {
-        let vrm = try VRM(data: Resources.seedSan.data)
+        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
 
         // VRM1 data accessed via VRM0 format migration
         #expect(vrm.humanoid.humanBones.count == 51)
@@ -32,7 +33,7 @@ struct VRM1MigrationTests {
 
     @Test("BlendShape: VRM1 -> VRM0")
     func migrationBlendShapeVRM1toVRM0() throws {
-        let vrm = try VRM(data: Resources.seedSan.data)
+        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
 
         #expect(vrm.blendShapeMaster.blendShapeGroups.count == 18)
 
@@ -45,7 +46,7 @@ struct VRM1MigrationTests {
 
     @Test("FirstPerson: VRM1 -> VRM0")
     func migrationFirstPersonVRM1toVRM0() throws {
-        let vrm = try VRM(data: Resources.seedSan.data)
+        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
 
         #expect(vrm.firstPerson.meshAnnotations.count == 5)
         #expect(vrm.firstPerson.firstPersonBone == -1)
@@ -54,7 +55,7 @@ struct VRM1MigrationTests {
 
     @Test("SpringBone: VRM1 -> VRM0")
     func migrationSecondaryAnimationVRM1toVRM0() throws {
-        let vrm = try VRM(data: Resources.seedSan.data)
+        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
 
         #expect(vrm.secondaryAnimation.colliderGroups.count == 6)
 
@@ -64,7 +65,7 @@ struct VRM1MigrationTests {
 
     @Test("Material: MToon VRM1 -> VRM0")
     func migrationMaterialVRM1toVRM0() throws {
-        let vrm = try VRM(data: Resources.seedSan.data)
+        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
 
         #expect(vrm.materialProperties.count == 17)
 
@@ -95,7 +96,7 @@ struct VRM1MigrationTests {
 
     @Test("VRM1 Version Detection")
     func versionDetection() throws {
-        let vrm = try VRM(data: Resources.seedSan.data)
+        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
 
         guard case .v1(let vrm1) = vrm else {
             throw VRMError.dataInconsistent("Expected VRM1")

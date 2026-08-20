@@ -107,7 +107,7 @@ package enum VRMNodeConstraintRuntime {
     private static func slerpRest(_ rest: simd_quatf,
                                   _ constrained: simd_quatf,
                                   weight: Float) -> simd_quatf {
-        simd_slerp(normalized(rest), normalized(constrained), simd_clamp(weight, 0.0, 1.0))
+        simd_slerp(rest.safelyNormalized, constrained.safelyNormalized, simd_clamp(weight, 0.0, 1.0))
     }
 
     private static func fromToRotation(from rawFrom: SIMD3<Float>,
@@ -131,12 +131,6 @@ package enum VRMNodeConstraintRuntime {
 
         let axis = simd_normalize(simd_cross(from, to))
         return simd_quatf(angle: acos(dotValue), axis: axis)
-    }
-
-    private static func normalized(_ quaternion: simd_quatf) -> simd_quatf {
-        let lengthSquared = simd_dot(quaternion.vector, quaternion.vector)
-        guard lengthSquared > Float.ulpOfOne else { return quat_identity_float }
-        return simd_quatf(vector: quaternion.vector / sqrt(lengthSquared))
     }
 
 }

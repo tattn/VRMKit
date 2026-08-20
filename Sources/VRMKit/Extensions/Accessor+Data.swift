@@ -34,6 +34,30 @@ package extension GLTF.Accessor {
         return (componentsPerVector, bytesPerComponent, vectorSize)
     }
 
+    /// One component as a float. `normalized` accessors map integers onto [0, 1]
+    /// or [-1, 1], with the signed minimum clamped to -1 per spec.
+    func floatComponent(base: UnsafeRawPointer, offset: Int) -> Float {
+        switch componentType {
+        case .float:
+            return base.loadUnaligned(fromByteOffset: offset, as: Float.self)
+        case .unsignedByte:
+            let value = Float(base.load(fromByteOffset: offset, as: UInt8.self))
+            return normalized ? value / Float(UInt8.max) : value
+        case .byte:
+            let value = Float(base.load(fromByteOffset: offset, as: Int8.self))
+            return normalized ? Swift.max(-1, value / Float(Int8.max)) : value
+        case .unsignedShort:
+            let value = Float(base.loadUnaligned(fromByteOffset: offset, as: UInt16.self))
+            return normalized ? value / Float(UInt16.max) : value
+        case .short:
+            let value = Float(base.loadUnaligned(fromByteOffset: offset, as: Int16.self))
+            return normalized ? Swift.max(-1, value / Float(Int16.max)) : value
+        case .unsignedInt:
+            let value = Float(base.loadUnaligned(fromByteOffset: offset, as: UInt32.self))
+            return normalized ? value / Float(UInt32.max) : value
+        }
+    }
+
     /// The accessor's elements as tightly packed data: any buffer view stride is
     /// removed, an accessor without a buffer view yields the zeroes the spec
     /// defines for it, and a sparse substitution is applied on top.
@@ -72,7 +96,6 @@ private extension GLTF.Accessor {
 
     func packedBaseData(vectorSize: Int, provider: BufferViewProvider) throws -> Data {
         guard let bufferView else {
-            // The spec defines a bufferView-less accessor as all zeroes.
             return try Data(zeroedElementCount: count, elementSize: vectorSize)
         }
         let source = try provider(bufferView)

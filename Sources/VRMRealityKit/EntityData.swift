@@ -5,39 +5,45 @@ import VRMKit
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 final class EntityData {
-    /// Loaded scenes, keyed by scene index. Each one owns its entity graph.
-    var entities: [VRMEntity?]
-    // `nodes` / `meshes` hold Entity *instances*, which belong to a single
-    // scene, so `beginScene()` clears them between loads. Every other cache
-    // below holds values or GPU resources that are safe to share.
+    // `nodes` / `sceneMeshes` hold the Entity *instances* of the scene being
+    // built, so `beginScene()` clears them between loads. Every other cache below
+    // holds values, GPU resources or clone templates, which are safe to share.
     var nodes: [Entity?]
-    var skins: [MeshResource.Skeleton?]
-    var skinJointRemaps: [[Int]?]
-    var meshes: [Entity?]
-    var accessors: [Any?]
-    var bufferViews: [Data?] = []
-    var materials: [Material?] = []
-    var textures: [TextureResource?] = []
-    var images: [VRMImage?] = []
-
-    init(vrm: GLTF) {
-        entities = Array(repeating: nil, count: vrm.scenes?.count ?? 0)
-        nodes = Array(repeating: nil, count: vrm.nodes?.count ?? 0)
-        skins = Array(repeating: nil, count: vrm.skins?.count ?? 0)
-        skinJointRemaps = Array(repeating: nil, count: vrm.skins?.count ?? 0)
-        meshes = Array(repeating: nil, count: vrm.meshes?.count ?? 0)
-        accessors = Array(repeating: nil, count: vrm.accessors?.count ?? 0)
-        bufferViews = Array(repeating: nil, count: vrm.bufferViews?.count ?? 0)
-        materials = Array(repeating: nil, count: vrm.materials?.count ?? 0)
-        textures = Array(repeating: nil, count: vrm.textures?.count ?? 0)
-        images = Array(repeating: nil, count: vrm.images?.count ?? 0)
+    /// glTF mesh index → the entities of this scene built from it, one per node.
+    var sceneMeshes: [Int: [Entity]] = [:]
+    /// One glTF mesh as rendered through one skin. A mesh used by both a skinned
+    /// and an unskinned node needs one template each.
+    struct MeshTemplateKey: Hashable {
+        let meshIndex: Int
+        let skinIndex: Int?
     }
 
-    /// Starts building a scene's entity graph, dropping the entity caches while
-    /// buffer views, accessors, materials, textures and skeletons stay warm.
+    /// Meshes built once and cloned per node.
+    var meshTemplates: [MeshTemplateKey: Entity] = [:]
+    /// One glTF skin resolved for RealityKit.
+    struct Skin {
+        let skeleton: MeshResource.Skeleton
+        /// glTF joint index → its index in ``skeleton``, which orders the joints
+        /// parents-first.
+        let jointIndexRemap: [Int]
+    }
+
+    var skins: [Skin?]
+    var materials: [Material?] = []
+    var images: [VRMImage?] = []
+
+    init(gltf: GLTF) {
+        nodes = Array(repeating: nil, count: gltf.nodes?.count ?? 0)
+        skins = Array(repeating: nil, count: gltf.skins?.count ?? 0)
+        materials = Array(repeating: nil, count: gltf.materials?.count ?? 0)
+        images = Array(repeating: nil, count: gltf.images?.count ?? 0)
+    }
+
+    /// Starts building a scene's entity graph, dropping the entities of the
+    /// previous one while every shared cache stays warm.
     func beginScene() {
         nodes = Array(repeating: nil, count: nodes.count)
-        meshes = Array(repeating: nil, count: meshes.count)
+        sceneMeshes = [:]
     }
 
     enum EntityDataError: Error {

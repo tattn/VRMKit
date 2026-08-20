@@ -14,8 +14,9 @@ public struct GLTF: Codable {
     public let meshes: [Mesh]?
     public let nodes: [Node]?
     public let samplers: [Sampler]?
-    let _scene: Int?
-    public var scene: Int { return _scene ?? 0 }
+    /// The default scene, when the asset names one. glTF leaves it out for
+    /// assets that are a library of nodes rather than something to render.
+    public let scene: Int?
     public let scenes: [Scene]?
     public let skins: [Skin]?
     public let textures: [Texture]?
@@ -35,7 +36,7 @@ public struct GLTF: Codable {
         case meshes
         case nodes
         case samplers
-        case _scene = "scene"
+        case scene
         case scenes
         case skins
         case textures
@@ -51,6 +52,16 @@ extension GLTF {
 }
 
 package extension GLTF {
+    /// Rejects assets this parser does not implement.
+    func validateSupportedAssetVersion() throws {
+        guard asset.version.hasPrefix("2.") else {
+            throw VRMError._notSupported("glTF asset version \(asset.version) is not supported")
+        }
+        if let minVersion = asset.minVersion, minVersion != "2.0" {
+            throw VRMError._notSupported("glTF asset minVersion \(minVersion) is not supported")
+        }
+    }
+
     func load<T>(_ keyPath: KeyPath<GLTF, T?>) throws -> T {
         try self[keyPath: keyPath] ??? .keyNotFound(Self.description(of: keyPath))
     }

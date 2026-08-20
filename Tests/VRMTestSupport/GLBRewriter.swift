@@ -16,6 +16,11 @@ public enum GLBRewriter {
     private static let magic: [UInt8] = [0x67, 0x6c, 0x54, 0x46]  // "glTF"
     private static let jsonChunkType: UInt32 = 0x4e4f534a         // "JSON"
 
+    /// Whether the data is a GLB container rather than a JSON glTF.
+    public static func isGLB(_ data: Data) -> Bool {
+        data.count >= 4 && Array(data.prefix(4)) == magic
+    }
+
     /// Returns `data` with its glTF JSON replaced by whatever `modify` produces.
     public static func rewritingJSON(of data: Data,
                                      _ modify: (inout [String: Any]) throws -> Void) throws -> Data {

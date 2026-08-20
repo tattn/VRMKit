@@ -45,12 +45,14 @@ extension GLTF {
                 attributes = try container.decode(CodableDictionary<AttributeKey, Int>.self, forKey: .attributes)
                 indices = try container.decodeIfPresent(Int.self, forKey: .indices)
                 material = try container.decodeIfPresent(Int.self, forKey: .material)
-                mode = (try? container.decode(Mode.self, forKey: .mode)) ?? .TRIANGLES
+                // The spec defaults mode to TRIANGLES only when the key is absent;
+                // a value outside 0...6 is malformed, not an omission.
+                mode = try container.decodeIfPresent(Mode.self, forKey: .mode) ?? .TRIANGLES
                 targets = try container.decodeIfPresent([CodableDictionary<AttributeKey, IntOrDictionary>].self, forKey: .targets)?
                     .map {
                         $0.rawValue.reduce(into: [:], { (result, value) in
-                            // skip extra key (e.g. "extra": { "name": "..." })
-                            // skip -1 which means no key
+                            // A VRM 0.x exporter writes -1 for "no accessor in this
+                            // target", and objects where an index belongs.
                             guard let intValue = value.value.intValue, intValue >= 0 else { return }
                             result[value.key] = intValue
                         })
