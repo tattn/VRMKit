@@ -147,7 +147,7 @@ half4 mtoonFilteredSample(texture2d<half> texture,
 
 // The sampler parameter row is (wrapS, wrapT, filterIndex, 0). The wrap modes
 // are encoded as 0 = repeat, 1 = clamp to edge, 2 = mirrored repeat by
-// VRMEntityLoader.mtoonWrapMode(_:), and filterIndex by MToonSamplerFilter.
+// MToonShader.wrapMode(_:), and filterIndex by MToonSamplerFilter.
 #define MTOON_SAMPLE_CASE(name, index)                                               \
     case (index): return mtoonFilteredSample<ImplicitLOD>(texture, name, uv, filterIndex);
 
@@ -232,7 +232,7 @@ float3 realityKitApproximateOutlineLighting(float3 lightColor, float outlineLigh
     return mix(float3(1.0), lightColor, saturate(outlineLightingMix));
 }
 
-// Converts RealityKit's mesh UV (v pointing up, as VRMEntityLoader writes it)
+// Converts RealityKit's mesh UV (v pointing up, as GLTFEntityLoader writes it)
 // into the glTF / MToon UV space that KHR_texture_transform, MToon UV animation
 // and Metal texture sampling all share (v pointing down).
 //

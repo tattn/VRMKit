@@ -148,7 +148,7 @@ package extension URL {
     ///
     /// A `uri` is a URI reference, not a file path: its reserved characters are
     /// percent-encoded, so `My%20Buffer.bin` names a file with a space in it.
-    /// Only local files are read — a glTF must not fetch resources off the
+    /// Only local files are read: a glTF must not fetch resources off the
     /// network on the caller's behalf.
     init(gltfUri: String, relativeTo rootDirectory: URL?) throws {
         // A uri that is not a valid URI reference is taken as a literal path,

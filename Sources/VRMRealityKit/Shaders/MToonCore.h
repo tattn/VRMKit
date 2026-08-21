@@ -39,7 +39,7 @@ inline float3 mtoonIndirectLighting(float3 litColor, float3 giColor)
 // Matcap UV, in the specification's UV convention (v pointing up).
 //
 // The basis is built from the view direction rather than from a view matrix, so
-// `normal` and `viewDirection` only have to agree with each other — both are
+// `normal` and `viewDirection` only have to agree with each other. Both are
 // world-space here, the same space the rim and shading terms use.
 // https://github.com/vrm-c/vrm-specification/tree/master/specification/VRMC_materials_mtoon-1.0#matcap
 inline metal::float2 mtoonMatcapUV(float3 normal, float3 viewDirection)

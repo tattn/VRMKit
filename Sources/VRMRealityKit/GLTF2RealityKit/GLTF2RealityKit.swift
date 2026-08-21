@@ -35,4 +35,22 @@ extension GLTF.Color4 {
         VRMColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
     }
 }
+
+/// The glTF alpha-mode → RealityKit blending decision, shared by every
+/// material path: the built-in Unlit / PBR one and MToon's `CustomMaterial`.
+struct GLTFAlphaModeSettings {
+    let isTransparent: Bool
+    let opacityThreshold: Float?
+
+    init(_ mode: GLTF.Material.AlphaMode, alphaCutoff: Float) {
+        switch mode {
+        case .OPAQUE:
+            (isTransparent, opacityThreshold) = (false, nil)
+        case .MASK:
+            (isTransparent, opacityThreshold) = (false, alphaCutoff)
+        case .BLEND:
+            (isTransparent, opacityThreshold) = (true, nil)
+        }
+    }
+}
 #endif

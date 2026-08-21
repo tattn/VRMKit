@@ -43,12 +43,14 @@ public final class VRMEntity: GLTFEntity {
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
     /// Everything the runtime tracks per glTF material. Keying this by material
-    /// index — rather than copying it onto every entity — is what keeps the
-    /// MToon parameter rows single-source.
+    /// index, rather than copying it onto every entity, is what keeps the
+    /// animatable shader parameters single-source.
     private struct MaterialRuntimeState {
         var modelEntities: [ModelEntity] = []
-        var mtoonParameters: MToonMaterialParameters?
-        var needsMToonParameterFlush = false
+        /// The mutable shader parameters of the material, when what renders it
+        /// makes a state for it, as MToon does.
+        var animatable: (any VRMAnimatableMaterialState)?
+        var needsFlush = false
     }
 
     private var materialStates: [Int: MaterialRuntimeState] = [:]
@@ -169,8 +171,9 @@ public final class VRMEntity: GLTFEntity {
                         guard bind.targetValue.count >= 3 else { return nil }
                         // A malformed bind (e.g. out-of-range material index) only
                         // invalidates that bind, never the whole model load.
-                        guard let baseValue = try? loader.currentMaterialColor(withMaterialIndex: bind.material,
-                                                                               type: bind.type) else {
+                        guard let baseValue = try? currentMaterialColor(withMaterialIndex: bind.material,
+                                                                        type: bind.type,
+                                                                        loader: loader) else {
                             Self.logger.warning("""
                             Skipping invalid MaterialColorBind. \
                             expression=\(expressionClip.name, privacy: .public) \
@@ -189,7 +192,8 @@ public final class VRMEntity: GLTFEntity {
 
                 let transformBindings: [TextureTransformBinding] = expressionClip.expression.textureTransformBinds?
                     .compactMap { bind in
-                        guard let base = try? loader.currentTextureTransform(withMaterialIndex: bind.material) else {
+                        guard let base = try? currentTextureTransform(withMaterialIndex: bind.material,
+                                                                      loader: loader) else {
                             return nil
                         }
                         return TextureTransformBinding(materialIndex: bind.material,
@@ -345,12 +349,13 @@ public final class VRMEntity: GLTFEntity {
         self.springBones = springBones
     }
 
-    /// Registers an entity as a renderer of `materialIndex`. The MToon parameter
-    /// rows are resolved once per material, so every entity sharing it shares them.
+    /// Registers an entity as a renderer of `materialIndex`. The animatable
+    /// shader parameters are resolved once per material, so every entity sharing
+    /// it shares them.
     override func registerMaterialBinding(modelEntity: ModelEntity, materialIndex: Int, loader: GLTFEntityLoader) {
         if materialStates[materialIndex] == nil {
             materialStates[materialIndex] = MaterialRuntimeState(
-                mtoonParameters: try? loader.mtoonParameters(withMaterialIndex: materialIndex)
+                animatable: loader.makeAnimatableMaterialState(forMaterialIndex: materialIndex)
             )
         }
         materialStates[materialIndex]?.modelEntities.append(modelEntity)
@@ -359,14 +364,41 @@ public final class VRMEntity: GLTFEntity {
     /// The MToon parameter rows a material renders with, or nil when it does
     /// not render as MToon.
     func mtoonParameters(forMaterialIndex index: Int) -> MToonMaterialParameters? {
-        materialStates[index]?.mtoonParameters
+        mtoonState(forMaterialIndex: index)?.parameters
+    }
+
+    /// The color a `materialColorBind` starts from. A state animating that color
+    /// (MToon animates them all) keeps it; everything else reads it from the
+    /// RealityKit material.
+    func currentMaterialColor(withMaterialIndex index: Int,
+                              type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
+                              loader: GLTFEntityLoader) throws -> SIMD4<Float> {
+        if let color = materialStates[index]?.animatable?.color(for: type) {
+            return color
+        }
+        return try loader.material(withMaterialIndex: index).currentColor(for: type)
+    }
+
+    /// The UV transform a `textureTransformBind` starts from. A state animating
+    /// it (MToon does) keeps it; everything else reads it from the RealityKit
+    /// material.
+    func currentTextureTransform(withMaterialIndex index: Int,
+                                 loader: GLTFEntityLoader) throws -> MaterialParameterTypes.TextureCoordinateTransform {
+        if let transform = materialStates[index]?.animatable?.textureTransform {
+            return transform
+        }
+        return try loader.material(withMaterialIndex: index).currentTextureTransform
+    }
+
+    private func mtoonState(forMaterialIndex index: Int) -> MToonAnimatableMaterialState? {
+        materialStates[index]?.animatable as? MToonAnimatableMaterialState
     }
 
     /// Advances spring bones, node constraints, and skinning by one frame.
     ///
     /// ``VRMUpdateSystem`` calls this automatically once per render frame, so
     /// there is normally no need to call it. To drive the timing manually, set
-    /// ``isAutomaticUpdateEnabled`` to `false` first — otherwise the model
+    /// ``isAutomaticUpdateEnabled`` to `false` first, otherwise the model
     /// advances twice per frame.
     public func update(deltaTime: TimeInterval) {
         let deltaTime = max(0, deltaTime)
@@ -386,13 +418,12 @@ public final class VRMEntity: GLTFEntity {
         guard simd_distance(normalized, mtoonLightDirection) > 0.0001 else { return }
         mtoonLightDirection = normalized
         // The direction rides in custom.value rather than in a parameter row, so
-        // it reaches the materials without rebuilding their packed texture — and
+        // it reaches the materials without rebuilding their packed texture, and
         // without clearing a rebuild an earlier row change is still waiting for.
         for materialIndex in materialStates.keys {
-            guard var parameters = materialStates[materialIndex]?.mtoonParameters else { continue }
-            parameters.lightDirection = normalized
-            materialStates[materialIndex]?.mtoonParameters = parameters
-            applyMToonParameters(parameters, ofMaterial: materialIndex, parameterTexture: nil)
+            guard let state = mtoonState(forMaterialIndex: materialIndex) else { continue }
+            state.setLightDirection(normalized)
+            mapMaterials(ofMaterial: materialIndex) { state.applyLightDirection(to: $0) }
         }
     }
 
@@ -481,69 +512,64 @@ public final class VRMEntity: GLTFEntity {
     fileprivate func applyMaterialColor(_ color: SIMD4<Float>,
                                         type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
                                         materialIndex: Int) {
-        // MToon owns its colors in the parameter rows; the packed texture is
-        // rebuilt once per material by flushDirtyMToonParameters().
-        if mutateMToonParameters(ofMaterial: materialIndex, { $0.setColor(color, for: type) }) {
+        // A shader animating this color owns it in its own parameters, which
+        // reach the GPU once per material via flushDirtyMaterialStates(). An
+        // unclaimed color falls back below.
+        if mutateAnimatableState(ofMaterial: materialIndex, { $0.setColor(color, for: type) }) {
             return
         }
         let vrmColor = VRMColor(simd: color)
-        forEachModelEntity(ofMaterial: materialIndex) { component in
-            component.materials = component.materials.map { $0.settingColor(vrmColor, for: type) }
-        }
+        mapMaterials(ofMaterial: materialIndex) { $0.settingColor(vrmColor, for: type) }
     }
 
     fileprivate func applyTextureTransform(scale: SIMD2<Float>,
                                            offset: SIMD2<Float>,
                                            rotation: Float,
                                            materialIndex: Int) {
-        // MToon applies the UV transform in its own shader from the parameter
-        // rows; writing RealityKit's material-level transform too would
-        // transform the primary UV twice. Fallback materials have no such
-        // shader, so they use the material-level transform.
-        if mutateMToonParameters(ofMaterial: materialIndex, {
+        // A shader animating the UV transform applies it itself from its
+        // parameters; writing RealityKit's material-level transform too would
+        // transform the primary UV twice. Everything else, fallback materials
+        // included, uses the material-level transform.
+        if mutateAnimatableState(ofMaterial: materialIndex, {
             $0.setTextureTransform(scale: scale, offset: offset, rotation: rotation)
         }) {
             return
         }
-        forEachModelEntity(ofMaterial: materialIndex) { component in
-            component.materials = component.materials.map {
-                $0.settingTextureTransform(scale: scale, offset: offset, rotation: rotation)
-            }
+        mapMaterials(ofMaterial: materialIndex) {
+            $0.settingTextureTransform(scale: scale, offset: offset, rotation: rotation)
         }
     }
 
-    // MARK: - MToon runtime state
+    // MARK: - Animatable material runtime state
     //
-    // MToon parameters describe a *material*, not an entity, so they are stored
+    // Shader parameters describe a *material*, not an entity, so they are stored
     // once per material index and pushed to every entity that renders with it.
     // visionOS has no `CustomMaterial`, so no material has them and these all
     // no-op there without platform conditionals of their own.
 
-    /// Edits a material's MToon parameter rows, marking its packed texture for
-    /// rebuild. Returns false when the material does not render as MToon, which
-    /// is the caller's cue to fall back to the RealityKit material properties.
-    @discardableResult
-    private func mutateMToonParameters(ofMaterial materialIndex: Int,
-                                       _ mutate: (inout MToonMaterialParameters) -> Void) -> Bool {
-        guard var parameters = materialStates[materialIndex]?.mtoonParameters else { return false }
-        mutate(&parameters)
-        materialStates[materialIndex]?.mtoonParameters = parameters
-        materialStates[materialIndex]?.needsMToonParameterFlush = true
+    /// Edits a material's animatable shader state, marking it for flush. Returns
+    /// false when no such state renders the material, or when it does not animate
+    /// the value `mutate` writes: the caller's cue to fall back to the RealityKit
+    /// material properties.
+    private func mutateAnimatableState(ofMaterial materialIndex: Int,
+                                       _ mutate: (any VRMAnimatableMaterialState) -> Bool) -> Bool {
+        guard let animatable = materialStates[materialIndex]?.animatable,
+              mutate(animatable) else { return false }
+        materialStates[materialIndex]?.needsFlush = true
         return true
     }
 
-    /// Rebuilds the packed parameter texture once per material whose rows
-    /// changed, instead of once per binding that touched it.
-    private func flushDirtyMToonParameters() {
-        for (materialIndex, state) in materialStates where state.needsMToonParameterFlush {
-            guard let parameters = state.mtoonParameters,
-                  let parameterTexture = parameterTextureResource(for: parameters) else {
+    /// Pushes each dirty material's pending parameter writes to the GPU once per
+    /// material, instead of once per binding that touched it.
+    private func flushDirtyMaterialStates() {
+        for (materialIndex, state) in materialStates where state.needsFlush {
+            guard let animatable = state.animatable, animatable.prepareFlush() else {
                 // The GPU still holds the previous values, so the material stays
-                // dirty and the next flush retries building its texture.
+                // dirty and the next flush retries.
                 continue
             }
-            applyMToonParameters(parameters, ofMaterial: materialIndex, parameterTexture: parameterTexture)
-            materialStates[materialIndex]?.needsMToonParameterFlush = false
+            mapMaterials(ofMaterial: materialIndex) { animatable.apply(to: $0) }
+            materialStates[materialIndex]?.needsFlush = false
         }
     }
 
@@ -552,61 +578,22 @@ public final class VRMEntity: GLTFEntity {
     /// they take the same dirty-and-flush path as expression-driven row changes.
     private func updateMToonLightingRows() {
         for materialIndex in materialStates.keys {
-            mutateMToonParameters(ofMaterial: materialIndex) { parameters in
-                parameters.lightColor = SIMD4<Float>(mtoonLightColor, 1)
-                parameters.ambientColor = SIMD4<Float>(mtoonAmbientColor, 1)
-            }
+            guard let state = mtoonState(forMaterialIndex: materialIndex) else { continue }
+            state.setLighting(color: mtoonLightColor, ambient: mtoonAmbientColor)
+            materialStates[materialIndex]?.needsFlush = true
         }
-        flushDirtyMToonParameters()
+        flushDirtyMaterialStates()
     }
 
-    private func applyMToonParameters(_ parameters: MToonMaterialParameters,
-                                      ofMaterial materialIndex: Int,
-                                      parameterTexture: TextureResource?) {
-        forEachModelEntity(ofMaterial: materialIndex) { component in
-            component.materials = component.materials.map {
-                applyingMToonParameters(parameters, to: $0, parameterTexture: parameterTexture)
-            }
-        }
-    }
-
-    /// Applies `edit` to the `ModelComponent` of every entity rendering with
-    /// `materialIndex`, writing the component back.
-    private func forEachModelEntity(ofMaterial materialIndex: Int,
-                                    _ edit: (inout ModelComponent) -> Void) {
+    /// Rewrites the materials of every entity rendering with `materialIndex`
+    /// through `transform`, writing the model components back.
+    private func mapMaterials(ofMaterial materialIndex: Int,
+                              _ transform: (any Material) -> any Material) {
         guard let modelEntities = materialStates[materialIndex]?.modelEntities else { return }
         for modelEntity in modelEntities {
             guard var component = modelEntity.components[ModelComponent.self] else { continue }
-            edit(&component)
+            component.materials = component.materials.map(transform)
             modelEntity.components.set(component)
-        }
-    }
-
-    /// MToon parameters live on `CustomMaterial`, which visionOS does not have,
-    /// so this is the single platform boundary of the runtime update path.
-    private func applyingMToonParameters(_ parameters: MToonMaterialParameters,
-                                         to material: any Material,
-                                         parameterTexture: TextureResource?) -> any Material {
-#if os(visionOS)
-        return material
-#else
-        guard var material = material as? CustomMaterial else { return material }
-        material.custom.value = parameters.customValue
-        if let parameterTexture {
-            material.custom.texture = CustomMaterial.Texture(parameterTexture)
-        }
-        return material
-#endif
-    }
-
-    /// Packs the parameter rows into one GPU texture. Callers build it once per
-    /// material and share it across every entity that renders with it.
-    private func parameterTextureResource(for parameters: MToonMaterialParameters) -> TextureResource? {
-        do {
-            return try parameters.textureResource()
-        } catch {
-            Self.logger.error("Failed to update MToon parameter texture: \(error.localizedDescription, privacy: .public)")
-            return nil
         }
     }
 
@@ -702,7 +689,7 @@ public final class VRMEntity: GLTFEntity {
                                   materialIndex: materialIndex)
         }
 
-        flushDirtyMToonParameters()
+        flushDirtyMaterialStates()
     }
 
     /// Where one blend-shape target lives in a model entity's weight sets.

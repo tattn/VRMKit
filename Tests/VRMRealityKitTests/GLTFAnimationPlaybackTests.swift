@@ -435,7 +435,7 @@ struct GLTFAnimationPlaybackTests {
     }
 
     /// One accessor of a hand-written animation sampler, described exactly as it
-    /// should reach the loader — storage the spec forbids included.
+    /// should reach the loader, storage the spec forbids included.
     private struct SamplerStorage {
         let componentType: Int
         let type: String

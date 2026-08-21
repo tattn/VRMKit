@@ -26,6 +26,14 @@ enum TestSupport {
         try GLTFEntityLoader(withData: asset.rewritingJSON(modify), rootDirectory: asset.rootDirectory)
     }
 
+    /// The default chain with MToon outlines disabled, for tests that inspect
+    /// materials without outline siblings in the way.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    @MainActor
+    static var noOutlineShaders: [any GLTFMaterialShader] {
+        [MToonShader(isOutlineEnabled: false)]
+    }
+
     /// The bundled Seed-san VRM 1.0 fixture.
     static var seedSanData: Data { VRMSampleAsset.seedSan.data }
 

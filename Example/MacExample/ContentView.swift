@@ -191,7 +191,8 @@ final class RealityKitContentViewModel {
         do {
             errorMessage = nil
 
-            let loader = try VRMEntityLoader(named: model.rawValue, isMToonEnabled: isMToonEnabled)
+            let loader = try VRMEntityLoader(named: model.rawValue,
+                                             shaders: isMToonEnabled ? GLTFEntityLoader.defaultShaders : [])
             let nextVRMEntity = try loader.loadEntity()
 
             nextVRMEntity.transform.translation = SIMD3<Float>(0, -1, 0)

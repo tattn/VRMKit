@@ -27,26 +27,20 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 - [x] Face morphing (blend shape)
 - [x] Bone animation (skin / joint)
 - [x] Physics (spring bone)
+- [x] MToon rendering and custom material shaders
+- [x] Render plain glTF / GLB with animations
 
 # Requirements
 
 - Swift 6.0+
-- iOS 15.0+
-- macOS 12.0+
-- visionOS 2.0+
-- watchOS 8.0+ (Experimental)
-
-VRMRealityKit requires iOS 18.0+ / macOS 15.0+ / visionOS 2.0+.
+- iOS 15.0+ / macOS 12.0+ / visionOS 2.0+ / watchOS 8.0+ (experimental)
+- VRMRealityKit: iOS 18.0+ / macOS 15.0+ / visionOS 2.0+
 
 # Installation
 
 ## Swift Package Manager
 
 You can install this package with Swift Package Manager.
-
-## Carthage & CocoaPods (Deprecated)
-
-If you want to use these package managers, please use https://github.com/tattn/VRMKit/releases/tag/0.4.2
 
 # Usage
 
@@ -55,9 +49,10 @@ If you want to use these package managers, please use https://github.com/tattn/V
 ```swift
 import VRMKit
 
-let vrm = try VRMLoader().load(named: "model.vrm")
-// let vrm = try VRMLoader().load(withUrl: URL(string: "/path/to/model.vrm")!)
-// let vrm = try VRMLoader().load(withData: data)
+let loader = VRMLoader()
+let vrm = try loader.load(named: "model.vrm")
+// let vrm = try loader.load(withUrl: URL(string: "/path/to/model.vrm")!)
+// let vrm = try loader.load(withData: data)
 
 // VRM meta data
 vrm.meta.title
@@ -65,96 +60,49 @@ vrm.meta.author
 
 // model data
 vrm.gltf.jsonData.nodes[0].name
+
+// thumbnail
+try loader.loadThumbnail(from: vrm)
 ```
 
 ## Render VRM
 
 ```swift
 import RealityKit
-import VRMKit
-import VRMRealityKit
-
-let loader = try VRMEntityLoader(named: "model.vrm")
-let vrmEntity = try loader.loadEntity()
-
-let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
-let anchor = AnchorEntity(world: .zero)
-anchor.addChild(vrmEntity)
-arView.scene.addAnchor(anchor)
-```
-
-`VRMEntity` is an `Entity`. Once it is in a scene, skinning, constraints and spring bones are updated every frame automatically.
-
-### Render VRM (SwiftUI)
-
-```swift
-import RealityKit
 import SwiftUI
-import VRMKit
 import VRMRealityKit
 
 struct ContentView: View {
     var body: some View {
         RealityView { content in
-            guard let loader = try? VRMEntityLoader(named: "model.vrm"),
-                  let vrmEntity = try? loader.loadEntity() else { return }
-            content.add(vrmEntity)
+            guard let entity = try? VRMEntityLoader(named: "model.vrm").loadEntity() else { return }
+            content.add(entity)
         }
     }
 }
 ```
 
-<details>
-<summary>Render VRM (SceneKit) — Deprecated</summary>
+`VRMEntity` is an `Entity`, so it drops into any RealityKit scene, `ARView` included. Once it is in a scene, skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself. Animation code that must run in a fixed order relative to that update belongs in a `System` declared with `SystemDependency.before(VRMUpdateSystem.self)`.
 
-> Note: VRMSceneKit is deprecated. Use VRMRealityKit instead.
+> VRMSceneKit, the SceneKit renderer, is deprecated. Use VRMRealityKit instead.
 
-```swift
-import VRMKit
-import VRMSceneKit
-
-@IBOutlet weak var sceneView: SCNView!
-
-let loader = try VRMSceneLoader(named: "model.vrm")
-let scene: VRMScene = try loader.loadScene()
-let node: VRMNode = scene.vrmNode
-
-sceneView.scene = scene
-```
-
-</details>
-
-### Blend shapes / expressions
-
-VRM 0.x uses blend shapes:
+## Expressions / blend shapes
 
 <img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" />
-
-```swift
-vrmEntity.setBlendShape(value: 1.0, for: .preset(.joy))
-```
-
 <img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" />
-
-```swift
-vrmEntity.setBlendShape(value: 1.0, for: .preset(.angry))
-```
-
 <img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
 
 ```swift
+// VRM 1.0
+vrmEntity.setExpression(value: 1.0, for: .preset(.happy))
+vrmEntity.setExpression(value: 1.0, for: .custom("customExpressionName"))
+
+// VRM 0.x
+vrmEntity.setBlendShape(value: 1.0, for: .preset(.joy))
 vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
 ```
 
-VRM 1.0 uses expressions:
-
-```swift
-vrmEntity.setExpression(value: 1.0, for: .preset(.happy))
-vrmEntity.setExpression(value: 1.0, for: .preset(.aa))
-vrmEntity.setExpression(value: 1.0, for: .custom("customExpressionName"))
-```
-
-### Bone animation
+## Bone animation
 
 <img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_humanoid.png" width="200px" alt="Humanoid" />
 
@@ -163,17 +111,9 @@ let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1)
 vrmEntity.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
 ```
 
-### Read the thumbnail image
-
-```swift
-let loader = VRMLoader()
-let vrm = try loader.load(named: "model.vrm")
-let image = try loader.loadThumbnail(from: vrm)
-```
-
 ## MToon rendering
 
-VRMRealityKit renders MToon materials by default on iOS and macOS. visionOS falls back to Unlit / PBR materials because RealityKit's `CustomMaterial` is unavailable there.
+MToon materials render by default on iOS and macOS. visionOS falls back to Unlit / PBR materials, because RealityKit's `CustomMaterial` is unavailable there.
 
 ```swift
 vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -1))
@@ -181,53 +121,43 @@ vrmEntity.setMToonLightColor(SIMD3<Float>(1, 1, 1))
 vrmEntity.setMToonAmbientColor(SIMD3<Float>(0.1, 0.1, 0.1))
 ```
 
-<details>
-<summary>Loader options and limitations</summary>
+Both loaders take a material shader chain: each shader is asked in order, and materials no shader claims render through the built-in Unlit / PBR path.
 
 ```swift
-let loader = try VRMEntityLoader(
-    named: "model.vrm",
-    isMToonEnabled: true,  // false: disable MToon and use the legacy Unlit / PBR conversion
-    isOutlineEnabled: true // false: skip MToon outline entities
-)
+// The default chain is [MToonShader()]: MToon with outlines.
+let noOutlines = try VRMEntityLoader(named: "model.vrm", shaders: [MToonShader(isOutlineEnabled: false)])
+let noMToon = try VRMEntityLoader(named: "model.vrm", shaders: [])
+
+// Toon-shade a plain glTF, or a VRM whose materials are not MToon.
+// Pass .convertAll(MToonConversionStyle(...)) to tune the conversion.
+let converted = try GLTFEntityLoader(withURL: url, shaders: [MToonShader(source: .convertAll)])
+
+// Your own shader joins the same chain.
+final class MyShader: GLTFMaterialShader {
+    func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
+        // Return nil to pass the material on to the next shader / built-in path,
+        // or start from try context.standardMaterial() to adjust the standard result.
+        var material = UnlitMaterial()
+        if let texture = context.material.pbrMetallicRoughness?.baseColorTexture {
+            material.color = .init(texture: try context.materialTexture(withTextureIndex: texture.index))
+        }
+        return GLTFShadedMaterial(material: material)
+    }
+}
+
+let custom = try VRMEntityLoader(withData: data, shaders: [MyShader(), MToonShader()])
 ```
 
-Outlines can be skipped while keeping the MToon surface shader. On visionOS both options fall back automatically because the required RealityKit APIs are unavailable.
+`GLTFShadedMaterial` also carries extra render passes (MToon draws its outline as one) and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. The `GLTFMaterialShader` documentation comments cover both, along with what a shader may assume about the mesh it draws.
 
-RealityKit constrains what the MToon renderer can express. Each case below logs a warning once per affected material.
+## Render glTF / GLB
 
-- `renderQueueOffsetNumber` is parsed but ignored, because RealityKit has no material-level draw-order hook. (`transparentWithZWrite` is supported through `CustomMaterial.writesDepth`, so a blended material can still write depth.)
-- Textures requesting a UV set other than `TEXCOORD_0` use `TEXCOORD_0`, because custom meshes expose only that one.
-- When UV-accessed texture slots specify different `KHR_texture_transform` values, the transform of the first UV-accessed slot — base color when the material has one — is applied to all of them, because `CustomMaterial` has a single material-level UV transform. Expression texture transform binds still update all UV-accessed textures together as required by VRMC_vrm.
-
-</details>
-
-<details>
-<summary>Frame updates</summary>
-
-`VRMUpdateSystem` (a RealityKit `System` registered on load) calls `VRMEntity.update(deltaTime:)` on every render frame. To control the timing yourself, opt out and call it manually:
-
-```swift
-vrmEntity.isAutomaticUpdateEnabled = false
-
-// Then, once per frame:
-vrmEntity.update(deltaTime: deltaTime)
-```
-
-To run your own animation code in a guaranteed order relative to the VRM update (e.g. posing joints that the same frame's skinning should reflect), put it in a custom `System` declared with `SystemDependency.before(VRMUpdateSystem.self)`.
-
-</details>
-
-<details>
-<summary>Render glTF / GLB</summary>
-
-VRMRealityKit can also render plain glTF assets (`.glb` and JSON `.gltf`, including external resources and data URIs).
+VRMRealityKit also renders plain glTF assets (`.glb` and JSON `.gltf`, including external resources and data URIs).
 
 ```swift
 let entity: GLTFEntity = try GLTFEntityLoader(withURL: url).loadEntity()
-content.add(entity)
 
-entity.animations          // [GLTFAnimation] — index, name, duration
+entity.animations          // [GLTFAnimation]: index, name, duration
 let controller = try entity.playAnimation(at: 0, loops: true)
 controller.speed = 2       // a negative speed plays backwards
 controller.seek(to: 0.5)
@@ -236,38 +166,30 @@ controller.stop()
 
 `loadEntity()` renders the asset's default scene, and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance.
 
-### RealityKit renderer limitations
+<details>
+<summary>Renderer limitations</summary>
 
-The renderer builds RealityKit meshes and materials, so a few parts of glTF have no place to go:
+RealityKit meshes and materials cannot express every part of glTF and MToon. Each case below logs a warning once per affected material.
 
 - Only triangle primitives are drawn; `POINTS` and `LINES` primitives are skipped.
-- `COLOR_0` vertex colors are ignored: the `MeshResource.Part` buffers this renderer builds carry no vertex-color channel.
-- One UV set per material: the first UV-accessed texture decides both the `TEXCOORD_n` set and the single `KHR_texture_transform` every texture of that material is sampled with. An asset that merely lists `KHR_texture_transform` in `extensionsUsed` renders through that approximation and logs it; one that lists it in `extensionsRequired` and gives a material's textures different transforms is rejected instead of drawn wrong.
+- `COLOR_0` vertex colors are ignored: the mesh buffers this renderer builds carry no vertex-color channel.
+- One UV set and one `KHR_texture_transform` per material: the first UV-accessed texture decides both for every texture of that material. A glTF load rejects a document that lists `KHR_texture_transform` in `extensionsRequired` and needs more than that, instead of drawing it wrong; a VRM load renders the approximation.
 - Tangents for a primitive without `TANGENT` are averaged from its UV gradients rather than generated with MikkTSpace, which the spec recommends, so a normal map baked against MikkTSpace can differ slightly along UV seams.
 - Blend shapes morph `POSITION` only, since RealityKit blend shapes have no `NORMAL` / `TANGENT` channel.
-- Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints; the further sets a glTF may carry (`JOINTS_1` and up) are ignored, which the spec allows and which can change the result of an animation.
+- Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints; the further sets a glTF may carry are ignored.
+- MToon's `renderQueueOffsetNumber` is parsed but ignored, because RealityKit has no material-level draw-order hook. (`transparentWithZWrite` is supported through `CustomMaterial.writesDepth`.)
 
 </details>
 
 # ToDo
 
-- [x] VRM 1.0 support
-  - [x] Decoding VRM 1.0 file
-  - [x] Render an avatar by RealityKit (as VRM 0.x)
-  - [x] Render an avatar by RealityKit (as VRM 1.x)
-- [x] VRM shaders support (MToon, RealityKit)
 - [ ] Improve rendering quality
 - [ ] Animation support (vrma)
 - [ ] VRM editing function
-- [x] glTF renderer / animation support (RealityKit)
 
 # Contributing
 
-1. Fork it!
-2. Create your feature branch: `git checkout -b my-new-feature`
-3. Commit your changes: `git commit -am 'Add some feature'`
-4. Push to the branch: `git push origin my-new-feature`
-5. Submit a pull request :D
+Pull requests are welcome. Fork the repository, work on a feature branch, and open a PR :D
 
 ## Support this project
 
@@ -283,5 +205,5 @@ VRMKit is released under the MIT license. See LICENSE for details.
 
 Tatsuya Tanaka
 
-<a href="https://twitter.com/tattn_dev" target="_blank"><img alt="Twitter" src="https://img.shields.io/twitter/follow/tattn_dev.svg?style=social&label=Follow"></a>
+<a href="https://x.com/tattn_dev" target="_blank"><img alt="Twitter" src="https://img.shields.io/twitter/follow/tattn_dev.svg?style=social&label=Follow"></a>
 <a href="https://github.com/tattn" target="_blank"><img alt="GitHub" src="https://img.shields.io/github/followers/tattn.svg?style=social"></a>

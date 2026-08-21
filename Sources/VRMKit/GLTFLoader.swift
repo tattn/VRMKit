@@ -1,7 +1,7 @@
 import Foundation
 
-/// Loads plain glTF assets — GLB containers and JSON `.gltf` files with
-/// external or data-URI resources — into a ``GLTFDocument``.
+/// Loads plain glTF assets into a ``GLTFDocument``: GLB containers, and JSON
+/// `.gltf` files with external or data-URI resources.
 public final class GLTFLoader {
     public init() {}
 

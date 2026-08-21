@@ -2,8 +2,8 @@ import Foundation
 
 /// Rewrites the JSON chunk of a GLB in memory.
 ///
-/// Every test target needs the same thing — take a bundled `.vrm`, change a few
-/// fields, and hand the result straight to a loader — so the chunk walking and
+/// Every test target needs the same thing: take a bundled `.vrm`, change a few
+/// fields, and hand the result straight to a loader. So the chunk walking and
 /// header rebuilding live here rather than once per target.
 public enum GLBRewriter {
     public enum Error: Swift.Error {

@@ -118,7 +118,8 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         loadedEntity = nil
 
         do {
-            let loader = try VRMEntityLoader(named: model.rawValue, isMToonEnabled: isMToonEnabled)
+            let loader = try VRMEntityLoader(named: model.rawValue,
+                                             shaders: isMToonEnabled ? GLTFEntityLoader.defaultShaders : [])
             let vrmEntity = try loader.loadEntity()
             vrmEntity.setMToonLightDirection(RealityKitExampleLighting.direction)
 

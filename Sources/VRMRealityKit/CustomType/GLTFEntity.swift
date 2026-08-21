@@ -13,7 +13,7 @@ struct GLTFComponent: Component {
 }
 
 /// The glTF node a loaded entity was built from. The array index is a node's
-/// canonical identity — `name` is optional and may repeat.
+/// canonical identity, since `name` is optional and may repeat.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct GLTFNodeComponent: Component {
     public let nodeIndex: Int
@@ -161,8 +161,8 @@ public class GLTFEntity: Entity {
     /// Re-applies the skeletal pose of every skin binding from the current joint
     /// entity transforms.
     func updateSkinning() {
-        // Bindings sharing a skeleton and model world transform — a mesh and its
-        // outline twin, say — resolve to identical joint transforms.
+        // Bindings sharing a skeleton and model world transform, such as a mesh
+        // and its outline twin, resolve to identical joint transforms.
         var solved: [String: (modelWorld: simd_float4x4, transforms: JointTransforms)] = [:]
         for binding in skinBindings {
             let modelWorld = binding.modelEntity.transformMatrix(relativeTo: nil)
@@ -223,9 +223,9 @@ extension ModelEntity {
     func applyMorphWeights(_ weights: [Float]) {
         let current = blendWeights
         guard !current.isEmpty else { return }
-        // Compared before any copy: a held pose — a STEP segment, a paused
-        // animation — is the common case, and writing the sets would copy them
-        // and re-upload the weights for nothing.
+        // Compared before any copy: a held pose, from a STEP segment or a
+        // paused animation, is the common case, and writing the sets would copy
+        // them and re-upload the weights for nothing.
         func differs(_ set: [Float]) -> Bool {
             weights.enumerated().contains { targetIndex, weight in
                 targetIndex < set.count && set[targetIndex] != weight

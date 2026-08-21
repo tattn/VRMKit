@@ -3,8 +3,8 @@ import Testing
 import VRMTestSupport
 @testable import VRMKit
 
-/// Parses the Khronos CC0 sample assets, covering what the VRM fixtures — all
-/// GLB with an embedded BIN chunk — never reach: JSON `.gltf` files with
+/// Parses the Khronos CC0 sample assets, covering what the VRM fixtures, all
+/// GLB with an embedded BIN chunk, never reach: JSON `.gltf` files with
 /// external resources and with data URI buffers.
 @Suite
 struct GLTFSampleAssetTests {

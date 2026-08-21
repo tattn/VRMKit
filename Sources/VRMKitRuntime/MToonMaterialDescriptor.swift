@@ -65,6 +65,31 @@ package struct MToonMaterialDescriptor {
 }
 
 package extension MToonMaterialDescriptor {
+    /// What MToon data a glTF material carries. A material authored against an
+    /// unimplemented spec version *is* MToon, so renderers must tell it from one
+    /// that carries no MToon data at all and is theirs to shade freely.
+    enum Resolution {
+        /// The material carries no MToon data.
+        case none
+        /// The material's MToon data, decoded.
+        case supported(MToonMaterialDescriptor)
+        /// The material declares `VRMC_materials_mtoon` with the given
+        /// `specVersion`, which ``supports(specVersion:)`` does not implement.
+        case unsupportedVersion(String)
+
+        /// Whether the material is MToon at all, readable or not.
+        package var isMToon: Bool {
+            if case .none = self { return false }
+            return true
+        }
+
+        /// The decoded MToon data, or nil when there is none to read.
+        package var descriptor: MToonMaterialDescriptor? {
+            guard case .supported(let descriptor) = self else { return nil }
+            return descriptor
+        }
+    }
+
     /// The `VRMC_materials_mtoon` spec versions this descriptor implements.
     /// Anything else falls back to Unlit / PBR rather than being read with 1.0
     /// semantics.
@@ -72,18 +97,81 @@ package extension MToonMaterialDescriptor {
         specVersion == "1.0" || specVersion == "1.0-beta"
     }
 
-    init?(material: GLTF.Material, materialProperty: VRM0.MaterialProperty?) {
+    /// The MToon data `material` carries, from the `VRMC_materials_mtoon`
+    /// extension or, for VRM 0.x, the Unity material property describing it.
+    static func resolve(material: GLTF.Material,
+                        materialProperty: VRM0.MaterialProperty?) -> Resolution {
         if let mtoon = material.extensions?.materialsMToon {
-            guard Self.supports(specVersion: mtoon.specVersion) else { return nil }
-            self.init(vrm1: mtoon, material: material)
-            return
+            guard supports(specVersion: mtoon.specVersion) else {
+                return .unsupportedVersion(mtoon.specVersion)
+            }
+            return .supported(MToonMaterialDescriptor(vrm1: mtoon, material: material))
         }
 
         guard let materialProperty,
               materialProperty.vrmShader == .mToon || materialProperty.shader.lowercased().contains("mtoon") else {
+            return .none
+        }
+        return .supported(VRM0MToonMigrator.migrate(property: materialProperty, material: material))
+    }
+
+    /// The decoded MToon data, or nil when there is none this descriptor can
+    /// read. ``resolve(material:materialProperty:)`` tells those two apart.
+    init?(material: GLTF.Material, materialProperty: VRM0.MaterialProperty?) {
+        guard let descriptor = Self.resolve(material: material,
+                                            materialProperty: materialProperty).descriptor else {
             return nil
         }
-        self = VRM0MToonMigrator.migrate(property: materialProperty, material: material)
+        self = descriptor
+    }
+}
+
+package extension MToonMaterialDescriptor {
+    /// MToon 1.0 spec defaults, used as fallbacks for omitted authored values
+    /// and synthesized standard materials.
+    enum SpecDefault {
+        package static let shadingShiftFactor: Float = 0
+        static let shadingShiftTextureScale: Float = 1
+        package static let shadingToonyFactor: Float = 0.9
+        static let giEqualizationFactor: Float = 0.9
+        static let matcapFactor = SIMD3<Float>(1, 1, 1)
+        static let parametricRimColorFactor = SIMD4<Float>(0, 0, 0, 1)
+        static let rimLightingMixFactor: Float = 1
+        static let parametricRimFresnelPowerFactor: Float = 5
+        static let parametricRimLiftFactor: Float = 0
+        package static let outlineWidthFactor: Float = 0
+        package static let outlineColorFactor = SIMD4<Float>(0, 0, 0, 1)
+        static let outlineLightingMixFactor: Float = 1
+        static let uvAnimationSpeedFactor: Float = 0
+        static let transparentWithZWrite = false
+        static let renderQueueOffsetNumber = 0
+    }
+
+    /// The fields every descriptor derives the same way from the standard glTF
+    /// material, whether the toon values are authored or synthesized.
+    struct StandardMaterialProperties {
+        let baseColorFactor: SIMD4<Float>
+        let emissiveFactor: SIMD3<Float>
+        let alphaMode: GLTF.Material.AlphaMode
+        let alphaCutoff: Float
+        let cullMode: CullMode
+        let normalScale: Float
+        let baseColorTexture: Texture?
+        let emissiveTexture: Texture?
+        let normalTexture: Texture?
+
+        init(_ material: GLTF.Material) {
+            let pbr = material.pbrMetallicRoughness
+            baseColorFactor = (pbr?.baseColorFactor).map(SIMD4<Float>.init) ?? SIMD4<Float>(1, 1, 1, 1)
+            emissiveFactor = SIMD3<Float>(material.emissiveFactor)
+            alphaMode = material.alphaMode
+            alphaCutoff = material.alphaCutoff
+            cullMode = material.doubleSided ? .none : .back
+            normalScale = Float(material.normalTexture?.scale ?? 1)
+            baseColorTexture = pbr?.baseColorTexture.map(Texture.init)
+            emissiveTexture = material.emissiveTexture.map(Texture.init)
+            normalTexture = material.normalTexture.map(Texture.init)
+        }
     }
 }
 
@@ -108,43 +196,46 @@ package extension MToonMaterialDescriptor {
 
 private extension MToonMaterialDescriptor {
     init(vrm1 mtoon: GLTF.Material.MaterialExtensions.MaterialsMToon, material: GLTF.Material) {
-        let pbr = material.pbrMetallicRoughness
-        let baseColor = (pbr?.baseColorFactor).map(SIMD4<Float>.init) ?? SIMD4<Float>(1, 1, 1, 1)
-        let shadeColor = SIMD4<Float>(mtoon.shadeColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
-        let matcapFactor = SIMD3<Float>(mtoon.matcapFactor, default: SIMD3<Float>(1, 1, 1))
-        let rimColor = SIMD4<Float>(mtoon.parametricRimColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
-        let outlineColor = SIMD4<Float>(mtoon.outlineColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
+        let standard = StandardMaterialProperties(material)
 
-        self.baseColorFactor = baseColor
-        self.emissiveFactor = SIMD3<Float>(material.emissiveFactor)
-        self.shadeColorFactor = shadeColor
-        self.shadingShiftFactor = Float(mtoon.shadingShiftFactor ?? 0)
-        self.shadingShiftTextureScale = Float(mtoon.shadingShiftTexture?.scale ?? 1)
-        self.shadingToonyFactor = Float(mtoon.shadingToonyFactor ?? 0.9)
-        self.giEqualizationFactor = Float(mtoon.giEqualizationFactor ?? 0.9)
-        self.matcapFactor = matcapFactor
-        self.parametricRimColorFactor = rimColor
-        self.rimLightingMixFactor = Float(mtoon.rimLightingMixFactor ?? 1)
-        self.parametricRimFresnelPowerFactor = Float(mtoon.parametricRimFresnelPowerFactor ?? 5)
-        self.parametricRimLiftFactor = Float(mtoon.parametricRimLiftFactor ?? 0)
+        self.baseColorFactor = standard.baseColorFactor
+        self.emissiveFactor = standard.emissiveFactor
+        self.shadeColorFactor = SIMD4<Float>(mtoon.shadeColorFactor, default: SIMD4<Float>(0, 0, 0, 1))
+        self.shadingShiftFactor = mtoon.shadingShiftFactor.map(Float.init) ?? SpecDefault.shadingShiftFactor
+        self.shadingShiftTextureScale = (mtoon.shadingShiftTexture?.scale).map(Float.init)
+            ?? SpecDefault.shadingShiftTextureScale
+        self.shadingToonyFactor = mtoon.shadingToonyFactor.map(Float.init) ?? SpecDefault.shadingToonyFactor
+        self.giEqualizationFactor = mtoon.giEqualizationFactor.map(Float.init) ?? SpecDefault.giEqualizationFactor
+        self.matcapFactor = SIMD3<Float>(mtoon.matcapFactor, default: SpecDefault.matcapFactor)
+        self.parametricRimColorFactor = SIMD4<Float>(mtoon.parametricRimColorFactor,
+                                                     default: SpecDefault.parametricRimColorFactor)
+        self.rimLightingMixFactor = mtoon.rimLightingMixFactor.map(Float.init) ?? SpecDefault.rimLightingMixFactor
+        self.parametricRimFresnelPowerFactor = mtoon.parametricRimFresnelPowerFactor.map(Float.init)
+            ?? SpecDefault.parametricRimFresnelPowerFactor
+        self.parametricRimLiftFactor = mtoon.parametricRimLiftFactor.map(Float.init)
+            ?? SpecDefault.parametricRimLiftFactor
         self.outlineWidthMode = .init(vrm1: mtoon.outlineWidthMode)
-        self.outlineWidthFactor = Float(mtoon.outlineWidthFactor ?? 0)
-        self.outlineColorFactor = outlineColor
-        self.outlineLightingMixFactor = Float(mtoon.outlineLightingMixFactor ?? 1)
-        self.uvAnimationScrollXSpeedFactor = Float(mtoon.uvAnimationScrollXSpeedFactor ?? 0)
-        self.uvAnimationScrollYSpeedFactor = Float(mtoon.uvAnimationScrollYSpeedFactor ?? 0)
-        self.uvAnimationRotationSpeedFactor = Float(mtoon.uvAnimationRotationSpeedFactor ?? 0)
-        self.transparentWithZWrite = mtoon.transparentWithZWrite ?? false
-        self.renderQueueOffsetNumber = mtoon.renderQueueOffsetNumber ?? 0
-        self.alphaMode = material.alphaMode
-        self.alphaCutoff = material.alphaCutoff
-        self.cullMode = material.doubleSided ? .none : .back
-        self.normalScale = Float(material.normalTexture?.scale ?? 1)
-        self.baseColorTexture = pbr?.baseColorTexture.map(MToonMaterialDescriptor.Texture.init)
-        self.emissiveTexture = material.emissiveTexture.map(MToonMaterialDescriptor.Texture.init)
+        self.outlineWidthFactor = mtoon.outlineWidthFactor.map(Float.init) ?? SpecDefault.outlineWidthFactor
+        self.outlineColorFactor = SIMD4<Float>(mtoon.outlineColorFactor, default: SpecDefault.outlineColorFactor)
+        self.outlineLightingMixFactor = mtoon.outlineLightingMixFactor.map(Float.init)
+            ?? SpecDefault.outlineLightingMixFactor
+        self.uvAnimationScrollXSpeedFactor = mtoon.uvAnimationScrollXSpeedFactor.map(Float.init)
+            ?? SpecDefault.uvAnimationSpeedFactor
+        self.uvAnimationScrollYSpeedFactor = mtoon.uvAnimationScrollYSpeedFactor.map(Float.init)
+            ?? SpecDefault.uvAnimationSpeedFactor
+        self.uvAnimationRotationSpeedFactor = mtoon.uvAnimationRotationSpeedFactor.map(Float.init)
+            ?? SpecDefault.uvAnimationSpeedFactor
+        self.transparentWithZWrite = mtoon.transparentWithZWrite ?? SpecDefault.transparentWithZWrite
+        self.renderQueueOffsetNumber = mtoon.renderQueueOffsetNumber ?? SpecDefault.renderQueueOffsetNumber
+        self.alphaMode = standard.alphaMode
+        self.alphaCutoff = standard.alphaCutoff
+        self.cullMode = standard.cullMode
+        self.normalScale = standard.normalScale
+        self.baseColorTexture = standard.baseColorTexture
+        self.emissiveTexture = standard.emissiveTexture
         self.shadeMultiplyTexture = mtoon.shadeMultiplyTexture.map(MToonMaterialDescriptor.Texture.init)
         self.shadingShiftTexture = mtoon.shadingShiftTexture.map(MToonMaterialDescriptor.Texture.init)
-        self.normalTexture = material.normalTexture.map(MToonMaterialDescriptor.Texture.init)
+        self.normalTexture = standard.normalTexture
         self.matcapTexture = mtoon.matcapTexture.map(MToonMaterialDescriptor.Texture.init)
         self.rimMultiplyTexture = mtoon.rimMultiplyTexture.map(MToonMaterialDescriptor.Texture.init)
         self.outlineWidthMultiplyTexture = mtoon.outlineWidthMultiplyTexture.map(MToonMaterialDescriptor.Texture.init)

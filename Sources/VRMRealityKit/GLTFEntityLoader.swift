@@ -23,7 +23,6 @@ public class GLTFEntityLoader {
     /// Name given to the loaded root entity. Subclasses set it from model metadata.
     var entityName: String?
     weak var currentEntity: GLTFEntity?
-    static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "MToon")
     static let gltfLogger = Logger(subsystem: "dev.tattn.VRMKit", category: "glTF")
 
     private var didValidateStructure = false
@@ -34,7 +33,7 @@ public class GLTFEntityLoader {
     private var materialTexCoordCache: [Int: (selected: Int, isMixed: Bool)] = [:]
     private var morphTargetCounts: [Int: Int] = [:]
 
-    private func logOnce(_ key: String, _ message: @autoclosure () -> String) {
+    func logOnce(_ key: String, _ message: @autoclosure () -> String) {
         guard loggedLimitations.insert(key).inserted else { return }
         let text = message()
         Self.gltfLogger.warning("\(text, privacy: .public)")
@@ -53,66 +52,45 @@ public class GLTFEntityLoader {
 
     private var bakedTextureCache: [BakedTextureKey: TextureResource] = [:]
     private var samplerCache: [Int: MaterialParameters.Texture.Sampler] = [:]
-    private var fallbackTextureCache: [MToonTextureSlot.Fallback: TextureResource] = [:]
-    private var mtoonDescriptorCache: [Int: MToonMaterialDescriptor?] = [:]
-#if !os(visionOS)
-    /// Everything derived from one MToon material. A non-nil state is what
-    /// "this material renders as MToon" means.
-    private struct MToonState {
-        let descriptor: MToonMaterialDescriptor
-        let parameters: MToonMaterialParameters
-        let parameterTexture: CustomMaterial.Texture
-        let library: MTLLibrary
-    }
+    private var mtoonResolutionCache: [Int: MToonMaterialDescriptor.Resolution] = [:]
 
-    private var mtoonStateCache: [Int: MToonState?] = [:]
-    private var mtoonOutlineMaterialCache: [Int: Material?] = [:]
-#endif
-    private var loggedMToonLibraryError = false
-    /// When `false`, MToon materials are not created and the loader falls back to Unlit / PBR materials.
-    /// visionOS always uses the fallback because `CustomMaterial` is unavailable there.
-    public let isMToonEnabled: Bool
-    /// Controls creation of MToon's inverted-hull outline entities.
-    /// visionOS does not create MToon outlines because `CustomMaterial` is unavailable there.
-    public let isOutlineEnabled: Bool
+    /// The material shaders this loader consults, in order. Materials no shader
+    /// claims render through the built-in Unlit / PBR path, so pass `[]` to
+    /// render everything that way.
+    public let shaders: [any GLTFMaterialShader]
+
+    /// The default shader chain: MToon for materials that carry MToon data.
+    /// Computed so every loader gets its own shader instances.
+    public static var defaultShaders: [any GLTFMaterialShader] { [MToonShader()] }
+
     public init(document: GLTFDocument,
-                isMToonEnabled: Bool = true,
-                isOutlineEnabled: Bool = true) {
+                shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) {
         self.document = document
         self.entityData = EntityData(gltf: document.gltf)
         self.accessors = PackedAccessorCache(document: document)
-        self.isMToonEnabled = isMToonEnabled
-        self.isOutlineEnabled = isOutlineEnabled
+        self.shaders = shaders
     }
 
     /// Loads a `.glb` / `.gltf` file. External resources resolve relative to
     /// the file's directory.
     public convenience init(withURL url: URL,
-                            isMToonEnabled: Bool = true,
-                            isOutlineEnabled: Bool = true) throws {
-        self.init(document: try GLTFLoader().load(withURL: url),
-                  isMToonEnabled: isMToonEnabled,
-                  isOutlineEnabled: isOutlineEnabled)
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
+        self.init(document: try GLTFLoader().load(withURL: url), shaders: shaders)
     }
 
     /// Loads a bundled glTF resource.
     public convenience init(named: String,
-                            isMToonEnabled: Bool = true,
-                            isOutlineEnabled: Bool = true) throws {
-        self.init(document: try GLTFLoader().load(named: named),
-                  isMToonEnabled: isMToonEnabled,
-                  isOutlineEnabled: isOutlineEnabled)
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
+        self.init(document: try GLTFLoader().load(named: named), shaders: shaders)
     }
 
     /// Loads in-memory glTF data. `rootDirectory` is the base directory for
     /// external resources.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
-                            isMToonEnabled: Bool = true,
-                            isOutlineEnabled: Bool = true) throws {
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
         self.init(document: try GLTFLoader().load(withData: data, rootDirectory: rootDirectory),
-                  isMToonEnabled: isMToonEnabled,
-                  isOutlineEnabled: isOutlineEnabled)
+                  shaders: shaders)
     }
 
     /// Loads the document's default scene.
@@ -126,7 +104,7 @@ public class GLTFEntityLoader {
     }
 
     /// Loads one scene of the glTF as its own entity graph. Every call builds a
-    /// new graph — even for the same scene — while resources are reused.
+    /// new graph, even for the same scene, while resources are reused.
     public func loadEntity(withSceneIndex index: Int) throws -> GLTFEntity {
         try validateRequiredExtensions()
         try validateStructure()
@@ -166,20 +144,16 @@ public class GLTFEntityLoader {
     /// Called once per scene, after its node hierarchy and bindings are built.
     func didBuildScene(_ entity: GLTFEntity) throws {}
 
-    /// glTF extensions this renderer implements, to satisfy `extensionsRequired`.
+    /// glTF extensions this renderer implements, to satisfy `extensionsRequired`:
+    /// the built-in ones plus whatever the shader chain claims.
     ///
     /// Not an override point outside this module: claiming an extension this
     /// renderer cannot draw would only silence the check that rejects it.
     public var supportedRequiredExtensions: Set<String> {
         var extensions: Set<String> = ["KHR_materials_unlit", "KHR_texture_transform"]
-        // MToon renders through CustomMaterial and a precompiled Metal library, so
-        // a platform without either — visionOS, Mac Catalyst — cannot claim it, and
-        // neither can a loader with MToon turned off.
-#if !os(visionOS)
-        if isMToonEnabled, MToonShaderLibraryLoader.resourceName != nil {
-            extensions.insert("VRMC_materials_mtoon")
+        for shader in shaders {
+            extensions.formUnion(shader.supportedRequiredExtensions)
         }
-#endif
         return extensions
     }
 
@@ -190,20 +164,34 @@ public class GLTFEntityLoader {
         if let unsupported = unsupportedRequiredExtensions().first {
             throw VRMError._notSupported("this glTF requires the \(unsupported) extension")
         }
-        if gltf.extensionsRequired?.contains("KHR_texture_transform") == true {
+        if enforcesRequiredExtension("KHR_texture_transform") {
             try validateTextureTransformsAreRenderable()
         }
     }
 
-    /// RealityKit gives a material one UV transform, so `KHR_texture_transform` is
-    /// only fully implemented while a material's textures agree on theirs.
+    /// RealityKit gives a material one UV transform, and its mesh one UV set, so
+    /// `KHR_texture_transform` is only fully implemented while a material's
+    /// textures agree on both; the extension's `texCoord` overrides the texture
+    /// info's, so the UV set is as much part of it as the transform.
     ///
     /// An asset that merely *uses* the extension renders through the first
-    /// transform and logs the approximation; one that *requires* it is asking for
-    /// a result this renderer cannot draw, so it is rejected instead.
+    /// UV-accessed texture's set and transform and logs the approximation; one
+    /// that *requires* it is asking for a result this renderer cannot draw, so it
+    /// is rejected instead.
+    ///
+    /// This covers the textures of the core glTF material. A shader sampling
+    /// textures the core material does not name, such as MToon's shade and rim
+    /// maps, checks those itself against the same limits.
     private func validateTextureTransformsAreRenderable() throws {
         for (index, gltfMaterial) in (gltf.materials ?? []).enumerated() {
-            let transforms = sampledTextures(of: gltfMaterial).map { $0.transform ?? GLTFUVTransform() }
+            let textures = sampledTextures(of: gltfMaterial)
+            let selectedTexCoord = selectedTexCoord(withMaterialIndex: index)
+            guard textures.allSatisfy({ $0.texCoord == selectedTexCoord }) else {
+                throw VRMError._notSupported(
+                    "this glTF requires KHR_texture_transform, and material \(index) samples UV sets other than \(selectedTexCoord), which this renderer cannot draw"
+                )
+            }
+            let transforms = textures.map { $0.transform ?? GLTFUVTransform() }
             guard transforms.allSatisfy({ $0 == transforms.first }) else {
                 throw VRMError._notSupported(
                     "this glTF requires KHR_texture_transform, and material \(index) gives its textures different transforms, which this renderer cannot draw"
@@ -212,9 +200,21 @@ public class GLTFEntityLoader {
         }
     }
 
+    /// Whether the document declares itself undrawable without `name` *and* this
+    /// load honors that declaration. It is the signal for a shader to fail a
+    /// material rather than draw an approximation of it.
+    ///
+    /// ``VRMEntityLoader`` renders a VRM with whatever it can build, so it
+    /// answers false even for a listed extension, matching its
+    /// ``VRMEntityLoader/validateRequiredExtensions()``.
+    func enforcesRequiredExtension(_ name: String) -> Bool {
+        gltf.extensionsRequired?.contains(name) == true
+    }
+
     /// `extensionsRequired` entries outside ``supportedRequiredExtensions``.
     func unsupportedRequiredExtensions() -> [String] {
-        (gltf.extensionsRequired ?? []).filter { !supportedRequiredExtensions.contains($0) }
+        let supported = supportedRequiredExtensions
+        return (gltf.extensionsRequired ?? []).filter { !supported.contains($0) }
     }
 
     /// Rejects, once per document, the malformed node graphs and skins the rest
@@ -341,8 +341,8 @@ public class GLTFEntityLoader {
         return targetCount
     }
 
-    /// Applies the spec's starting morph state — `node.weights`, falling back to
-    /// `mesh.weights` — so the first frame renders correctly without animation.
+    /// Applies the spec's starting morph state, `node.weights` falling back to
+    /// `mesh.weights`, so the first frame renders correctly without animation.
     ///
     /// Both are sized by the mesh's morph target count; another length means the
     /// file and this renderer disagree about what the weights stand for.
@@ -426,7 +426,9 @@ public class GLTFEntityLoader {
         meshEntity.name = gltfMesh.name ?? "mesh_\(index)"
 
         for primitive in resolvedPrimitives(of: gltfMesh) {
-            if let primitiveEntity = try modelEntity(withPrimitive: primitive, skinIndex: skinIndex) {
+            if let primitiveEntity = try modelEntity(withPrimitive: primitive,
+                                                     skinIndex: skinIndex,
+                                                     meshName: meshEntity.name) {
                 meshEntity.addChild(primitiveEntity)
             }
         }
@@ -439,7 +441,9 @@ public class GLTFEntityLoader {
         mesh.primitives
     }
 
-    private func modelEntity(withPrimitive primitive: GLTF.Mesh.Primitive, skinIndex: Int?) throws -> Entity? {
+    private func modelEntity(withPrimitive primitive: GLTF.Mesh.Primitive,
+                             skinIndex: Int?,
+                             meshName: String) throws -> Entity? {
         guard supportsTriangles(primitive.mode) else {
             logOnce("primitiveMode-\(primitive.mode)", """
                 A \(primitive.mode) primitive was skipped; RealityKit meshes render triangles only.
@@ -545,8 +549,8 @@ public class GLTFEntityLoader {
                                         indices: indexData,
                                         materialIndex: primitive.material)
 
-        let material = try primitive.material.map { try primitiveMaterial(withMaterialIndex: $0) }
-            ?? defaultMaterial()
+        let shaded = try primitive.material.map { try primitiveShadedMaterial(withMaterialIndex: $0) }
+            ?? GLTFShadedMaterial(material: defaultMaterial())
 
         // A skinned primitive binds its vertex influences to the skin's skeleton;
         // an unskinned one has neither.
@@ -586,18 +590,39 @@ public class GLTFEntityLoader {
             return entity
         }
 
-        let modelEntity = makeEntity(materials: [material])
-        if let materialIndex = primitive.material,
-           let outlineMaterial = try mtoonOutlineMaterial(withMaterialIndex: materialIndex) {
-            let outlineEntity = makeEntity(materials: [outlineMaterial])
-            outlineEntity.name = "\(modelEntity.name)_outline"
+        let modelEntity = makeEntity(materials: [shaded.material])
+        if !shaded.additionalPasses.isEmpty {
             let container = Entity()
-            container.name = "\(modelEntity.name)_container"
-            container.addChild(outlineEntity)
+            container.name = "\(meshName)_container"
+            for pass in shaded.additionalPasses {
+                let passEntity = makeEntity(materials: [pass.material])
+                passEntity.name = "\(meshName)_\(pass.name)"
+                container.addChild(passEntity)
+            }
             container.addChild(modelEntity)
             return container
         }
         return modelEntity
+    }
+
+    /// The UV set the meshes rendering `index` carry, and whether the material's
+    /// textures disagree about it. Custom meshes carry a single UV channel, so
+    /// the core material's first UV-accessed texture decides it.
+    private func resolvedTexCoord(withMaterialIndex index: Int) -> (selected: Int, isMixed: Bool) {
+        if let cached = materialTexCoordCache[index] { return cached }
+        guard let gltfMaterial = try? gltf.load(\.materials, at: index) else { return (0, false) }
+        let textures = sampledTextures(of: gltfMaterial)
+        let resolved = (selected: textures.first?.texCoord ?? 0,
+                        isMixed: textures.contains { $0.texCoord != textures.first?.texCoord })
+        materialTexCoordCache[index] = resolved
+        return resolved
+    }
+
+    /// The UV set the meshes rendering `index` feed RealityKit, decided by the
+    /// core glTF material. A shader sampling any other set renders through this
+    /// one, since the mesh carries no second UV channel to sample.
+    func selectedTexCoord(withMaterialIndex index: Int) -> Int {
+        resolvedTexCoord(withMaterialIndex: index).selected
     }
 
     /// The UV set this primitive's mesh feeds RealityKit. Custom meshes carry a
@@ -605,17 +630,7 @@ public class GLTFEntityLoader {
     private func texcoordAttributeKey(forMaterialIndex materialIndex: Int?,
                                       attributes: [GLTF.Mesh.Primitive.AttributeKey: Int]) -> GLTF.Mesh.Primitive.AttributeKey {
         guard let materialIndex else { return .TEXCOORD_0 }
-        let resolved: (selected: Int, isMixed: Bool)
-        if let cached = materialTexCoordCache[materialIndex] {
-            resolved = cached
-        } else {
-            guard let gltfMaterial = try? gltf.load(\.materials, at: materialIndex) else {
-                return .TEXCOORD_0
-            }
-            let textures = sampledTextures(of: gltfMaterial)
-            resolved = (textures.first?.texCoord ?? 0, textures.contains { $0.texCoord != textures.first?.texCoord })
-            materialTexCoordCache[materialIndex] = resolved
-        }
+        let resolved = resolvedTexCoord(withMaterialIndex: materialIndex)
         let selected = resolved.selected
         guard selected != 0 else { return .TEXCOORD_0 }
         let isMixed = resolved.isMixed
@@ -687,31 +702,73 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// The material a primitive renders with. ``VRMEntityLoader`` overrides it to
-    /// keep rendering a model whose material this renderer cannot build.
-    func primitiveMaterial(withMaterialIndex index: Int) throws -> Material {
-        try material(withMaterialIndex: index)
+    /// The materials a primitive renders with. ``VRMEntityLoader`` overrides it
+    /// to keep rendering a model whose material this renderer cannot build.
+    func primitiveShadedMaterial(withMaterialIndex index: Int) throws -> GLTFShadedMaterial {
+        try shadedMaterial(withMaterialIndex: index)
     }
 
+    /// The main material of ``shadedMaterial(withMaterialIndex:)``.
     func material(withMaterialIndex index: Int) throws -> Material {
-        if let cache = try entityData.load(\.materials, index: index) { return cache }
-        let (gltfMaterial, materialProperty) = try materialSource(withMaterialIndex: index)
-#if !os(visionOS)
-        do {
-            if let state = try mtoonState(withMaterialIndex: index) {
-                let material = try customMToonMaterial(state)
-                entityData.materials[index] = material
-                return material
-            }
-        } catch {
-            // The fallback material is not MToon, so the state has to go with it.
-            discardMToonState(withMaterialIndex: index)
-            Self.logger.error("Failed to build the MToon material \(index, privacy: .public); falling back to Unlit / PBR: \(String(describing: error), privacy: .public)")
-        }
-#endif
+        try shadedMaterial(withMaterialIndex: index).material
+    }
 
+    /// Builds (or returns the cached) materials for one glTF material. This is
+    /// the single place "what does this material render as" is decided, so every
+    /// later question about it, the runtime state included, gets one answer.
+    func shadedMaterial(withMaterialIndex index: Int) throws -> GLTFShadedMaterial {
+        if let cached = try entityData.load(\.materials, index: index) { return cached }
+        defer { standardMaterialCache.removeValue(forKey: index) }
+        let context = try makeMaterialShaderContext(withMaterialIndex: index)
+        for shader in shaders {
+            if let shaded = try shader.makeMaterial(for: context) {
+                cacheShadedMaterial(shaded, withMaterialIndex: index)
+                return shaded
+            }
+        }
+        let shaded = GLTFShadedMaterial(material: try standardMaterial(for: context))
+        cacheShadedMaterial(shaded, withMaterialIndex: index)
+        return shaded
+    }
+
+    /// Records what a material renders as, so the shader chain runs at most once
+    /// per material. ``VRMEntityLoader`` also caches the material it falls back
+    /// to when the chain fails.
+    func cacheShadedMaterial(_ shaded: GLTFShadedMaterial, withMaterialIndex index: Int) {
+        guard entityData.materials.indices.contains(index) else { return }
+        entityData.materials[index] = shaded
+    }
+
+    func makeMaterialShaderContext(withMaterialIndex index: Int) throws -> GLTFMaterialShaderContext {
+        let (gltfMaterial, materialProperty) = try materialSource(withMaterialIndex: index)
+        return GLTFMaterialShaderContext(loader: self,
+                                         materialIndex: index,
+                                         material: gltfMaterial,
+                                         vrm0MaterialProperty: materialProperty)
+    }
+
+    /// The built-in Unlit / PBR path of the glTF core specification, rendering
+    /// every material the shader chain leaves unclaimed. Shaders can also reach
+    /// it through ``GLTFMaterialShaderContext/standardMaterial()`` to decorate
+    /// its result instead of rebuilding it. It is memoized, so a shader
+    /// inspecting it and then declining does not make the fallback rebuild it.
+    func standardMaterial(for context: GLTFMaterialShaderContext) throws -> Material {
+        if let cached = standardMaterialCache[context.materialIndex] { return cached }
+        let material = try makeStandardMaterial(for: context)
+        standardMaterialCache[context.materialIndex] = material
+        return material
+    }
+
+    private var standardMaterialCache: [Int: Material] = [:]
+
+    private func makeStandardMaterial(for context: GLTFMaterialShaderContext) throws -> Material {
+        let index = context.materialIndex
+        let gltfMaterial = context.material
+        let materialProperty = context.vrm0MaterialProperty
         let shaderName = materialProperty?.shader.lowercased()
-        let isMToon = try mtoonDescriptor(withMaterialIndex: index) != nil
+        // Unreadable MToon (an unimplemented spec version) is still MToon, so it
+        // takes the same Unlit approximation as a readable one.
+        let isMToon = try mtoonResolution(withMaterialIndex: index).isMToon
         let isUnlit = shaderName?.contains("unlit") == true || gltfMaterial.extensions?.materialsUnlit != nil
         // MToon and Unlit variants are not PBR, so both render through UnlitMaterial.
         let useUnlit = isMToon || isUnlit
@@ -735,7 +792,6 @@ public class GLTFEntityLoader {
                 material.faceCulling = .none
             }
             material.textureCoordinateTransform = standardTextureTransform(withMaterialIndex: index, of: gltfMaterial)
-            entityData.materials[index] = material
             return material
         }
 
@@ -792,7 +848,6 @@ public class GLTFEntityLoader {
         }
         material.textureCoordinateTransform = standardTextureTransform(withMaterialIndex: index, of: gltfMaterial)
 
-        entityData.materials[index] = material
         return material
     }
 
@@ -812,8 +867,8 @@ public class GLTFEntityLoader {
 
     /// The `KHR_texture_transform` a material renders with. RealityKit gives a
     /// material one UV transform, so the first UV-accessed texture's wins.
-    private func selectedUVTransform(withMaterialIndex index: Int,
-                                     textures: [GLTFSampledTexture]) -> GLTFUVTransform {
+    func selectedUVTransform(withMaterialIndex index: Int,
+                             textures: [GLTFSampledTexture]) -> GLTFUVTransform {
         let selected = textures.first?.transform ?? GLTFUVTransform()
         if textures.contains(where: { ($0.transform ?? GLTFUVTransform()) != selected }) {
             logOnce("uvTransform-\(index)", """
@@ -826,8 +881,8 @@ public class GLTFEntityLoader {
 
     /// Converts `KHR_texture_transform` into RealityKit's `textureCoordinateTransform`.
     ///
-    /// Only the rotation direction mirrors — offset and scale already act from
-    /// the corner the extension measures from — which is what
+    /// Only the rotation direction mirrors, since offset and scale already act
+    /// from the corner the extension measures from, which is what
     /// `TextureTransformRenderingTests` checks against what RealityKit draws.
     private func standardTextureTransform(withMaterialIndex index: Int,
                                           of gltfMaterial: GLTF.Material) -> MaterialParameterTypes.TextureCoordinateTransform {
@@ -838,193 +893,58 @@ public class GLTFEntityLoader {
                                                                  rotation: -transform.rotation)
     }
 
-#if !os(visionOS)
-    private func customMToonMaterial(_ state: MToonState) throws -> Material {
-        let mtoon = state.descriptor
-        let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: state.library)
-        var material = try CustomMaterial(surfaceShader: surface, lightingModel: .unlit)
-        // MToon needs more textures than CustomMaterial has semantic channels, so the
-        // extra slots ride on unrelated ones; MToon.metal reads them back the same way.
-        material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base))
-        material.roughness.texture = try mtoonTexture(mtoon, slot: .shade)
-        material.specular.texture = try mtoonTexture(mtoon, slot: .shadingShift)
-        material.metallic.texture = try mtoonTexture(mtoon, slot: .matcap)
-        material.normal.texture = try mtoonTexture(mtoon, slot: .normal)
-        material.emissiveColor = .init(color: .white, texture: try mtoonTexture(mtoon, slot: .emissive))
-        material.clearcoatRoughness.texture = try mtoonTexture(mtoon, slot: .rim)
-        material.clearcoat.texture = try mtoonTexture(mtoon, slot: .outlineWidth)
-        material.ambientOcclusion.texture = try mtoonTexture(mtoon, slot: .uvAnimationMask)
-
-        applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
-        applyDepthWrite(mtoon, to: &material)
-        material.faceCulling = mtoon.cullMode.faceCulling
-        applyMToonParameters(state, to: &material)
-        return material
-    }
-
-    private func customMToonOutlineMaterial(_ state: MToonState) throws -> Material {
-        let mtoon = state.descriptor
-        let surface = CustomMaterial.SurfaceShader(named: "mtoonOutlineSurface", in: state.library)
-        let geometry = CustomMaterial.GeometryModifier(named: "mtoonOutlineGeometry", in: state.library)
-        var material = try CustomMaterial(surfaceShader: surface,
-                                          geometryModifier: geometry,
-                                          lightingModel: .unlit)
-        material.faceCulling = .front
-        material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base))
-        material.clearcoat.texture = try mtoonTexture(mtoon, slot: .outlineWidth)
-        material.ambientOcclusion.texture = try mtoonTexture(mtoon, slot: .uvAnimationMask)
-        applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
-        applyDepthWrite(mtoon, to: &material)
-        applyMToonParameters(state, to: &material)
-        return material
-    }
-
-    /// MToon.metal applies the UV transform from the parameter rows, so
-    /// `textureCoordinateTransform` is deliberately left at identity here.
-    private func applyMToonParameters(_ state: MToonState, to material: inout CustomMaterial) {
-        material.custom.value = state.parameters.customValue
-        material.custom.texture = state.parameterTexture
-    }
-
-    /// The descriptor's texture for `slot`, or the slot's neutral fallback.
-    private func mtoonTexture(_ descriptor: MToonMaterialDescriptor,
-                              slot: MToonTextureSlot) throws -> CustomMaterial.Texture {
-        guard let texture = descriptor.texture(for: slot) else {
-            return CustomMaterial.Texture(try fallbackTextureResource(slot.fallback))
-        }
-        return CustomMaterial.Texture(try self.texture(withTextureIndex: texture.index, semantic: slot.semantic))
-    }
-#endif
-
-    func mtoonParameters(withMaterialIndex index: Int) throws -> MToonMaterialParameters? {
-#if os(visionOS)
-        return nil
-#else
-        return try mtoonState(withMaterialIndex: index)?.parameters
-#endif
-    }
-
-#if !os(visionOS)
-    private func mtoonState(withMaterialIndex index: Int) throws -> MToonState? {
-        if let cached = mtoonStateCache[index] {
+    /// What MToon data the material at `index` carries, decoded from the
+    /// `VRMC_materials_mtoon` extension or the VRM 0.x material property.
+    ///
+    /// The loader keeps this data-model knowledge even though ``MToonShader``
+    /// does the MToon rendering: the built-in fallback renders MToon-authored
+    /// materials unlit, and tangent generation asks it for the normal map VRM 0.x
+    /// keeps in Unity's `_BumpMap`.
+    func mtoonResolution(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor.Resolution {
+        if let cached = mtoonResolutionCache[index] {
             return cached
         }
-        let state = try makeMToonState(withMaterialIndex: index)
-        mtoonStateCache[index] = state
-        return state
-    }
-
-    /// Records that the material does not render as MToon after all.
-    private func discardMToonState(withMaterialIndex index: Int) {
-        mtoonStateCache.updateValue(nil, forKey: index)
-        mtoonOutlineMaterialCache.updateValue(nil, forKey: index)
-    }
-
-    private func makeMToonState(withMaterialIndex index: Int) throws -> MToonState? {
-        guard isMToonEnabled,
-              let descriptor = try mtoonDescriptor(withMaterialIndex: index),
-              let library = mtoonShaderLibrary() else {
-            return nil
-        }
-        let textureTransform = mtoonTextureTransform(withMaterialIndex: index, descriptor: descriptor)
-        let parameters = try mtoonParameters(for: descriptor, textureTransform: textureTransform)
-        logMToonUnsupportedFeatures(for: descriptor, index: index)
-        return MToonState(descriptor: descriptor,
-                          parameters: parameters,
-                          parameterTexture: CustomMaterial.Texture(try parameters.textureResource()),
-                          library: library)
-    }
-
-    private func logMToonUnsupportedFeatures(for descriptor: MToonMaterialDescriptor, index: Int) {
-        if descriptor.renderQueueOffsetNumber != 0 {
-            Self.logger.warning("MToon material \(index, privacy: .public) requests renderQueueOffsetNumber \(descriptor.renderQueueOffsetNumber); RealityKit has no material-level draw-order hook, so it is ignored.")
-        }
-    }
-#endif
-
-    private func mtoonParameters(for descriptor: MToonMaterialDescriptor,
-                                 textureTransform: MaterialParameterTypes.TextureCoordinateTransform) throws -> MToonMaterialParameters {
-        var parameters = MToonMaterialParameters(descriptor)
-        parameters.setTextureTransform(scale: textureTransform.scale,
-                                       offset: textureTransform.offset,
-                                       rotation: textureTransform.rotation)
-        for slot in MToonTextureSlot.allCases {
-            try parameters.setSampler(mtoonSamplerParameters(for: descriptor.texture(for: slot)), for: slot)
-        }
-        return parameters
-    }
-
-    /// MToon.metal transforms in glTF UV space, so unlike the standard path the
-    /// transform passes through unconverted.
-    private func mtoonTextureTransform(withMaterialIndex index: Int,
-                                       descriptor: MToonMaterialDescriptor) -> MaterialParameterTypes.TextureCoordinateTransform {
-        let textures = descriptor.uvAccessedTextures
-        if textures.contains(where: { $0.texCoord != 0 }) {
-            logOnce("mtoonTexCoord-\(index)",
-                    "MToon material \(index) requests a nonzero texCoord; RealityKit uses TEXCOORD_0 on supported deployment targets.")
-        }
-        let selected = selectedUVTransform(withMaterialIndex: index, textures: textures)
-        return MaterialParameterTypes.TextureCoordinateTransform(offset: selected.offset,
-                                                                 scale: selected.scale,
-                                                                 rotation: selected.rotation)
-    }
-
-    private func mtoonOutlineMaterial(withMaterialIndex index: Int) throws -> Material? {
-#if os(visionOS)
-        return nil
-#else
-        guard isOutlineEnabled else {
-            return nil
-        }
-        if let cached = mtoonOutlineMaterialCache[index] {
-            return cached
-        }
-        let material: Material?
-        if let state = try mtoonState(withMaterialIndex: index), state.descriptor.hasOutline {
-            material = try customMToonOutlineMaterial(state)
-        } else {
-            material = nil
-        }
-        mtoonOutlineMaterialCache[index] = material
-        return material
-#endif
-    }
-
-    private func mtoonDescriptor(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor? {
-        if let cached = mtoonDescriptorCache[index] {
-            return cached
-        }
-        let descriptor = try makeMToonDescriptor(withMaterialIndex: index)
-        mtoonDescriptorCache[index] = descriptor
-        return descriptor
-    }
-
-    private func makeMToonDescriptor(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor? {
         let (gltfMaterial, materialProperty) = try materialSource(withMaterialIndex: index)
-        return MToonMaterialDescriptor(material: gltfMaterial, materialProperty: materialProperty)
+        let resolution = MToonMaterialDescriptor.resolve(material: gltfMaterial,
+                                                         materialProperty: materialProperty)
+        if case .unsupportedVersion(let specVersion) = resolution {
+            logOnce("mtoonSpecVersion-\(specVersion)", """
+                Material \(index) declares VRMC_materials_mtoon specVersion \(specVersion), which this \
+                renderer does not implement, so it renders as an Unlit approximation.
+                """)
+        }
+        mtoonResolutionCache[index] = resolution
+        return resolution
     }
 
-    /// The glTF material and, for VRM 0.x, the Unity material property describing it.
-    private func materialSource(withMaterialIndex index: Int) throws -> (GLTF.Material, VRM0.MaterialProperty?) {
-        let gltfMaterial = try gltf.load(\.materials, at: index)
-        return (gltfMaterial, vrm0MaterialProperty(for: gltfMaterial))
+    /// The MToon material model describing the material at `index`, or nil when
+    /// it carries none this renderer can read.
+    func mtoonDescriptor(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor? {
+        try mtoonResolution(withMaterialIndex: index).descriptor
     }
+
+    /// The glTF material and, for VRM 0.x, the Unity material property
+    /// describing it, resolved once per material index.
+    private func materialSource(withMaterialIndex index: Int) throws -> (GLTF.Material, VRM0.MaterialProperty?) {
+        if let cached = materialSourceCache[index] { return cached }
+        let gltfMaterial = try gltf.load(\.materials, at: index)
+        let source = (gltfMaterial, vrm0MaterialProperty(for: gltfMaterial))
+        materialSourceCache[index] = source
+        return source
+    }
+
+    private var materialSourceCache: [Int: (GLTF.Material, VRM0.MaterialProperty?)] = [:]
 
     /// VRM 0.x compatibility hook, overridden by ``VRMEntityLoader``.
     func vrm0MaterialProperty(for gltfMaterial: GLTF.Material) -> VRM0.MaterialProperty? {
         nil
     }
 
-    private func mtoonShaderLibrary() -> MTLLibrary? {
-        do {
-            return try MToonShaderLibraryLoader.loadDefault()
-        } catch {
-            if !loggedMToonLibraryError {
-                loggedMToonLibraryError = true
-                Self.logger.error("Failed to load bundled MToon shader library: \(String(describing: error), privacy: .public)")
-            }
-            return nil
-        }
+    /// A fresh mutable runtime state for the material, made by the material on
+    /// screen: asking anything else could hand out a state describing a
+    /// material that is not.
+    func makeAnimatableMaterialState(forMaterialIndex index: Int) -> (any VRMAnimatableMaterialState)? {
+        (try? shadedMaterial(withMaterialIndex: index))?.makeAnimatableState?()
     }
 
     func texture(withTextureIndex index: Int, semantic: TextureResource.Semantic = .color) throws -> TextureResource {
@@ -1037,49 +957,14 @@ public class GLTFEntityLoader {
         return texture
     }
 
-    private func materialTexture(withTextureIndex index: Int,
-                                 semantic: TextureResource.Semantic = .color) throws -> MaterialParameters.Texture {
+    func materialTexture(withTextureIndex index: Int,
+                         semantic: TextureResource.Semantic = .color) throws -> MaterialParameters.Texture {
         let texture = try texture(withTextureIndex: index, semantic: semantic)
         let sampler = try sampler(withTextureIndex: index)
         return MaterialParameters.Texture(texture, sampler: sampler)
     }
 
-    /// The neutral 1x1 texture bound when a material omits an MToon slot.
-    private func fallbackTextureResource(_ fallback: MToonTextureSlot.Fallback) throws -> TextureResource {
-        if let cached = fallbackTextureCache[fallback] {
-            return cached
-        }
-        let texture: TextureResource
-        switch fallback {
-        case .white:
-            texture = try solidColorTextureResource(rgba: [255, 255, 255, 255], semantic: .color)
-        case .neutralNormal:
-            texture = try solidColorTextureResource(rgba: [128, 128, 255, 255], semantic: .normal)
-        }
-        fallbackTextureCache[fallback] = texture
-        return texture
-    }
-
-    private func solidColorTextureResource(rgba: [UInt8],
-                                           semantic: TextureResource.Semantic) throws -> TextureResource {
-        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
-              let image = CGImage(width: 1,
-                                  height: 1,
-                                  bitsPerComponent: 8,
-                                  bitsPerPixel: 32,
-                                  bytesPerRow: 4,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                                  provider: provider,
-                                  decode: nil,
-                                  shouldInterpolate: false,
-                                  intent: .defaultIntent) else {
-            throw VRMError._dataInconsistent("failed to create 1x1 \(semantic) texture")
-        }
-        return try TextureResource(image: image, options: .init(semantic: semantic))
-    }
-
-    private func sampler(withTextureIndex index: Int) throws -> MaterialParameters.Texture.Sampler {
+    func sampler(withTextureIndex index: Int) throws -> MaterialParameters.Texture.Sampler {
         if let cache = samplerCache[index] {
             return cache
         }
@@ -1091,80 +976,18 @@ public class GLTFEntityLoader {
     }
 
     /// The glTF sampler a texture references, or nil when it uses the defaults.
-    private func gltfSampler(withTextureIndex index: Int) throws -> GLTF.Sampler? {
+    func gltfSampler(withTextureIndex index: Int) throws -> GLTF.Sampler? {
         guard let samplerIndex = try gltf.load(\.textures, at: index).sampler else { return nil }
         return try gltf.load(\.samplers, at: samplerIndex)
     }
 
     private func applySampler(_ sampler: GLTF.Sampler?, to descriptor: MTLSamplerDescriptor) {
-        descriptor.magFilter = metalFilter(sampler?.magFilter ?? .LINEAR)
-        let (min, mip) = metalFilters(sampler?.minFilter ?? .LINEAR_MIPMAP_LINEAR)
+        descriptor.magFilter = (sampler?.magFilter ?? .LINEAR).metalFilter
+        let (min, mip) = (sampler?.minFilter ?? .LINEAR_MIPMAP_LINEAR).metalFilters
         descriptor.minFilter = min
         descriptor.mipFilter = mip
-        descriptor.sAddressMode = metalWrap(sampler?.wrapS ?? .REPEAT)
-        descriptor.tAddressMode = metalWrap(sampler?.wrapT ?? .REPEAT)
-    }
-
-    private func mtoonSamplerParameters(for texture: MToonMaterialDescriptor.Texture?) throws -> SIMD4<Float> {
-        guard let texture,
-              let sampler = try gltfSampler(withTextureIndex: texture.index) else {
-            return MToonMaterialParameters.defaultSampler
-        }
-        return mtoonSamplerParameters(sampler)
-    }
-
-    /// (wrapS, wrapT, filterIndex, 0), the sampler row layout `MToon.metal` expects.
-    private func mtoonSamplerParameters(_ sampler: GLTF.Sampler) -> SIMD4<Float> {
-        let (minFilter, mipFilter) = metalFilters(sampler.minFilter ?? .LINEAR_MIPMAP_LINEAR)
-        let filter = MToonSamplerFilter(
-            magnification: metalFilter(sampler.magFilter ?? .LINEAR) == .nearest ? .nearest : .linear,
-            minification: minFilter == .nearest ? .nearest : .linear,
-            mip: MToonSamplerFilter.MipFilter(mipFilter)
-        )
-        return SIMD4<Float>(mtoonWrapMode(sampler.wrapS),
-                            mtoonWrapMode(sampler.wrapT),
-                            Float(filter.index),
-                            0)
-    }
-
-    private func mtoonWrapMode(_ wrap: GLTF.Sampler.Wrap) -> Float {
-        switch wrap {
-        case .REPEAT: return 0
-        case .CLAMP_TO_EDGE: return 1
-        case .MIRRORED_REPEAT: return 2
-        }
-    }
-
-    private func metalFilter(_ filter: GLTF.Sampler.MagFilter) -> MTLSamplerMinMagFilter {
-        switch filter {
-        case .NEAREST: return .nearest
-        case .LINEAR: return .linear
-        }
-    }
-
-    private func metalFilters(_ filter: GLTF.Sampler.MinFilter) -> (min: MTLSamplerMinMagFilter, mip: MTLSamplerMipFilter) {
-        switch filter {
-        case .NEAREST:
-            return (.nearest, .notMipmapped)
-        case .LINEAR:
-            return (.linear, .notMipmapped)
-        case .NEAREST_MIPMAP_NEAREST:
-            return (.nearest, .nearest)
-        case .LINEAR_MIPMAP_NEAREST:
-            return (.linear, .nearest)
-        case .NEAREST_MIPMAP_LINEAR:
-            return (.nearest, .linear)
-        case .LINEAR_MIPMAP_LINEAR:
-            return (.linear, .linear)
-        }
-    }
-
-    private func metalWrap(_ wrap: GLTF.Sampler.Wrap) -> MTLSamplerAddressMode {
-        switch wrap {
-        case .CLAMP_TO_EDGE: return .clampToEdge
-        case .MIRRORED_REPEAT: return .mirrorRepeat
-        case .REPEAT: return .repeat
-        }
+        descriptor.sAddressMode = (sampler?.wrapS ?? .REPEAT).metalAddressMode
+        descriptor.tAddressMode = (sampler?.wrapT ?? .REPEAT).metalAddressMode
     }
 
     func image(withImageIndex index: Int) throws -> VRMImage {
@@ -1374,27 +1197,10 @@ public class GLTFEntityLoader {
         return image
     }
 
-    /// The glTF alpha-mode → RealityKit blending decision, shared by every material.
-    private struct AlphaModeSettings {
-        let isTransparent: Bool
-        let opacityThreshold: Float?
-
-        init(_ mode: GLTF.Material.AlphaMode, alphaCutoff: Float) {
-            switch mode {
-            case .OPAQUE:
-                (isTransparent, opacityThreshold) = (false, nil)
-            case .MASK:
-                (isTransparent, opacityThreshold) = (false, alphaCutoff)
-            case .BLEND:
-                (isTransparent, opacityThreshold) = (true, nil)
-            }
-        }
-    }
-
     private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,
                                 alphaCutoff: Float,
                                 to material: inout UnlitMaterial) {
-        let settings = AlphaModeSettings(mode, alphaCutoff: alphaCutoff)
+        let settings = GLTFAlphaModeSettings(mode, alphaCutoff: alphaCutoff)
         material.blending = settings.isTransparent ? .transparent(opacity: .init(scale: 1.0)) : .opaque
         material.opacityThreshold = settings.opacityThreshold
     }
@@ -1402,25 +1208,10 @@ public class GLTFEntityLoader {
     private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,
                                 alphaCutoff: Float,
                                 to material: inout PhysicallyBasedMaterial) {
-        let settings = AlphaModeSettings(mode, alphaCutoff: alphaCutoff)
+        let settings = GLTFAlphaModeSettings(mode, alphaCutoff: alphaCutoff)
         material.blending = settings.isTransparent ? .transparent(opacity: .init(scale: 1.0)) : .opaque
         material.opacityThreshold = settings.opacityThreshold
     }
-
-#if !os(visionOS)
-    private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,
-                                alphaCutoff: Float,
-                                to material: inout CustomMaterial) {
-        let settings = AlphaModeSettings(mode, alphaCutoff: alphaCutoff)
-        material.blending = settings.isTransparent ? .transparent(opacity: .init(scale: 1.0)) : .opaque
-        material.opacityThreshold = settings.opacityThreshold
-    }
-
-    /// MToon's `transparentWithZWrite` asks a blended material to still write depth.
-    private func applyDepthWrite(_ mtoon: MToonMaterialDescriptor, to material: inout CustomMaterial) {
-        material.writesDepth = mtoon.alphaMode != .BLEND || mtoon.transparentWithZWrite
-    }
-#endif
 
     /// UVs arrive V-flipped: glTF's origin is top-left, RealityKit's is bottom-left.
     private func vector2s(_ accessorIndex: Int) throws -> [SIMD2<Float>] {
@@ -1841,8 +1632,8 @@ public class GLTFEntityLoader {
     /// Gram-Schmidt against the normal, falling back to any perpendicular axis.
     private func orthonormalizedTangent(_ tangent: SIMD3<Float>, normal: SIMD3<Float>) -> SIMD3<Float> {
         // A degenerate triangle leaves the zero normal `flatNormals()` writes, and
-        // nothing is perpendicular to it — normalizing a fallback axis would only
-        // turn that into a NaN basis.
+        // nothing is perpendicular to it, so normalizing a fallback axis would
+        // only turn that into a NaN basis.
         guard simd_length_squared(normal) > 1e-12 else { return .zero }
         let projected = tangent - normal * simd_dot(normal, tangent)
         if simd_length_squared(projected) > 1e-12 {

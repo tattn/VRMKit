@@ -1,7 +1,7 @@
 import Foundation
 
 /// A parsed glTF asset together with the context needed to resolve its binary
-/// resources — the GLB BIN chunk, external files and data URIs — so that they
+/// resources (the GLB BIN chunk, external files and data URIs), so that they
 /// stay resolvable after loading, e.g. for lazily decoded animation accessors.
 public final class GLTFDocument {
     public let gltf: GLTF
@@ -13,7 +13,7 @@ public final class GLTFDocument {
     /// Decoded buffers, keyed by buffer index: resolving one re-reads an external
     /// file or base64-decodes a whole data URI.
     ///
-    /// Buffer *views* are deliberately not cached — they are copies out of these
+    /// Buffer *views* are deliberately not cached: they are copies out of these
     /// buffers, and keeping them would hold the file's bytes a second time.
     private var buffers: [Int: Data] = [:]
 
