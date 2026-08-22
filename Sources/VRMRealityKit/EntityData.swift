@@ -29,7 +29,8 @@ final class EntityData {
     }
 
     var skins: [Skin?]
-    var materials: [Material?] = []
+    /// One glTF material resolved through the shader chain: what it renders as.
+    var materials: [GLTFShadedMaterial?] = []
     var images: [VRMImage?] = []
 
     init(gltf: GLTF) {

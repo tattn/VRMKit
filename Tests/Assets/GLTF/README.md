@@ -6,7 +6,7 @@ Test fixtures for the generic glTF rendering path, taken from
 
 **Every model here is licensed CC0-1.0**, so the fixtures carry no attribution
 obligation. Models under CC-BY-4.0 were deliberately excluded to keep this
-repository free of attribution requirements — cover their features with
+repository free of attribution requirements; cover their features with
 hand-written fixtures instead (sparse accessors are covered that way in
 `GLTFEntityLoaderTests.testSparseAccessorSubstitutesPositions`). Each model keeps
 its upstream `LICENSE.md`; note that those metadocumentation files are

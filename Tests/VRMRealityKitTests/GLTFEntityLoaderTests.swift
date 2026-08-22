@@ -443,6 +443,31 @@ struct GLTFEntityLoaderTests {
         #expect(throws: VRMError.self) { try loader(emissiveScale: [3.0, 3.0]).loadEntity() }
     }
 
+    /// `KHR_texture_transform` overrides the UV set a texture samples, and a mesh
+    /// carries one UV channel, so an asset that *requires* the extension while
+    /// pointing a material's textures at different sets is asking for a render
+    /// this loader cannot produce, however its transforms agree.
+    @Test
+    func testRequiredTextureTransformBeyondOneUVSetPerMaterialFailsTheLoad() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        func loader(emissiveTexCoord: Int) throws -> GLTFEntityLoader {
+            try TestSupport.loader(.simpleTexture) { json in
+                let texture: (Int) -> [String: Any] = { texCoord in
+                    ["index": 0, "extensions": ["KHR_texture_transform": ["texCoord": texCoord]]]
+                }
+                json["extensionsUsed"] = ["KHR_texture_transform"]
+                json["extensionsRequired"] = ["KHR_texture_transform"]
+                json["materials"] = [[
+                    "pbrMetallicRoughness": ["baseColorTexture": texture(0)],
+                    "emissiveTexture": texture(emissiveTexCoord)
+                ]]
+            }
+        }
+
+        _ = try loader(emissiveTexCoord: 0).loadEntity()
+        #expect(throws: VRMError.self) { try loader(emissiveTexCoord: 1).loadEntity() }
+    }
+
     /// Skin joints index the joint arrays positionally, so a repeated, missing or
     /// out-of-range joint has to throw rather than trap.
     @Test
@@ -701,7 +726,7 @@ struct GLTFEntityLoaderTests {
             json["nodes"] = nodes
         }
 
-        let vrmEntity = try VRMEntityLoader(withData: modified, isOutlineEnabled: false).loadEntity()
+        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
         let clip = try #require(vrmEntity.blendShapeClips.values.first { clip in
             clip.values.contains { $0.weight > 0 }
         })

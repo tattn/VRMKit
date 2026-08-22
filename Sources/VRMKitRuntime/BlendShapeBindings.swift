@@ -96,7 +96,7 @@ package typealias ExpressionOverrideType = VRM1.Expressions.Expression.Expressio
 
 /// Accumulates every active expression's override of one group, following
 /// VRMC_vrm: `block` zeroes the group outright, while simultaneous `blend`
-/// overrides *add up* before being saturated — they do not compose
+/// overrides *add up* before being saturated, rather than composing
 /// multiplicatively.
 package struct ExpressionOverrideState {
     private var isBlocked = false

@@ -16,12 +16,10 @@ public class VRMEntityLoader: GLTFEntityLoader {
 
     public init(vrm: VRM,
                 rootDirectory: URL? = nil,
-                isMToonEnabled: Bool = true,
-                isOutlineEnabled: Bool = true) {
+                shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) {
         self.vrm = vrm
         super.init(document: GLTFDocument(binary: vrm.gltf, rootDirectory: rootDirectory),
-                   isMToonEnabled: isMToonEnabled,
-                   isOutlineEnabled: isOutlineEnabled)
+                   shaders: shaders)
         entityName = vrm.meta.title
     }
 
@@ -30,41 +28,31 @@ public class VRMEntityLoader: GLTFEntityLoader {
     /// - Parameters:
     ///   - url: VRM file location.
     ///   - rootDirectory: Optional base directory for external glTF resources.
-    ///   - isMToonEnabled: When `false`, MToon is fully disabled and Unlit / PBR fallbacks are used.
-    ///   - isOutlineEnabled: Controls creation of MToon outline entities.
+    ///   - shaders: The material shader chain; see ``GLTFMaterialShader``.
     public convenience init(withURL url: URL,
                             rootDirectory: URL? = nil,
-                            isMToonEnabled: Bool = true,
-                            isOutlineEnabled: Bool = true) throws {
-        let vrm = try VRMLoader().load(withURL: url)
-        self.init(vrm: vrm,
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
+        self.init(vrm: try VRMLoader().load(withURL: url),
                   rootDirectory: rootDirectory,
-                  isMToonEnabled: isMToonEnabled,
-                  isOutlineEnabled: isOutlineEnabled)
+                  shaders: shaders)
     }
 
     /// Loads a bundled VRM resource.
     public convenience init(named: String,
                             rootDirectory: URL? = nil,
-                            isMToonEnabled: Bool = true,
-                            isOutlineEnabled: Bool = true) throws {
-        let vrm = try VRMLoader().load(named: named)
-        self.init(vrm: vrm,
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
+        self.init(vrm: try VRMLoader().load(named: named),
                   rootDirectory: rootDirectory,
-                  isMToonEnabled: isMToonEnabled,
-                  isOutlineEnabled: isOutlineEnabled)
+                  shaders: shaders)
     }
 
     /// Loads a VRM from in-memory data.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
-                            isMToonEnabled: Bool = true,
-                            isOutlineEnabled: Bool = true) throws {
-        let vrm = try VRMLoader().load(withData: data)
-        self.init(vrm: vrm,
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
+        self.init(vrm: try VRMLoader().load(withData: data),
                   rootDirectory: rootDirectory,
-                  isMToonEnabled: isMToonEnabled,
-                  isOutlineEnabled: isOutlineEnabled)
+                  shaders: shaders)
     }
 
     /// Unlike the generic loader, a VRM without a default scene still loads: a
@@ -110,6 +98,12 @@ public class VRMEntityLoader: GLTFEntityLoader {
         }
     }
 
+    /// A VRM renders with whatever this renderer can build, so `extensionsRequired`
+    /// never fails one of its materials either: a shader that would refuse to
+    /// approximate draws its approximation here instead of dropping the material
+    /// to the default one.
+    override func enforcesRequiredExtension(_ name: String) -> Bool { false }
+
     /// Some VRM meshes split primitives by indices but share the same POSITION
     /// accessor, and only one of them carries the morph targets. SceneKit reuses
     /// the morpher across such primitives, so mimic that by sharing the targets.
@@ -138,32 +132,18 @@ public class VRMEntityLoader: GLTFEntityLoader {
 
     /// Unlike the generic loader, a VRM whose material this renderer cannot build
     /// still renders, with the default material in its place.
-    override func primitiveMaterial(withMaterialIndex index: Int) throws -> Material {
+    ///
+    /// The fallback is cached like any other resolved material, so the failed
+    /// build is not retried and the runtime state comes from what is drawn.
+    override func primitiveShadedMaterial(withMaterialIndex index: Int) throws -> GLTFShadedMaterial {
         do {
-            return try super.primitiveMaterial(withMaterialIndex: index)
+            return try super.primitiveShadedMaterial(withMaterialIndex: index)
         } catch {
             Self.gltfLogger.error("Failed to build the material \(index, privacy: .public); falling back to the default material: \(String(describing: error), privacy: .public)")
-            return defaultMaterial()
+            let shaded = GLTFShadedMaterial(material: defaultMaterial())
+            cacheShadedMaterial(shaded, withMaterialIndex: index)
+            return shaded
         }
-    }
-
-    /// The color a `materialColorBind` starts from. MToon keeps it in its
-    /// parameter rows, everything else in the RealityKit material.
-    func currentMaterialColor(withMaterialIndex index: Int,
-                              type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) throws -> SIMD4<Float> {
-        if let color = try mtoonParameters(withMaterialIndex: index)?.color(for: type) {
-            return color
-        }
-        return try material(withMaterialIndex: index).currentColor(for: type)
-    }
-
-    /// The UV transform a `textureTransformBind` starts from. MToon keeps it in
-    /// its parameter rows, everything else in the RealityKit material.
-    func currentTextureTransform(withMaterialIndex index: Int) throws -> MaterialParameterTypes.TextureCoordinateTransform {
-        if let transform = try mtoonParameters(withMaterialIndex: index)?.textureTransform {
-            return transform
-        }
-        return try material(withMaterialIndex: index).currentTextureTransform
     }
 
     override func vrm0MaterialProperty(for gltfMaterial: GLTF.Material) -> VRM0.MaterialProperty? {

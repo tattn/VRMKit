@@ -87,8 +87,8 @@ package struct PackedAccessor {
 /// Accessors expanded once and reused, so the primitives, skins and animation
 /// samplers that share one accessor expand it a single time.
 ///
-/// A cache holds decoded geometry, so it belongs to whatever needs it — one
-/// scene load, one animation binding — and is dropped with it.
+/// A cache holds decoded geometry, so it belongs to whatever needs it (one
+/// scene load, one animation binding) and is dropped with it.
 package final class PackedAccessorCache {
     private let document: GLTFDocument
     private var packedAccessors: [Int: PackedAccessor] = [:]

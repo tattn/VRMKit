@@ -21,7 +21,7 @@ package func numericFloatValue(_ value: Any) -> Float? {
 /// Coerces a loosely-typed JSON number into an `Int` index. Only exact,
 /// non-negative integers within `Int32` are accepted: glTF indices are small,
 /// and `Int(_:)` traps on values a fixed-width integer cannot represent. The
-/// number is read as a `Double` because `Float` rounds integers past 2^24 —
+/// number is read as a `Double` because `Float` rounds integers past 2^24, so
 /// `16_777_217` and `Int32.max` would both pass a `Float` test as some other
 /// value.
 package func numericIndexValue(_ value: Any) -> Int? {

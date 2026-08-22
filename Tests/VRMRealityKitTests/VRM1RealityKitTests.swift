@@ -40,7 +40,7 @@ struct VRM1RealityKitTests {
         _ = try #require(defaultMaterial as? CustomMaterial,
                          TestSupport.expectedCustomMaterialMessage)
 
-        let disabledLoader = try VRMEntityLoader(withData: seedSan, isMToonEnabled: false)
+        let disabledLoader = try VRMEntityLoader(withData: seedSan, shaders: [])
         let disabledMaterial = try disabledLoader.material(withMaterialIndex: 0)
         #expect(!(disabledMaterial is CustomMaterial))
         #expect(disabledMaterial is UnlitMaterial)
@@ -92,7 +92,7 @@ struct VRM1RealityKitTests {
             material["normalTexture"] = ["index": 0, "scale": 0.35]
         }
 
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
         let parameters = try mtoonParameters(in: vrmEntity, materialIndex: 0)
 
@@ -119,7 +119,7 @@ struct VRM1RealityKitTests {
             mtoon["uvAnimationMaskTexture"] = ["index": textureIndex]
         }
 
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let material = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
         let rawTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .raw)
         let colorTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .color)
@@ -153,7 +153,7 @@ struct VRM1RealityKitTests {
     func testMToonShadeMultiplyTextureFallsBackToWhite() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try seedSanDataWithNonDefaultEyeSampler()
-        let vrmLoader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let vrmLoader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try vrmLoader.loadEntity()
         let eyeTransparentParameters = try mtoonParameters(in: vrmEntity, materialIndex: 4)
 
@@ -165,7 +165,7 @@ struct VRM1RealityKitTests {
     func testMToonRespectsDoubleSidedMaterialFlag() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
-        let singleSidedLoader = try VRMEntityLoader(withData: seedSan, isOutlineEnabled: false)
+        let singleSidedLoader = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders)
         let singleSided = try #require(singleSidedLoader.material(withMaterialIndex: 0) as? CustomMaterial)
         #expect(singleSided.faceCulling == .back)
 
@@ -173,7 +173,7 @@ struct VRM1RealityKitTests {
             material["doubleSided"] = true
         }
 
-        let doubleSidedLoader = try VRMEntityLoader(withData: doubleSidedData, isOutlineEnabled: false)
+        let doubleSidedLoader = try VRMEntityLoader(withData: doubleSidedData, shaders: TestSupport.noOutlineShaders)
         let doubleSided = try #require(doubleSidedLoader.material(withMaterialIndex: 0) as? CustomMaterial)
         #expect(doubleSided.faceCulling == .none)
     }
@@ -232,14 +232,14 @@ struct VRM1RealityKitTests {
             material["extensions"] = extensions
         }
 
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let material = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
-        let transform = try loader.currentTextureTransform(withMaterialIndex: 0)
+        let transform = try #require(loader.makeAnimatableMaterialState(forMaterialIndex: 0)?.textureTransform)
         #expect(transform.offset.isApproximatelyEqual(to: SIMD2<Float>(0.25, 0.5)))
         #expect(transform.scale.isApproximatelyEqual(to: SIMD2<Float>(0.75, 0.5)))
         #expect(transform.rotation.isApproximatelyEqual(to: 0.2))
         // MToon.metal applies the transform from the parameter rows, so the
-        // material-level transform must stay identity — otherwise RealityKit
+        // material-level transform must stay identity, otherwise RealityKit
         // would transform the primary UV a second time.
         #expect(material.textureCoordinateTransform.offset == SIMD2<Float>(0, 0))
         #expect(material.textureCoordinateTransform.scale == SIMD2<Float>(1, 1))
@@ -262,13 +262,13 @@ struct VRM1RealityKitTests {
             mtoon["shadeMultiplyTexture"] = shadeTexture
         }
 
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         _ = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
 
         // Base color is the first UV-accessed slot, so its identity transform
         // wins; taking the first non-nil transform instead would apply the
         // shade slot's transform to the base color texture.
-        let transform = try loader.currentTextureTransform(withMaterialIndex: 0)
+        let transform = try #require(loader.makeAnimatableMaterialState(forMaterialIndex: 0)?.textureTransform)
         #expect(transform.offset == SIMD2<Float>(0, 0))
         #expect(transform.scale == SIMD2<Float>(1, 1))
         #expect(transform.rotation == 0)
@@ -277,7 +277,7 @@ struct VRM1RealityKitTests {
     @Test
     func testNormalMappedMeshesCarryACompleteTangentBasis() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
 
         var checkedParts = 0
@@ -308,7 +308,7 @@ struct VRM1RealityKitTests {
     @Test
     func testGeneratedBitangentsFollowTheGLTFUVOrientation() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
 
         var checkedTriangles = 0
@@ -553,7 +553,7 @@ struct VRM1RealityKitTests {
             json["meshes"] = meshes
         }
 
-        let loader = try VRMEntityLoader(withData: data, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: data, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
 
         var checkedParts = 0
@@ -595,7 +595,7 @@ struct VRM1RealityKitTests {
     func testMToonTextureTransformBindUpdatesParameterTexture() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
-        let vrmLoader = try VRMEntityLoader(withData: seedSan, isOutlineEnabled: false)
+        let vrmLoader = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try vrmLoader.loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
@@ -614,7 +614,7 @@ struct VRM1RealityKitTests {
     func testExpressionTextureTransformsAccumulateAndResetIndependently() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
-        let loader = try VRMEntityLoader(withData: seedSan, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
@@ -667,7 +667,7 @@ struct VRM1RealityKitTests {
             json["materials"] = materials
         }
 
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
         vrmEntity.setExpression(value: 1, for: .preset(.angry))
@@ -780,7 +780,7 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san's `relaxed` declares overrideBlink / overrideLookAt = block.
         let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
-                                            isOutlineEnabled: false).loadEntity()
+                                            shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.blink))
         vrmEntity.setExpression(value: 1, for: .preset(.lookUp))
@@ -814,7 +814,7 @@ struct VRM1RealityKitTests {
             happy["isBinary"] = false
             preset["happy"] = happy
         }
-        let vrmEntity = try VRMEntityLoader(withData: modified, isOutlineEnabled: false).loadEntity()
+        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpressions([.preset(.blink): 1, .preset(.happy): 0.25])
 
@@ -838,7 +838,7 @@ struct VRM1RealityKitTests {
                 preset[name] = expression
             }
         }
-        let vrmEntity = try VRMEntityLoader(withData: modified, isOutlineEnabled: false).loadEntity()
+        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpressions([.preset(.blink): 1, .preset(.happy): 0.5])
         #expect(try #require(morphWeight(in: vrmEntity, targetIndex: 1)).isApproximatelyEqual(to: 0.5))
@@ -867,7 +867,7 @@ struct VRM1RealityKitTests {
             preset["blink"] = blink
             preset["happy"] = happy
         }
-        let vrmEntity = try VRMEntityLoader(withData: modified, isOutlineEnabled: false).loadEntity()
+        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.blink))
         #expect(morphWeight(in: vrmEntity, targetIndex: 1) == 1)
@@ -881,7 +881,7 @@ struct VRM1RealityKitTests {
     func testExpressionDoesNotOverrideItsOwnKind() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // "Like overrideBlink for blink, settings for the same kind are treated
-        // as invalid" — blink must not suppress itself or its own group.
+        // as invalid": blink must not suppress itself or its own group.
         let modified = try TestSupport.modifiedSeedSanExpressions(name: "self-overriding-blink") { preset in
             guard var blink = preset["blink"] as? [String: Any] else {
                 throw VRMError.dataInconsistent("Missing Seed-san blink expression")
@@ -889,7 +889,7 @@ struct VRM1RealityKitTests {
             blink["overrideBlink"] = "block"
             preset["blink"] = blink
         }
-        let vrmEntity = try VRMEntityLoader(withData: modified, isOutlineEnabled: false).loadEntity()
+        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpressions([.preset(.blink): 1, .preset(.blinkLeft): 1])
 
@@ -904,7 +904,7 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // `angry` is binary and carries a textureTransformBind on material 11.
         let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
-                                            isOutlineEnabled: false).loadEntity()
+                                            shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpression(value: 0.5, for: .preset(.angry))
         var parameters = try mtoonParameters(in: vrmEntity, materialIndex: 11)
@@ -921,7 +921,7 @@ struct VRM1RealityKitTests {
     func testSetExpressionsAppliesEveryWeightAtOnce() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
-                                            isOutlineEnabled: false).loadEntity()
+                                            shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpressions([.preset(.happy): 1, .preset(.angry): 1])
 
@@ -953,7 +953,7 @@ struct VRM1RealityKitTests {
             json["samplers"] = samplers
         }
 
-        let vrmEntity = try VRMEntityLoader(withData: modified, isOutlineEnabled: false).loadEntity()
+        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
         let parameters = try mtoonParameters(in: vrmEntity, materialIndex: 0)
 
         // (wrapS, wrapT, filterIndex, 0): clamp / mirrored repeat, and a
@@ -973,8 +973,8 @@ struct VRM1RealityKitTests {
     @Test
     func testEveryGLTFMinFilterMapsToADistinctSampler() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // glTF's six minFilter values are two independent choices — the
-        // minification texel filter and the filter between mip levels — so each
+        // glTF's six minFilter values are two independent choices, the
+        // minification texel filter and the filter between mip levels, so each
         // has to encode to its own filter index.
         let minFilters: [(raw: Int, minification: MToonSamplerFilter.TexelFilter, mip: MToonSamplerFilter.MipFilter)] = [
             (9728, .nearest, .none),      // NEAREST
@@ -994,7 +994,7 @@ struct VRM1RealityKitTests {
                 samplers[0]["minFilter"] = entry.raw
                 json["samplers"] = samplers
             }
-            let vrmEntity = try VRMEntityLoader(withData: modified, isOutlineEnabled: false).loadEntity()
+            let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
             let parameters = try mtoonParameters(in: vrmEntity, materialIndex: 0)
             let expected = MToonSamplerFilter(magnification: .linear,
                                               minification: entry.minification,
@@ -1022,7 +1022,7 @@ struct VRM1RealityKitTests {
                 extensions["VRMC_materials_mtoon"] = mtoon
                 material["extensions"] = extensions
             }
-            let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+            let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
             return try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial,
                                 TestSupport.expectedCustomMaterialMessage)
         }
@@ -1039,8 +1039,7 @@ struct VRM1RealityKitTests {
     func testUpdateAppliesSpringBonePosesWithoutAFrameOfLag() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
-                                            isMToonEnabled: false,
-                                            isOutlineEnabled: false).loadEntity()
+                                            shaders: []).loadEntity()
 
         // Rotating a parent bone drags the spring chains, so spring bones write
         // new joint transforms during update().
@@ -1090,7 +1089,7 @@ struct VRM1RealityKitTests {
             scenes.append(first)
             json["scenes"] = scenes
         }
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
 
         let firstScene = try loader.loadEntity(withSceneIndex: 0)
         let secondScene = try loader.loadEntity(withSceneIndex: 1)
@@ -1209,7 +1208,7 @@ struct VRM1RealityKitTests {
             json["extensions"] = extensions
         }
 
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
 
         // The invalid bind is skipped while the valid one keeps working.
@@ -1227,7 +1226,7 @@ struct VRM1RealityKitTests {
             mtoon["shadeMultiplyTexture"] = ["index": 9999]
         }
 
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
 
         // The state goes with the material, so no expression bind keeps writing
@@ -1248,7 +1247,7 @@ struct VRM1RealityKitTests {
             material["pbrMetallicRoughness"] = ["baseColorTexture": ["index": 9999]]
         }
 
-        let loader = try VRMEntityLoader(withData: modified, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try loader.loadEntity()
 
         #expect(TestSupport.materialIndexes(in: vrmEntity).contains(0))
@@ -1259,13 +1258,13 @@ struct VRM1RealityKitTests {
     func testFallbackMaterialsDoNotCarryMToonRuntimeState() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
-        let loader = try VRMEntityLoader(withData: seedSan, isMToonEnabled: false)
+        let loader = try VRMEntityLoader(withData: seedSan, shaders: [])
         let vrmEntity = try loader.loadEntity()
 
         // With MToon disabled, no entity carries MToon runtime state, and
         // expression color binds resolve through the fallback material path.
         #expect(!TestSupport.hasMToonParameters(in: vrmEntity))
-        let fallbackColor = try loader.currentMaterialColor(withMaterialIndex: 0, type: .color)
+        let fallbackColor = try vrmEntity.currentMaterialColor(withMaterialIndex: 0, type: .color, loader: loader)
         let fallbackMaterial = try loader.material(withMaterialIndex: 0)
         #expect(fallbackColor.isApproximatelyEqual(to: fallbackMaterial.currentColor(for: .color)))
     }
@@ -1279,7 +1278,7 @@ struct VRM1RealityKitTests {
 
         // Outlines are the inverted hull only; disabling them must not take the
         // MToon surface shader with them.
-        let noOutlineEntity = try VRMEntityLoader(withData: seedSan, isOutlineEnabled: false).loadEntity()
+        let noOutlineEntity = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders).loadEntity()
         #expect(!hasOutlineEntities(in: noOutlineEntity))
         #expect(TestSupport.hasCustomMaterial(in: noOutlineEntity))
     }
@@ -1287,7 +1286,7 @@ struct VRM1RealityKitTests {
     @Test
     func testMToonMaterialsPreserveTheFixtureAlphaModes() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, isOutlineEnabled: false)
+        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: TestSupport.noOutlineShaders)
         let opaqueMaterial = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
         let blendMaterial = try #require(loader.material(withMaterialIndex: 4) as? CustomMaterial)
 
@@ -1315,8 +1314,7 @@ struct VRM1RealityKitTests {
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData)
         let material = try loader.material(withMaterialIndex: 0)
 
-        #expect(loader.isMToonEnabled)
-        #expect(loader.isOutlineEnabled)
+        #expect(loader.shaders.contains { $0 is MToonShader })
         #expect(material is UnlitMaterial || material is PhysicallyBasedMaterial)
     }
 #endif

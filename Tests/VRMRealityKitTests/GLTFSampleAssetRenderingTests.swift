@@ -154,7 +154,7 @@ struct GLTFSampleAssetRenderingTests {
     }
 
     /// glTF puts no restriction on where a skinned mesh sits, so it may hang
-    /// below one of its own joints — a joint whose entity is then asked for while
+    /// below one of its own joints, a joint whose entity is then asked for while
     /// its own node is still under construction.
     @Test
     func testSkinnedMeshBelowOneOfItsJointsResolvesToTheSameJointEntities() throws {

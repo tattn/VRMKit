@@ -17,8 +17,8 @@ struct VRMUpdateComponent: Component {}
 /// The system is registered automatically the first time a ``VRMEntity`` is
 /// created, so a model animates as soon as it is added to a scene, without any
 /// per-frame code on the caller's side. To run your own animation code in a
-/// guaranteed order relative to the VRM update — for example, posing joints that
-/// this frame's skinning should already reflect — declare it in a custom
+/// guaranteed order relative to the VRM update, for example posing joints that
+/// this frame's skinning should already reflect, declare it in a custom
 /// `System` with `SystemDependency.before(VRMUpdateSystem.self)`.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct VRMUpdateSystem: System {

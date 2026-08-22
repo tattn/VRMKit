@@ -74,7 +74,7 @@ package extension GLTF.Accessor {
 private extension GLTF.Accessor {
     /// The element size, rejecting the matrix layouts glTF pads. MAT2 / MAT3
     /// columns are aligned to 4 bytes, so with small component types an element
-    /// is wider than its components — a layout no VRM asset uses, and one the
+    /// is wider than its components, a layout no VRM asset uses and one the
     /// readers above would mis-slice.
     func unpaddedVectorSize() throws -> Int {
         let (componentsPerVector, bytesPerComponent, vectorSize) = components()
