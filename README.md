@@ -113,6 +113,9 @@ vrmEntity.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
 
 ## MToon rendering
 
+<details>
+<summary>Details</summary>
+
 MToon materials render by default on iOS and macOS. visionOS falls back to Unlit / PBR materials, because RealityKit's `CustomMaterial` is unavailable there.
 
 ```swift
@@ -150,7 +153,12 @@ let custom = try VRMEntityLoader(withData: data, shaders: [MyShader(), MToonShad
 
 `GLTFShadedMaterial` also carries extra render passes (MToon draws its outline as one) and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. The `GLTFMaterialShader` documentation comments cover both, along with what a shader may assume about the mesh it draws.
 
+</details>
+
 ## Render glTF / GLB
+
+<details>
+<summary>Details</summary>
 
 VRMRealityKit also renders plain glTF assets (`.glb` and JSON `.gltf`, including external resources and data URIs).
 
@@ -178,6 +186,8 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 - Blend shapes morph `POSITION` only, since RealityKit blend shapes have no `NORMAL` / `TANGENT` channel.
 - Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints; the further sets a glTF may carry are ignored.
 - MToon's `renderQueueOffsetNumber` is parsed but ignored, because RealityKit has no material-level draw-order hook. (`transparentWithZWrite` is supported through `CustomMaterial.writesDepth`.)
+
+</details>
 
 </details>
 
