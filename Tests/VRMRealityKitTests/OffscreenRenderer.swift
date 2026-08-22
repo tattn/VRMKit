@@ -20,19 +20,48 @@ enum OffscreenRenderer {
     /// x, y in [-1, 1], and returns the pixels as `[row][column]` RGB, row 0 at
     /// the top of the image.
     static func render(_ entity: Entity, size: Int) throws -> [[SIMD3<Float>]] {
+        try render(entity, width: size, height: size)
+    }
+
+    /// Renders through a perspective camera `distance` in front of the origin.
+    /// An orthographic projection shrinks nothing with depth, so it cannot tell
+    /// a world-space size from a screen-relative one.
+    static func renderPerspective(_ entity: Entity,
+                                  size: Int,
+                                  distance: Float,
+                                  fieldOfViewInDegrees: Float = 60) throws -> [[SIMD3<Float>]] {
+        var camera = PerspectiveCameraComponent(near: 0.01,
+                                                far: 1000,
+                                                fieldOfViewInDegrees: fieldOfViewInDegrees)
+        camera.fieldOfViewOrientation = .vertical
+        return try render(entity, width: size, height: size, camera: camera, distance: distance)
+    }
+
+    /// Renders into a `width` x `height` target. The camera frames y in [-1, 1]
+    /// whatever the aspect ratio, so a wider target sees more of x rather than
+    /// less of y.
+    static func render(_ entity: Entity, width: Int, height: Int) throws -> [[SIMD3<Float>]] {
+        // The vertical scale is the half-height of the framed area.
+        var camera = OrthographicCameraComponent()
+        camera.near = 0.1
+        camera.far = 10
+        camera.scale = 1
+        camera.scaleDirection = .vertical
+        return try render(entity, width: width, height: height, camera: camera, distance: 2)
+    }
+
+    private static func render(_ entity: Entity,
+                               width: Int,
+                               height: Int,
+                               camera cameraComponent: some Component,
+                               distance: Float) throws -> [[SIMD3<Float>]] {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw RenderError.noMetalDevice
         }
 
         let camera = Entity()
-        var cameraComponent = OrthographicCameraComponent()
-        cameraComponent.near = 0.1
-        cameraComponent.far = 10
-        // The vertical scale is the half-height of the framed area.
-        cameraComponent.scale = 1
-        cameraComponent.scaleDirection = .vertical
         camera.components.set(cameraComponent)
-        camera.position = SIMD3<Float>(0, 0, 2)
+        camera.position = SIMD3<Float>(0, 0, distance)
 
         let renderer = try RealityRenderer()
         renderer.entities.append(entity)
@@ -43,8 +72,8 @@ enum OffscreenRenderer {
         renderer.cameraSettings.colorBackground = .color(CGColor(gray: 0, alpha: 1))
 
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
-                                                                  width: size,
-                                                                  height: size,
+                                                                  width: width,
+                                                                  height: height,
                                                                   mipmapped: false)
         descriptor.usage = [.renderTarget, .shaderRead, .shaderWrite]
         descriptor.storageMode = .shared
@@ -60,17 +89,17 @@ enum OffscreenRenderer {
             throw RenderError.timedOut
         }
 
-        var bytes = [UInt8](repeating: 0, count: size * size * 4)
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
         bytes.withUnsafeMutableBytes { raw in
             guard let base = raw.baseAddress else { return }
             target.getBytes(base,
-                            bytesPerRow: size * 4,
-                            from: MTLRegionMake2D(0, 0, size, size),
+                            bytesPerRow: width * 4,
+                            from: MTLRegionMake2D(0, 0, width, height),
                             mipmapLevel: 0)
         }
-        return (0..<size).map { row in
-            (0..<size).map { column in
-                let offset = (row * size + column) * 4
+        return (0..<height).map { row in
+            (0..<width).map { column in
+                let offset = (row * width + column) * 4
                 return SIMD3<Float>(Float(bytes[offset]),
                                     Float(bytes[offset + 1]),
                                     Float(bytes[offset + 2]))

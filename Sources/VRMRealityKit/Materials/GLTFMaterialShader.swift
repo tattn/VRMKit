@@ -51,23 +51,44 @@ public struct GLTFShadedMaterial {
     /// entity sharing the mesh, such as MToon's inverted-hull outline.
     public struct Pass {
         public var material: any Material
-        /// Appended to the mesh's name to name the pass entity: "outline" of the
-        /// mesh "mesh_0" is drawn by "mesh_0_outline".
+        /// Appended to the mesh's name to name the pass entity: pass "glow" of
+        /// the mesh "mesh_0" is drawn by "mesh_0_glow". The entity also carries
+        /// it in a ``GLTFMaterialPassComponent``, for lookups not tied to names.
+        ///
+        /// Pass names share one space across the whole shader chain, so give
+        /// one a name unlikely to collide, as ``MToonShader/outlinePassName``
+        /// does.
         public var name: String
+        /// Whether the pass entity starts enabled. A pass built only to be shown
+        /// later issues no draw call while it stays disabled, though its entity
+        /// and its runtime bindings are built and updated regardless.
+        public var isInitiallyEnabled: Bool
+        /// Set by a pass whose geometry modifier pushes vertices outside the
+        /// mesh's bounding box, which RealityKit culls by. The loader widens
+        /// that box by a budget it derives from the mesh and hands it here, so
+        /// the material can carry it to the modifier, which has to stay inside
+        /// it or be culled while still on screen.
+        ///
+        /// Internal rather than public: the budget the loader can offer suits
+        /// an outline-scale displacement and little else, and how a material
+        /// passes a number to its modifier is that shader's own encoding.
+        var applyBoundsBudget: ((any Material, Float) -> any Material)?
 
-        public init(material: any Material, name: String) {
+        public init(material: any Material,
+                    name: String,
+                    isInitiallyEnabled: Bool = true) {
             self.material = material
             self.name = name
+            self.isInitiallyEnabled = isInitiallyEnabled
         }
     }
 
     public var material: any Material
     /// Extra passes, added to the scene before the main model entity.
     public var additionalPasses: [Pass]
-    /// Makes a fresh ``VRMAnimatableMaterialState`` for this material, letting
-    /// VRM expressions (`materialColorBind` / `textureTransformBind`) drive it
-    /// the way MToon does. Every loaded entity graph calls it once per material,
-    /// so animating one entity never affects another.
+    /// Lets VRM expressions (`materialColorBind` / `textureTransformBind`) drive
+    /// this material the way MToon does. Called once per material per loaded
+    /// entity graph, so animating one entity never affects another.
     ///
     /// Leaving it nil is fine, and so is a state claiming only some values:
     /// everything unclaimed falls back to mutating the RealityKit material
@@ -93,7 +114,6 @@ public struct GLTFMaterialShaderContext {
     let loader: GLTFEntityLoader
     /// Index of ``material`` in the document's `materials`.
     public let materialIndex: Int
-    /// The glTF material to build.
     public let material: GLTF.Material
     /// The VRM 0.x Unity material property describing ``material``, when the
     /// document is a VRM 0.x model.
@@ -125,10 +145,8 @@ public struct GLTFMaterialShaderContext {
         loader.selectedTexCoord(withMaterialIndex: materialIndex)
     }
 
-    /// The material the loader's built-in Unlit / PBR path would build.
-    ///
-    /// A shader that only wants to adjust the standard result can build on this
-    /// instead of reimplementing the whole path.
+    /// The material the loader's built-in Unlit / PBR path would build, for a
+    /// shader that only wants to adjust the standard result.
     public func standardMaterial() throws -> any Material {
         try loader.standardMaterial(for: self)
     }
@@ -199,21 +217,20 @@ public struct GLTFMaterialShaderContext {
 @MainActor
 public protocol VRMAnimatableMaterialState: AnyObject {
     /// The current value of one bindable color, or nil for a color this state
-    /// does not animate. Defaults to nil.
+    /// does not animate.
     func color(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> SIMD4<Float>?
     /// Records a `materialColorBind` write, answering whether this state
-    /// animates that color. Defaults to false.
+    /// animates that color.
     func setColor(_ color: SIMD4<Float>,
                   for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> Bool
     /// The UV transform the material currently renders with, or nil for a state
-    /// that does not animate one. Defaults to nil.
+    /// that does not animate one.
     var textureTransform: MaterialParameterTypes.TextureCoordinateTransform? { get }
     /// Records a `textureTransformBind` write, answering whether this state
-    /// animates the UV transform. Defaults to false.
+    /// animates the UV transform.
     func setTextureTransform(scale: SIMD2<Float>, offset: SIMD2<Float>, rotation: Float) -> Bool
     /// Bakes pending writes into whatever ``apply(to:)`` pushes. Returning
     /// false keeps the state dirty, and the runtime retries on its next flush.
-    /// Defaults to true, for a state ``apply(to:)`` reads directly.
     func prepareFlush() -> Bool
     /// The material updated to this state, or the material unchanged when it is
     /// not one this state describes.

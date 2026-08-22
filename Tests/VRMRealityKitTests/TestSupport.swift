@@ -26,12 +26,20 @@ enum TestSupport {
         try GLTFEntityLoader(withData: asset.rewritingJSON(modify), rootDirectory: asset.rootDirectory)
     }
 
+    /// False on visionOS and Mac Catalyst, which bundle no Metal library, so
+    /// MToon falls back to Unlit approximations with no outline pass.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    @MainActor
+    static var isMToonRenderingAvailable: Bool {
+        MToonShaderLibraryLoader.resourceName != nil
+    }
+
     /// The default chain with MToon outlines disabled, for tests that inspect
     /// materials without outline siblings in the way.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     @MainActor
     static var noOutlineShaders: [any GLTFMaterialShader] {
-        [MToonShader(isOutlineEnabled: false)]
+        [MToonShader(outlinePass: .never)]
     }
 
     /// The bundled Seed-san VRM 1.0 fixture.

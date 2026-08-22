@@ -8,6 +8,7 @@ package enum StandardMToonConverter {
                                 shadeColorScale: Float,
                                 shadingToonyFactor: Float,
                                 shadingShiftFactor: Float,
+                                outlineWidthMode: MToonMaterialDescriptor.OutlineWidthMode,
                                 outlineWidthFactor: Float,
                                 outlineColorFactor: SIMD4<Float>) -> MToonMaterialDescriptor {
         typealias SpecDefault = MToonMaterialDescriptor.SpecDefault
@@ -29,7 +30,7 @@ package enum StandardMToonConverter {
             rimLightingMixFactor: SpecDefault.rimLightingMixFactor,
             parametricRimFresnelPowerFactor: SpecDefault.parametricRimFresnelPowerFactor,
             parametricRimLiftFactor: SpecDefault.parametricRimLiftFactor,
-            outlineWidthMode: hasOutline ? .worldCoordinates : .none,
+            outlineWidthMode: hasOutline ? outlineWidthMode : .none,
             outlineWidthFactor: outlineWidthFactor,
             outlineColorFactor: outlineColorFactor,
             outlineLightingMixFactor: SpecDefault.outlineLightingMixFactor,

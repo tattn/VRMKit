@@ -5,10 +5,14 @@ import VRMKitRuntime
 public struct MToonConversionStyle: Sendable {
     /// The canonical conversion style. Its MToon values come directly from the
     /// specification defaults shared with authored MToon materials.
+    ///
+    /// The initializer defaults to these rather than to the specification
+    /// constants, which are `package` and cannot appear in a public default.
     public static let defaultStyle = MToonConversionStyle(
         shadeColorScale: 0.8,
         shadingToonyFactor: MToonMaterialDescriptor.SpecDefault.shadingToonyFactor,
         shadingShiftFactor: MToonMaterialDescriptor.SpecDefault.shadingShiftFactor,
+        outlineWidthMode: .worldCoordinates,
         outlineWidthFactor: MToonMaterialDescriptor.SpecDefault.outlineWidthFactor,
         outlineColorFactor: MToonMaterialDescriptor.SpecDefault.outlineColorFactor
     )
@@ -20,18 +24,24 @@ public struct MToonConversionStyle: Sendable {
     public var shadingToonyFactor: Float
     /// Shifts where the lit-shade boundary sits; 0 keeps the MToon default.
     public var shadingShiftFactor: Float
-    /// Width of the inverted-hull outline in meters; 0 draws no outline.
+    /// How ``outlineWidthFactor`` is measured; irrelevant while it is 0.
+    public var outlineWidthMode: MToonOutlineWidthMode
+    /// Width of the inverted-hull outline, measured per ``outlineWidthMode``:
+    /// meters for `.worldCoordinates`, a fraction of the screen height for
+    /// `.screenCoordinates`. 0 draws no outline.
     public var outlineWidthFactor: Float
     public var outlineColorFactor: SIMD4<Float>
 
     public init(shadeColorScale: Float = MToonConversionStyle.defaultStyle.shadeColorScale,
                 shadingToonyFactor: Float = MToonConversionStyle.defaultStyle.shadingToonyFactor,
                 shadingShiftFactor: Float = MToonConversionStyle.defaultStyle.shadingShiftFactor,
+                outlineWidthMode: MToonOutlineWidthMode = MToonConversionStyle.defaultStyle.outlineWidthMode,
                 outlineWidthFactor: Float = MToonConversionStyle.defaultStyle.outlineWidthFactor,
                 outlineColorFactor: SIMD4<Float> = MToonConversionStyle.defaultStyle.outlineColorFactor) {
         self.shadeColorScale = shadeColorScale
         self.shadingToonyFactor = shadingToonyFactor
         self.shadingShiftFactor = shadingShiftFactor
+        self.outlineWidthMode = outlineWidthMode
         self.outlineWidthFactor = outlineWidthFactor
         self.outlineColorFactor = outlineColorFactor
     }

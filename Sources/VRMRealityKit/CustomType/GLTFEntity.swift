@@ -19,10 +19,18 @@ public struct GLTFNodeComponent: Component {
     public let nodeIndex: Int
 }
 
-/// The glTF material a model entity renders with.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct GLTFMaterialIndexComponent: Component {
     let materialIndex: Int
+}
+
+/// Marks a model entity as one additional render pass of its glTF material,
+/// such as MToon's inverted-hull outline, rather than the material itself.
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+public struct GLTFMaterialPassComponent: Component {
+    public let name: String
+    /// What ``GLTFEntity/resetPassEnabled(named:)`` puts back.
+    let isInitiallyEnabled: Bool
 }
 
 /// The glTF skin a model entity is skinned by. It survives `clone(recursive:)`,
@@ -34,8 +42,10 @@ struct GLTFSkinIndexComponent: Component {
 
 /// The root entity of a loaded glTF scene.
 ///
-/// Besides the entity graph it keeps what the animation runtime binds against:
-/// the document, the node index → `Entity` mapping and the skin / morph bindings.
+/// Besides the entity graph it keeps what the animation runtime binds against —
+/// the document, the node index → `Entity` mapping and the skin / morph
+/// bindings — and the render state of each glTF material, which the MToon and
+/// VRM expression runtimes drive.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public class GLTFEntity: Entity {
     /// The glTF document this entity was loaded from.
@@ -78,7 +88,6 @@ public class GLTFEntity: Entity {
         return nodeEntities[index]
     }
 
-    /// One skinned model and the joint entities that drive it.
     struct SkinBinding {
         let modelEntity: ModelEntity
         let skeleton: MeshResource.Skeleton
@@ -87,8 +96,6 @@ public class GLTFEntity: Entity {
 
     private(set) var skinBindings: [SkinBinding] = []
 
-    /// The blend shapes one node's morph weights write to, and the number of
-    /// targets every weights array driving them has to carry.
     struct MorphBinding {
         var modelEntities: [ModelEntity]
         let targetCount: Int
@@ -96,6 +103,30 @@ public class GLTFEntity: Entity {
 
     /// glTF node index → the blend shapes a `weights` channel writes to.
     private(set) var morphBindings: [Int: MorphBinding] = [:]
+
+    /// Everything the runtime tracks per glTF material. Keying this by material
+    /// index, rather than copying it onto every entity, is what keeps the
+    /// animatable shader parameters single-source.
+    struct MaterialRuntimeState {
+        /// Every entity rendering the material, its additional passes included,
+        /// so a parameter flush reaches all of them.
+        var modelEntities: [ModelEntity] = []
+        /// Present when what renders the material makes one, as MToon does.
+        var animatable: (any VRMAnimatableMaterialState)?
+        var needsFlush = false
+
+        @MainActor
+        func hasPass(named name: String) -> Bool {
+            modelEntities.contains { $0.components[GLTFMaterialPassComponent.self]?.name == name }
+        }
+    }
+
+    var materialStates: [Int: MaterialRuntimeState] = [:]
+
+    // Backing store for the MToon API (GLTFEntity+MToon.swift).
+    var mtoonLightDirection = MToonMaterialParameters.defaultLightDirection
+    var mtoonLightColor = SIMD3<Float>(1, 1, 1)
+    var mtoonAmbientColor = SIMD3<Float>(0, 0, 0)
 
     // Backing store for the animation API (GLTFEntity+Animation.swift).
     var animationMetadata: [GLTFAnimation]?
@@ -110,6 +141,7 @@ public class GLTFEntity: Entity {
         GLTFComponent.registerComponent()
         GLTFNodeComponent.registerComponent()
         GLTFMaterialIndexComponent.registerComponent()
+        GLTFMaterialPassComponent.registerComponent()
         GLTFSkinIndexComponent.registerComponent()
         GLTFAnimationPlaybackComponent.registerComponent()
         GLTFAnimationSystem.registerSystem()
@@ -133,8 +165,8 @@ public class GLTFEntity: Entity {
         hasRuntimeBindings = true
     }
 
-    /// Records a skinned model. The pose is solved by ``updateSkinning()``, which
-    /// the loader calls once the entity graph the joints live in is complete.
+    /// The pose is solved by ``updateSkinning()``, which the loader calls once
+    /// the entity graph the joints live in is complete.
     func registerSkinBinding(modelEntity: ModelEntity,
                              skeleton: MeshResource.Skeleton,
                              jointEntities: [Entity]) {
@@ -150,9 +182,164 @@ public class GLTFEntity: Entity {
             .modelEntities.append(contentsOf: morphable)
     }
 
-    /// Registers an entity as a renderer of `materialIndex`. ``VRMEntity`` overrides
-    /// this to feed its MToon and expression machinery.
-    func registerMaterialBinding(modelEntity: ModelEntity, materialIndex: Int, loader: GLTFEntityLoader) {}
+    /// The animatable shader parameters are resolved once per material, so every
+    /// entity sharing it shares them.
+    func registerMaterialBinding(modelEntity: ModelEntity, materialIndex: Int, loader: GLTFEntityLoader) {
+        if materialStates[materialIndex] == nil {
+            materialStates[materialIndex] = MaterialRuntimeState(
+                animatable: loader.makeAnimatableMaterialState(forMaterialIndex: materialIndex)
+            )
+        }
+        materialStates[materialIndex]?.modelEntities.append(modelEntity)
+    }
+
+    /// The glTF material indices any model entity under `root` renders with,
+    /// additional render passes included, for scoping the runtime material
+    /// APIs to part of a model.
+    ///
+    /// Only this entity's own runtime is counted: an entity loaded from
+    /// another document and parented under `root`, an attached accessory say,
+    /// is skipped, since its indices point into that document's materials. A
+    /// `clone(recursive:)` copy carries no material runtime, so under one the
+    /// answer is empty.
+    public func materialIndices(under root: Entity) -> Set<Int> {
+        var indices: Set<Int> = []
+        for modelEntity in root.modelEntitiesInHierarchy {
+            guard let index = modelEntity.components[GLTFMaterialIndexComponent.self]?.materialIndex,
+                  !indices.contains(index),
+                  let boundEntities = materialStates[index]?.modelEntities,
+                  boundEntities.contains(where: { $0 === modelEntity }) else { continue }
+            indices.insert(index)
+        }
+        return indices
+    }
+
+    /// Shows or hides every entity drawing the additional render pass called
+    /// `name`, such as MToon's outline. A hidden pass draws nothing, though it
+    /// keeps its place in the skinning and morph solvers.
+    ///
+    /// A pass a shader declared with `isInitiallyEnabled: false` is shown for
+    /// the first time this way. Read from the entity graph rather than the
+    /// material runtime state, so it works on a `clone(recursive:)` copy too.
+    public func setPassEnabled(_ isEnabled: Bool, named name: String) {
+        forEachPass(named: name) { $0.isEnabled = isEnabled }
+    }
+
+    /// Puts every entity drawing `name` back to the state its shader declared,
+    /// undoing a ``setPassEnabled(_:named:)`` that showed or hid them all.
+    public func resetPassEnabled(named name: String) {
+        forEachPass(named: name) { $0.isEnabled = isInitiallyEnabled($0) }
+    }
+
+    /// Pass visibility a runtime override replaced, keyed by pass name, by the
+    /// glTF material overridden, and by the entity drawing it. Recording it per
+    /// material is what lets overrides scoped to different material sets
+    /// compose: each releases only the visibility it replaced.
+    private var passVisibilityBeforeOverride: [String: [Int: [Entity.ID: Bool]]] = [:]
+
+    /// Shows or hides the `name` passes of `materials` for as long as an
+    /// override lasts, remembering the visibility they replace. Only the first
+    /// call to cover a material records it, so an override adjusting itself
+    /// still releases back to where it started.
+    func overridePassEnabled(_ isEnabled: Bool, named name: String, forMaterials materials: Set<Int>) {
+        for materialIndex in materials {
+            let needsRecord = passVisibilityBeforeOverride[name]?[materialIndex] == nil
+            var replaced: [Entity.ID: Bool] = [:]
+            forEachPass(named: name, ofMaterial: materialIndex) { passEntity in
+                if needsRecord { replaced[passEntity.id] = passEntity.isEnabled }
+                passEntity.isEnabled = isEnabled
+            }
+            if needsRecord, !replaced.isEmpty {
+                passVisibilityBeforeOverride[name, default: [:]][materialIndex] = replaced
+            }
+        }
+    }
+
+    /// Puts the `name` passes of `materials` back to the visibility
+    /// ``overridePassEnabled(_:named:forMaterials:)`` replaced. A material
+    /// without an override in force has nothing to undo.
+    func releasePassEnabledOverride(named name: String, forMaterials materials: Set<Int>) {
+        for materialIndex in materials {
+            guard let replaced = passVisibilityBeforeOverride[name]?.removeValue(forKey: materialIndex) else {
+                continue
+            }
+            forEachPass(named: name, ofMaterial: materialIndex) {
+                $0.isEnabled = replaced[$0.id] ?? isInitiallyEnabled($0)
+            }
+        }
+        if passVisibilityBeforeOverride[name]?.isEmpty == true {
+            passVisibilityBeforeOverride[name] = nil
+        }
+    }
+
+    private func isInitiallyEnabled(_ passEntity: ModelEntity) -> Bool {
+        passEntity.components[GLTFMaterialPassComponent.self]?.isInitiallyEnabled ?? true
+    }
+
+    private func forEachPass(named name: String, _ body: (ModelEntity) -> Void) {
+        for passEntity in modelEntitiesInHierarchy
+        where passEntity.components[GLTFMaterialPassComponent.self]?.name == name {
+            body(passEntity)
+        }
+    }
+
+    /// The entities drawing the `name` pass of one material, found through the
+    /// material runtime rather than the entity graph, so an override follows
+    /// its materials wherever their subtree is reparented to.
+    private func forEachPass(named name: String, ofMaterial materialIndex: Int, _ body: (ModelEntity) -> Void) {
+        for passEntity in materialStates[materialIndex]?.modelEntities ?? []
+        where passEntity.components[GLTFMaterialPassComponent.self]?.name == name {
+            body(passEntity)
+        }
+    }
+
+    // MARK: - Animatable material runtime state
+    //
+    // Shader parameters describe a *material*, not an entity, so they are stored
+    // once per material index and pushed to every entity that renders with it.
+    // visionOS has no `CustomMaterial`, so no material has them and these all
+    // no-op there without platform conditionals of their own.
+
+    /// Edits a material's animatable shader state, marking it for flush. Returns
+    /// false when no such state renders the material, or when it does not animate
+    /// the value `mutate` writes: the caller's cue to fall back to the RealityKit
+    /// material properties.
+    func mutateAnimatableState(ofMaterial materialIndex: Int,
+                               _ mutate: (any VRMAnimatableMaterialState) -> Bool) -> Bool {
+        guard let animatable = materialStates[materialIndex]?.animatable,
+              mutate(animatable) else { return false }
+        materialStates[materialIndex]?.needsFlush = true
+        return true
+    }
+
+    /// Pushes each dirty material's pending parameter writes to the GPU once per
+    /// material, instead of once per binding that touched it, and answers
+    /// whether every one of them landed.
+    @discardableResult
+    func flushDirtyMaterialStates() -> Bool {
+        var didFlushAll = true
+        for (materialIndex, state) in materialStates where state.needsFlush {
+            guard let animatable = state.animatable, animatable.prepareFlush() else {
+                // The GPU still holds the previous values, so the material stays
+                // dirty and the next flush retries.
+                didFlushAll = false
+                continue
+            }
+            mapMaterials(ofMaterial: materialIndex) { animatable.apply(to: $0) }
+            materialStates[materialIndex]?.needsFlush = false
+        }
+        return didFlushAll
+    }
+
+    func mapMaterials(ofMaterial materialIndex: Int,
+                      _ transform: (any Material) -> any Material) {
+        guard let modelEntities = materialStates[materialIndex]?.modelEntities else { return }
+        for modelEntity in modelEntities {
+            guard var component = modelEntity.components[ModelComponent.self] else { continue }
+            component.materials = component.materials.map(transform)
+            modelEntity.components.set(component)
+        }
+    }
 
     /// Whether this entity already refreshes its skin pose once per frame on its
     /// own, in which case the animation tick must not solve the same skeleton.

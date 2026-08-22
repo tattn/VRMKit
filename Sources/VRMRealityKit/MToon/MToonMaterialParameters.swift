@@ -78,12 +78,12 @@ struct MToonMaterialParameters {
                                  mtoon.parametricRimLiftFactor,
                                  mtoon.rimLightingMixFactor,
                                  0)
-        // w is unused: the outline shaders only ever run on the outline material,
-        // which VRMEntityLoader creates for materials that have an outline.
+        // w flags an outlineWidthMultiplyTexture so the outline geometry
+        // modifier can skip its mask sample when there is none.
         outlineParams = SIMD4<Float>(mtoon.outlineWidthFactor,
                                      mtoon.outlineWidthMode.mtoonRawValue,
                                      mtoon.outlineLightingMixFactor,
-                                     0)
+                                     mtoon.outlineWidthMultiplyTexture == nil ? 0 : 1)
         uvAnimation = SIMD4<Float>(mtoon.uvAnimationScrollXSpeedFactor,
                                    mtoon.uvAnimationScrollYSpeedFactor,
                                    mtoon.uvAnimationRotationSpeedFactor,
@@ -96,18 +96,16 @@ struct MToonMaterialParameters {
                                   mtoon.shadeMultiplyTexture == nil ? 0 : 1,
                                   mtoon.emissiveTexture == nil ? 0 : 1,
                                   mtoon.alphaMode.mtoonRawValue)
-        // y flags an outlineWidthMultiplyTexture so the outline geometry modifier
-        // can skip its mask sample when there is none.
-        normalParameters = SIMD4<Float>(mtoon.normalScale,
-                                        mtoon.outlineWidthMultiplyTexture == nil ? 0 : 1,
-                                        0,
-                                        0)
+        normalParameters = SIMD4<Float>(mtoon.normalScale, 0, 0, 0)
     }
 
-    // UV animation time is read from params.uniforms().time() on the GPU,
-    // so custom.value only carries the light direction.
-    var customValue: SIMD4<Float> {
-        SIMD4<Float>(lightDirection, 0)
+    /// What does not belong in the packed texture: the light direction, which
+    /// changes far too often to rebake rows for, and the outline's offset
+    /// budget, which belongs to the mesh a pass draws rather than to the
+    /// material these rows describe, so it is passed through from wherever the
+    /// loader wrote it. (UV animation time comes from `uniforms().time()`.)
+    func customValue(outlineBudget: Float) -> SIMD4<Float> {
+        SIMD4<Float>(lightDirection, outlineBudget)
     }
 
     mutating func setColor(_ color: SIMD4<Float>,
@@ -143,6 +141,13 @@ struct MToonMaterialParameters {
         case .emissionColor:
             return emissiveFactor
         }
+    }
+
+    /// Leaves the lighting mix (z) and the width-texture flag (w) the material
+    /// was authored with, so an override keeps sampling the authored mask.
+    mutating func setOutline(width: Float, mode: MToonMaterialDescriptor.OutlineWidthMode) {
+        outlineParams.x = width
+        outlineParams.y = mode.mtoonRawValue
     }
 
     mutating func setTextureTransform(scale: SIMD2<Float>,

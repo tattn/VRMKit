@@ -127,8 +127,10 @@ vrmEntity.setMToonAmbientColor(SIMD3<Float>(0.1, 0.1, 0.1))
 Both loaders take a material shader chain: each shader is asked in order, and materials no shader claims render through the built-in Unlit / PBR path.
 
 ```swift
-// The default chain is [MToonShader()]: MToon with outlines.
-let noOutlines = try VRMEntityLoader(named: "model.vrm", shaders: [MToonShader(isOutlineEnabled: false)])
+// The default chain is [MToonShader()]: MToon with authored outlines. Use
+// .always for a hidden outline pass on every MToon material, so any of them
+// can be outlined at runtime.
+let noOutlines = try VRMEntityLoader(named: "model.vrm", shaders: [MToonShader(outlinePass: .never)])
 let noMToon = try VRMEntityLoader(named: "model.vrm", shaders: [])
 
 // Toon-shade a plain glTF, or a VRM whose materials are not MToon.
@@ -152,6 +154,25 @@ let custom = try VRMEntityLoader(withData: data, shaders: [MyShader(), MToonShad
 ```
 
 `GLTFShadedMaterial` also carries extra render passes (MToon draws its outline as one) and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. The `GLTFMaterialShader` documentation comments cover both, along with what a shader may assume about the mesh it draws.
+
+A pass can be built hidden and shown later with `entity.setPassEnabled(_:named:)`, which is how MToon outlines double as a selection highlight. The override outranks the authored values — a VRM expression bound to `outlineColor` included — and releasing it puts them back.
+
+```swift
+entity.setMToonOutlineOverride(
+    MToonOutlineOverride(color: SIMD3<Float>(0, 0.5, 1),
+                         width: 0.004,          // a fraction of the screen height
+                         mode: .screenCoordinates)
+)
+entity.setMToonOutlineOverride(nil) // back to the authored outlines
+```
+
+The override also takes a material set, so part of a model — a selected node's subtree, say — can be outlined on its own. `materialIndices(under:)` answers with the materials any model entity under a node renders with; the unit is the glTF material, so one shared beyond the subtree is outlined everywhere it draws. Disjoint selections compose, and releasing one leaves the others standing.
+
+```swift
+let selection = entity.materialIndices(under: selectedNode)
+entity.setMToonOutlineOverride(highlight, forMaterials: selection)
+entity.setMToonOutlineOverride(nil, forMaterials: selection) // release just those
+```
 
 </details>
 
@@ -186,6 +207,8 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 - Blend shapes morph `POSITION` only, since RealityKit blend shapes have no `NORMAL` / `TANGENT` channel.
 - Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints; the further sets a glTF may carry are ignored.
 - MToon's `renderQueueOffsetNumber` is parsed but ignored, because RealityKit has no material-level draw-order hook. (`transparentWithZWrite` is supported through `CustomMaterial.writesDepth`.)
+- MToon's outline is drawn past the mesh's bounding box, which RealityKit culls by, so the outline pass is given a culling margin of the mesh's radius and its vertex offset is clamped to that same margin. An outline asking for more — a screen-space width far from the camera, say — caps out there rather than growing further.
+- MToon's outline takes its lit color from the runtime light color rather than from the surface's fully evaluated shading, which RealityKit does not expose to a `CustomMaterial`.
 
 </details>
 
@@ -193,9 +216,8 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 
 # ToDo
 
-- [ ] Improve rendering quality
 - [ ] Animation support (vrma)
-- [ ] VRM editing function
+- [ ] VRM export
 
 # Contributing
 

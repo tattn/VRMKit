@@ -381,16 +381,22 @@ struct MaterialShaderChainTests {
         let style = MToonConversionStyle(outlineWidthFactor: 0.002)
         let entity = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
                                           shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
+        let passName = MToonShader.outlinePassName
+        func outlines(in root: Entity) -> [ModelEntity] {
+            root.modelEntitiesInHierarchy.filter {
+                $0.components[GLTFMaterialPassComponent.self]?.name == passName
+            }
+        }
         // Named after the mesh it belongs to, not after the unnamed model entity.
-        let outline = try #require(entity.modelEntitiesInHierarchy.first { $0.name.hasSuffix("_outline") })
+        let outline = try #require(outlines(in: entity).first)
         let mesh = try #require(outline.parent?.parent)
         #expect(!mesh.name.isEmpty)
-        #expect(outline.name == "\(mesh.name)_outline")
+        #expect(outline.name == "\(mesh.name)_\(passName)")
         #expect(outline.parent?.name == "\(mesh.name)_container")
 
         let noOutline = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
                                              shaders: [MToonShader(source: .convertAll)]).loadEntity()
-        #expect(!noOutline.modelEntitiesInHierarchy.contains { $0.name.hasSuffix("_outline") })
+        #expect(outlines(in: noOutline).isEmpty)
     }
 
     /// `.convertAll` keeps the authored values of a material that already

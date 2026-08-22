@@ -24,8 +24,10 @@ struct VRM1RealityKitTests {
         #expect(customMaterial.normal.texture != nil)
         #expect(customMaterial.roughness.texture != nil)
         #expect(customMaterial.emissiveColor.texture != nil)
-        #expect(customMaterial.clearcoat.texture != nil)
         #expect(customMaterial.clearcoatRoughness.texture != nil)
+        // The outline-width map rides on clearcoat, which only the outline
+        // pass's geometry modifier samples, so the main material leaves it free.
+        #expect(customMaterial.clearcoat.texture == nil)
 
         let direction = MToonMaterialParameters.defaultLightDirection
         #expect(customMaterial.custom.value.isApproximatelyEqual(to: SIMD4<Float>(direction, 0)))
@@ -105,8 +107,8 @@ struct VRM1RealityKitTests {
         // Seed-san material 0 ("hair") has an outlineWidthMultiplyTexture; 1
         // ("huku_bake") does not, so the flag must differ between them.
         let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        #expect(try mtoonParameters(in: entity, materialIndex: 0).normalParameters.y == 1)
-        #expect(try mtoonParameters(in: entity, materialIndex: 1).normalParameters.y == 0)
+        #expect(try mtoonParameters(in: entity, materialIndex: 0).outlineParams.w == 1)
+        #expect(try mtoonParameters(in: entity, materialIndex: 1).outlineParams.w == 0)
     }
 
     @Test
@@ -119,14 +121,18 @@ struct VRM1RealityKitTests {
             mtoon["uvAnimationMaskTexture"] = ["index": textureIndex]
         }
 
-        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let material = try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial)
+        let loader = try VRMEntityLoader(withData: modified)
+        let shaded = try loader.shadedMaterial(withMaterialIndex: 0)
+        let material = try #require(shaded.material as? CustomMaterial)
         let rawTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .raw)
         let colorTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .color)
 
         #expect(material.specular.texture != nil)
-        #expect(material.clearcoat.texture != nil)
         #expect(material.ambientOcclusion.texture != nil)
+        // The outline-width map is sampled by the outline pass alone, so that is
+        // the material carrying it.
+        let outline = try #require(shaded.additionalPasses.first?.material as? CustomMaterial)
+        #expect(outline.clearcoat.texture != nil)
         #expect(MToonTextureSlot.shadingShift.semantic == .raw)
         #expect(MToonTextureSlot.outlineWidth.semantic == .raw)
         #expect(MToonTextureSlot.uvAnimationMask.semantic == .raw)
@@ -1165,12 +1171,16 @@ struct VRM1RealityKitTests {
         vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
 
         // Every MToon material is rebound, not just the first one found, and
-        // each keeps the parameter texture the shader samples.
+        // each keeps the parameter texture the shader samples. Only xyz carries
+        // the direction; w is the outline pass's bounds budget, left as it is.
         var checkedMaterials = 0
         for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
             guard let model = modelEntity.components[ModelComponent.self] else { continue }
+            let isOutlinePass = modelEntity.components.has(GLTFMaterialPassComponent.self)
             for material in model.materials.compactMap({ $0 as? CustomMaterial }) {
-                #expect(material.custom.value.isApproximatelyEqual(to: SIMD4<Float>(0, 0, -1, 0)))
+                let value = material.custom.value
+                #expect(SIMD3<Float>(value.x, value.y, value.z).isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
+                #expect(isOutlinePass ? value.w > 0 : value.w == 0)
                 #expect(material.custom.texture != nil)
                 checkedMaterials += 1
             }

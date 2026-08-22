@@ -536,16 +536,22 @@ void mtoonOutlineSurface(realitykit::surface_parameters params)
 }
 
 // RealityKit's geometry_parameters exposes projection matrices but no viewport
-// height, so screen-coordinate outline width is treated as a fraction of
-// normalized screen height rather than a pixel count.
-float realityKitApproximateScreenOutlineWidth(realitykit::geometry_parameters params, float width, float3 modelNormal)
+// size, so a screen-coordinate width is a fraction of the normalized screen
+// height rather than a pixel count.
+//
+// Returns the distance covering that fraction, in view space, which is also the
+// world-space distance it is applied as: a camera does not scale.
+float realityKitApproximateScreenOutlineWidth(realitykit::geometry_parameters params, float width, float3 worldDirection)
 {
     float4x4 modelToView = params.uniforms().model_to_view();
     float4x4 viewToProjection = params.uniforms().view_to_projection();
     float4 viewPosition = modelToView * float4(params.geometry().model_position(), 1.0);
-    float3 viewNormal = normalize((modelToView * float4(modelNormal, 0.0)).xyz);
+    // Measured along the direction the vertex actually moves. A normal put
+    // through model_to_view instead would skew under a non-uniform scale.
+    float3 viewDirection = normalize((modelToView * (params.uniforms().world_to_model()
+                                                     * float4(worldDirection, 0.0))).xyz);
     float4 clipPosition = viewToProjection * viewPosition;
-    float4 offsetClipPosition = viewToProjection * (viewPosition + float4(viewNormal, 0.0));
+    float4 offsetClipPosition = viewToProjection * (viewPosition + float4(viewDirection, 0.0));
     float clipW = clipPosition.w;
     if (abs(clipW) < mtoonEpsilon) {
         clipW = clipW < 0.0 ? -mtoonEpsilon : mtoonEpsilon;
@@ -554,25 +560,56 @@ float realityKitApproximateScreenOutlineWidth(realitykit::geometry_parameters pa
     if (abs(offsetClipW) < mtoonEpsilon) {
         offsetClipW = offsetClipW < 0.0 ? -mtoonEpsilon : mtoonEpsilon;
     }
-    float2 ndc = clipPosition.xy / clipW;
-    float2 offsetNdc = offsetClipPosition.xy / offsetClipW;
-    float ndcPerModelUnit = length(offsetNdc - ndc);
-    if (ndcPerModelUnit < mtoonEpsilon) {
+    float2 deltaNdc = offsetClipPosition.xy / offsetClipW - clipPosition.xy / clipW;
+    // NDC x spans the viewport's width and y its height, so x is converted into
+    // y's units: MToon measures the width against the screen height. Both
+    // projections carry the aspect ratio as m[1][1] / m[0][0].
+    float projectionX = viewToProjection[0][0];
+    float projectionY = viewToProjection[1][1];
+    if (abs(projectionX) > mtoonEpsilon) {
+        deltaNdc.x *= abs(projectionY / projectionX);
+    }
+    float ndcPerViewUnit = length(deltaNdc);
+    if (ndcPerViewUnit < mtoonEpsilon) {
         return 0.0;
     }
-    return (width * 2.0) / ndcPerModelUnit;
+    // NDC spans 2 over the screen height, so a width of 1 is the whole height.
+    return (width * 2.0) / ndcPerViewUnit;
+}
+
+// custom.value.w is the room the loader granted the pass outside the mesh's
+// bounding box, in the mesh's own space. Staying inside it is what stops a wide
+// outline -- a screen-coordinate one far from the camera above all -- from
+// being culled along with the box it has left. 0 means no budget was written.
+float mtoonBudgetedOutlineWidth(realitykit::geometry_parameters params, float width, float3 worldDirection)
+{
+    float budget = params.uniforms().custom_parameter().w;
+    if (budget <= 0.0) {
+        return width;
+    }
+    // The offset is a world distance and the budget a model-space one, so the
+    // direction is measured back in model space to compare the two.
+    float modelLength = metal::length((params.uniforms().world_to_model() * float4(worldDirection, 0.0)).xyz);
+    if (modelLength < mtoonEpsilon) {
+        return width;
+    }
+    return metal::min(width, budget / modelLength);
 }
 
 [[visible]]
 void mtoonOutlineGeometry(realitykit::geometry_parameters params)
 {
     half4 outlineParams = mtoonParameter(params.textures(), mtoonRowOutlineParams);
+    // outlineWidthMode "none" draws no outline whatever width the material
+    // carries, so a pass built for it stays empty even when shown.
+    if (outlineParams.y < 0.5h) {
+        return;
+    }
 
     // Without an outlineWidthMultiplyTexture the mask is a 1x1 white fallback,
     // so skip the UV work and the fetch entirely.
     float widthMask = 1.0;
-    half4 normalParameters = mtoonParameter(params.textures(), mtoonRowNormalParameters);
-    if (normalParameters.y > 0.5h) {
+    if (outlineParams.w > 0.5h) {
         half4 uvTransform = mtoonParameter(params.textures(), mtoonRowUvTransform);
         half4 uvTransformRotation = mtoonParameter(params.textures(), mtoonRowUvTransformRotation);
         half4 uvAnimation = mtoonParameter(params.textures(), mtoonRowUvAnimation);
@@ -595,20 +632,17 @@ void mtoonOutlineGeometry(realitykit::geometry_parameters params)
         widthMask = float(mtoonVertexSample(params.textures().clearcoat(), widthUV, outlineWidthSampler).g);
     }
     float width = max(0.0, float(outlineParams.x)) * widthMask;
-    float3 modelNormal = normalize(params.geometry().normal());
-    if (outlineParams.y > 1.5h) {
-        // Screen coordinates: the width is resolved into a model-space offset.
-        params.geometry().set_model_position_offset(
-            modelNormal * realityKitApproximateScreenOutlineWidth(params, width, modelNormal));
-        return;
-    }
-    // World coordinates: MToon defines the width as a distance in meters, so it
-    // must not inherit the entity's scale. Offsetting in world space keeps the
-    // outline the same thickness under any (including non-uniform) scale.
-    float3 worldNormal = params.uniforms().normal_to_world() * modelNormal;
+    // Offset in world space either way: MToon's widths are meters or a fraction
+    // of the screen, and a model-space offset would scale both by the entity's
+    // (possibly non-uniform) scale on top.
+    float3 worldNormal = params.uniforms().normal_to_world() * normalize(params.geometry().normal());
     float worldNormalLength = length(worldNormal);
     if (worldNormalLength < mtoonEpsilon) {
         return;
     }
-    params.geometry().set_world_position_offset(worldNormal * (width / worldNormalLength));
+    float3 worldDirection = worldNormal / worldNormalLength;
+    if (outlineParams.y > 1.5h) {
+        width = realityKitApproximateScreenOutlineWidth(params, width, worldDirection);
+    }
+    params.geometry().set_world_position_offset(worldDirection * mtoonBudgetedOutlineWidth(params, width, worldDirection));
 }

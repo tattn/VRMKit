@@ -597,12 +597,35 @@ public class GLTFEntityLoader {
             for pass in shaded.additionalPasses {
                 let passEntity = makeEntity(materials: [pass.material])
                 passEntity.name = "\(meshName)_\(pass.name)"
+                passEntity.components.set(GLTFMaterialPassComponent(name: pass.name,
+                                                                   isInitiallyEnabled: pass.isInitiallyEnabled))
+                passEntity.isEnabled = pass.isInitiallyEnabled
+                if let applyBoundsBudget = pass.applyBoundsBudget {
+                    grantBoundsBudget(to: passEntity, mesh: mesh, applying: applyBoundsBudget)
+                }
                 container.addChild(passEntity)
             }
             container.addChild(modelEntity)
             return container
         }
         return modelEntity
+    }
+
+    /// Widens the bounding box RealityKit culls `passEntity` by, so a pass whose
+    /// geometry modifier pushes vertices outward is not culled while part of it
+    /// is still on screen, and tells the modifier how much room it got.
+    ///
+    /// The mesh's own radius stands in for a budget nothing else can supply:
+    /// how far the vertices travel is a world distance or a screen fraction,
+    /// and neither converts into mesh space before the entity is in a scene.
+    private func grantBoundsBudget(to passEntity: ModelEntity,
+                                   mesh: MeshResource,
+                                   applying applyBudget: (any Material, Float) -> any Material) {
+        guard var component = passEntity.components[ModelComponent.self] else { return }
+        let budget = mesh.bounds.boundingRadius
+        component.boundsMargin = budget
+        component.materials = component.materials.map { applyBudget($0, budget) }
+        passEntity.components.set(component)
     }
 
     /// The UV set the meshes rendering `index` carry, and whether the material's
@@ -618,15 +641,12 @@ public class GLTFEntityLoader {
         return resolved
     }
 
-    /// The UV set the meshes rendering `index` feed RealityKit, decided by the
-    /// core glTF material. A shader sampling any other set renders through this
-    /// one, since the mesh carries no second UV channel to sample.
+    /// A shader sampling any other set renders through this one.
     func selectedTexCoord(withMaterialIndex index: Int) -> Int {
         resolvedTexCoord(withMaterialIndex: index).selected
     }
 
-    /// The UV set this primitive's mesh feeds RealityKit. Custom meshes carry a
-    /// single UV channel, so the material's first UV-accessed texture decides it.
+    /// The attribute this primitive's mesh reads its one UV channel from.
     private func texcoordAttributeKey(forMaterialIndex materialIndex: Int?,
                                       attributes: [GLTF.Mesh.Primitive.AttributeKey: Int]) -> GLTF.Mesh.Primitive.AttributeKey {
         guard let materialIndex else { return .TEXCOORD_0 }
@@ -1088,7 +1108,6 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// A copy of `image` with its pixels put through `rewrite`.
     private func rewritingPixels(of image: CGImage,
                                  _ rewrite: (UnsafeMutablePointer<UInt8>, Int) -> Void) throws -> CGImage {
         try withRGBA8Pixels(of: image) { context, pixels, pixelCount in
