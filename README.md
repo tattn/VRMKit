@@ -13,10 +13,7 @@
 
 <br />
 
-<div>
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/demo.jpg" width="300px" alt="demo" />
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/demo2.gif" width="300px" alt="demo" />
-</div>
+https://github.com/user-attachments/assets/5bf25ec5-29e7-4e74-a270-0012aac7a56a
 
 For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 
@@ -89,9 +86,7 @@ struct ContentView: View {
 
 ## Expressions / blend shapes
 
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" />
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" />
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
+<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
 
 ```swift
 // VRM 1.0
@@ -114,7 +109,7 @@ vrmEntity.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
 
 ## VRM animation (.vrma)
 
-A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike. Humanoid bone rotations, the hips motion scaled to the model's size, and expression tracks all play. An optional bone the model lacks, such as `upperChest`, hands its rotation to the bones that stand in for it. Look-at tracks are not applied yet.
+A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike. Humanoid bone rotations, the hips motion scaled to the model's size, and expression tracks all play. An optional bone the model lacks, such as `upperChest`, hands its rotation to the bones that stand in for it.
 
 ```swift
 let animation = try VRMAnimation(named: "walk.vrma")
