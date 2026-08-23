@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#material
 
@@ -11,8 +12,8 @@ extension GLTF {
         public let normalTexture: NormalTextureInfo?
         public let occlusionTexture: OcclusionTextureInfo?
         public let emissiveTexture: TextureInfo?
-        let _emissiveFactor: Color3?
-        public var emissiveFactor: Color3 { return _emissiveFactor ?? .black }
+        let _emissiveFactor: SIMD3<Float>?
+        public var emissiveFactor: SIMD3<Float> { _emissiveFactor ?? .zero }
         let _alphaMode: AlphaMode?
         public var alphaMode: AlphaMode { return _alphaMode ?? .OPAQUE }
         let _alphaCutoff: Float?
@@ -34,8 +35,8 @@ extension GLTF {
         }
 
         public struct PbrMetallicRoughness: Codable {
-            let _baseColorFactor: Color4?
-            public var baseColorFactor: Color4 { return _baseColorFactor ?? .init(r: 1, g: 1, b: 1, a: 1) }
+            let _baseColorFactor: SIMD4<Float>?
+            public var baseColorFactor: SIMD4<Float> { _baseColorFactor ?? SIMD4<Float>(repeating: 1) }
             public let baseColorTexture: TextureInfo?
             let _metallicFactor: Float?
             public var metallicFactor: Float { return _metallicFactor ?? 1 }
@@ -89,7 +90,7 @@ extension GLTF {
             }
         }
 
-        public enum AlphaMode: String, Codable {
+        public enum AlphaMode: String, Codable, Sendable {
             case OPAQUE
             case MASK
             case BLEND
@@ -151,11 +152,9 @@ extension GLTF {
                     public let extras: CodableAny?
                 }
                 
-                public enum MaterialsMToonOutlineWidthMode: String, Codable {
-                    case none
-                    case worldCoordinates
-                    case screenCoordinates
-                }
+                /// The outline mode is the one every layer of this package
+                /// speaks, so a decoded material and a written one cannot drift.
+                public typealias MaterialsMToonOutlineWidthMode = MToonOutlineWidthMode
             }
         }
     }

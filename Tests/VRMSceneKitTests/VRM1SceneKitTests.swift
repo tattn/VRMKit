@@ -19,7 +19,7 @@ struct VRM1SceneLoaderTests {
         guard case .v1(let vrm1) = vrm else {
             throw VRMError.dataInconsistent("Expected VRM1")
         }
-        let gltf = vrm1.gltf.jsonData
+        let gltf = vrm1.document.gltf
 
         #expect(vrm1.meta.name == "Seed-san")
         #expect(gltf.asset.version == "2.0")
@@ -31,17 +31,15 @@ struct VRM1SceneLoaderTests {
         let scenes = try #require(gltf.scenes, "GLTF scenes should not be nil")
         #expect(scenes.map(\.nodes).map(\.?.count) == [7])
 
-        let loadedThumbnail = try vrmLoader.loadThumbnail()
-        let thumbnail = try #require(loadedThumbnail, "Thumbnail should be loadable and not nil.")
+        let thumbnail = try vrmLoader.loadThumbnail()
         #expect(thumbnail.size == CGSize(width: 512, height: 512))
     }
 
     @Test
     func testBufferAccess() throws {
         let vrmLoader = try vrmLoader()
-        let result = try vrmLoader.bufferView(withBufferViewIndex: 0)
-        #expect(result.stride == nil)
-        #expect(result.bufferView.count == 93840)
+        let result = try vrmLoader.document.bufferViewData(at: 0)
+        #expect(result.data.count == 93840)
     }
 
     @Test
@@ -57,7 +55,6 @@ struct VRM1SceneLoaderTests {
 
         vrmNode.setExpression(value: 0.42, for: .preset(.aa))
         #expect(abs(vrmNode.expression(for: .preset(.aa)) - 0.42) < 0.001)
-        #expect(abs(vrmNode.blendShape(for: .preset(.a)) - 0.42) < 0.001)
     }
 
     @Test
@@ -77,7 +74,7 @@ struct VRM1SceneLoaderTests {
     func testVRM1MToonMaterialIsLoadedFromExtension() throws {
         let vrmLoader = try vrmLoader()
         let material = try vrmLoader.material(withMaterialIndex: 0)
-        let gltfMaterial = try #require(vrmLoader.vrm.gltf.jsonData.materials?[0])
+        let gltfMaterial = try #require(vrmLoader.vrm.document.gltf.materials?[0])
 
         #expect(material.name == gltfMaterial.name)
         #expect(material.lightingModel == .constant)

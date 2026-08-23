@@ -40,11 +40,7 @@ package struct PackedAccessor {
     package func unsignedElements<Element>(_ type: GLTF.Accessor.`Type`,
                                            make: (_ component: (Int) -> UInt32) -> Element) throws -> [Element] {
         try validate(type)
-        guard let reader = UnsignedComponentReader(componentType) else {
-            throw VRMError._dataInconsistent(
-                "expected an unsigned integer accessor, got \(componentType) components"
-            )
-        }
+        let reader = try unsignedReader()
         return elements { base, elementOffset in
             make { component in
                 reader.load(base: base, offset: elementOffset + bytesPerComponent * component)
@@ -52,9 +48,22 @@ package struct PackedAccessor {
         }
     }
 
+    /// The packed bytes of a `type` accessor, checking that its components are
+    /// the unsigned integers glTF requires of an index or a joint reference.
+    package func unsignedData(_ type: GLTF.Accessor.`Type`) throws -> Data {
+        try validate(type)
+        _ = try unsignedReader()
+        return data
+    }
+
     /// Every component of every element of a `type` accessor, in order.
     package func floatComponents(_ type: GLTF.Accessor.`Type`) throws -> [Float] {
         try validate(type)
+        return floatComponents()
+    }
+
+    /// The same, whatever element type the accessor holds.
+    package func floatComponents() -> [Float] {
         var result = [Float](repeating: 0, count: count * componentsPerElement)
         data.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return }
@@ -63,6 +72,11 @@ package struct PackedAccessor {
             }
         }
         return result
+    }
+
+    private func unsignedReader() throws -> UnsignedComponentReader {
+        try UnsignedComponentReader(componentType)
+            ??? ._dataInconsistent("expected an unsigned integer accessor, got \(componentType) components")
     }
 
     private func validate(_ type: GLTF.Accessor.`Type`) throws {
@@ -111,11 +125,6 @@ package final class PackedAccessorCache {
                                         type: GLTF.Accessor.`Type`,
                                         make: (_ component: (Int) -> Float) -> Element) throws -> [Element] {
         try accessor(at: index).floatElements(type, make: make)
-    }
-
-    /// Every component of a `type` accessor, in order.
-    package func floatComponents(at index: Int, type: GLTF.Accessor.`Type`) throws -> [Float] {
-        try accessor(at: index).floatComponents(type)
     }
 }
 

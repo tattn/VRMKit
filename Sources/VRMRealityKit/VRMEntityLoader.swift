@@ -15,44 +15,35 @@ public class VRMEntityLoader: GLTFEntityLoader {
     public let vrm: VRM
 
     public init(vrm: VRM,
-                rootDirectory: URL? = nil,
                 shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) {
         self.vrm = vrm
-        super.init(document: GLTFDocument(binary: vrm.gltf, rootDirectory: rootDirectory),
-                   shaders: shaders)
-        entityName = vrm.meta.title
+        super.init(document: vrm.document, shaders: shaders)
+        entityName = vrm.name
     }
 
-    /// Loads a VRM from a file URL.
+    /// Loads a VRM from a file URL. External resources resolve relative to the
+    /// file's directory.
     ///
     /// - Parameters:
     ///   - url: VRM file location.
-    ///   - rootDirectory: Optional base directory for external glTF resources.
     ///   - shaders: The material shader chain; see ``GLTFMaterialShader``.
     public convenience init(withURL url: URL,
-                            rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(vrm: try VRMLoader().load(withURL: url),
-                  rootDirectory: rootDirectory,
-                  shaders: shaders)
+        self.init(vrm: try VRM(withURL: url), shaders: shaders)
     }
 
     /// Loads a bundled VRM resource.
     public convenience init(named: String,
-                            rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(vrm: try VRMLoader().load(named: named),
-                  rootDirectory: rootDirectory,
-                  shaders: shaders)
+        self.init(vrm: try VRM(named: named), shaders: shaders)
     }
 
-    /// Loads a VRM from in-memory data.
+    /// Loads a VRM from in-memory data. `rootDirectory` is the base directory
+    /// for external glTF resources.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(vrm: try VRMLoader().load(withData: data),
-                  rootDirectory: rootDirectory,
-                  shaders: shaders)
+        self.init(vrm: try VRM(data: data, rootDirectory: rootDirectory), shaders: shaders)
     }
 
     /// Unlike the generic loader, a VRM without a default scene still loads: a
@@ -86,7 +77,8 @@ public class VRMEntityLoader: GLTFEntityLoader {
     /// The VRM extensions this loader implements, on top of the generic glTF ones.
     override public var supportedRequiredExtensions: Set<String> {
         super.supportedRequiredExtensions.union([
-            "VRM", "VRMC_vrm", "VRMC_springBone", "VRMC_node_constraint"
+            GLTFExtension.vrm0.rawValue, GLTFExtension.vrm1.rawValue,
+            GLTFExtension.springBone.rawValue, GLTFExtension.nodeConstraint.rawValue,
         ])
     }
 
@@ -146,11 +138,8 @@ public class VRMEntityLoader: GLTFEntityLoader {
         }
     }
 
-    override func vrm0MaterialProperty(for gltfMaterial: GLTF.Material) -> VRM0.MaterialProperty? {
-        guard case .v0(let vrm0) = vrm, let name = gltfMaterial.name else {
-            return nil
-        }
-        return vrm0.materialPropertyNameMap[name]
+    override func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {
+        vrm.vrm0MaterialProperty(at: index)
     }
 }
 #endif

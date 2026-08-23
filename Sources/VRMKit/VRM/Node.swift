@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#node
 
@@ -12,17 +13,17 @@ extension GLTF {
             return self._matrix ?? .identity
         }
         public let mesh: Int?
-        let _rotation: Vector4?
-        public var rotation: Vector4 {
-            return self._rotation ?? .identity
+        let _rotation: SIMD4<Float>?
+        public var rotation: SIMD4<Float> {
+            _rotation ?? SIMD4<Float>(0, 0, 0, 1)
         }
-        let _scale: Vector3?
-        public var scale: Vector3 {
-            return self._scale ?? .one
+        let _scale: SIMD3<Float>?
+        public var scale: SIMD3<Float> {
+            _scale ?? SIMD3<Float>(repeating: 1)
         }
-        let _translation: Vector3?
-        public var translation: Vector3 {
-            return self._translation ?? .zero
+        let _translation: SIMD3<Float>?
+        public var translation: SIMD3<Float> {
+            _translation ?? .zero
         }
         public let weights: [Float]?
         public let name: String?

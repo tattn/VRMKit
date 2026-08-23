@@ -1,4 +1,5 @@
 import simd
+import VRMKit
 
 /// An outline drawn in place of the one a model was authored with, for as long
 /// as it is set — a selection highlight being the case it exists for.
@@ -11,7 +12,8 @@ public struct MToonOutlineOverride: Sendable, Equatable {
     public var color: SIMD3<Float>
     /// Meters for ``MToonOutlineWidthMode/worldCoordinates``, a fraction of the
     /// screen height for ``MToonOutlineWidthMode/screenCoordinates``. Zero or
-    /// less outlines nothing: the passes are hidden rather than shown.
+    /// less outlines nothing, as does ``MToonOutlineWidthMode/none``: the
+    /// passes are hidden rather than shown.
     public var width: Float
     public var mode: MToonOutlineWidthMode
 

@@ -35,16 +35,6 @@ enum ExampleExpression: String, CaseIterable {
     case sorrow
     case fun
 
-    var blendShapePreset: BlendShapePreset {
-        switch self {
-        case .neutral: return .neutral
-        case .joy: return .joy
-        case .angry: return .angry
-        case .sorrow: return .sorrow
-        case .fun: return .fun
-        }
-    }
-
     var expressionPreset: ExpressionPreset {
         switch self {
         case .neutral: return .neutral
@@ -73,24 +63,14 @@ enum ExampleExpression: String, CaseIterable {
 
 extension VRMNode {
     func setExampleExpression(_ expression: ExampleExpression, value: CGFloat) {
-        switch vrm {
-        case .v0:
-            setBlendShape(value: value, for: .preset(expression.blendShapePreset))
-        case .v1:
-            setExpression(value: value, for: .preset(expression.expressionPreset))
-        }
+        setExpression(value: value, for: .preset(expression.expressionPreset))
     }
 }
 
 #if canImport(RealityKit)
 extension VRMEntity {
     func setExampleExpression(_ expression: ExampleExpression, value: CGFloat) {
-        switch vrm {
-        case .v0:
-            setBlendShape(value: value, for: .preset(expression.blendShapePreset))
-        case .v1:
-            setExpression(value: value, for: .preset(expression.expressionPreset))
-        }
+        setExpression(value: value, for: .preset(expression.expressionPreset))
     }
 }
 #endif

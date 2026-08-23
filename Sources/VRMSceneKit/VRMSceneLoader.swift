@@ -7,16 +7,20 @@ import SpriteKit
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 open class VRMSceneLoader {
     let vrm: VRM
-    private let gltf: GLTF
+    let document: GLTFDocument
+    private var gltf: GLTF { document.gltf }
     private let sceneData: SceneData
+    /// Accessors expanded once and shared, and where they are validated.
+    private let accessors: PackedAccessorCache
+    /// The document's node parents, built and validated once by
+    /// ``validateStructure()``.
+    private var nodeHierarchy: GLTFNodeHierarchy?
 
-    private var rootDirectory: URL? = nil
-
-    public init(vrm: VRM, rootDirectory: URL? = nil) {
+    public init(vrm: VRM) {
         self.vrm = vrm
-        self.gltf = vrm.gltf.jsonData
-        self.rootDirectory = rootDirectory
-        self.sceneData = SceneData(vrm: gltf)
+        self.document = vrm.document
+        self.sceneData = SceneData(vrm: vrm.document.gltf)
+        self.accessors = PackedAccessorCache(document: vrm.document)
     }
 
     public func loadScene() throws -> VRMScene {
@@ -25,9 +29,11 @@ open class VRMSceneLoader {
 
     public func loadScene(withSceneIndex index: Int) throws -> VRMScene {
         if let cache = try sceneData.load(\.scenes, index: index) { return cache }
+        let hierarchy = try validateStructure()
         let gltfScene = try gltf.load(\.scenes, at: index)
-        
+
         let vrmNode = VRMNode(vrm: vrm)
+        try hierarchy.validateSceneRoots(gltfScene.nodes ?? [], sceneIndex: index)
         for node in gltfScene.nodes ?? [] {
             vrmNode.addChildNode(try self.node(withNodeIndex: node))
         }
@@ -48,11 +54,21 @@ open class VRMSceneLoader {
         return try image(withImageIndex: imageIndex)
     }
 
+    /// Validates, once per document, the node graph and skins the rest of the
+    /// loader takes for granted. Building a node recurses into its children and
+    /// reparents whatever it is handed, so a cyclic or multiply-parented
+    /// hierarchy has to be rejected before the first node is built.
+    private func validateStructure() throws -> GLTFNodeHierarchy {
+        if let nodeHierarchy { return nodeHierarchy }
+        let hierarchy = try GLTFNodeHierarchy.validatingStructure(of: gltf)
+        nodeHierarchy = hierarchy
+        return hierarchy
+    }
+
     func node(withNodeIndex index: Int) throws -> SCNNode {
         if let cache = try sceneData.load(\.nodes, index: index) { return cache }
         let gltfNode = try gltf.load(\.nodes, at: index)
-        let gltfSkins = try? gltf.load(\.skins)
-        let scnNode = try SCNNode(node: gltfNode, skins: gltfSkins, loader: self)
+        let scnNode = try SCNNode(node: gltfNode, loader: self)
         sceneData.nodes[index] = scnNode
         return scnNode
     }
@@ -65,59 +81,47 @@ open class VRMSceneLoader {
         return camera
     }
 
+    /// A node for the mesh at `index`. Every reference gets its own, an
+    /// `SCNNode` belonging to one parent; the geometry sources, materials and
+    /// textures underneath are still shared, which is where the weight is.
     func mesh(withMeshIndex index: Int) throws -> SCNNode {
-        if let cache = try sceneData.load(\.meshes, index: index) { return cache }
         let gltfMesh = try gltf.load(\.meshes, at: index)
         let mesh = try SCNNode(mesh: gltfMesh, loader: self)
-        sceneData.meshes[index] = mesh
+        sceneData.meshes[index, default: []].append(mesh)
         return mesh
     }
 
     func attributes(_ attributes: [GLTF.Mesh.Primitive.AttributeKey: Int]) throws -> [SCNGeometrySource] {
         return try attributes.compactMap { attribute, index in
             guard attribute != .COLOR_0 else { return nil } // FIXME
-            if let cache = try sceneData.load(\.accessors, index: index) as? SCNGeometrySource { return cache }
-            let gltfAccessor = try gltf.load(\.accessors, at: index)
-            let geometrySource = try SCNGeometrySource(accessor: gltfAccessor, semantic: semantic(of: attribute), loader: self)
-            sceneData.accessors[index] = geometrySource
-            return geometrySource
+            let key = SceneData.GeometrySourceKey(accessor: index, semantic: semantic(of: attribute))
+            if let cache = sceneData.geometrySources[key] { return cache }
+            let source = SCNGeometrySource(accessor: try accessors.accessor(at: index), semantic: key.semantic)
+            sceneData.geometrySources[key] = source
+            return source
         }
     }
 
+    /// Not cached: an element carries the primitive mode as well as the
+    /// accessor, and building one off an accessor already expanded is cheap.
     func indexAccessor(withAccessorIndex index: Int, mode: GLTF.Mesh.Primitive.Mode) throws -> SCNGeometryElement {
-        if let cache = try sceneData.load(\.accessors, index: index) as? SCNGeometryElement { return cache }
-        let gltfAccessor = try gltf.load(\.accessors, at: index)
-        let geometryElement = try SCNGeometryElement(accessor: gltfAccessor, mode: mode, loader: self)
-        sceneData.accessors[index] = geometryElement
-        return geometryElement
+        try SCNGeometryElement(accessor: try accessors.accessor(at: index), mode: mode)
     }
 
     func inverseBindMatrix(withAccessorIndex index: Int) throws -> [InverseBindMatrix] {
-        if let cache = try sceneData.load(\.accessors, index: index) as? [InverseBindMatrix] { return cache }
-        let gltfAccessor = try gltf.load(\.accessors, at: index)
-        let ibm = try [InverseBindMatrix](accessor: gltfAccessor, loader: self)
-        sceneData.accessors[index] = ibm
-        return ibm
+        try [InverseBindMatrix](accessor: try accessors.accessor(at: index))
     }
 
-    func skin(withSkinIndex index: Int,
-              primitiveGeometry: SCNGeometry,
+    func skin(withSkinIndex index: Int) throws -> GLTF.Skin {
+        try gltf.load(\.skins, at: index)
+    }
+
+    /// An `SCNSkinner` binds one geometry, so every primitive gets its own even
+    /// where they share a glTF skin.
+    func skin(primitiveGeometry: SCNGeometry,
               bones: [SCNNode],
               boneInverseBindTransform ibm: [InverseBindMatrix]?) throws -> SCNSkinner {
-        //        if let cache = try sceneData.load(\.skins, index: index) { return cache } // FIXME:
-        let skinner = try SCNSkinner(primitiveGeometry: primitiveGeometry, bones: bones, boneInverseBindTransform: ibm)
-        sceneData.skins [index] = skinner
-        return skinner
-    }
-
-    func bufferView(withBufferViewIndex index: Int) throws -> (bufferView: Data, stride: Int?) {
-        if let cache = try sceneData.load(\.bufferViews, index: index) {
-            let gltfBufferView = try gltf.load(\.bufferViews, at: index)
-            return (cache, gltfBufferView.byteStride)
-        }
-        let result = try vrm.gltf.bufferViewData(at: index, relativeTo: rootDirectory)
-        sceneData.bufferViews[index] = result.data
-        return (result.data, result.stride)
+        try SCNSkinner(primitiveGeometry: primitiveGeometry, bones: bones, boneInverseBindTransform: ibm)
     }
 
     func material(withMaterialIndex index: Int) throws -> SCNMaterial {
@@ -127,36 +131,28 @@ open class VRMSceneLoader {
             throw VRMError._dataInconsistent("Material index \(index) out of bounds")
         }
         let gltfMaterial = materials[index]
-        let material = try SCNMaterial(material: gltfMaterial, loader: self)
+        let material = try SCNMaterial(material: gltfMaterial, at: index, loader: self)
         sceneData.materials[index] = material
         return material
     }
 
-    func vrm0MaterialProperty(named name: String) -> VRM0.MaterialProperty? {
-        guard case .v0(let vrm0) = vrm else { return nil }
-        return vrm0.materialPropertyNameMap[name]
+    func vrm0MaterialProperty(at index: Int) -> VRM0.MaterialProperty? {
+        vrm.vrm0MaterialProperty(at: index)
     }
 
-    func renderQueue(forMaterialNamed name: String?) throws -> Int? {
-        guard let name else { return nil }
-        switch vrm {
-        case .v0(let vrm0):
-            return vrm0.materialPropertyNameMap[name]?.renderQueue
-        case .v1:
-            guard let material = try gltf.load(\.materials).first(where: { $0.name == name }) else {
-                return nil
-            }
-            let baseQueue: Int
-            switch material.alphaMode {
-            case .OPAQUE:
-                baseQueue = 2000
-            case .MASK:
-                baseQueue = 2450
-            case .BLEND:
-                baseQueue = material.extensions?.materialsMToon?.transparentWithZWrite == true ? 2501 : 3000
-            }
-            return baseQueue + (material.extensions?.materialsMToon?.renderQueueOffsetNumber ?? 0)
+    /// The Unity render queue the material at `index` is drawn in, which is
+    /// what a `renderingOrder` is derived from.
+    func renderQueue(forMaterialAt index: Int?) throws -> Int? {
+        guard let index else { return nil }
+        // A `VRM_USE_GLTFSHADER` material is the glTF material as it is, so its
+        // queue follows from the alpha mode as any other document's would.
+        if let property = vrm0MaterialProperty(at: index), property.vrmShader != .gltfShader {
+            return property.renderQueue
         }
+        guard let material = try gltf.load(\.materials)[safe: index] else { return nil }
+        let mtoon = material.extensions?.materialsMToon
+        return material.alphaMode.vrm0RenderQueue(transparentWithZWrite: mtoon?.transparentWithZWrite == true)
+            + (mtoon?.renderQueueOffsetNumber ?? 0)
     }
 
     func texture(withTextureIndex index: Int) throws -> SCNMaterialProperty {
@@ -175,10 +171,7 @@ open class VRMSceneLoader {
 
     func image(withImageIndex index: Int) throws -> VRMImage {
         if let cache = try sceneData.load(\.images, index: index) { return cache }
-        let gltfImage = try gltf.load(\.images, at: index)
-        let image = try VRMImage.from(gltfImage, relativeTo: rootDirectory) { index in
-            try self.bufferView(withBufferViewIndex: index).bufferView
-        }
+        let image = try document.image(at: index)
         sceneData.images[index] = image
         return image
     }

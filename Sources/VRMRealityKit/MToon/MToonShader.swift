@@ -19,7 +19,7 @@ import VRMKitRuntime
 @MainActor
 public final class MToonShader: GLTFMaterialShader {
     static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "MToon")
-    static let extensionName = "VRMC_materials_mtoon"
+    static let extensionName = GLTFExtension.materialsMToon.rawValue
 
     /// Which materials this shader renders as MToon.
     public enum Source: Sendable {
@@ -192,14 +192,9 @@ public final class MToonShader: GLTFMaterialShader {
             return nil
         case .none:
             guard case .convertAll(let style) = source else { return nil }
-            return StandardMToonConverter.migrate(material: context.material,
-                                                  vrm0Property: context.vrm0MaterialProperty,
-                                                  shadeColorScale: style.shadeColorScale,
-                                                  shadingToonyFactor: style.shadingToonyFactor,
-                                                  shadingShiftFactor: style.shadingShiftFactor,
-                                                  outlineWidthMode: style.outlineWidthMode.descriptorMode,
-                                                  outlineWidthFactor: style.outlineWidthFactor,
-                                                  outlineColorFactor: style.outlineColorFactor)
+            return StandardMToonConverter.convert(material: context.material,
+                                                 vrm0Property: context.vrm0MaterialProperty,
+                                                 style: style)
         }
     }
 
@@ -338,7 +333,7 @@ public final class MToonShader: GLTFMaterialShader {
     /// renderer draws, so the material fails instead.
     private func validateTextureTransformsAreRenderable(_ textures: [MToonMaterialDescriptor.Texture],
                                                         context: GLTFMaterialShaderContext) throws {
-        guard context.enforcesRequiredExtension("KHR_texture_transform") else { return }
+        guard context.enforcesRequiredExtension(GLTFExtension.textureTransform.rawValue) else { return }
         let index = context.materialIndex
         let selectedTexCoord = context.selectedTexCoord
         guard textures.allSatisfy({ $0.texCoord == selectedTexCoord }) else {
@@ -484,7 +479,7 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
         guard let outlineOverride else { return parameters }
         var drawn = parameters
         drawn.outlineColor = SIMD4<Float>(outlineOverride.color, 1)
-        drawn.setOutline(width: outlineOverride.width, mode: outlineOverride.mode.descriptorMode)
+        drawn.setOutline(width: outlineOverride.width, mode: outlineOverride.mode)
         return drawn
     }
 

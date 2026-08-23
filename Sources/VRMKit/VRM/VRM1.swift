@@ -6,7 +6,9 @@ public struct VRM1 {
         specVersion == "1.0" || specVersion == "1.0-beta"
     }
 
-    public let gltf: BinaryGLTF
+    /// The underlying glTF document, which carries the model's glTF and the
+    /// binary resources it is drawn from.
+    public let document: GLTFDocument
     public let specVersion: String
     public let meta: Meta
     public let humanoid: Humanoid
@@ -17,25 +19,32 @@ public struct VRM1 {
     public let extensions: CodableAny?
     public let extras: CodableAny?
 
-    public init(data: Data) throws {
-        gltf = try BinaryGLTF(data: data)
+    /// Initialize from VRM 1.0 data. `rootDirectory` is the base directory for
+    /// external resources.
+    public init(data: Data, rootDirectory: URL? = nil) throws {
+        try self.init(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
+    }
 
-        let extensions = try gltf.jsonData.rootExtensions()
+    /// Initialize from an already-loaded document, so that deciding which
+    /// version a file is does not mean parsing it twice.
+    public init(document: GLTFDocument) throws {
+        self.document = document
+
+        let extensions = try document.gltf.rootExtensions()
         let vrm = try extensions["VRMC_vrm"] ??? .keyNotFound("VRMC_vrm")
         specVersion = try vrm["specVersion"] as? String ??? .dataInconsistent("VRMC_vrm.specVersion is missing or not a string")
         guard VRM1.supports(specVersion: specVersion) else {
             throw VRMError._notSupported("VRMC_vrm specVersion \(specVersion)")
         }
 
-        let decoder = DictionaryDecoder()
-        meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
-        humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
-        firstPerson = try decoder.decodeIfPresent(FirstPerson.self, from: vrm, forKey: "firstPerson")
-        lookAt = try decoder.decodeIfPresent(LookAt.self, from: vrm, forKey: "lookAt")
-        expressions = try decoder.decodeIfPresent(Expressions.self, from: vrm, forKey: "expressions")
-        springBone = try decoder.decodeIfPresent(SpringBone.self, from: extensions, forKey: "VRMC_springBone")
-        self.extensions = try decoder.decodeIfPresent(CodableAny.self, from: vrm, forKey: "extensions")
-        extras = try decoder.decodeIfPresent(CodableAny.self, from: vrm, forKey: "extras")
+        meta = try vrm.decodeJSON(Meta.self, forKey: "meta")
+        humanoid = try vrm.decodeJSON(Humanoid.self, forKey: "humanoid")
+        firstPerson = try vrm.decodeJSONIfPresent(FirstPerson.self, forKey: "firstPerson")
+        lookAt = try vrm.decodeJSONIfPresent(LookAt.self, forKey: "lookAt")
+        expressions = try vrm.decodeJSONIfPresent(Expressions.self, forKey: "expressions")
+        springBone = try extensions.decodeJSONIfPresent(SpringBone.self, forKey: "VRMC_springBone")
+        self.extensions = try vrm.decodeJSONIfPresent(CodableAny.self, forKey: "extensions")
+        extras = try vrm.decodeJSONIfPresent(CodableAny.self, forKey: "extras")
     }
 }
 
@@ -93,63 +102,52 @@ public extension VRM1 {
         public let extensions: CodableAny?
         public let extras: CodableAny?
 
-        public struct HumanBones: Codable{
-            public let hips: HumanBone
-            public let spine: HumanBone
-            public let chest: HumanBone?
-            public let upperChest: HumanBone?
-            public let neck: HumanBone?
-            public let head: HumanBone
-            public let leftEye: HumanBone?
-            public let rightEye: HumanBone?
-            public let jaw: HumanBone?
-            public let leftUpperLeg: HumanBone
-            public let leftLowerLeg: HumanBone
-            public let leftFoot:HumanBone
-            public let leftToes: HumanBone?
-            public let rightUpperLeg: HumanBone
-            public let rightLowerLeg: HumanBone
-            public let rightFoot: HumanBone
-            public let rightToes: HumanBone?
-            public let leftShoulder: HumanBone?
-            public let leftUpperArm: HumanBone
-            public let leftLowerArm: HumanBone
-            public let leftHand: HumanBone
-            public let rightShoulder: HumanBone?
-            public let rightUpperArm: HumanBone
-            public let rightLowerArm: HumanBone
-            public let rightHand: HumanBone
-            public let leftThumbMetacarpal: HumanBone?
-            public let leftThumbProximal: HumanBone?
-            public let leftThumbDistal: HumanBone?
-            public let leftIndexProximal: HumanBone?
-            public let leftIndexIntermediate: HumanBone?
-            public let leftIndexDistal: HumanBone?
-            public let leftMiddleProximal: HumanBone?
-            public let leftMiddleIntermediate: HumanBone?
-            public let leftMiddleDistal: HumanBone?
-            public let leftRingProximal: HumanBone?
-            public let leftRingIntermediate: HumanBone?
-            public let leftRingDistal: HumanBone?
-            public let leftLittleProximal: HumanBone?
-            public let leftLittleIntermediate: HumanBone?
-            public let leftLittleDistal: HumanBone?
-            public let rightThumbMetacarpal: HumanBone?
-            public let rightThumbProximal: HumanBone?
-            public let rightThumbDistal: HumanBone?
-            public let rightIndexProximal: HumanBone?
-            public let rightIndexIntermediate: HumanBone?
-            public let rightIndexDistal: HumanBone?
-            public let rightMiddleProximal: HumanBone?
-            public let rightMiddleIntermediate: HumanBone?
-            public let rightMiddleDistal: HumanBone?
-            public let rightRingProximal: HumanBone?
-            public let rightRingIntermediate: HumanBone?
-            public let rightRingDistal: HumanBone?
-            public let rightLittleProximal: HumanBone?
-            public let rightLittleIntermediate: HumanBone?
-            public let rightLittleDistal: HumanBone?
-            
+        /// The nodes the rig maps its bones to.
+        ///
+        /// VRM 1.0 gives every bone its own JSON property, decoded into one
+        /// dictionary so that a bone is looked up rather than switched on and
+        /// both VRM versions read as the same shape. A property VRM does not
+        /// define is ignored rather than failing the parse.
+        public struct HumanBones: Codable {
+            public let bones: [HumanoidBone: HumanBone]
+
+            /// The node the rig maps `bone` to, or nil when it does not rig it.
+            public subscript(bone: HumanoidBone) -> HumanBone? { bones[bone] }
+
+            /// The bones VRM 1.0 requires of every humanoid.
+            static let required: [HumanoidBone] = [
+                .hips, .spine, .head,
+                .leftUpperLeg, .leftLowerLeg, .leftFoot,
+                .rightUpperLeg, .rightLowerLeg, .rightFoot,
+                .leftUpperArm, .leftLowerArm, .leftHand,
+                .rightUpperArm, .rightLowerArm, .rightHand,
+            ]
+
+            public init(bones: [HumanoidBone: HumanBone]) {
+                self.bones = bones
+            }
+
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: AnyCodingKey.self)
+                bones = try HumanoidBone.allCases.reduce(into: [:]) { bones, bone in
+                    guard let key = AnyCodingKey(stringValue: bone.rawValue),
+                          container.contains(key) else { return }
+                    bones[bone] = try container.decode(HumanBone.self, forKey: key)
+                }
+                if let missing = Self.required.first(where: { bones[$0] == nil }) {
+                    throw VRMError.keyNotFound("humanBones.\(missing.rawValue)")
+                }
+            }
+
+            public func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: AnyCodingKey.self)
+                for bone in HumanoidBone.allCases {
+                    guard let humanBone = bones[bone],
+                          let key = AnyCodingKey(stringValue: bone.rawValue) else { continue }
+                    try container.encode(humanBone, forKey: key)
+                }
+            }
+
             public struct HumanBone: Codable {
                 public let node: Int
                 public let extensions: CodableAny?

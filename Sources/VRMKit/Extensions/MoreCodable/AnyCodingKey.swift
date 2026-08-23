@@ -22,10 +22,4 @@ struct AnyCodingKey : CodingKey {
         self.intValue = intValue
     }
 
-    init(index: Int) {
-        self.stringValue = "Index \(index)"
-        self.intValue = index
-    }
-
-    static let `super` = AnyCodingKey(stringValue: "super")!
 }

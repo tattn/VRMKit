@@ -107,7 +107,7 @@ final class ImmersiveViewModel {
             if let neck = vrmEntity.humanoid.node(for: .neck) {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
             }
-            vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
+            vrmEntity.setExpression(value: 1.0, for: .custom("><"))
             
             self.vrmEntity = vrmEntity
         } catch {

@@ -166,7 +166,7 @@ struct GLTFAnimationPlaybackTests {
     @Test
     func testCubicSplineRotationKeepsItsTangentsUnnormalized() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let decoder = GLTFAnimationDecoder(document: try GLTFLoader().load(withData: splineRotationFixture()))
+        let decoder = GLTFAnimationDecoder(document: try GLTFDocument(data: splineRotationFixture()))
         let quaternions = try decoder.quaternions(at: 1, interpolation: .CUBICSPLINE)
 
         // Keyframe 0: in-tangent (0,0,0,0), value identity, out-tangent (0,0,4,0).
@@ -175,7 +175,7 @@ struct GLTFAnimationPlaybackTests {
         #expect(simd_length(quaternions[1].vector).isApproximatelyEqual(to: 1))
         #expect(quaternions[2].vector.isApproximatelyEqual(to: SIMD4<Float>(0, 0, 4, 0)))
         // The same accessor read as LINEAR normalizes every element instead.
-        let linearDecoder = GLTFAnimationDecoder(document: try GLTFLoader().load(withData: splineRotationFixture()))
+        let linearDecoder = GLTFAnimationDecoder(document: try GLTFDocument(data: splineRotationFixture()))
         let asLinear = try linearDecoder.quaternions(at: 1, interpolation: .LINEAR)
         #expect(simd_length(asLinear[2].vector).isApproximatelyEqual(to: 1))
     }

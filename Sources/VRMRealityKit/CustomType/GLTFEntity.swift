@@ -96,6 +96,11 @@ public class GLTFEntity: Entity {
 
     private(set) var skinBindings: [SkinBinding] = []
 
+    /// Whether a joint has moved since the skin pose was last solved. The loader
+    /// solves it once the graph is complete, and every runtime that poses a
+    /// joint sets this rather than solving the skeleton itself.
+    private var isSkinPoseDirty = false
+
     struct MorphBinding {
         var modelEntities: [ModelEntity]
         let targetCount: Int
@@ -354,9 +359,36 @@ public class GLTFEntity: Entity {
     /// own, in which case the animation tick must not solve the same skeleton.
     var refreshesSkinningPerFrame: Bool { false }
 
+    /// Tells the runtime that a joint entity was posed from outside it, so that
+    /// the skinned meshes catch up on the next update.
+    ///
+    /// Animation playback, node constraints and spring bones do this for what
+    /// they move; only code that poses a joint entity itself — a humanoid bone
+    /// driven by head tracking, say — has to call it.
+    public func invalidateSkinPose() {
+        isSkinPoseDirty = true
+    }
+
+    /// Re-solves the skin pose from the current joint transforms.
+    func flushSkinPose() {
+        guard !skinBindings.isEmpty else {
+            isSkinPoseDirty = false
+            return
+        }
+        updateSkinning()
+    }
+
+    /// Re-solves the skin pose only when a joint has moved since the last solve,
+    /// so a model holding a pose stops rewriting every skeleton each frame.
+    func flushSkinPoseIfNeeded() {
+        guard isSkinPoseDirty else { return }
+        flushSkinPose()
+    }
+
     /// Re-applies the skeletal pose of every skin binding from the current joint
     /// entity transforms.
     func updateSkinning() {
+        isSkinPoseDirty = false
         // Bindings sharing a skeleton and model world transform, such as a mesh
         // and its outline twin, resolve to identical joint transforms.
         var solved: [String: (modelWorld: simd_float4x4, transforms: JointTransforms)] = [:]

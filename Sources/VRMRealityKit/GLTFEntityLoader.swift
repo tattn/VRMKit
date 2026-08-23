@@ -74,13 +74,13 @@ public class GLTFEntityLoader {
     /// the file's directory.
     public convenience init(withURL url: URL,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(document: try GLTFLoader().load(withURL: url), shaders: shaders)
+        self.init(document: try GLTFDocument(withURL: url), shaders: shaders)
     }
 
     /// Loads a bundled glTF resource.
     public convenience init(named: String,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(document: try GLTFLoader().load(named: named), shaders: shaders)
+        self.init(document: try GLTFDocument(named: named), shaders: shaders)
     }
 
     /// Loads in-memory glTF data. `rootDirectory` is the base directory for
@@ -88,7 +88,7 @@ public class GLTFEntityLoader {
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(document: try GLTFLoader().load(withData: data, rootDirectory: rootDirectory),
+        self.init(document: try GLTFDocument(data: data, rootDirectory: rootDirectory),
                   shaders: shaders)
     }
 
@@ -116,14 +116,8 @@ public class GLTFEntityLoader {
         }
         currentEntity = entity
         defer { currentEntity = nil }
+        try nodeHierarchy?.validateSceneRoots(gltfScene.nodes ?? [], sceneIndex: index)
         for node in gltfScene.nodes ?? [] {
-            // Attaching a node that already has a parent would reparent it away
-            // from that parent, making the graph depend on `scene.nodes` order.
-            if let parent = nodeHierarchy?.parent(at: node) {
-                throw VRMError._dataInconsistent(
-                    "scene \(index) names node \(node) as a root, but it is a child of node \(parent)"
-                )
-            }
             entity.addChild(try self.node(withNodeIndex: node))
         }
         entity.setNodeEntities(entityData.nodes)
@@ -149,7 +143,8 @@ public class GLTFEntityLoader {
     /// Not an override point outside this module: claiming an extension this
     /// renderer cannot draw would only silence the check that rejects it.
     public var supportedRequiredExtensions: Set<String> {
-        var extensions: Set<String> = ["KHR_materials_unlit", "KHR_texture_transform"]
+        var extensions: Set<String> = [GLTFExtension.materialsUnlit.rawValue,
+                                       GLTFExtension.textureTransform.rawValue]
         for shader in shaders {
             extensions.formUnion(shader.supportedRequiredExtensions)
         }
@@ -163,7 +158,7 @@ public class GLTFEntityLoader {
         if let unsupported = unsupportedRequiredExtensions().first {
             throw VRMError._notSupported("this glTF requires the \(unsupported) extension")
         }
-        if enforcesRequiredExtension("KHR_texture_transform") {
+        if enforcesRequiredExtension(GLTFExtension.textureTransform.rawValue) {
             try validateTextureTransformsAreRenderable()
         }
     }
@@ -216,34 +211,11 @@ public class GLTFEntityLoader {
         return (gltf.extensionsRequired ?? []).filter { !supported.contains($0) }
     }
 
-    /// Rejects, once per document, the malformed node graphs and skins the rest
-    /// of the loader takes for granted: the spec guarantees the nodes form a
-    /// forest and that a skin names at least one joint, each of them once.
-    ///
-    /// Without this, a cyclic hierarchy would recurse forever and a repeated or
-    /// out-of-range joint would trap instead of throwing.
+    /// Validates, once per document, the node graph and skins the rest of the
+    /// loader takes for granted.
     private func validateStructure() throws {
         guard nodeHierarchy == nil else { return }
-        let nodes = gltf.nodes ?? []
-
-        let hierarchy = try GLTFNodeHierarchy(nodes: nodes)
-
-        for (index, skin) in (gltf.skins ?? []).enumerated() {
-            guard !skin.joints.isEmpty else {
-                throw VRMError._dataInconsistent("skin \(index) names no joint")
-            }
-            var seen: Set<Int> = []
-            for joint in skin.joints {
-                guard nodes.indices.contains(joint) else {
-                    throw VRMError._dataInconsistent("skin \(index) has a joint \(joint) of \(nodes.count) nodes")
-                }
-                guard seen.insert(joint).inserted else {
-                    throw VRMError._dataInconsistent("skin \(index) names node \(joint) as a joint twice")
-                }
-            }
-        }
-
-        nodeHierarchy = hierarchy
+        nodeHierarchy = try GLTFNodeHierarchy.validatingStructure(of: gltf)
     }
 
     func node(withNodeIndex index: Int) throws -> Entity {
@@ -768,7 +740,7 @@ public class GLTFEntityLoader {
         let resolvedAlphaMode = GLTF.Material.AlphaMode(vrm0: materialProperty,
                                                         fallback: gltfMaterial.alphaMode)
         let tint = gltfMaterial.pbrMetallicRoughness
-            .map { VRMColor(simd: SIMD4<Float>($0.baseColorFactor)) } ?? .white
+            .map { VRMColor(simd: $0.baseColorFactor) } ?? .white
 
         if useUnlit {
             // RealityKit's tone mapping visibly darkens flat art, so opt out of it.
@@ -822,11 +794,11 @@ public class GLTFEntityLoader {
         }
 
         let emissiveFactor = gltfMaterial.emissiveFactor
-        let emissiveTint = VRMColor(red: CGFloat(emissiveFactor.r),
-                                   green: CGFloat(emissiveFactor.g),
-                                   blue: CGFloat(emissiveFactor.b),
+        let emissiveTint = VRMColor(red: CGFloat(emissiveFactor.x),
+                                   green: CGFloat(emissiveFactor.y),
+                                   blue: CGFloat(emissiveFactor.z),
                                    alpha: 1)
-        let hasEmissiveTint = emissiveFactor.r != 0 || emissiveFactor.g != 0 || emissiveFactor.b != 0
+        let hasEmissiveTint = emissiveFactor != .zero
         if let emissiveTexture = gltfMaterial.emissiveTexture {
             let textureParam = try materialTexture(withTextureIndex: emissiveTexture.index, semantic: .color)
             material.emissiveColor = .init(color: emissiveTint,
@@ -921,7 +893,7 @@ public class GLTFEntityLoader {
     private func materialSource(withMaterialIndex index: Int) throws -> (GLTF.Material, VRM0.MaterialProperty?) {
         if let cached = materialSourceCache[index] { return cached }
         let gltfMaterial = try gltf.load(\.materials, at: index)
-        let source = (gltfMaterial, vrm0MaterialProperty(for: gltfMaterial))
+        let source = (gltfMaterial, vrm0MaterialProperty(atMaterialIndex: index))
         materialSourceCache[index] = source
         return source
     }
@@ -929,7 +901,7 @@ public class GLTFEntityLoader {
     private var materialSourceCache: [Int: (GLTF.Material, VRM0.MaterialProperty?)] = [:]
 
     /// VRM 0.x compatibility hook, overridden by ``VRMEntityLoader``.
-    func vrm0MaterialProperty(for gltfMaterial: GLTF.Material) -> VRM0.MaterialProperty? {
+    func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {
         nil
     }
 
@@ -985,10 +957,7 @@ public class GLTFEntityLoader {
 
     func image(withImageIndex index: Int) throws -> VRMImage {
         if let cache = try entityData.load(\.images, index: index) { return cache }
-        let gltfImage = try gltf.load(\.images, at: index)
-        let image = try VRMImage.from(gltfImage, relativeTo: document.rootDirectory) { index in
-            try document.bufferViewData(at: index).data
-        }
+        let image = try document.image(at: index)
         entityData.images[index] = image
         return image
     }

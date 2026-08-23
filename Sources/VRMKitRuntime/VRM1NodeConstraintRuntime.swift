@@ -135,6 +135,54 @@ package enum VRMNodeConstraintRuntime {
 
 }
 
+/// Orders constraints so a constrained source is evaluated before its target,
+/// rejecting duplicate targets and dependency cycles independently of the
+/// rendering backend that owns each binding.
+package func orderNodeConstraints<Binding>(
+    _ bindings: [Binding],
+    targetIndex: (Binding) -> Int,
+    sourceIndex: (Binding) -> Int
+) throws -> [Binding] {
+    var byTargetIndex: [Int: Binding] = [:]
+    for binding in bindings {
+        let target = targetIndex(binding)
+        guard byTargetIndex.updateValue(binding, forKey: target) == nil else {
+            throw VRMError._dataInconsistent("Multiple constraints targeting the same node \(target)")
+        }
+    }
+
+    var states: [Int: VisitState] = [:]
+    var result: [Binding] = []
+    func visit(_ binding: Binding) throws {
+        let target = targetIndex(binding)
+        switch states[target] {
+        case .done: return
+        case .visiting:
+            throw VRMError._dataInconsistent(
+                "VRMC_node_constraint circular dependency detected at node \(target)"
+            )
+        case nil: break
+        }
+
+        states[target] = .visiting
+        if let dependency = byTargetIndex[sourceIndex(binding)] {
+            try visit(dependency)
+        }
+        states[target] = .done
+        result.append(binding)
+    }
+
+    for binding in bindings {
+        try visit(binding)
+    }
+    return result
+}
+
+private enum VisitState {
+    case visiting
+    case done
+}
+
 private extension GLTF.Node.NodeExtensions.NodeConstraint.Constraint.RollConstraint.RollAxis {
     var vector: SIMD3<Float> {
         switch self {

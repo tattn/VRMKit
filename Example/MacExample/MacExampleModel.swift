@@ -48,16 +48,6 @@ enum MacExampleExpression: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var blendShapePreset: BlendShapePreset {
-        switch self {
-        case .neutral: return .neutral
-        case .joy: return .joy
-        case .angry: return .angry
-        case .sorrow: return .sorrow
-        case .fun: return .fun
-        }
-    }
-
     var expressionPreset: ExpressionPreset {
         switch self {
         case .neutral: return .neutral
@@ -89,29 +79,17 @@ extension VRMEntity {
         setExampleExpressions([expression: value])
     }
 
-    /// Applies several example expressions at once. On VRM 1.0 this routes through
-    /// `setExpressions(_:)`, so the runtime re-applies its bindings only once.
+    /// Applies several example expressions at once, so the runtime re-applies
+    /// its bindings only once.
     func setExampleExpressions(_ weights: [MacExampleExpression: CGFloat]) {
-        switch vrm {
-        case .v0:
-            for (expression, value) in weights {
-                setBlendShape(value: value, for: .preset(expression.blendShapePreset))
-            }
-        case .v1:
-            setExpressions(Dictionary(uniqueKeysWithValues: weights.map {
-                (ExpressionKey.preset($0.key.expressionPreset), $0.value)
-            }))
-        }
+        setExpressions(Dictionary(uniqueKeysWithValues: weights.map {
+            (ExpressionKey.preset($0.key.expressionPreset), $0.value)
+        }))
     }
 }
 
 extension VRMNode {
     func setExampleExpression(_ expression: MacExampleExpression, value: CGFloat) {
-        switch vrm {
-        case .v0:
-            setBlendShape(value: value, for: .preset(expression.blendShapePreset))
-        case .v1:
-            setExpression(value: value, for: .preset(expression.expressionPreset))
-        }
+        setExpression(value: value, for: .preset(expression.expressionPreset))
     }
 }

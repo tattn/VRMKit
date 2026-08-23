@@ -58,30 +58,29 @@ public struct VRMAnimation {
             """)
         }
 
-        let decoder = DictionaryDecoder()
-        humanoid = try decoder.decodeIfPresent(Humanoid.self, from: vrma, forKey: "humanoid")
-        expressions = try decoder.decodeIfPresent(Expressions.self, from: vrma, forKey: "expressions")
-        lookAt = try decoder.decodeIfPresent(LookAt.self, from: vrma, forKey: "lookAt")
-        self.extensions = try decoder.decodeIfPresent(CodableAny.self, from: vrma, forKey: "extensions")
-        extras = try decoder.decodeIfPresent(CodableAny.self, from: vrma, forKey: "extras")
+        humanoid = try vrma.decodeJSONIfPresent(Humanoid.self, forKey: "humanoid")
+        expressions = try vrma.decodeJSONIfPresent(Expressions.self, forKey: "expressions")
+        lookAt = try vrma.decodeJSONIfPresent(LookAt.self, forKey: "lookAt")
+        self.extensions = try vrma.decodeJSONIfPresent(CodableAny.self, forKey: "extensions")
+        extras = try vrma.decodeJSONIfPresent(CodableAny.self, forKey: "extras")
     }
 
     /// Parses in-memory `.vrma` data, sniffing the GLB magic to pick the
     /// container format. `rootDirectory` is the base directory for external
     /// resources.
     public init(data: Data, rootDirectory: URL? = nil) throws {
-        try self.init(document: GLTFLoader().load(withData: data, rootDirectory: rootDirectory))
+        try self.init(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
     }
 
     /// Loads a `.vrma` file. External resources resolve relative to the file's
     /// directory.
     public init(withURL url: URL) throws {
-        try self.init(document: GLTFLoader().load(withURL: url))
+        try self.init(document: GLTFDocument(withURL: url))
     }
 
     /// Loads a bundled `.vrma` resource.
     public init(named name: String) throws {
-        try self.init(document: GLTFLoader().load(named: name))
+        try self.init(document: GLTFDocument(named: name))
     }
 }
 

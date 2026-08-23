@@ -40,8 +40,4 @@ extension CodableDictionary: ExpressibleByDictionaryLiteral {
     }
 }
 
-extension CodableDictionary: Equatable where Key: Equatable, Value: Equatable {
-    public static func == (lhs: CodableDictionary<Key, Value>, rhs: CodableDictionary<Key, Value>) -> Bool {
-        return lhs.rawValue == rhs.rawValue
-    }
-}
+extension CodableDictionary: Equatable where Value: Equatable {}

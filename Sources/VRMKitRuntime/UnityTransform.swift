@@ -3,7 +3,7 @@ package protocol UnityTransformCompatible {
     var utx: CompatibleType { get }
 }
 
-package final class UnityTransform<Base> {
+package struct UnityTransform<Base> {
     package let base: Base
 
     package init(_ base: Base) {

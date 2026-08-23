@@ -1,5 +1,4 @@
 import SceneKit
-import GameKit
 import VRMKit
 import VRMKitRuntime
 
@@ -64,9 +63,7 @@ final class VRMSpringBone {
     private var colliderList: [Collider] = []
     private let jointChain: [SCNNode]?
     private let jointSettings: [ObjectIdentifier: JointSetting]
-    
-    private let isDrawGizmo: Bool
-    
+
     init(center: SCNNode?,
          rootBones: [SCNNode],
          comment: String? = nil,
@@ -77,8 +74,7 @@ final class VRMSpringBone {
          hitRadius: Float = 0.02,
          jointChain: [SCNNode]? = nil,
          jointSettings: [ObjectIdentifier: JointSetting] = [:],
-         colliderGroups: [VRMSpringBoneColliderGroup] = [],
-         isDrawGizmo: Bool = false) {
+         colliderGroups: [VRMSpringBoneColliderGroup] = []) {
         self.center = center
         self.rootBones = rootBones
         self.comment = comment
@@ -90,13 +86,12 @@ final class VRMSpringBone {
         self.colliderGroups = colliderGroups
         self.jointChain = jointChain
         self.jointSettings = jointSettings
-        self.isDrawGizmo = isDrawGizmo
         setup()
     }
     
     private func setup() {
         for kv in self.initialLocalRotationMap {
-            kv.key.utx.localRotation = kv.value
+            kv.key.utx.setLocalRotation(kv.value)
         }
         self.initialLocalRotationMap = [:]
         self.verlet = []
@@ -157,12 +152,6 @@ final class VRMSpringBone {
         }
     }
     
-    private func setLocalRotationsIdentity() {
-        for verlet in self.verlet {
-            verlet.head.utx.localRotation = quat_identity_float
-        }
-    }
-    
     func update(deltaTime: TimeInterval) {
         if self.verlet.isEmpty {
             if self.rootBones.isEmpty {
@@ -171,7 +160,7 @@ final class VRMSpringBone {
             setup()
         }
 
-        self.colliderList = []
+        self.colliderList.removeAll(keepingCapacity: true)
         for group in self.colliderGroups {
             for collider in group.colliders {
                 self.colliderList.append(collider.worldCollider)
@@ -193,24 +182,6 @@ final class VRMSpringBone {
                 dragForce: setting.dragForce,
                 external: external,
                 colliders: self.colliderList)
-        }
-        onDrawGizmos()
-    }
-    
-    func onDrawGizmos() {
-        if isDrawGizmo {
-            let gizmoNodeName = "VRMKit.gizmoNode"
-            guard let baseNode = rootBones.first else { return }
-            baseNode.childNodes.filter({ $0.name == gizmoNodeName }).forEach({ $0.removeFromParentNode() })
-            for verlet in self.verlet {
-                verlet.drawGizmo(
-                    base: baseNode,
-                    center: self.center,
-                    radius: self.hitRadius,
-                    color: .yellow,
-                    gizmoNodeName: gizmoNodeName
-                )
-            }
         }
     }
 }
@@ -264,7 +235,7 @@ extension VRMSpringBone {
             self.currentTail = center?.utx.inverseTransformPoint(nextTail) ?? nextTail
 
             //回転を適用
-            self.head.utx.rotation = self.applyRotation(nextTail)
+            self.head.utx.setRotation(self.applyRotation(nextTail))
         }
         
         private func applyRotation(_ nextTail: SIMD3<Float>) -> simd_quatf {
@@ -287,25 +258,6 @@ extension VRMSpringBone {
                 }
             }
             return nextTail
-        }
-        
-        func drawGizmo(base: SCNNode, center: SCNNode?, radius: simd_float1, color: VRMColor, gizmoNodeName: String) {
-            let currentTail = center?.utx.transformPoint(self.currentTail) ?? self.currentTail
-            let prevTail = center?.utx.transformPoint(self.prevTail) ?? self.prevTail
-
-            let prevGizmoGeometry = SCNSphere(radius: CGFloat(radius))
-            let prevGizmoNode = SCNNode(geometry: prevGizmoGeometry)
-            prevGizmoNode.name = gizmoNodeName
-            prevGizmoNode.geometry?.firstMaterial?.diffuse.contents = VRMColor.gray
-            base.addChildNode(prevGizmoNode)
-            prevGizmoNode.simdWorldPosition = prevTail
-            
-            let currentGizmoGeometry = SCNSphere(radius: CGFloat(radius))
-            let currentGizmoNode = SCNNode(geometry: currentGizmoGeometry)
-            currentGizmoNode.name = gizmoNodeName
-            currentGizmoNode.geometry?.firstMaterial?.diffuse.contents = color
-            base.addChildNode(currentGizmoNode)
-            currentGizmoNode.simdWorldPosition = currentTail
         }
     }
 }

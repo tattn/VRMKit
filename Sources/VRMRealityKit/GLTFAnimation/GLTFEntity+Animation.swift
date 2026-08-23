@@ -229,8 +229,14 @@ extension GLTFEntity {
             movedTransforms = controller.advance(deltaTime: deltaTime) || movedTransforms
         }
         // A paused or held pose leaves the skeleton where the last solve put it.
-        if movedTransforms, !refreshesSkinningPerFrame {
-            flushSkinPose()
+        if movedTransforms {
+            invalidateSkinPose()
+            // A model driving its own per-frame update solves the pose at the
+            // end of it, once this frame's constraints and spring bones have
+            // moved the same joints.
+            if !refreshesSkinningPerFrame {
+                flushSkinPoseIfNeeded()
+            }
         }
         pruneCompletedAnimations()
     }
@@ -254,12 +260,6 @@ extension GLTFEntity {
         if activeAnimationControllers.isEmpty {
             components.remove(GLTFAnimationPlaybackComponent.self)
         }
-    }
-
-    /// Re-solves the skin pose from the current joint transforms.
-    func flushSkinPose() {
-        guard !skinBindings.isEmpty else { return }
-        updateSkinning()
     }
 
     private func animationRuntime(at index: Int) throws -> GLTFAnimationRuntime {

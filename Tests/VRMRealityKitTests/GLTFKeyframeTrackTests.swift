@@ -3,6 +3,7 @@ import Foundation
 import simd
 import Testing
 import VRMKit
+import VRMTestSupport
 @testable import VRMRealityKit
 
 /// Pure evaluation tests for the animation sampler, one per interpolation

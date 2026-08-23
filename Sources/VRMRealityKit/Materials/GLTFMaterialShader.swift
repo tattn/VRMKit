@@ -185,14 +185,6 @@ public struct GLTFMaterialShaderContext {
         try loader.texture(withTextureIndex: index, semantic: semantic)
     }
 
-    /// The RealityKit sampler for the glTF texture at `index`.
-    ///
-    /// Not public: ``materialTexture(withTextureIndex:semantic:)`` pairs it with
-    /// its texture in one step, which is all a material parameter takes.
-    func textureSampler(withTextureIndex index: Int) throws -> MaterialParameters.Texture.Sampler {
-        try loader.sampler(withTextureIndex: index)
-    }
-
     /// The texture at `index` paired with its sampler, ready to assign to a
     /// material parameter.
     public func materialTexture(withTextureIndex index: Int,

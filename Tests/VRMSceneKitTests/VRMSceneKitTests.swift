@@ -1,67 +1,67 @@
-import XCTest
+import Testing
 import VRMTestSupport
 @testable import VRMSceneKit
 import SceneKit
 
-class VRMSceneKitTests: XCTestCase {
+@Suite
+struct VRMSceneKitTests {
     
-    override func setUp() {
-        super.setUp()
-    }
-    
-    override func tearDown() {
-        super.tearDown()
-    }
-
-    func testHumanoid() {
-        let humanoid = loadVRM().humanoid
-        XCTAssertEqual(humanoid.bones.count, 53)
+    @Test
+    func testHumanoid() throws {
+        let humanoid = try loadVRM().humanoid
+        #expect(humanoid.bones.count == 53)
         let neckPosition = humanoid.node(for: .neck)!.position
-        XCTAssertEqual(round(neckPosition.x * 1000), 0)
-        XCTAssertEqual(round(neckPosition.y * 1000), 140)
-        XCTAssertEqual(round(neckPosition.z * 1000), 14)
+        #expect(round(neckPosition.x * 1000) == 0)
+        #expect(round(neckPosition.y * 1000) == 140)
+        #expect(round(neckPosition.z * 1000) == 14)
     }
 
-    func testBlendShapeClips() {
-        let clips = loadVRM().blendShapeClips
-        XCTAssertEqual(clips.count, 18)
+    /// A VRM 0.x model's blend shape groups load as the expressions they stand
+    /// for, so its runtime is the same one a 1.0 model gets.
+    @Test
+    func testBlendShapeGroupsLoadAsExpressionClips() throws {
+        let clips = try loadVRM().expressionClips
+        #expect(clips.count == 18)
         let clip = clips[.custom("><")]!
-        XCTAssertEqual(clip.name, "><")
-        XCTAssertEqual(clip.preset, .unknown)
-        XCTAssertEqual(clip.key, .custom("><"))
-        XCTAssertEqual(clip.isBinary, false)
-        XCTAssertEqual(clip.values.count, 3)
-        XCTAssertEqual(clip.values[0].index, 31)
-        XCTAssertEqual(clip.values[0].weight, 100)
-        XCTAssertEqual(clip.values[0].mesh.name, "face.baked")
-        XCTAssertEqual(clips.filter({ $0.key.isPreset }).count, 17)
-        XCTAssertEqual(clips.filter({ !$0.key.isPreset }).count, 1)
+        #expect(clip.name == "><")
+        #expect(clip.preset == nil)
+        #expect(clip.key == .custom("><"))
+        #expect(clip.isBinary == false)
+        #expect(clip.values.count == 3)
+        #expect(clip.values[0].index == 31)
+        #expect(clip.values[0].weight == 100)
+        #expect(clip.values[0].mesh.name == "face.baked")
+        #expect(clips.filter({ $0.key.isPreset }).count == 17)
+        #expect(clips.filter({ !$0.key.isPreset }).count == 1)
+        // "joy" is what VRM 0.x calls the expression 1.0 calls "happy".
+        #expect(clips[.preset(.happy)] != nil)
     }
 
-    func testBlendShape_SetAndGet() {
-        let node = loadVRM()
-        node.setBlendShape(value: 0.85, for: .preset(.joy))
-        XCTAssertEqual(round(node.blendShape(for: .preset(.joy)) * 100), 85)
+    @Test
+    func testExpression_SetAndGet() throws {
+        let node = try loadVRM()
+        node.setExpression(value: 0.85, for: .preset(.happy))
+        #expect(round(node.expression(for: .preset(.happy)) * 100) == 85)
     }
 
-    func testVRM0MaterialsKeepConstantLighting() {
-        let loader = loadVRMLoader()
-        let materialCount = loader.vrm.gltf.jsonData.materials?.count ?? 0
-        XCTAssertGreaterThan(materialCount, 0)
+    @Test
+    func testVRM0MaterialsKeepConstantLighting() throws {
+        let loader = try loadVRMLoader()
+        let materialCount = loader.vrm.document.gltf.materials?.count ?? 0
+        #expect(materialCount > 0)
 
         for index in 0..<materialCount {
-            let material = try! loader.material(withMaterialIndex: index)
-            XCTAssertEqual(material.lightingModel, .constant, "Material \(index): \(material.name ?? "")")
-            XCTAssertFalse(material.isLitPerPixel, "Material \(index): \(material.name ?? "")")
+            let material = try loader.material(withMaterialIndex: index)
+            #expect(material.lightingModel == .constant, "Material \(index): \(material.name ?? "")")
+            #expect(!(material.isLitPerPixel), "Material \(index): \(material.name ?? "")")
         }
     }
 
-    func loadVRM() -> VRMNode {
-        let loader = loadVRMLoader()
-        return try! loader.loadScene().vrmNode
+    func loadVRM() throws -> VRMNode {
+        try loadVRMLoader().loadScene().vrmNode
     }
 
-    func loadVRMLoader() -> VRMSceneLoader {
-        try! VRMSceneLoader(withData: VRMSampleAsset.aliciaSolid.data)
+    func loadVRMLoader() throws -> VRMSceneLoader {
+        try VRMSceneLoader(withData: VRMSampleAsset.aliciaSolid.data)
     }
 }

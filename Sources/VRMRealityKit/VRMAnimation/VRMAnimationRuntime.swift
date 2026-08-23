@@ -95,9 +95,9 @@ final class VRMAnimationRuntime {
         let animationRest = try GLTFRestPose(nodes: gltf.nodes ?? [])
         let targetRest = try entity.restPose()
 
-        var boneByNode: [Int: Humanoid.Bones] = [:]
+        var boneByNode: [Int: HumanoidBone] = [:]
         for (name, humanBone) in vrmAnimation.humanoid?.humanBones ?? [:] {
-            guard let bone = Self.targetBone(named: name, isVRM0Target: isVRM0Target) else { continue }
+            guard let bone = Self.targetBone(named: name) else { continue }
             boneByNode[humanBone.node] = bone
         }
         // Node → the expressions its weight drives. Nothing keeps two of them
@@ -116,14 +116,14 @@ final class VRMAnimationRuntime {
 
         /// Resolved through the entity, so the rest lookups and the transform
         /// writes address the same node.
-        func targetNode(for bone: Humanoid.Bones) -> (entity: Entity, nodeIndex: Int)? {
+        func targetNode(for bone: HumanoidBone) -> (entity: Entity, nodeIndex: Int)? {
             guard let target = entity.humanoid.node(for: bone),
                   let nodeIndex = target.components[GLTFNodeComponent.self]?.nodeIndex else { return nil }
             return (target, nodeIndex)
         }
 
         var hipsScale: Float = 1
-        if let animationHips = vrmAnimation.humanoid?.humanBones[Humanoid.Bones.hips.rawValue]?.node,
+        if let animationHips = vrmAnimation.humanoid?.humanBones[HumanoidBone.hips.rawValue]?.node,
            let targetHips = targetNode(for: .hips) {
             let animationHeight = animationRest.worldPosition(at: animationHips).y
             let targetHeight = targetRest.worldPosition(at: targetHips.nodeIndex).y
@@ -241,25 +241,13 @@ final class VRMAnimationRuntime {
     private static let lookAtPresets: Set<ExpressionPreset> = [.lookUp, .lookDown, .lookLeft, .lookRight]
 
     /// The target model's bone for a `.vrma` humanoid bone name, or nil for a
-    /// name no bone of the model is to take.
-    private static func targetBone(named name: String, isVRM0Target: Bool) -> Humanoid.Bones? {
-        guard let bone = Humanoid.Bones(rawValue: name) else { return nil }
-        switch bone {
+    /// name no bone of the model is to take. A `.vrma` is VRM 1.0, which is how
+    /// ``HumanoidBone`` names its bones, so the two spellings already agree.
+    private static func targetBone(named name: String) -> HumanoidBone? {
+        switch HumanoidBone(rawValue: name) {
         // Gaze is look-at's to aim, so the eyes take no bone animation.
-        case .leftEye, .rightEye:
-            return nil
-        // VRM 0.x names the thumb chain proximal / intermediate / distal, where
-        // VRM 1.0 (and so `.vrma`) names it metacarpal / proximal / distal.
-        case .leftThumbMetacarpal:
-            return isVRM0Target ? .leftThumbProximal : bone
-        case .leftThumbProximal:
-            return isVRM0Target ? .leftThumbIntermediate : bone
-        case .rightThumbMetacarpal:
-            return isVRM0Target ? .rightThumbProximal : bone
-        case .rightThumbProximal:
-            return isVRM0Target ? .rightThumbIntermediate : bone
-        default:
-            return bone
+        case .leftEye, .rightEye: nil
+        case let bone: bone
         }
     }
 }

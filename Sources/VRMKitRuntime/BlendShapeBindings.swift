@@ -14,43 +14,26 @@ package struct BlendShapeBinding<Mesh> {
     }
 }
 
-/// Runtime clip for VRM 0.x BlendShape groups.
-package struct BlendShapeClip<Mesh> {
-    package let name: String
-    package let preset: BlendShapePreset
-    package let values: [BlendShapeBinding<Mesh>]
-    package let isBinary: Bool
-
-    package var key: BlendShapeKey {
-        return preset == .unknown ? .custom(name) : .preset(preset)
-    }
-
-    package init(name: String,
-                 preset: BlendShapePreset,
-                 values: [BlendShapeBinding<Mesh>],
-                 isBinary: Bool) {
-        self.name = name
-        self.preset = preset
-        self.values = values
-        self.isBinary = isBinary
-    }
-
-    /// Clamps `value` to 0...1, rounding to the nearest of 0 and 1 for binary
-    /// groups as VRM 0.x defines them.
-    package func normalizedWeight(_ value: Double) -> Double {
-        let clamped = min(max(value, 0), 1)
-        return isBinary ? clamped.rounded() : clamped
-    }
+/// What a binary clip makes of a weight of exactly 0.5, which is the one point
+/// the two VRM versions disagree on.
+package enum BinaryWeightRounding {
+    /// VRM 0.x rounds a binary blend shape group to the nearest of 0 and 1.
+    case nearest
+    /// VRM 1.0 raises a binary expression only above 0.5.
+    case aboveHalf
 }
 
-/// Runtime clip for VRM 1.0 Expressions.
+/// Runtime clip for one expression: a VRM 1.0 expression, or the VRM 0.x blend
+/// shape group loaded as one.
 package struct ExpressionClip<Mesh> {
     package let name: String
     package let preset: ExpressionPreset?
     package let values: [BlendShapeBinding<Mesh>]
     package let isBinary: Bool
+    package let binaryRounding: BinaryWeightRounding
     /// How this expression suppresses the blink / lookAt / mouth expressions
     /// while it is active (VRMC_vrm `overrideBlink` / `overrideLookAt` / `overrideMouth`).
+    /// A VRM 0.x group declares none of these.
     package let overrideBlink: ExpressionOverrideType
     package let overrideLookAt: ExpressionOverrideType
     package let overrideMouth: ExpressionOverrideType
@@ -63,6 +46,7 @@ package struct ExpressionClip<Mesh> {
                  preset: ExpressionPreset?,
                  values: [BlendShapeBinding<Mesh>],
                  isBinary: Bool,
+                 binaryRounding: BinaryWeightRounding = .aboveHalf,
                  overrideBlink: ExpressionOverrideType = .none,
                  overrideLookAt: ExpressionOverrideType = .none,
                  overrideMouth: ExpressionOverrideType = .none) {
@@ -70,16 +54,20 @@ package struct ExpressionClip<Mesh> {
         self.preset = preset
         self.values = values
         self.isBinary = isBinary
+        self.binaryRounding = binaryRounding
         self.overrideBlink = overrideBlink
         self.overrideLookAt = overrideLookAt
         self.overrideMouth = overrideMouth
     }
 
-    /// Clamps `value` to 0...1. VRM 1.0 binary expressions are 1 only when the
-    /// weight is *greater than* 0.5, so exactly 0.5 stays 0.
+    /// Clamps `value` to 0...1, resolving a binary clip to one of its ends.
     package func normalizedWeight(_ value: Double) -> Double {
         let clamped = min(max(value, 0), 1)
-        return isBinary ? (clamped > 0.5 ? 1 : 0) : clamped
+        guard isBinary else { return clamped }
+        switch binaryRounding {
+        case .nearest: return clamped.rounded()
+        case .aboveHalf: return clamped > 0.5 ? 1 : 0
+        }
     }
 
     /// How this clip overrides `group`.
@@ -93,6 +81,19 @@ package struct ExpressionClip<Mesh> {
 }
 
 package typealias ExpressionOverrideType = VRM1.Expressions.Expression.ExpressionOverrideType
+
+package extension Dictionary {
+    /// Resolves a custom key spelling a preset to the preset clip, while leaving
+    /// ordinary custom expressions untouched.
+    func canonicalKey<Mesh>(for key: ExpressionKey) -> ExpressionKey?
+        where Key == ExpressionKey, Value == ExpressionClip<Mesh> {
+        if self[key] != nil { return key }
+        guard case .custom(let name) = key,
+              let preset = ExpressionPreset(name: name),
+              self[.preset(preset)] != nil else { return nil }
+        return .preset(preset)
+    }
+}
 
 /// Accumulates every active expression's override of one group, following
 /// VRMC_vrm: `block` zeroes the group outright, while simultaneous `blend`
@@ -166,23 +167,5 @@ package struct ExpressionOverrideStates {
     /// Whether any group receives an override effect at all.
     package var isSuppressingAnyGroup: Bool {
         blink.isSuppressing || lookAt.isSuppressing || mouth.isSuppressing
-    }
-}
-
-/// Material value binding used by VRM 0.x BlendShape material values.
-package struct MaterialValueBinding {
-    package let materialName: String
-    package let valueName: String
-    package let targetValue: SIMD4<Float>
-    package let baseValue: SIMD4<Float>
-
-    package init(materialName: String,
-                 valueName: String,
-                 targetValue: SIMD4<Float>,
-                 baseValue: SIMD4<Float>) {
-        self.materialName = materialName
-        self.valueName = valueName
-        self.targetValue = targetValue
-        self.baseValue = baseValue
     }
 }

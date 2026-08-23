@@ -73,11 +73,11 @@ final class ViewModel: ObservableObject {
                 .wait(duration: 3.0),
                 .customAction(duration: 0.5) { node, time in
                     let vrmNode = node as! VRMNode
-                    return vrmNode.setBlendShape(value: time / 0.5, for: .preset(.blink))
+                    vrmNode.setExpression(value: time / 0.5, for: .preset(.blink))
                 },
                 .customAction(duration: 0.5) { node, time in
                     let vrmNode = node as! VRMNode
-                    return vrmNode.setBlendShape(value: 1.0 - time / 0.5, for: .preset(.blink))
+                    vrmNode.setExpression(value: 1.0 - time / 0.5, for: .preset(.blink))
                 },
             ])))
         } catch {

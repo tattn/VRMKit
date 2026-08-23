@@ -1,3 +1,5 @@
+import Foundation
+
 package extension VRM {
     var thumbnailImageIndex: Int {
         get throws {
@@ -17,12 +19,12 @@ package extension VRM0 {
             guard let textureIndex = meta.texture, textureIndex >= 0 else {
                 throw VRMError.thumbnailNotFound
             }
-            let textures = try gltf.jsonData.load(\.textures)
+            let textures = try document.gltf.load(\.textures)
             guard textures.indices.contains(textureIndex) else {
                 throw VRMError.thumbnailNotFound
             }
             let imageIndex = textures[textureIndex].source
-            let images = try gltf.jsonData.load(\.images)
+            let images = try document.gltf.load(\.images)
             guard images.indices.contains(imageIndex) else {
                 throw VRMError.thumbnailNotFound
             }
@@ -37,11 +39,35 @@ package extension VRM1 {
             guard let imageIndex = meta.thumbnailImage, imageIndex >= 0 else {
                 throw VRMError.thumbnailNotFound
             }
-            let images = try gltf.jsonData.load(\.images)
+            let images = try document.gltf.load(\.images)
             guard images.indices.contains(imageIndex) else {
                 throw VRMError.thumbnailNotFound
             }
             return imageIndex
         }
+    }
+}
+
+public extension VRM {
+    /// The image the model shows itself by.
+    var thumbnail: VRMImage {
+        get throws {
+            switch self {
+            case .v0(let vrm0): try vrm0.thumbnail
+            case .v1(let vrm1): try vrm1.thumbnail
+            }
+        }
+    }
+}
+
+public extension VRM0 {
+    var thumbnail: VRMImage {
+        get throws { try document.image(at: try thumbnailImageIndex) }
+    }
+}
+
+public extension VRM1 {
+    var thumbnail: VRMImage {
+        get throws { try document.image(at: try thumbnailImageIndex) }
     }
 }

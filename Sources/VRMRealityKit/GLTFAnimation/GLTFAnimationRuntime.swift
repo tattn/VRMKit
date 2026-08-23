@@ -6,9 +6,10 @@ import VRMKit
 
 /// Decodes animation accessors into typed keyframe values, off a cache because
 /// exporters routinely share one input accessor across many samplers.
-struct GLTFAnimationDecoder {
+final class GLTFAnimationDecoder {
     private let accessors: PackedAccessorCache
     private let nodes: [GLTF.Node]
+    private var inputTimes: [Int: [Float]] = [:]
 
     init(document: GLTFDocument) {
         accessors = PackedAccessorCache(document: document)
@@ -19,6 +20,7 @@ struct GLTFAnimationDecoder {
     /// zero and increase strictly, and ``GLTFKeyframeTrack`` reads that ordering
     /// as given.
     func times(at accessorIndex: Int) throws -> [Float] {
+        if let cached = inputTimes[accessorIndex] { return cached }
         let accessor = try accessors.accessor(at: accessorIndex)
         guard accessor.componentType == .float else {
             throw VRMError._dataInconsistent(
@@ -29,6 +31,7 @@ struct GLTFAnimationDecoder {
         guard times.first.map({ $0 >= 0 }) != false else {
             throw VRMError._dataInconsistent("animation sampler input times must start at or after 0")
         }
+        inputTimes[accessorIndex] = times
         return times
     }
 

@@ -31,10 +31,8 @@ package extension VRM1.Expressions {
             return clips
         }
 
-        let decoder = DictionaryDecoder()
         for name in customMap.keys.sorted() {
-            guard let raw = customMap[name] as? [String: Any],
-                  let expression = try? decoder.decode(VRM1.Expressions.Expression.self, from: raw) else {
+            guard let expression = try? customMap.decodeJSON(VRM1.Expressions.Expression.self, forKey: name) else {
                 continue
             }
             clips.append((name, nil, expression))

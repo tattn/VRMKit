@@ -93,7 +93,7 @@ final class VRMEntitySpringBone {
 
     private func setup() {
         for (node, rotation) in initialLocalRotations {
-            node.utx.localRotation = rotation
+            node.utx.setLocalRotation(rotation)
         }
         initialLocalRotations = []
         verlet = []
@@ -175,7 +175,7 @@ final class VRMEntitySpringBone {
             setup()
         }
 
-        colliderList = []
+        colliderList.removeAll(keepingCapacity: true)
         for group in colliderGroups {
             for collider in group.colliders {
                 colliderList.append(collider.worldCollider)
@@ -248,7 +248,7 @@ extension VRMEntitySpringBone {
             self.prevTail = center?.utx.inverseTransformPoint(currentTail) ?? currentTail
             self.currentTail = center?.utx.inverseTransformPoint(nextTail) ?? nextTail
 
-            head.utx.rotation = applyRotation(nextTail)
+            head.utx.setRotation(applyRotation(nextTail))
         }
 
         private func applyRotation(_ nextTail: SIMD3<Float>) -> simd_quatf {

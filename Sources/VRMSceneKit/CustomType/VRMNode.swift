@@ -7,10 +7,9 @@ import VRMKitRuntime
 open class VRMNode: SCNNode {
     public let vrm: VRM
     public let humanoid = Humanoid()
-    private let timer = Timer()
+    private var lastUpdateTime: TimeInterval?
     private var springBones: [VRMSpringBone] = []
 
-    var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
@@ -27,40 +26,34 @@ open class VRMNode: SCNNode {
     }
 
     func setUpHumanoid(nodes: [SCNNode?]) {
-        switch vrm {
-        case .v0:
-            humanoid.setUp(humanoid: vrm.humanoid, nodes: nodes)
-        case .v1(let vrm1):
-            humanoid.setUp(humanoid: vrm1.humanoid, nodes: nodes)
-        }
+        humanoid.setUp(boneNodes: vrm.boneNodes, nodes: nodes)
     }
 
-    func setUpBlendShapes(nodes: [SCNNode?], meshes: [SCNNode?], loader: VRMSceneLoader) throws {
-        blendShapeClips = [:]
+    func setUpBlendShapes(nodes: [SCNNode?], meshes: [Int: [SCNNode]], loader: VRMSceneLoader) throws {
         expressionClips = [:]
         materialColorClips = [:]
         textureTransformClips = [:]
 
         switch vrm {
-        case .v0:
-            blendShapeClips = vrm.blendShapeMaster.blendShapeGroups
-                .map { group in
-                    let blendShapeBinding: [BlendShapeBinding] = group.binds?
-                        .compactMap {
-                            guard meshes.indices.contains($0.mesh),
-                                  let mesh = meshes[$0.mesh] else {
-                                return nil
-                            }
-                            return BlendShapeBinding(mesh: mesh, index: $0.index, weight: $0.weight)
-                        } ?? []
-                    return BlendShapeClip(name: group.name,
-                                          preset: BlendShapePreset(name: group.presetName),
-                                          values: blendShapeBinding,
-                                          isBinary: group.isBinary)
-                }
-                .reduce(into: [:]) { result, clip in
-                    result[clip.key] = clip
-                }
+        case .v0(let vrm0):
+            // A 0.x group is loaded as the expression it stands for, so the
+            // runtime below drives both versions through one set of clips.
+            for group in vrm0.blendShapeMaster.blendShapeGroups {
+                // A bind names a mesh index, so it drives every node the
+                // mesh is drawn under.
+                let morphBindings: [BlendShapeBinding] = group.binds?
+                    .flatMap { bind in
+                        (meshes[bind.mesh] ?? []).map {
+                            BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
+                        }
+                    } ?? []
+                let clip = ExpressionClip(name: group.name,
+                                          preset: group.expressionPreset,
+                                          values: morphBindings,
+                                          isBinary: group.isBinary,
+                                          binaryRounding: .nearest)
+                expressionClips[clip.key] = clip
+            }
         case .v1(let vrm1):
             guard let expressions = vrm1.expressions else { return }
             for expressionClip in expressions.runtimeClips {
@@ -108,18 +101,18 @@ open class VRMNode: SCNNode {
         }
     }
 
-    func setUpFirstPerson(nodes: [SCNNode?], meshes: [SCNNode?]) {
+    func setUpFirstPerson(nodes: [SCNNode?], meshes: [Int: [SCNNode]]) {
         switch vrm {
-        case .v0:
-            firstPersonAnnotations = vrm.firstPerson.meshAnnotations.compactMap { annotation in
-                guard meshes.indices.contains(annotation.mesh),
-                      let mesh = meshes[annotation.mesh],
-                      let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
-                    return nil
+        case .v0(let vrm0):
+            firstPersonAnnotations = vrm0.firstPerson.meshAnnotations.flatMap { annotation in
+                guard let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
+                    return [FirstPersonAnnotation]()
                 }
-                return FirstPersonAnnotation(node: mesh,
-                                             type: type,
-                                             hidesAutoInFirstPerson: false)
+                return (meshes[annotation.mesh] ?? []).map {
+                    FirstPersonAnnotation(node: $0,
+                                          type: type,
+                                          hidesAutoInFirstPerson: false)
+                }
             }
         case .v1(let vrm1):
             let head = humanoid.node(for: .head)
@@ -165,14 +158,18 @@ open class VRMNode: SCNNode {
                                                   target: target,
                                                   source: source))
         }
-        nodeConstraints = try NodeConstraintBinding.ordered(bindings)
+        nodeConstraints = try orderNodeConstraints(
+            bindings,
+            targetIndex: { $0.targetIndex },
+            sourceIndex: { $0.sourceIndex }
+        )
     }
     
     func setUpSpringBones(loader: VRMSceneLoader) throws {
         var springBones: [VRMSpringBone] = []
         switch vrm {
-        case .v0:
-            let secondaryAnimation = vrm.secondaryAnimation
+        case .v0(let vrm0):
+            let secondaryAnimation = vrm0.secondaryAnimation
             let allColliderGroups = try secondaryAnimation.colliderGroups.map {
                 try VRMSpringBoneColliderGroup(colliderGroup: $0, loader: loader)
             }
@@ -224,26 +221,6 @@ open class VRMNode: SCNNode {
         self.springBones = springBones
     }
 
-    /// Set blend shapes to avatar
-    ///
-    /// - Parameters:
-    ///   - value: a weight of the blend shape (0.0 <= value <= 1.0)
-    ///   - key: a key of the blend shape
-    public func setBlendShape(value: CGFloat, for key: BlendShapeKey) {
-        if case .v1 = vrm, let expressionKey = key.expressionKey {
-            setExpression(value: value, for: expressionKey)
-            return
-        }
-        guard let clip = blendShapeClips[key] else { return }
-        let value = CGFloat(clip.normalizedWeight(Double(value)))
-        for binding in clip.values {
-            let weight = CGFloat(binding.weight / 100.0)
-            for morpher in binding.mesh.allMorphers {
-                morpher.setWeight(weight * value, forTargetAt: binding.index)
-            }
-        }
-    }
-
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
         guard let clip = expressionClip(for: key) else { return }
         let value = CGFloat(clip.normalizedWeight(Double(value)))
@@ -261,20 +238,6 @@ open class VRMNode: SCNNode {
         }
     }
 
-    /// Get a weight of the blend shape
-    ///
-    /// - Parameter key: a key of the blend shape
-    /// - Returns: a weight of the blend shape
-    public func blendShape(for key: BlendShapeKey) -> CGFloat {
-        if case .v1 = vrm, let expressionKey = key.expressionKey {
-            return expression(for: expressionKey)
-        }
-        guard let clip = blendShapeClips[key],
-            let binding = clip.values.first,
-            let morpher = binding.mesh.allMorphers.first else { return 0 }
-        return morpher.weight(forTargetAt: binding.index)
-    }
-
     public func expression(for key: ExpressionKey) -> CGFloat {
         guard let clip = expressionClip(for: key),
             let binding = clip.values.first,
@@ -289,38 +252,33 @@ open class VRMNode: SCNNode {
         }
     }
 
+    /// The key a clip is actually stored under. An expression named after a
+    /// preset is that preset, which is how VRM 0.x models predating the presets
+    /// name theirs.
+    private func canonicalExpressionKey(for key: ExpressionKey) -> ExpressionKey? {
+        expressionClips.canonicalKey(for: key)
+    }
+
     private func expressionClip(for key: ExpressionKey) -> ExpressionClip? {
-        if let clip = expressionClips[key] { return clip }
-        if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return expressionClips[expressionKey]
-        }
-        return nil
+        canonicalExpressionKey(for: key).flatMap { expressionClips[$0] }
     }
 
     private func materialColorClip(for key: ExpressionKey) -> [MaterialColorBinding] {
-        if let clip = materialColorClips[key] { return clip }
-        if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return materialColorClips[expressionKey] ?? []
-        }
-        return []
+        canonicalExpressionKey(for: key).flatMap { materialColorClips[$0] } ?? []
     }
 
     private func textureTransformClip(for key: ExpressionKey) -> [TextureTransformBinding] {
-        if let clip = textureTransformClips[key] { return clip }
-        if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey {
-            return textureTransformClips[expressionKey] ?? []
-        }
-        return []
+        canonicalExpressionKey(for: key).flatMap { textureTransformClips[$0] } ?? []
     }
 }
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-extension VRMNode: RenderUpdatable {
+extension VRMNode {
+    /// Advances the node constraints and spring bones to `time`, the timestamp a
+    /// renderer hands its per-frame callback.
     public func update(at time: TimeInterval) {
-        let seconds = timer.deltaTime(updateAtTime: time)
+        let seconds = lastUpdateTime.map { max(0, time - $0) } ?? 0
+        lastUpdateTime = time
         nodeConstraints.forEach { $0.apply() }
         springBones.forEach({ $0.update(deltaTime: seconds) })
     }
@@ -351,7 +309,7 @@ private struct NodeConstraintBinding {
     }
 
     func apply() {
-        target.utx.localRotation = VRMNodeConstraintRuntime.evaluate(
+        target.utx.setLocalRotation(VRMNodeConstraintRuntime.evaluate(
             descriptor,
             sourceRestRotation: sourceRestRotation,
             sourceLocalRotation: source.utx.localRotation,
@@ -359,48 +317,9 @@ private struct NodeConstraintBinding {
             destinationRestRotation: targetRestRotation,
             destinationParentWorldRotation: target.parent?.utx.rotation ?? quat_identity_float,
             destinationWorldPosition: target.utx.position
-        )
+        ))
     }
 
-    static func ordered(_ bindings: [NodeConstraintBinding]) throws -> [NodeConstraintBinding] {
-        var byTargetIndex: [Int: NodeConstraintBinding] = [:]
-        for binding in bindings {
-            if byTargetIndex[binding.targetIndex] != nil {
-                throw VRMError._dataInconsistent("Multiple constraints targeting the same node \(binding.targetIndex)")
-            }
-            byTargetIndex[binding.targetIndex] = binding
-        }
-        var states: [Int: VisitState] = [:]
-        var result: [NodeConstraintBinding] = []
-
-        func visit(_ binding: NodeConstraintBinding) throws {
-            switch states[binding.targetIndex] {
-            case .done:
-                return
-            case .visiting:
-                throw VRMError._dataInconsistent("VRMC_node_constraint circular dependency detected at node \(binding.targetIndex)")
-            case .none:
-                break
-            }
-
-            states[binding.targetIndex] = .visiting
-            if let dependency = byTargetIndex[binding.sourceIndex] {
-                try visit(dependency)
-            }
-            states[binding.targetIndex] = .done
-            result.append(binding)
-        }
-
-        for binding in bindings {
-            try visit(binding)
-        }
-        return result
-    }
-
-    private enum VisitState {
-        case visiting
-        case done
-    }
 }
 
 private struct MaterialColorBinding {

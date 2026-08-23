@@ -10,7 +10,7 @@ import VRMTestSupport
 struct GLTFSampleAssetTests {
     @Test(arguments: GLTFSampleAsset.allCases)
     func testEverySampleAssetLoadsAndResolvesItsBuffers(_ asset: GLTFSampleAsset) throws {
-        let document = try GLTFLoader().load(withURL: asset.url)
+        let document = try GLTFDocument(withURL: asset.url)
 
         #expect(document.gltf.asset.version.hasPrefix("2."))
         #expect(document.gltf.nodes?.isEmpty == false)
@@ -25,7 +25,7 @@ struct GLTFSampleAssetTests {
 
     @Test
     func testExternalBinaryResolvesRelativeToTheGLTFFile() throws {
-        let document = try GLTFLoader().load(withURL: GLTFSampleAsset.triangle.url)
+        let document = try GLTFDocument(withURL: GLTFSampleAsset.triangle.url)
 
         #expect(document.binaryBuffer == nil)
         #expect(document.rootDirectory != nil)
@@ -36,7 +36,7 @@ struct GLTFSampleAssetTests {
     @Test
     func testExternalBinaryFailsWithoutARootDirectory() throws {
         // Loaded from memory there is nowhere to resolve "Triangle.bin" from.
-        let document = try GLTFLoader().load(withData: GLTFSampleAsset.triangle.data)
+        let document = try GLTFDocument(data: GLTFSampleAsset.triangle.data)
 
         #expect(throws: (any Error).self) {
             _ = try document.bufferData(at: 0)
@@ -45,7 +45,7 @@ struct GLTFSampleAssetTests {
 
     @Test
     func testEmbeddedDataURIBufferNeedsNoRootDirectory() throws {
-        let document = try GLTFLoader().load(withData: GLTFSampleAsset.simpleSkin.data)
+        let document = try GLTFDocument(data: GLTFSampleAsset.simpleSkin.data)
 
         #expect(document.binaryBuffer == nil)
         #expect(try !document.bufferData(at: 0).isEmpty)
@@ -54,7 +54,7 @@ struct GLTFSampleAssetTests {
 
     @Test
     func testGLBSampleAssetLoadsThroughTheBinaryPath() throws {
-        let document = try GLTFLoader().load(withData: GLTFSampleAsset.boxVertexColors.data)
+        let document = try GLTFDocument(data: GLTFSampleAsset.boxVertexColors.data)
 
         #expect(document.binaryBuffer != nil)
         let primitive = try #require(document.gltf.meshes?.first?.primitives.first)
@@ -63,7 +63,7 @@ struct GLTFSampleAssetTests {
 
     @Test
     func testAnimationModelDecodesChannelsAndSamplers() throws {
-        let document = try GLTFLoader().load(withData: GLTFSampleAsset.simpleMorph.data)
+        let document = try GLTFDocument(data: GLTFSampleAsset.simpleMorph.data)
         let animation = try #require(document.gltf.animations?.first)
         let channel = try #require(animation.channels.first)
 
@@ -74,7 +74,7 @@ struct GLTFSampleAssetTests {
 
     @Test
     func testInterpolationTestCoversEveryInterpolationMode() throws {
-        let document = try GLTFLoader().load(withData: GLTFSampleAsset.interpolationTest.data)
+        let document = try GLTFDocument(data: GLTFSampleAsset.interpolationTest.data)
         let animations = try #require(document.gltf.animations)
         let interpolations = Set(animations.flatMap { $0.samplers.map(\.interpolation) })
 

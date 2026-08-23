@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import VRMTestSupport
 @testable import VRMKit
 @testable import VRMKitRuntime
 
@@ -58,7 +59,7 @@ struct MToonMaterialDescriptorTests {
                 }
                 """#)
         ))
-        let linearHalf = VRM0MToonMigrator.srgbToLinear(0.5)
+        let linearHalf = SRGB.toLinear(0.5)
 
         #expect(linearHalf.isApproximatelyEqual(to: 0.21404114))
         #expect(descriptor.baseColorFactor.isApproximatelyEqual(to: SIMD4<Float>(linearHalf, linearHalf, linearHalf, 0.5)))
@@ -268,7 +269,7 @@ struct MToonMaterialDescriptorTests {
             materialProperty: vrm0MaterialProperty(vectors: #"{"_Color": [0.5, 0.5, 0.5, 1.0]}"#)
         ))
         #expect(unityColor.baseColorFactor.x < 0.5)
-        #expect(unityColor.baseColorFactor.x.isApproximatelyEqual(to: VRM0MToonMigrator.srgbToLinear(0.5)))
+        #expect(unityColor.baseColorFactor.x.isApproximatelyEqual(to: SRGB.toLinear(0.5)))
         #expect(unityColor.baseColorFactor.w.isApproximatelyEqual(to: 1))
     }
 
@@ -358,7 +359,8 @@ struct MToonMaterialDescriptorTests {
             materialProperty: nil
         ))
 
-        #expect(descriptor.shadeColorFactor == SIMD4<Float>(0, 0, 0, 1))
+        // MToon 1.0 defaults the shade color to white, not to black.
+        #expect(descriptor.shadeColorFactor == SIMD4<Float>(1, 1, 1, 1))
         #expect(descriptor.parametricRimFresnelPowerFactor == 5)
         #expect(descriptor.cullMode == .back)
         #expect(descriptor.normalScale == 1)

@@ -10,8 +10,10 @@ package extension Data {
             throw VRMError._dataInconsistent("failed to load buffers")
         }
 
-        guard count >= buffer.byteLength else {
-            throw VRMError._dataInconsistent("out of length \(count) >= \(buffer.byteLength)")
+        guard buffer.byteLength >= 0, count >= buffer.byteLength else {
+            throw VRMError._dataInconsistent(
+                "buffer byteLength \(buffer.byteLength) is invalid for a \(count) byte resource"
+            )
         }
     }
 
@@ -75,6 +77,10 @@ package extension Data {
     /// Copies `count` elements of `size` bytes each, `stride` bytes apart,
     /// starting at `offset`, throwing when the described range overruns the
     /// receiver.
+    ///
+    /// `offset` is relative to the receiver, which a buffer view is a slice of,
+    /// and the result is a `Data` of its own so that packed accessor bytes never
+    /// carry the buffer they were read out of.
     func subdata(offset: Int, size: Int, stride: Int, count: Int) throws -> Data {
         guard offset >= 0, size > 0, count >= 0, stride >= size else {
             throw VRMError._dataInconsistent(
@@ -97,8 +103,9 @@ package extension Data {
         }
 
         if stride == size {
-            if offset == 0, dataSize == self.count { return self }
-            return subdata(in: offset..<offset + dataSize)
+            if startIndex == 0, offset == 0, dataSize == self.count { return self }
+            let start = startIndex + offset
+            return subdata(in: start..<start + dataSize)
         }
 
         var indexData = Data(count: dataSize)

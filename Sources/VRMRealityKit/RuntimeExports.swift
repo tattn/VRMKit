@@ -1,3 +1,4 @@
+@_exported import VRMKit
 @_exported import VRMKitRuntime
 
 #if canImport(RealityKit)
@@ -6,9 +7,7 @@ import RealityKit
 // MARK: - BlendShapeBindings
 
 typealias BlendShapeBinding = VRMKitRuntime.BlendShapeBinding<Entity>
-typealias BlendShapeClip = VRMKitRuntime.BlendShapeClip<Entity>
 typealias ExpressionClip = VRMKitRuntime.ExpressionClip<Entity>
-typealias MaterialValueBinding = VRMKitRuntime.MaterialValueBinding
 
 // MARK: - Humanoid
 

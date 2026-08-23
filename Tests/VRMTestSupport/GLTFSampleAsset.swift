@@ -16,7 +16,7 @@ public enum GLTFSampleAsset: String, CaseIterable, Sendable {
     case interpolationTest = "InterpolationTest/InterpolationTest.glb"
     case textureTransformTest = "TextureTransformTest/TextureTransformTest.gltf"
 
-    /// The fixture's location in the bundle. `GLTFLoader` derives the root
+    /// The fixture's location in the bundle. `GLTFDocument` derives the root
     /// directory from it, so sibling `.bin` and `.png` files resolve.
     public var url: URL {
         TestAssetBundle.url(forFixture: "GLTF/\(rawValue)")

@@ -36,13 +36,10 @@ public final class VRMEntity: GLTFEntity {
 
     public let humanoid = Humanoid()
 
-    var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
+    /// Input weights per expression, kept so that expressions sharing a morph
+    /// target accumulate instead of overwriting one another.
     private var expressionWeights: [ExpressionKey: Float] = [:]
-    /// The VRM 0.x counterpart of ``expressionWeights``: input weights per blend
-    /// shape group, kept so that groups sharing a morph target accumulate
-    /// instead of overwriting one another.
-    private var blendShapeWeights: [BlendShapeKey: Float] = [:]
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
@@ -101,40 +98,35 @@ public final class VRMEntity: GLTFEntity {
         }
     }
 
-    /// ``update(deltaTime:)`` ends in ``updateSkinning()``, so while the VRM
+    /// ``update(deltaTime:)`` ends by flushing the skin pose, so while the VRM
     /// runtime drives this entity the animation tick must not solve it too.
     override var refreshesSkinningPerFrame: Bool { isAutomaticUpdateEnabled }
 
     func setUpHumanoid(nodes: [Entity?]) {
-        switch vrm {
-        case .v0:
-            humanoid.setUp(humanoid: vrm.humanoid, nodes: nodes)
-        case .v1(let vrm1):
-            humanoid.setUp(humanoid: vrm1.humanoid, nodes: nodes)
-        }
+        humanoid.setUp(boneNodes: vrm.boneNodes, nodes: nodes)
     }
 
     /// Called once per entity, right after its node hierarchy is built. A VRM 0.x
     /// bind names a mesh index, so it drives every entity `meshes` has for it.
     func setUpBlendShapes(nodes: [Entity?], meshes: [Int: [Entity]], loader: VRMEntityLoader) throws {
         switch vrm {
-        case .v0:
-            blendShapeClips = vrm.blendShapeMaster.blendShapeGroups
-                .map { group in
-                    let blendShapeBinding: [BlendShapeBinding] = group.binds?
-                        .flatMap { bind in
-                            (meshes[bind.mesh] ?? []).map {
-                                BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
-                            }
-                        } ?? []
-                    return BlendShapeClip(name: group.name,
-                                          preset: BlendShapePreset(name: group.presetName),
-                                          values: blendShapeBinding,
-                                          isBinary: group.isBinary)
-                }
-                .reduce(into: [:]) { result, clip in
-                    result[clip.key] = clip
-                }
+        case .v0(let vrm0):
+            // A 0.x group is loaded as the expression it stands for, so the
+            // runtime below drives both versions through one set of clips.
+            for group in vrm0.blendShapeMaster.blendShapeGroups {
+                let morphBindings: [BlendShapeBinding] = group.binds?
+                    .flatMap { bind in
+                        (meshes[bind.mesh] ?? []).map {
+                            BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
+                        }
+                    } ?? []
+                let clip = ExpressionClip(name: group.name,
+                                          preset: group.expressionPreset,
+                                          values: morphBindings,
+                                          isBinary: group.isBinary,
+                                          binaryRounding: .nearest)
+                expressionClips[clip.key] = clip
+            }
         case .v1(let vrm1):
             guard let expressions = vrm1.expressions else { return }
             for expressionClip in expressions.runtimeClips {
@@ -204,7 +196,7 @@ public final class VRMEntity: GLTFEntity {
     /// Indexes every expression binding once, so applying weights only
     /// accumulates them instead of rediscovering the bindings each time.
     private func buildBindingIndexes() {
-        let morphBindings = expressionClips.values.flatMap(\.values) + blendShapeClips.values.flatMap(\.values)
+        let morphBindings = expressionClips.values.flatMap(\.values)
         for binding in morphBindings {
             let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
             morphBindingIndex[key] = binding
@@ -223,8 +215,8 @@ public final class VRMEntity: GLTFEntity {
 
     func setUpFirstPerson(nodes: [Entity?], meshes: [Int: [Entity]]) {
         switch vrm {
-        case .v0:
-            firstPersonAnnotations = vrm.firstPerson.meshAnnotations.flatMap { annotation in
+        case .v0(let vrm0):
+            firstPersonAnnotations = vrm0.firstPerson.meshAnnotations.flatMap { annotation in
                 guard let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
                     return [FirstPersonAnnotation]()
                 }
@@ -278,14 +270,18 @@ public final class VRMEntity: GLTFEntity {
                                                   target: target,
                                                   source: source))
         }
-        nodeConstraints = try NodeConstraintBinding.ordered(bindings)
+        nodeConstraints = try orderNodeConstraints(
+            bindings,
+            targetIndex: { $0.targetIndex },
+            sourceIndex: { $0.sourceIndex }
+        )
     }
 
     func setUpSpringBones(loader: GLTFEntityLoader) throws {
         var springBones: [VRMEntitySpringBone] = []
         switch vrm {
-        case .v0:
-            let secondaryAnimation = vrm.secondaryAnimation
+        case .v0(let vrm0):
+            let secondaryAnimation = vrm0.secondaryAnimation
             let allColliderGroups = try secondaryAnimation.colliderGroups.map {
                 try VRMEntitySpringBoneColliderGroup(colliderGroup: $0, loader: loader)
             }
@@ -366,47 +362,28 @@ public final class VRMEntity: GLTFEntity {
     /// there is normally no need to call it. To drive the timing manually, set
     /// ``isAutomaticUpdateEnabled`` to `false` first, otherwise the model
     /// advances twice per frame.
+    ///
+    /// The skin pose is re-solved only when something has moved a joint since
+    /// the last frame, so posing a humanoid bone directly has to be followed by
+    /// ``GLTFEntity/invalidateSkinPose()``.
     public func update(deltaTime: TimeInterval) {
         let deltaTime = max(0, deltaTime)
         // Skinning runs last so that this frame's constraint and spring-bone
         // poses reach the skinned meshes in the same frame they are solved.
         nodeConstraints.forEach { $0.apply() }
         springBones.forEach { $0.update(deltaTime: deltaTime) }
-        updateSkinning()
+        if movesItsOwnJoints {
+            invalidateSkinPose()
+        }
+        flushSkinPoseIfNeeded()
     }
 
-    public func setBlendShape(value: CGFloat, for key: BlendShapeKey) {
-        setBlendShapes([key: value])
-    }
-
-    /// Sets several VRM 0.x blend shape weights and re-applies the result once.
-    ///
-    /// Prefer this over repeated ``setBlendShape(value:for:)`` calls when a single
-    /// frame changes more than one group (face tracking, lip sync, animation
-    /// playback): applying re-accumulates every active group in one pass.
-    public func setBlendShapes(_ weights: [BlendShapeKey: CGFloat]) {
-        // A VRM 1.0 model has expressions rather than blend shape groups; the
-        // legacy presets migrate onto them.
-        if case .v1 = vrm {
-            setExpressions(weights.reduce(into: [:]) { result, entry in
-                guard let key = entry.key.expressionKey else { return }
-                result[key] = entry.value
-            })
-            return
-        }
-        var changed = false
-        for (key, value) in weights where storeBlendShapeWeight(value, for: key) {
-            changed = true
-        }
-        guard changed else { return }
-        applyBlendShapes()
-    }
-
-    public func blendShape(for key: BlendShapeKey) -> CGFloat {
-        if case .v1 = vrm, let expressionKey = key.expressionKey {
-            return expression(for: expressionKey)
-        }
-        return CGFloat(blendShapeWeights[key] ?? 0)
+    /// Whether this model moves joints of its own accord each frame. A model
+    /// with neither constraints nor spring bones holds whatever pose animation
+    /// or the caller last put it in, so re-solving every skeleton per frame
+    /// would only repeat the previous result.
+    var movesItsOwnJoints: Bool {
+        !nodeConstraints.isEmpty || !springBones.isEmpty
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
@@ -419,14 +396,6 @@ public final class VRMEntity: GLTFEntity {
     /// frame changes more than one expression (face tracking, lip sync): applying
     /// re-accumulates every active clip and can rebuild MToon parameter textures.
     public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
-        // A VRM 0.x model drives the same presets through its blend shape groups.
-        if case .v0 = vrm {
-            setBlendShapes(weights.reduce(into: [:]) { result, entry in
-                guard let key = entry.key.legacyBlendShapeKey else { return }
-                result[key] = entry.value
-            })
-            return
-        }
         var changed = false
         for (key, value) in weights where storeExpressionWeight(value, for: key) {
             changed = true
@@ -440,11 +409,6 @@ public final class VRMEntity: GLTFEntity {
         guard let key = canonicalExpressionKey(for: key),
               let clip = expressionClips[key] else { return false }
         return Self.store(clip.normalizedWeight(Double(value)), for: key, in: &expressionWeights)
-    }
-
-    private func storeBlendShapeWeight(_ value: CGFloat, for key: BlendShapeKey) -> Bool {
-        guard let clip = blendShapeClips[key] else { return false }
-        return Self.store(clip.normalizedWeight(Double(value)), for: key, in: &blendShapeWeights)
     }
 
     /// Keeps `weights` free of the zero entries an accumulation would skip
@@ -463,9 +427,6 @@ public final class VRMEntity: GLTFEntity {
     }
 
     public func expression(for key: ExpressionKey) -> CGFloat {
-        if case .v0 = vrm, let legacyKey = key.legacyBlendShapeKey {
-            return blendShape(for: legacyKey)
-        }
         guard let key = canonicalExpressionKey(for: key) else { return 0 }
         return CGFloat(expressionWeights[key] ?? 0)
     }
@@ -508,14 +469,11 @@ public final class VRMEntity: GLTFEntity {
         }
     }
 
+    /// The key a clip is actually stored under. An expression named after a
+    /// preset is that preset, which is how VRM 0.x models predating the presets
+    /// name theirs.
     private func canonicalExpressionKey(for key: ExpressionKey) -> ExpressionKey? {
-        if expressionClips[key] != nil { return key }
-        if let legacyKey = key.legacyBlendShapeKey,
-           let expressionKey = legacyKey.expressionKey,
-           expressionClips[expressionKey] != nil {
-            return expressionKey
-        }
-        return nil
+        expressionClips.canonicalKey(for: key)
     }
 
     /// Applies VRMC_vrm expression overrides to the input weights. A binary
@@ -546,20 +504,8 @@ public final class VRMEntity: GLTFEntity {
         return result
     }
 
-    /// The VRM 0.x counterpart of ``applyExpressions()``. Blend shape groups
-    /// carry none of the override or material bindings VRM 1.0 expressions do,
-    /// so accumulating their morph targets is all there is to it.
-    private func applyBlendShapes() {
-        var morphWeights: [MorphBindingKey: Float] = [:]
-        for (key, weight) in blendShapeWeights {
-            guard let clip = blendShapeClips[key] else { continue }
-            accumulate(clip.values, weight: weight, into: &morphWeights)
-        }
-        flushMorphWeights(morphWeights)
-    }
-
-    /// Adds one clip's share of every morph target it binds. Groups and
-    /// expressions overlapping on a target sum up rather than overwrite.
+    /// Adds one clip's share of every morph target it binds. Expressions
+    /// overlapping on a target sum up rather than overwrite.
     private func accumulate(_ bindings: [BlendShapeBinding],
                             weight: Float,
                             into morphWeights: inout [MorphBindingKey: Float]) {
@@ -721,7 +667,7 @@ private struct NodeConstraintBinding {
 
     @MainActor
     func apply() {
-        target.utx.localRotation = VRMNodeConstraintRuntime.evaluate(
+        target.utx.setLocalRotation(VRMNodeConstraintRuntime.evaluate(
             descriptor,
             sourceRestRotation: sourceRestRotation,
             sourceLocalRotation: source.utx.localRotation,
@@ -729,48 +675,9 @@ private struct NodeConstraintBinding {
             destinationRestRotation: targetRestRotation,
             destinationParentWorldRotation: target.parent?.utx.rotation ?? quat_identity_float,
             destinationWorldPosition: target.utx.position
-        )
+        ))
     }
 
-    static func ordered(_ bindings: [NodeConstraintBinding]) throws -> [NodeConstraintBinding] {
-        var byTargetIndex: [Int: NodeConstraintBinding] = [:]
-        for binding in bindings {
-            if byTargetIndex[binding.targetIndex] != nil {
-                throw VRMError._dataInconsistent("Multiple constraints targeting the same node \(binding.targetIndex)")
-            }
-            byTargetIndex[binding.targetIndex] = binding
-        }
-        var states: [Int: VisitState] = [:]
-        var result: [NodeConstraintBinding] = []
-
-        func visit(_ binding: NodeConstraintBinding) throws {
-            switch states[binding.targetIndex] {
-            case .done:
-                return
-            case .visiting:
-                throw VRMError._dataInconsistent("VRMC_node_constraint circular dependency detected at node \(binding.targetIndex)")
-            case .none:
-                break
-            }
-
-            states[binding.targetIndex] = .visiting
-            if let dependency = byTargetIndex[binding.sourceIndex] {
-                try visit(dependency)
-            }
-            states[binding.targetIndex] = .done
-            result.append(binding)
-        }
-
-        for binding in bindings {
-            try visit(binding)
-        }
-        return result
-    }
-
-    private enum VisitState {
-        case visiting
-        case done
-    }
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

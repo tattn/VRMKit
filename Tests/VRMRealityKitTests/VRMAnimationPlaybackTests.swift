@@ -138,8 +138,8 @@ struct VRMAnimationPlaybackTests {
         try entity.playAnimation(fixture())
         entity.updateAnimations(deltaTime: 1.0)
 
-        // happy lands on the VRM 0.x preset it migrates to: joy.
-        #expect(abs(entity.blendShape(for: .preset(.joy)) - 0.7) < 0.01)
+        // The 0.x model's Joy group is loaded as the happy expression.
+        #expect(abs(entity.expression(for: .preset(.happy)) - 0.7) < 0.01)
     }
 
     /// Nothing stops two expressions of a `.vrma` from naming one node, and the
@@ -173,22 +173,23 @@ struct VRMAnimationPlaybackTests {
         #expect(entity.expression(for: .preset(.lookRight)) == 0)
     }
 
-    /// `.vrma` names the thumb chain in VRM 1.0 terms; a VRM 0.x model names
-    /// the same bones proximal / intermediate / distal, one joint over.
+    /// A VRM 0.x model spells the thumb chain proximal / intermediate / distal
+    /// where VRM 1.0, `.vrma` and ``HumanoidBone`` spell the same three joints
+    /// metacarpal / proximal / distal. One bone therefore means one joint
+    /// whichever version the model is, and a `.vrma` poses both alike.
     @Test
-    func testThumbBonesRemapToTheVRM0Naming() throws {
+    func testTheThumbChainMeansTheSameJointsInBothVersions() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let seedSan = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let vrm1Thumb = try #require(seedSan.humanoid.node(for: .leftThumbMetacarpal))
-        let vrm1Rest = vrm1Thumb.transform.rotation
-        try seedSan.playAnimation(fixture())
-        #expect(abs(simd_dot(vrm1Thumb.transform.rotation, vrm1Rest)) < 0.999)
+        for data in [TestSupport.seedSanData, TestSupport.aliciaSolidData] {
+            let entity = try VRMEntityLoader(withData: data).loadEntity()
+            let thumb = try #require(entity.humanoid.node(for: .leftThumbMetacarpal))
+            let next = try #require(entity.humanoid.node(for: .leftThumbProximal))
+            #expect(thumb !== next)
 
-        let alicia = try VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
-        let vrm0Thumb = try #require(alicia.humanoid.node(for: .leftThumbProximal))
-        let vrm0Rest = vrm0Thumb.transform.rotation
-        try alicia.playAnimation(fixture())
-        #expect(abs(simd_dot(vrm0Thumb.transform.rotation, vrm0Rest)) < 0.999)
+            let rest = thumb.transform.rotation
+            try entity.playAnimation(fixture())
+            #expect(abs(simd_dot(thumb.transform.rotation, rest)) < 0.999)
+        }
     }
 
     /// The eye bones stay out of a `.vrma` humanoid, gaze being look-at's to
@@ -198,7 +199,7 @@ struct VRMAnimationPlaybackTests {
     func testEyeBonesAreLeftToLookAt() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
-        let eyes = [Humanoid.Bones.leftEye, .rightEye].compactMap { entity.humanoid.node(for: $0) }
+        let eyes = [HumanoidBone.leftEye, .rightEye].compactMap { entity.humanoid.node(for: $0) }
         #expect(eyes.count == 2)
         let rests = eyes.map(\.transform.rotation)
 
@@ -253,7 +254,7 @@ struct VRMAnimationPlaybackTests {
         #expect(abs(simd_dot(swung, simd_quatf(angle: -.pi / 2, axis: SIMD3<Float>(0, 0, 1)))) > 0.999)
 
         controller.seek(to: 1.5)
-        #expect(abs(entity.blendShape(for: .preset(.joy)) - 1.0) < 0.01)
+        #expect(abs(entity.expression(for: .preset(.happy)) - 1.0) < 0.01)
     }
 
     /// The bundled CC0 walk cycle: a real full-body motion authored on neither
@@ -400,7 +401,7 @@ struct VRMAnimationPlaybackTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try VRMEntityLoader(withData: model.data).loadEntity()
         #expect(entity.humanoid.node(for: .upperChest) == nil)
-        let bones = try [Humanoid.Bones.neck, .leftShoulder, .rightShoulder].map {
+        let bones = try [HumanoidBone.neck, .leftShoulder, .rightShoulder].map {
             try #require(entity.humanoid.node(for: $0))
         }
         let rests = bones.map { worldRotation(of: $0, in: entity) }

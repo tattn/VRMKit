@@ -27,6 +27,7 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 - [x] MToon rendering and custom material shaders
 - [x] Render plain glTF / GLB with animations
 - [x] VRM animation (.vrma) retargeting
+- [x] Edit and save glTF / VRM as GLB
 
 # Requirements
 
@@ -47,20 +48,23 @@ You can install this package with Swift Package Manager.
 ```swift
 import VRMKit
 
-let loader = VRMLoader()
-let vrm = try loader.load(named: "model.vrm")
-// let vrm = try loader.load(withUrl: URL(string: "/path/to/model.vrm")!)
-// let vrm = try loader.load(withData: data)
+let vrm = try VRM(named: "model.vrm")
+// let vrm = try VRM(withURL: URL(fileURLWithPath: "/path/to/model.vrm"))
+// let vrm = try VRM(data: data)
 
 // VRM meta data
-vrm.meta.title
-vrm.meta.author
+vrm.name
+try vrm.thumbnail
+vrm.document.gltf.nodes[0].name
 
-// model data
-vrm.gltf.jsonData.nodes[0].name
+// bones are named as VRM 1.0 names them, whichever version the model is
+vrm.nodeIndex(of: .leftThumbMetacarpal)
 
-// thumbnail
-try loader.loadThumbnail(from: vrm)
+// the rest of the metadata is version specific
+switch vrm {
+case .v0(let vrm0): vrm0.meta.author
+case .v1(let vrm1): vrm1.meta.authors
+}
 ```
 
 ## Render VRM
@@ -89,14 +93,11 @@ struct ContentView: View {
 <img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
 
 ```swift
-// VRM 1.0
 vrmEntity.setExpression(value: 1.0, for: .preset(.happy))
-vrmEntity.setExpression(value: 1.0, for: .custom("customExpressionName"))
-
-// VRM 0.x
-vrmEntity.setBlendShape(value: 1.0, for: .preset(.joy))
-vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
+vrmEntity.setExpression(value: 1.0, for: .custom("><"))
 ```
+
+VRM 0.x and 1.0 are driven through the same API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`.
 
 ## Bone animation
 
@@ -105,7 +106,10 @@ vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
 ```swift
 let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
 vrmEntity.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
+vrmEntity.invalidateSkinPose()
 ```
+
+`invalidateSkinPose()` tells the runtime that a bone moved. Animation, constraints and spring bones do this themselves.
 
 ## VRM animation (.vrma)
 
@@ -220,10 +224,34 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 
 </details>
 
+## Edit and save glTF / VRM
+
+<details>
+<summary>Details</summary>
+
+`GLTFEditableDocument` edits an asset's glTF JSON and writes it back out as a GLB. Fields VRMKit does not model, unknown extensions included, are carried over untouched, and nothing already in the document changes index. A document spread over several buffers is merged into the one a GLB holds, which moves byte offsets; one that also declares an extension VRMKit does not know is refused rather than relaid out underneath it.
+
+```swift
+let vrm = try VRM(data: data)
+let document = try GLTFEditableDocument(data: data)
+if let hand = vrm.nodeIndex(of: .leftHand) {
+    let item = try GLTFDocument(withURL: itemURL)
+    try document.append(item, under: hand, name: "item", materials: .mtoon)
+}
+try document.serialize().write(to: outputURL)
+```
+
+`append` copies the whole source document to the end of the arrays it belongs in, embeds its external resources into the GLB buffer, and keeps a VRM 0.x model's `materialProperties` parallel to its materials. The source's default scene decides which of the copied nodes are drawn, or the one `append(_:sceneAt:under:)` names. Sources it cannot rebase are refused rather than written out broken: one declaring an unknown extension, Draco and meshopt among them, and a VRM 0.x model, whose materials are described outside the materials themselves.
+
+`materials: .mtoon` writes those materials as MToon instead: the `materialProperties` entry of a VRM 0.x model, the `VRMC_materials_mtoon` extension of anything else. A material that already carries MToon keeps what it says, and one that carries none converts through the same `MToonConversionStyle` as `MToonShader(source: .convertAll)`, so an item previewed toon-shaded is saved looking the same. `convertMaterialsToMToon(at:style:)` does it to materials already in the document. VRM 0.x applies one UV transform to all of a material's textures and samples UV set 0 only, so a material asking for a rotation, a second UV set or a transform per texture is refused rather than saved looking different.
+
+`addNode`, `setName` and `setTransform` edit the node graph by appending, never by renumbering, so the extensions that make a document a VRM keep pointing at what they used to. `detachNode` cuts a subtree's links to its parent and scenes and nothing else, and `moveNode(at:to:)` cuts them and hangs the subtree under another node, or under the default scene's roots when given none.
+
+</details>
+
 # ToDo
 
 - [ ] Look-at playback from vrma
-- [ ] VRM export
 
 # Contributing
 

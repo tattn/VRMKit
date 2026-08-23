@@ -5,31 +5,14 @@ typealias InverseBindMatrix = NSValue
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 extension Array where Element == InverseBindMatrix {
-    init(accessor: GLTF.Accessor, loader: VRMSceneLoader) throws {
-        let (componentsPerVector, bytesPerComponent, vectorSize) = accessor.components()
-
-        guard let bufferViewIndex = accessor.bufferView, accessor.type == .MAT4, accessor.componentType == .float else {
-            self = (0..<accessor.count).map { _ in InverseBindMatrix(scnMatrix4: SCNMatrix4Identity) }
-            return
+    init(accessor: PackedAccessor) throws {
+        guard accessor.componentType == .float else {
+            throw VRMError._dataInconsistent("inverseBindMatrices must be a float MAT4 accessor")
         }
-
-        let (bufferView, bufferStride) = try loader.bufferView(withBufferViewIndex: bufferViewIndex)
-        let stride = bufferStride ?? vectorSize
-        var matrices: [InverseBindMatrix] = []
-        matrices.reserveCapacity(accessor.count)
-
-        try bufferView.withUnsafeBytes { rawPointer in
-            guard let pointer = rawPointer.bindMemory(to: UInt8.self).baseAddress else { return }
-            var ptr = pointer.advanced(by: accessor.byteOffset)
-            for _ in 0..<accessor.count {
-                let rawPtr = UnsafeRawPointer(ptr)
-                let values = (0..<componentsPerVector)
-                    .map { rawPtr.load(fromByteOffset: $0*bytesPerComponent, as: Float.self) }
-                matrices.append(InverseBindMatrix(scnMatrix4: try SCNMatrix4(values)))
-                ptr = ptr.advanced(by: stride)
-            }
+        // glTF stores matrices column-major, which is also SCNMatrix4's layout.
+        let components = try accessor.floatComponents(.MAT4)
+        self = try stride(from: 0, to: components.count, by: 16).map {
+            InverseBindMatrix(scnMatrix4: try SCNMatrix4([Float](components[$0..<$0 + 16])))
         }
-        
-        self = matrices
     }
 }

@@ -90,7 +90,7 @@ struct GLTFEntityLoaderTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Find a node whose mesh has morph targets, then give that node
         // explicit starting weights.
-        let document = try GLTFLoader().load(withData: TestSupport.seedSanData)
+        let document = try GLTFDocument(data: TestSupport.seedSanData)
         let gltf = document.gltf
         let (nodeIndex, targetCount) = try #require(gltf.nodes?.enumerated().compactMap { index, node -> (Int, Int)? in
             guard let meshIndex = node.mesh,
@@ -125,7 +125,7 @@ struct GLTFEntityLoaderTests {
     @Test
     func testMorphWeightsOfTheWrongLengthFailTheLoad() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let gltf = try GLTFLoader().load(withData: TestSupport.seedSanData).gltf
+        let gltf = try GLTFDocument(data: TestSupport.seedSanData).gltf
         let (nodeIndex, meshIndex, targetCount) = try #require(
             gltf.nodes?.enumerated().compactMap { index, node -> (Int, Int, Int)? in
                 guard let meshIndex = node.mesh,
@@ -748,14 +748,14 @@ struct GLTFEntityLoaderTests {
         }
 
         let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
-        let clip = try #require(vrmEntity.blendShapeClips.values.first { clip in
+        let clip = try #require(vrmEntity.expressionClips.values.first { clip in
             clip.values.contains { $0.weight > 0 }
         })
         let binding = try #require(clip.values.first { $0.weight > 0 })
         // The bind resolved to an entity of the scene, not to a clone template.
         #expect(TestSupport.isDescendant(binding.mesh, of: vrmEntity))
 
-        vrmEntity.setBlendShape(value: 1, for: clip.key)
+        vrmEntity.setExpression(value: 1, for: clip.key)
         let targetName = "blendShape_\(binding.index)"
         let applied = TestSupport.modelEntities(in: vrmEntity).contains { modelEntity in
             let weights = modelEntity.blendWeights

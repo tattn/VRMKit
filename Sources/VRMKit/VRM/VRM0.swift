@@ -2,7 +2,9 @@ import Foundation
 
 /// VRM 0.x format data structure
 public struct VRM0 {
-    public let gltf: BinaryGLTF
+    /// The underlying glTF document, which carries the model's glTF and the
+    /// binary resources it is drawn from.
+    public let document: GLTFDocument
     public let meta: Meta
     public let version: String?
     public let materialProperties: [MaterialProperty]
@@ -11,41 +13,49 @@ public struct VRM0 {
     public let firstPerson: FirstPerson
     public let secondaryAnimation: SecondaryAnimation
 
-    public let materialPropertyNameMap: [String: MaterialProperty]
+    /// Initialize from VRM 0.x data. `rootDirectory` is the base directory for
+    /// external resources.
+    public init(data: Data, rootDirectory: URL? = nil) throws {
+        try self.init(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
+    }
 
-    /// Initialize from VRM 0.x data
-    public init(data: Data) throws {
-        gltf = try BinaryGLTF(data: data)
+    /// Initialize from an already-loaded document, so that deciding which
+    /// version a file is does not mean parsing it twice.
+    public init(document: GLTFDocument) throws {
+        self.document = document
 
-        let extensions = try gltf.jsonData.rootExtensions()
+        let extensions = try document.gltf.rootExtensions()
 
         // VRM 0.x must have "VRM" extension
         let vrm = try extensions["VRM"] ??? .keyNotFound("VRM")
 
-        let decoder = DictionaryDecoder()
-
-        meta = try decoder.decode(Meta.self, from: try vrm["meta"] ??? .keyNotFound("meta"))
+        meta = try vrm.decodeJSON(Meta.self, forKey: "meta")
         version = vrm["version"] as? String
-        materialProperties = try decoder.decode([MaterialProperty].self, from: try vrm["materialProperties"] ??? .keyNotFound("materialProperties"))
-        humanoid = try decoder.decode(Humanoid.self, from: try vrm["humanoid"] ??? .keyNotFound("humanoid"))
-        blendShapeMaster = try decoder.decode(BlendShapeMaster.self, from: try vrm["blendShapeMaster"] ??? .keyNotFound("blendShapeMaster"))
-        firstPerson = try decoder.decode(FirstPerson.self, from: try vrm["firstPerson"] ??? .keyNotFound("firstPerson"))
-        secondaryAnimation = try decoder.decode(SecondaryAnimation.self, from: try vrm["secondaryAnimation"] ??? .keyNotFound("secondaryAnimation"))
-
-        materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
+        materialProperties = try vrm.decodeJSON([MaterialProperty].self, forKey: "materialProperties")
+        humanoid = try vrm.decodeJSON(Humanoid.self, forKey: "humanoid")
+        blendShapeMaster = try vrm.decodeJSON(BlendShapeMaster.self, forKey: "blendShapeMaster")
+        firstPerson = try vrm.decodeJSON(FirstPerson.self, forKey: "firstPerson")
+        secondaryAnimation = try vrm.decodeJSON(SecondaryAnimation.self, forKey: "secondaryAnimation")
     }
+}
 
-    /// Initialize by migrating from VRM 1.0
-    public init(migratedFrom vrm1: VRM1) {
-        self.gltf = vrm1.gltf
-        self.version = vrm1.specVersion
-        self.meta = Meta(vrm1: vrm1.meta)
-        self.humanoid = Humanoid(vrm1: vrm1.humanoid)
-        self.blendShapeMaster = BlendShapeMaster(vrm1: vrm1.expressions, gltf: vrm1.gltf)
-        self.firstPerson = FirstPerson(vrm1: vrm1.firstPerson, lookAt: vrm1.lookAt)
-        self.secondaryAnimation = SecondaryAnimation(vrm1: vrm1.springBone)
-        self.materialProperties = (try? VRM0.migrateMaterials(gltf: vrm1.gltf, vrm1: vrm1)) ?? []
-        self.materialPropertyNameMap = materialProperties.reduce(into: [:]) { $0[$1.name] = $1 }
+public extension VRM0 {
+    /// The Unity material settings describing the material at `index`.
+    ///
+    /// VRM 0.x writes `materialProperties` as an array parallel to the glTF
+    /// `materials`, so the index pairs the two. Two materials may share a name,
+    /// which is why the name never does.
+    func materialProperty(at index: Int) -> MaterialProperty? {
+        materialProperties[safe: index]
+    }
+}
+
+public extension VRM {
+    /// The VRM 0.x material settings for the material at `index`, or nil for a
+    /// VRM 1.0 model, which describes its materials on the materials.
+    func vrm0MaterialProperty(at index: Int) -> VRM0.MaterialProperty? {
+        guard case .v0(let vrm0) = self else { return nil }
+        return vrm0.materialProperty(at: index)
     }
 }
 

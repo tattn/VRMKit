@@ -7,21 +7,23 @@ public struct BinaryGLTF {
     public let version: GLTF.Version
     /// Chunk 0.
     public let jsonData: GLTF
+    /// Chunk 0 as it was written, which the editing side re-parses so that the
+    /// fields ``GLTF`` does not model survive a rewrite.
+    package let jsonChunk: Data
     /// Chunk 1.
     public let binaryBuffer: Data?
 
     /// magic equals 0x46546C67. It is ASCII string glTF, and can be used to identify data as Binary glTF.
     static let magic: UInt32 = 0x46546C67
 
+    /// The GLB header: magic, version and total length.
+    static let headerLength = 12
+    /// The header each chunk carries: its length and its type.
+    static let chunkHeaderLength = 8
+
     enum ChunkType: UInt32 {
         case json = 0x4E4F534A
         case bin = 0x004E4942
-    }
-}
-
-package extension BinaryGLTF {
-    func bufferViewData(at index: Int, relativeTo rootDirectory: URL? = nil) throws -> (data: Data, stride: Int?) {
-        try GLTFDocument(binary: self, rootDirectory: rootDirectory).bufferViewData(at: index)
     }
 }
 
@@ -60,10 +62,10 @@ extension BinaryGLTF {
 
         // Chunk 0 holds the JSON, chunk 1 the optional BIN; every other chunk
         // type is one this parser does not know and the spec says to skip.
-        var gltf: GLTF?
+        var json: (gltf: GLTF, chunk: Data)?
         var binaryBuffer: Data?
         var chunkIndex = 0
-        while reader.bytesRead + 8 <= Int(length) {
+        while reader.bytesRead + Self.chunkHeaderLength <= Int(length) {
             let chunkLength = try reader.readUInt32()
             let chunkType = try reader.readUInt32()
             // Every chunk starts and ends on a 4 byte boundary, so with the 12 byte
@@ -84,14 +86,14 @@ extension BinaryGLTF {
                 guard chunkIndex == 0 else {
                     throw VRMError._dataInconsistent("the JSON chunk must be the first GLB chunk")
                 }
-                gltf = try JSONDecoder().decode(GLTF.self, from: chunkData)
+                json = (try JSONDecoder().decode(GLTF.self, from: chunkData), chunkData)
             case .bin:
                 guard chunkIndex == 1 else {
                     throw VRMError._dataInconsistent("the BIN chunk must be the second GLB chunk")
                 }
                 binaryBuffer = chunkData
             case nil:
-                guard gltf != nil else {
+                guard json != nil else {
                     throw VRMError.notSupportedChunkType(chunkType)
                 }
             }
@@ -106,11 +108,12 @@ extension BinaryGLTF {
             )
         }
 
-        let jsonData = try gltf ??? ._dataInconsistent("GLB carries no JSON chunk")
+        let chunk = try json ??? ._dataInconsistent("GLB carries no JSON chunk")
         // The GLB container version and the asset version are independent: a 2.x
         // container can still declare an asset this parser does not implement.
-        try jsonData.validateSupportedAssetVersion()
-        self.jsonData = jsonData
+        try chunk.gltf.validateSupportedAssetVersion()
+        self.jsonData = chunk.gltf
+        self.jsonChunk = chunk.chunk
         self.binaryBuffer = binaryBuffer
     }
 }

@@ -39,25 +39,19 @@ func primitiveTypeOf(_ mode: GLTF.Mesh.Primitive.Mode) -> SCNGeometryPrimitiveTy
     }
 }
 
-extension GLTF.Vector3 {
+extension SIMD3 where Scalar == Float {
     func createSCNVector3() -> SCNVector3 {
-        return .init(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z))
-    }
-    
-    var simd: SIMD3<Float> {
-        SIMD3<Float>(x: Float(x), y: Float(y), z: Float(z))
+        SCNVector3(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z))
     }
 }
 
-extension GLTF.Vector4 {
+extension SIMD4 where Scalar == Float {
     func createSCNVector4() -> SCNVector4 {
-        return .init(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z), w: SCNFloat(w))
+        SCNVector4(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z), w: SCNFloat(w))
     }
-}
 
-extension GLTF.Color4 {
     func createSKColor() -> SKColor {
-        return .init(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
+        SKColor(red: CGFloat(x), green: CGFloat(y), blue: CGFloat(z), alpha: CGFloat(w))
     }
 }
 

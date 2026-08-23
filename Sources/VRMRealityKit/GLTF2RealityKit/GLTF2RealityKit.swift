@@ -4,13 +4,7 @@ import RealityKit
 import VRMKit
 import VRMKitRuntime
 
-extension GLTF.Vector3 {
-    var simd: SIMD3<Float> {
-        SIMD3<Float>(x: x, y: y, z: z)
-    }
-}
-
-extension GLTF.Vector4 {
+extension SIMD4 where Scalar == Float {
     /// glTF requires a unit quaternion, so an off-unit one is renormalized and a
     /// degenerate one falls back to identity instead of collapsing the node.
     var simdQuat: simd_quatf {
@@ -26,7 +20,7 @@ extension GLTF.Node {
         if let matrix = _matrix {
             return Transform(matrix: matrix.simdMatrix)
         }
-        return Transform(scale: scale.simd, rotation: rotation.simdQuat, translation: translation.simd)
+        return Transform(scale: scale, rotation: rotation.simdQuat, translation: translation)
     }
 }
 
@@ -39,12 +33,6 @@ extension GLTF.Matrix {
             SIMD4<Float>(v[8], v[9], v[10], v[11]),
             SIMD4<Float>(v[12], v[13], v[14], v[15])
         ))
-    }
-}
-
-extension GLTF.Color4 {
-    var vrmColor: VRMColor {
-        VRMColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
     }
 }
 

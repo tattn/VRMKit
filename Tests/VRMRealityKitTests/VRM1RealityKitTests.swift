@@ -4,6 +4,7 @@ import Metal
 import RealityKit
 import Testing
 import VRMKit
+import VRMTestSupport
 @testable import VRMRealityKit
 
 @Suite
@@ -829,23 +830,24 @@ struct VRM1RealityKitTests {
     }
 
     /// Alicia's `Joy` and `Fun` groups both bind face target 38. VRM 0.x blend
-    /// shape groups meeting on one morph target compose the way VRM 1.0
-    /// expressions do: their contributions add up rather than overwrite.
+    /// shape groups load as expressions, so two meeting on one morph target
+    /// compose the way VRM 1.0 expressions do: their contributions add up
+    /// rather than overwrite.
     @Test
     func testVRM0BlendShapeGroupsSharingAMorphTargetAccumulate() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
 
-        vrmEntity.setBlendShape(value: 0.25, for: .preset(.joy))
+        vrmEntity.setExpression(value: 0.25, for: .preset(.happy))
         #expect(try #require(morphWeight(in: vrmEntity, targetIndex: 38)).isApproximatelyEqual(to: 0.25))
 
-        vrmEntity.setBlendShape(value: 0.5, for: .preset(.fun))
+        vrmEntity.setExpression(value: 0.5, for: .preset(.relaxed))
         #expect(try #require(morphWeight(in: vrmEntity, targetIndex: 38)).isApproximatelyEqual(to: 0.75))
         // Joy's own targets keep the weight Joy gave them.
         #expect(try #require(morphWeight(in: vrmEntity, targetIndex: 14)).isApproximatelyEqual(to: 0.25))
 
         // Releasing one group takes back its share alone.
-        vrmEntity.setBlendShape(value: 0, for: .preset(.joy))
+        vrmEntity.setExpression(value: 0, for: .preset(.happy))
         #expect(try #require(morphWeight(in: vrmEntity, targetIndex: 38)).isApproximatelyEqual(to: 0.5))
         #expect(try #require(morphWeight(in: vrmEntity, targetIndex: 14)).isApproximatelyEqual(to: 0))
     }

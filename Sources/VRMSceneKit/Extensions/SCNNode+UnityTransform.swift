@@ -15,23 +15,23 @@ extension UnityTransform where Base == SCNNode {
     }
     
     var localRotation: simd_quatf {
-        get { base.simdOrientation }
-        set { base.simdOrientation = newValue }
+        base.simdOrientation
+    }
+
+    func setLocalRotation(_ rotation: simd_quatf) {
+        base.simdOrientation = rotation
     }
     
     var position: SIMD3<Float> {
-        get { base.simdWorldPosition }
-        set { base.simdWorldPosition = newValue }
-    }
-    
-    var localPosition: SIMD3<Float> {
-        get { base.simdPosition }
-        set { base.simdPosition = newValue }
+        base.simdWorldPosition
     }
     
     var rotation: simd_quatf {
-        get { base.simdWorldOrientation }
-        set { base.simdWorldOrientation = newValue }
+        base.simdWorldOrientation
+    }
+
+    func setRotation(_ rotation: simd_quatf) {
+        base.simdWorldOrientation = rotation
     }
     
     var childCount: Int {
@@ -50,11 +50,4 @@ extension UnityTransform where Base == SCNNode {
         localToWorldMatrix.inverse
     }
     
-    var lossyScale: SIMD3<Float> {
-        if let parent = base.parent {
-            return parent.utx.lossyScale * base.simdScale
-        } else {
-            return base.simdScale
-        }
-    }
 }

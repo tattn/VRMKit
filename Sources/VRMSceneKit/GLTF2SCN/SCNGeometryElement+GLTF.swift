@@ -3,17 +3,12 @@ import SceneKit
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 extension SCNGeometryElement {
-    convenience init(accessor: GLTF.Accessor, mode: GLTF.Mesh.Primitive.Mode, loader: VRMSceneLoader) throws {
+    convenience init(accessor: PackedAccessor, mode: GLTF.Mesh.Primitive.Mode) throws {
         let primitiveType = try primitiveTypeOf(mode) ??? ._notSupported("\(mode) is not supported")
-        let usesFloatComponents = accessor.componentType == .float
-        let bytesPerComponent = bytes(of: accessor.componentType)
-
-        if usesFloatComponents { throw VRMError._dataInconsistent("index accessor cannot use float components") }
-        if accessor.type != .SCALAR { throw VRMError._dataInconsistent("accessor type is not SCALAR") }
-
-        self.init(data: try accessor.packedData(bufferView: { try loader.bufferView(withBufferViewIndex: $0) }),
+        // `unsignedData` checks the unsigned scalars glTF requires of indices.
+        self.init(data: try accessor.unsignedData(.SCALAR),
                   primitiveType: primitiveType,
                   primitiveCount: primitiveType.primitiveCount(ofCount: accessor.count),
-                  bytesPerIndex: bytesPerComponent)
+                  bytesPerIndex: accessor.bytesPerComponent)
     }
 }

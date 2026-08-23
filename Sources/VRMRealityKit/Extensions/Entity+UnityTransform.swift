@@ -20,23 +20,28 @@ extension UnityTransform where Base == Entity {
     }
 
     var localRotation: simd_quatf {
-        get { base.transform.rotation }
-        set { base.transform.rotation = newValue }
+        base.transform.rotation
+    }
+
+    func setLocalRotation(_ rotation: simd_quatf) {
+        base.transform.rotation = rotation
     }
 
     var position: SIMD3<Float> {
-        get { base.transformMatrix(relativeTo: nil).translation }
-        set { setWorldPosition(newValue) }
-    }
-
-    var localPosition: SIMD3<Float> {
-        get { base.transform.translation }
-        set { base.transform.translation = newValue }
+        base.transformMatrix(relativeTo: nil).translation
     }
 
     var rotation: simd_quatf {
-        get { Transform(matrix: base.transformMatrix(relativeTo: nil)).rotation }
-        set { setWorldRotation(newValue) }
+        Transform(matrix: base.transformMatrix(relativeTo: nil)).rotation
+    }
+
+    func setRotation(_ rotation: simd_quatf) {
+        if let parent = base.parent {
+            let parentRotation = Transform(matrix: parent.transformMatrix(relativeTo: nil)).rotation
+            base.transform.rotation = simd_inverse(parentRotation) * rotation
+        } else {
+            base.transform.rotation = rotation
+        }
     }
 
     var childCount: Int {
@@ -51,27 +56,5 @@ extension UnityTransform where Base == Entity {
         simd_inverse(localToWorldMatrix)
     }
 
-    var lossyScale: SIMD3<Float> {
-        Transform(matrix: localToWorldMatrix).scale
-    }
-
-    private func setWorldRotation(_ rotation: simd_quatf) {
-        if let parent = base.parent {
-            let parentRotation = Transform(matrix: parent.transformMatrix(relativeTo: nil)).rotation
-            base.transform.rotation = simd_inverse(parentRotation) * rotation
-        } else {
-            base.transform.rotation = rotation
-        }
-    }
-
-    private func setWorldPosition(_ position: SIMD3<Float>) {
-        if let parent = base.parent {
-            let parentWorld = parent.transformMatrix(relativeTo: nil)
-            let local = simd_mul(simd_inverse(parentWorld), SIMD4<Float>(position.x, position.y, position.z, 1))
-            base.transform.translation = SIMD3<Float>(local.x, local.y, local.z)
-        } else {
-            base.transform.translation = position
-        }
-    }
 }
 #endif
