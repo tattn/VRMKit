@@ -25,10 +25,9 @@ public class GLTFEntityLoader {
     weak var currentEntity: GLTFEntity?
     static let gltfLogger = Logger(subsystem: "dev.tattn.VRMKit", category: "glTF")
 
-    private var didValidateStructure = false
-    /// glTF node index → its parent, built and validated once by
+    /// The document's node parents, built and validated once by
     /// ``validateStructure()`` and read by everything that walks upwards.
-    private var nodeParents: [Int: Int] = [:]
+    private var nodeHierarchy: GLTFNodeHierarchy?
     private var loggedLimitations: Set<String> = []
     private var materialTexCoordCache: [Int: (selected: Int, isMixed: Bool)] = [:]
     private var morphTargetCounts: [Int: Int] = [:]
@@ -120,7 +119,7 @@ public class GLTFEntityLoader {
         for node in gltfScene.nodes ?? [] {
             // Attaching a node that already has a parent would reparent it away
             // from that parent, making the graph depend on `scene.nodes` order.
-            if let parent = nodeParents[node] {
+            if let parent = nodeHierarchy?.parent(at: node) {
                 throw VRMError._dataInconsistent(
                     "scene \(index) names node \(node) as a root, but it is a child of node \(parent)"
                 )
@@ -224,36 +223,10 @@ public class GLTFEntityLoader {
     /// Without this, a cyclic hierarchy would recurse forever and a repeated or
     /// out-of-range joint would trap instead of throwing.
     private func validateStructure() throws {
-        guard !didValidateStructure else { return }
+        guard nodeHierarchy == nil else { return }
         let nodes = gltf.nodes ?? []
 
-        var parents: [Int: Int] = [:]
-        for (index, node) in nodes.enumerated() {
-            for child in node.children ?? [] {
-                guard nodes.indices.contains(child) else {
-                    throw VRMError._dataInconsistent("node \(index) has a child \(child) of \(nodes.count) nodes")
-                }
-                guard parents.updateValue(index, forKey: child) == nil else {
-                    throw VRMError._dataInconsistent("node \(child) is a child of more than one node")
-                }
-            }
-        }
-        nodeParents = parents
-        // With at most one parent each, the hierarchy is a forest unless walking
-        // up from a node returns to a node already on the way up.
-        var verified: Set<Int> = []
-        for index in nodes.indices where !verified.contains(index) {
-            var chain: Set<Int> = []
-            var current = index
-            while !verified.contains(current) {
-                guard chain.insert(current).inserted else {
-                    throw VRMError._dataInconsistent("the node hierarchy is cyclic at node \(current)")
-                }
-                guard let parent = parents[current] else { break }
-                current = parent
-            }
-            verified.formUnion(chain)
-        }
+        let hierarchy = try GLTFNodeHierarchy(nodes: nodes)
 
         for (index, skin) in (gltf.skins ?? []).enumerated() {
             guard !skin.joints.isEmpty else {
@@ -270,7 +243,7 @@ public class GLTFEntityLoader {
             }
         }
 
-        didValidateStructure = true
+        nodeHierarchy = hierarchy
     }
 
     func node(withNodeIndex index: Int) throws -> Entity {
@@ -294,7 +267,7 @@ public class GLTFEntityLoader {
         let gltfNode = try gltf.load(\.nodes, at: index)
         entity.name = gltfNode.name ?? "node_\(index)"
         entity.components.set(GLTFNodeComponent(nodeIndex: index))
-        entity.transform = transform(from: gltfNode)
+        entity.transform = gltfNode.localTransform
 
         if let cameraIndex = gltfNode.camera {
             try applyCamera(withCameraIndex: cameraIndex, to: entity)
@@ -1381,7 +1354,7 @@ public class GLTFEntityLoader {
             let parentOld = parentIndices[oldIndex]
             let parentNew = parentOld.map { remap[$0] }
 
-            let restTransform = transform(from: node)
+            let restTransform = node.localTransform
             let ibm = inverseBindMatrices[oldIndex]
             joints.append(.init(name: name,
                                 parentIndex: parentNew,
@@ -1400,10 +1373,9 @@ public class GLTFEntityLoader {
         let jointIndexMap = Dictionary(uniqueKeysWithValues: jointNodeIndices.enumerated().map { ($0.element, $0.offset) })
         var parentIndices: [Int?] = Array(repeating: nil, count: jointNodeIndices.count)
         for (i, nodeIndex) in jointNodeIndices.enumerated() {
-            // `validateStructure()` has proven `nodeParents` to describe a forest,
-            // so walking up from a joint terminates.
+            // The validated hierarchy is a forest, so walking up terminates.
             var current = nodeIndex
-            while let parent = nodeParents[current] {
+            while let parent = nodeHierarchy?.parent(at: current) {
                 if let jointIndex = jointIndexMap[parent] {
                     parentIndices[i] = jointIndex
                     break
@@ -1529,15 +1501,6 @@ public class GLTFEntityLoader {
                                                   materialIndex: materialIndex,
                                                   loader: self)
         }
-    }
-
-    private func transform(from node: GLTF.Node) -> Transform {
-        if let matrix = node._matrix {
-            return Transform(matrix: matrix.simdMatrix)
-        }
-        return Transform(scale: node.scale.simd,
-                         rotation: node.rotation.simdQuat,
-                         translation: node.translation.simd)
     }
 
     /// A complete tangent basis. RealityKit derives neither buffer from the other,

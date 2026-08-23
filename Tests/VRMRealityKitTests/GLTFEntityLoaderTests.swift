@@ -378,6 +378,27 @@ struct GLTFEntityLoaderTests {
         #expect(entity.sceneIndex == 0)
     }
 
+    /// A node states its transform as TRS or as a 16-value column-major
+    /// `matrix`, and one carrying the matrix places its mesh from it.
+    @Test
+    func testNodeMatrixIsReadAsItsLocalTransform() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try TestSupport.loader(.triangle) { json in
+            json["nodes"] = [["mesh": 0, "matrix": [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 1, 2, 3, 1]]]
+        }.loadEntity()
+
+        let node = try #require(entity.entity(forNodeAt: 0))
+        #expect(node.transform.translation.isApproximatelyEqual(to: SIMD3<Float>(1, 2, 3)))
+        #expect(node.transform.scale.isApproximatelyEqual(to: SIMD3<Float>(2, 2, 2)))
+
+        // A matrix of any other length fails the parse, before the load.
+        #expect(throws: VRMError.self) {
+            try TestSupport.loader(.triangle) { json in
+                json["nodes"] = [["mesh": 0, "matrix": [1, 0, 0, 0]]]
+            }
+        }
+    }
+
     /// glTF node hierarchies are forests. A cyclic one would recurse forever, so
     /// it has to fail the load instead.
     @Test

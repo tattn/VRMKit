@@ -55,4 +55,6 @@ final class AppModel {
     }
     
     var selectedModelName: ModelName = .alicia
+    /// The VRM animation plays from the moment a model loads.
+    var isVRMAPlaying = true
 }

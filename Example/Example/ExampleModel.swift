@@ -83,7 +83,6 @@ extension VRMNode {
 }
 
 #if canImport(RealityKit)
-@available(iOS 18.0, *)
 extension VRMEntity {
     func setExampleExpression(_ expression: ExampleExpression, value: CGFloat) {
         switch vrm {

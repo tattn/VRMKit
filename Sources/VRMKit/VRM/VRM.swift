@@ -7,8 +7,7 @@ public enum VRM {
 
     public init(data: Data) throws {
         let gltf = try BinaryGLTF(data: data)
-        let rawExtensions = try gltf.jsonData.extensions ??? .keyNotFound("extensions")
-        let extensions = try rawExtensions.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
+        let extensions = try gltf.jsonData.rootExtensions()
 
         if extensions.keys.contains("VRMC_vrm") {
             self = .v1(try VRM1(data: data))

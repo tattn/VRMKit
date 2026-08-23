@@ -13,10 +13,7 @@
 
 <br />
 
-<div>
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/demo.jpg" width="300px" alt="demo" />
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/demo2.gif" width="300px" alt="demo" />
-</div>
+https://github.com/user-attachments/assets/5bf25ec5-29e7-4e74-a270-0012aac7a56a
 
 For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 
@@ -29,6 +26,7 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 - [x] Physics (spring bone)
 - [x] MToon rendering and custom material shaders
 - [x] Render plain glTF / GLB with animations
+- [x] VRM animation (.vrma) retargeting
 
 # Requirements
 
@@ -82,15 +80,13 @@ struct ContentView: View {
 }
 ```
 
-`VRMEntity` is an `Entity`, so it drops into any RealityKit scene, `ARView` included. Once it is in a scene, skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself. Animation code that must run in a fixed order relative to that update belongs in a `System` declared with `SystemDependency.before(VRMUpdateSystem.self)`.
+`VRMEntity` is an `Entity`, so it drops into any RealityKit scene, `ARView` included. Once it is in a scene, skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself.
 
 > VRMSceneKit, the SceneKit renderer, is deprecated. Use VRMRealityKit instead.
 
 ## Expressions / blend shapes
 
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" />
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" />
-<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
+<img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
 
 ```swift
 // VRM 1.0
@@ -109,6 +105,19 @@ vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
 ```swift
 let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
 vrmEntity.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
+```
+
+## VRM animation (.vrma)
+
+A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike. Humanoid bone rotations, the hips motion scaled to the model's size, and expression tracks all play. An optional bone the model lacks, such as `upperChest`, hands its rotation to the bones that stand in for it.
+
+```swift
+let animation = try VRMAnimation(named: "walk.vrma")
+let controller = try vrmEntity.playAnimation(animation, loops: true)
+controller.speed = 2        // a negative speed plays backwards
+controller.isPaused = true  // holds the pose
+controller.seek(to: 0.5)
+controller.stop()
 ```
 
 ## MToon rendering
@@ -153,9 +162,9 @@ final class MyShader: GLTFMaterialShader {
 let custom = try VRMEntityLoader(withData: data, shaders: [MyShader(), MToonShader()])
 ```
 
-`GLTFShadedMaterial` also carries extra render passes (MToon draws its outline as one) and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. The `GLTFMaterialShader` documentation comments cover both, along with what a shader may assume about the mesh it draws.
+`GLTFShadedMaterial` also carries extra render passes, MToon's outline being one, and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. The `GLTFMaterialShader` documentation comments cover both, along with what a shader may assume about the mesh it draws.
 
-A pass can be built hidden and shown later with `entity.setPassEnabled(_:named:)`, which is how MToon outlines double as a selection highlight. The override outranks the authored values — a VRM expression bound to `outlineColor` included — and releasing it puts them back.
+A pass can be built hidden and shown later with `entity.setPassEnabled(_:named:)`, which is how MToon outlines double as a selection highlight. An override outranks the authored values, and releasing it puts them back.
 
 ```swift
 entity.setMToonOutlineOverride(
@@ -166,7 +175,7 @@ entity.setMToonOutlineOverride(
 entity.setMToonOutlineOverride(nil) // back to the authored outlines
 ```
 
-The override also takes a material set, so part of a model — a selected node's subtree, say — can be outlined on its own. `materialIndices(under:)` answers with the materials any model entity under a node renders with; the unit is the glTF material, so one shared beyond the subtree is outlined everywhere it draws. Disjoint selections compose, and releasing one leaves the others standing.
+The override also takes a material set, so part of a model can be outlined on its own. `materialIndices(under:)` answers with the materials under a node; the unit is the glTF material, so one shared beyond the subtree is outlined everywhere it draws.
 
 ```swift
 let selection = entity.materialIndices(under: selectedNode)
@@ -181,16 +190,13 @@ entity.setMToonOutlineOverride(nil, forMaterials: selection) // release just tho
 <details>
 <summary>Details</summary>
 
-VRMRealityKit also renders plain glTF assets (`.glb` and JSON `.gltf`, including external resources and data URIs).
+VRMRealityKit also renders plain glTF assets: `.glb` and JSON `.gltf`, external resources and data URIs included.
 
 ```swift
 let entity: GLTFEntity = try GLTFEntityLoader(withURL: url).loadEntity()
 
-entity.animations          // [GLTFAnimation]: index, name, duration
-let controller = try entity.playAnimation(at: 0, loops: true)
-controller.speed = 2       // a negative speed plays backwards
-controller.seek(to: 0.5)
-controller.stop()
+entity.animations  // [GLTFAnimation]: index, name, duration
+let controller = try entity.playAnimation(at: 0, loops: true)  // same controller as above
 ```
 
 `loadEntity()` renders the asset's default scene, and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance.
@@ -202,13 +208,13 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 
 - Only triangle primitives are drawn; `POINTS` and `LINES` primitives are skipped.
 - `COLOR_0` vertex colors are ignored: the mesh buffers this renderer builds carry no vertex-color channel.
-- One UV set and one `KHR_texture_transform` per material: the first UV-accessed texture decides both for every texture of that material. A glTF load rejects a document that lists `KHR_texture_transform` in `extensionsRequired` and needs more than that, instead of drawing it wrong; a VRM load renders the approximation.
-- Tangents for a primitive without `TANGENT` are averaged from its UV gradients rather than generated with MikkTSpace, which the spec recommends, so a normal map baked against MikkTSpace can differ slightly along UV seams.
+- One UV set and one `KHR_texture_transform` per material: the first UV-accessed texture decides both. A glTF load requiring more is rejected rather than drawn wrong; a VRM load renders the approximation.
+- Tangents for a primitive without `TANGENT` are averaged from its UV gradients, not generated with MikkTSpace, so a normal map baked against MikkTSpace can differ along UV seams.
 - Blend shapes morph `POSITION` only, since RealityKit blend shapes have no `NORMAL` / `TANGENT` channel.
-- Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints; the further sets a glTF may carry are ignored.
-- MToon's `renderQueueOffsetNumber` is parsed but ignored, because RealityKit has no material-level draw-order hook. (`transparentWithZWrite` is supported through `CustomMaterial.writesDepth`.)
-- MToon's outline is drawn past the mesh's bounding box, which RealityKit culls by, so the outline pass is given a culling margin of the mesh's radius and its vertex offset is clamped to that same margin. An outline asking for more — a screen-space width far from the camera, say — caps out there rather than growing further.
-- MToon's outline takes its lit color from the runtime light color rather than from the surface's fully evaluated shading, which RealityKit does not expose to a `CustomMaterial`.
+- Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints.
+- MToon's `renderQueueOffsetNumber` is ignored, because RealityKit has no material-level draw-order hook; `transparentWithZWrite` works through `CustomMaterial.writesDepth`.
+- MToon's outline is clamped to a culling margin of the mesh's radius, so an outline asking for more caps out there.
+- MToon's outline takes its lit color from the runtime light color, not from the surface's fully evaluated shading, which RealityKit does not expose to a `CustomMaterial`.
 
 </details>
 
@@ -216,7 +222,7 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 
 # ToDo
 
-- [ ] Animation support (vrma)
+- [ ] Look-at playback from vrma
 - [ ] VRM export
 
 # Contributing

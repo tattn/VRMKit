@@ -23,31 +23,39 @@ struct ContentView: View {
     var body: some View {
         VStack {
             HStack {
-                Picker("Renderer", selection: $selectedRenderer) {
+                Picker(selection: $selectedRenderer) {
                     ForEach(MacExampleRenderer.allCases) { renderer in
                         Text(renderer.displayName).tag(renderer)
                     }
+                } label: {
+                    Label("Renderer", systemImage: "cube.transparent")
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
+                .fixedSize()
 
-                Picker("Model", selection: $selectedModel) {
+                Picker(selection: $selectedModel) {
                     ForEach(MacExampleModel.allCases) { model in
                         Text(model.displayName).tag(model)
                     }
+                } label: {
+                    Label("Model", systemImage: "figure.stand")
                 }
                 .pickerStyle(.segmented)
 
-                Picker("Expression", selection: $selectedExpression) {
+                Picker(selection: $selectedExpression) {
                     ForEach(MacExampleExpression.allCases) { expression in
                         Text(expression.displayName(for: selectedModel)).tag(expression)
                     }
+                } label: {
+                    Label("Expression", systemImage: "face.smiling")
                 }
                 .pickerStyle(.segmented)
 
                 Toggle("MToon", isOn: $isMToonEnabled)
-                    .toggleStyle(.switch)
+                    .toggleStyle(.button)
                     .disabled(selectedRenderer != .realityKit)
             }
+            .labelStyle(.iconOnly)
             .padding([.top, .horizontal])
 
             // Only the selected renderer is mounted: keeping the other alive
@@ -88,14 +96,18 @@ private struct RealityKitRendererView: View {
                                        expression: selectedExpression,
                                        isMToonEnabled: isMToonEnabled)
         }
-        .onAppear {
-            viewModel.resumeUpdates()
-        }
         .onChange(of: selectedExpression) { _, expression in
             viewModel.setExpression(expression)
         }
-        .onReceive(viewModel.updateTimer) { _ in
-            viewModel.update()
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                viewModel.toggleVRMAPlayback()
+            } label: {
+                Label(viewModel.isVRMAPlaying ? "Stop VRMA" : "Play VRMA",
+                      systemImage: viewModel.isVRMAPlaying ? "pause.fill" : "play.fill")
+            }
+            .labelStyle(.iconOnly)
+            .padding()
         }
         .overlay(alignment: .bottomLeading) {
             if let errorMessage = viewModel.errorMessage {
@@ -156,14 +168,17 @@ final class RealityKitContentViewModel {
     private var vrmEntity: VRMEntity?
     private var cameraEntity: PerspectiveCamera?
     private var lightEntity: DirectionalLight?
-    private var time: TimeInterval = 0
-    private var lastUpdateTime: Date?
-    private var currentModel: MacExampleModel = .alicia
     private var currentExpression: MacExampleExpression = .neutral
     private var orbitDistance: Float = 2
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
-
-    let updateTimer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+    /// A three-quarter view from slightly above reads better than a straight-on
+    /// one for animations that move the model around. The iOS example frames it
+    /// the same way.
+    private let orbitYaw: Float = -35 * .pi / 180
+    private let orbitPitch: Float = 21.5 * .pi / 180
+    var isVRMAPlaying: Bool { vrmaController != nil }
+    private var vrmaAnimation: VRMAnimation?
+    private var vrmaController: GLTFAnimationPlaybackController?
 
     func makeRenderRootEntity() -> Entity {
         let nextRootEntity = Entity()
@@ -204,38 +219,19 @@ final class RealityKitContentViewModel {
             normalizeScale(for: nextVRMEntity)
             updateCameraTransform()
 
-            let neck = nextVRMEntity.humanoid.node(for: .neck)
-            let leftArm: Entity?
-            let rightArm: Entity?
-            switch nextVRMEntity.vrm {
-            case .v1:
-                leftArm = nextVRMEntity.humanoid.node(for: .leftShoulder)
-                rightArm = nextVRMEntity.humanoid.node(for: .rightShoulder)
-            case .v0:
-                leftArm = nextVRMEntity.humanoid.node(for: .leftUpperArm)
-                rightArm = nextVRMEntity.humanoid.node(for: .rightUpperArm)
-            }
-
+            // The arms are left to the VRM animation started below.
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            let armRotation = simd_quatf(angle: 40 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            if let neck {
+            if let neck = nextVRMEntity.humanoid.node(for: .neck) {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
-            }
-            if let leftArm {
-                leftArm.transform.rotation = leftArm.transform.rotation * armRotation
-            }
-            if let rightArm {
-                rightArm.transform.rotation = rightArm.transform.rotation * armRotation
             }
             apply(expression, replacing: nil, to: nextVRMEntity)
 
             let previousVRMEntity = self.vrmEntity
             self.vrmEntity = nextVRMEntity
             previousVRMEntity?.removeFromParent()
-            self.currentModel = model
+            vrmaController = nil
+            startVRMAPlayback()
             self.currentExpression = expression
-            self.time = 0
-            resumeUpdates()
         } catch {
             errorMessage = error.localizedDescription
             print("VRM Load Error: \(error)")
@@ -250,31 +246,33 @@ final class RealityKitContentViewModel {
         apply(expression, replacing: previous, to: vrmEntity)
     }
 
-    func resumeUpdates() {
-        lastUpdateTime = Date()
+    /// The walk cycle plays from the moment a model loads, so this stops it
+    /// and starts it again.
+    func toggleVRMAPlayback() {
+        if let vrmaController {
+            vrmaController.stop()
+            self.vrmaController = nil
+        } else {
+            startVRMAPlayback()
+        }
     }
 
-    func update() {
-        guard let vrmEntity else { return }
-
-        let now = Date()
-        let deltaTime = lastUpdateTime.map { now.timeIntervalSince($0) } ?? (1.0 / 60.0)
-        lastUpdateTime = now
-
-        time += deltaTime
-
-        let cycle = time.truncatingRemainder(dividingBy: 1.0)
-        let angle: Float
-        if cycle < 0.5 {
-            let progress = Float(cycle) / 0.5
-            angle = -0.5 * progress
-        } else {
-            let progress = Float(cycle - 0.5) / 0.5
-            angle = -0.5 + 0.5 * progress
+    private func startVRMAPlayback() {
+        guard vrmaController == nil, let vrmEntity else { return }
+        do {
+            let animation = try loadedVRMAAnimation()
+            vrmaController = try vrmEntity.playAnimation(animation, loops: true)
+        } catch {
+            errorMessage = error.localizedDescription
+            print("VRMA Play Error: \(error)")
         }
+    }
 
-        vrmEntity.transform.rotation = simd_quatf(angle: currentModel.initialRotation + angle,
-                                                  axis: SIMD3<Float>(0, 1, 0))
+    private func loadedVRMAAnimation() throws -> VRMAnimation {
+        if let vrmaAnimation { return vrmaAnimation }
+        let animation = try VRMAnimation(named: "walk.vrma")
+        vrmaAnimation = animation
+        return animation
     }
 
     private func setUpLight() {
@@ -322,7 +320,9 @@ final class RealityKitContentViewModel {
 
     private func updateCameraTransform() {
         guard let cameraEntity else { return }
-        let position = orbitTarget + SIMD3<Float>(0, 0, -orbitDistance)
+        let yaw = simd_quatf(angle: orbitYaw, axis: SIMD3<Float>(0, 1, 0))
+        let pitch = simd_quatf(angle: orbitPitch, axis: SIMD3<Float>(1, 0, 0))
+        let position = orbitTarget + (yaw * pitch).act(SIMD3<Float>(0, 0, -orbitDistance))
         cameraEntity.look(at: orbitTarget, from: position, relativeTo: nil)
     }
 

@@ -62,6 +62,13 @@ package extension GLTF {
         }
     }
 
+    /// The root `extensions` object, typed as the per-extension dictionaries it
+    /// holds, which is how every `VRMC_*` extension is read.
+    func rootExtensions() throws -> [String: [String: Any]] {
+        let raw = try extensions ??? .keyNotFound("extensions")
+        return try raw.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
+    }
+
     func load<T>(_ keyPath: KeyPath<GLTF, T?>) throws -> T {
         try self[keyPath: keyPath] ??? .keyNotFound(Self.description(of: keyPath))
     }

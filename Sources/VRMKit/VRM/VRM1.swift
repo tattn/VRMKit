@@ -20,8 +20,7 @@ public struct VRM1 {
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
 
-        let rawExtensions = try gltf.jsonData.extensions ??? .keyNotFound("extensions")
-        let extensions = try rawExtensions.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
+        let extensions = try gltf.jsonData.rootExtensions()
         let vrm = try extensions["VRMC_vrm"] ??? .keyNotFound("VRMC_vrm")
         specVersion = try vrm["specVersion"] as? String ??? .dataInconsistent("VRMC_vrm.specVersion is missing or not a string")
         guard VRM1.supports(specVersion: specVersion) else {

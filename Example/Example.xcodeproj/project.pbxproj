@@ -15,9 +15,9 @@
 		067C5C522AAD6D8B00F8FBB3 /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 067C5C512AAD6D8B00F8FBB3 /* VRMSceneKit */; };
 		06E1164E2F277C6D00D74CA4 /* VRMKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E1164D2F277C6D00D74CA4 /* VRMKit */; };
 		06E116502F277C6D00D74CA4 /* VRMRealityKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E1164F2F277C6D00D74CA4 /* VRMRealityKit */; };
-		06E116552F333D8700D74CA4 /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E116562F333D8700D74CA4 /* VRMSceneKit */; };
 		06E116522F277D1800D74CA4 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 06E116512F277D1700D74CA4 /* AliciaSolid.vrm */; };
 		06E116542F277ED600D74CA4 /* AliciaSolid.vrm in Resources */ = {isa = PBXBuildFile; fileRef = 06E116512F277D1700D74CA4 /* AliciaSolid.vrm */; };
+		06E116552F333D8700D74CA4 /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06E116562F333D8700D74CA4 /* VRMSceneKit */; };
 		06F0BD792AAD81A40089488C /* WatchExample Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 06F0BD6C2AAD81A30089488C /* WatchExample Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		06F0BD7F2AAD82120089488C /* VRMKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06F0BD7E2AAD82120089488C /* VRMKit */; };
 		06F0BD812AAD82120089488C /* VRMSceneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 06F0BD802AAD82120089488C /* VRMSceneKit */; };
@@ -25,6 +25,10 @@
 		A1B2C3D4E5F60718293A4B60 /* VRMRealityKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B5F /* VRMRealityKit */; };
 		AF000002AF000002AF000002 /* VRM1_Constraint_Twist_Sample.vrm in Resources */ = {isa = PBXBuildFile; fileRef = AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */; };
 		AF000003AF000003AF000003 /* VRM1_Constraint_Twist_Sample.vrm in Resources */ = {isa = PBXBuildFile; fileRef = AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */; };
+		AFB00001AFB00001AFB00001 /* walk.vrma in Resources */ = {isa = PBXBuildFile; fileRef = AFB00000AFB00000AFB00000 /* walk.vrma */; };
+		AFB00002AFB00002AFB00002 /* walk.vrma in Resources */ = {isa = PBXBuildFile; fileRef = AFB00000AFB00000AFB00000 /* walk.vrma */; };
+		AFB00003AFB00003AFB00003 /* walk.vrma in Resources */ = {isa = PBXBuildFile; fileRef = AFB00000AFB00000AFB00000 /* walk.vrma */; };
+		AFB00004AFB00004AFB00004 /* walk.vrma in Resources */ = {isa = PBXBuildFile; fileRef = AFB00000AFB00000AFB00000 /* walk.vrma */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +73,7 @@
 		245725D72146F47A003AA5D7 /* VRMExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VRMExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FABF60E748F3EF7D574461 /* VisionExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VisionExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */ = {isa = PBXFileReference; lastKnownFileType = file; name = VRM1_Constraint_Twist_Sample.vrm; path = ../../Tests/Assets/VRM/VRM1_Constraint_Twist_Sample.vrm; sourceTree = "<group>"; };
+		AFB00000AFB00000AFB00000 /* walk.vrma */ = {isa = PBXFileReference; lastKnownFileType = file; name = walk.vrma; path = ../../Tests/Assets/VRMA/walk.vrma; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -156,6 +161,7 @@
 			children = (
 				06E116512F277D1700D74CA4 /* AliciaSolid.vrm */,
 				AF000001AF000001AF000001 /* VRM1_Constraint_Twist_Sample.vrm */,
+				AFB00000AFB00000AFB00000 /* walk.vrma */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -352,6 +358,7 @@
 			files = (
 				06E116522F277D1800D74CA4 /* AliciaSolid.vrm in Resources */,
 				AF000002AF000002AF000002 /* VRM1_Constraint_Twist_Sample.vrm in Resources */,
+				AFB00001AFB00001AFB00001 /* walk.vrma in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -361,6 +368,7 @@
 			files = (
 				062780292F320E6B00FFBDAC /* AliciaSolid.vrm in Resources */,
 				0627802A2F320F4800FFBDAC /* VRM1_Constraint_Twist_Sample.vrm in Resources */,
+				AFB00002AFB00002AFB00002 /* walk.vrma in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -370,6 +378,7 @@
 			files = (
 				06E116542F277ED600D74CA4 /* AliciaSolid.vrm in Resources */,
 				AF000003AF000003AF000003 /* VRM1_Constraint_Twist_Sample.vrm in Resources */,
+				AFB00003AFB00003AFB00003 /* walk.vrma in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -379,6 +388,7 @@
 			files = (
 				0627802B2F320F6D00FFBDAC /* AliciaSolid.vrm in Resources */,
 				0627802C2F320F6F00FFBDAC /* VRM1_Constraint_Twist_Sample.vrm in Resources */,
+				AFB00004AFB00004AFB00004 /* walk.vrma in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -662,7 +672,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -727,7 +737,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
