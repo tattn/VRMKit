@@ -1,5 +1,6 @@
 import SwiftUI
 import RealityKit
+import VRMKit
 import VRMRealityKit
 
 struct MainView: View {
@@ -20,6 +21,14 @@ struct MainView: View {
             }
             .pickerStyle(.segmented)
             .disabled(appModel.immersiveSpaceState == .inTransition)
+
+            Toggle(isOn: $appModel.isVRMAPlaying) {
+                Label("Play VRMA",
+                      systemImage: appModel.isVRMAPlaying ? "pause.fill" : "play.fill")
+            }
+            .toggleStyle(.button)
+            .labelStyle(.iconOnly)
+            .disabled(appModel.immersiveSpaceState != .open)
 
             Button {
                 Task {
@@ -56,9 +65,10 @@ struct ImmersiveView: View {
         }
         .task(id: appModel.selectedModelName) {
             await viewModel.loadEntity(model: appModel.selectedModelName)
+            viewModel.setVRMAPlaying(appModel.isVRMAPlaying)
         }
-        .onReceive(viewModel.updateTimer) { _ in
-            viewModel.update()
+        .onChange(of: appModel.isVRMAPlaying) { _, isPlaying in
+            viewModel.setVRMAPlaying(isPlaying)
         }
     }
 }
@@ -69,24 +79,17 @@ final class ImmersiveViewModel {
     let rootEntity = Entity()
     private(set) var errorMessage: String?
     private var vrmEntity: VRMEntity?
-    private var time: TimeInterval = 0
-    private var lastUpdateTime: Date?
-    
-    private var baseRotation: Float = 0
-    
-    let updateTimer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+    private var vrmaAnimation: VRMAnimation?
+    private var vrmaController: GLTFAnimationPlaybackController?
 
     func loadEntity(model: AppModel.ModelName) async {
         let modelName = model.rawValue
-        
-        // Clean up previous
+
         if let current = vrmEntity {
             current.removeFromParent()
             vrmEntity = nil
+            vrmaController = nil
         }
-        
-        // Alicia (VRM0) needs 180 degree rotation to face camera, VRM1 samples often don't
-        baseRotation = model.initialRotation
         
         do {
             // visionOS has no CustomMaterial, so MToon always falls back to
@@ -95,63 +98,45 @@ final class ImmersiveViewModel {
             let vrmEntity = try loader.loadEntity()
             
             vrmEntity.transform.translation = SIMD3<Float>(0, 0, -1.5)
-            vrmEntity.transform.rotation = simd_quatf(angle: baseRotation, axis: SIMD3<Float>(0, 1, 0))
+            // Alicia (VRM0) needs 180 degree rotation to face camera, VRM1 samples often don't
+            vrmEntity.transform.rotation = simd_quatf(angle: model.initialRotation, axis: SIMD3<Float>(0, 1, 0))
             rootEntity.addChild(vrmEntity)
 
-            // Adjust pose
-            let neck = vrmEntity.humanoid.node(for: .neck)
-            let leftArm: Entity?
-            let rightArm: Entity?
-            switch vrmEntity.vrm {
-            case .v1:
-                leftArm = vrmEntity.humanoid.node(for: .leftShoulder)
-                rightArm = vrmEntity.humanoid.node(for: .rightShoulder)
-            case .v0:
-                leftArm = vrmEntity.humanoid.node(for: .leftUpperArm)
-                rightArm = vrmEntity.humanoid.node(for: .rightUpperArm)
-            }
-            
+            // The arms are left to the VRM animation the view starts.
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            let armRotation = simd_quatf(angle: 40 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            if let neck {
+            if let neck = vrmEntity.humanoid.node(for: .neck) {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
-            }
-            if let leftArm {
-                leftArm.transform.rotation = leftArm.transform.rotation * armRotation
-            }
-            if let rightArm {
-                rightArm.transform.rotation = rightArm.transform.rotation * armRotation
             }
             vrmEntity.setBlendShape(value: 1.0, for: .custom("><"))
             
             self.vrmEntity = vrmEntity
-            self.lastUpdateTime = Date()
         } catch {
             errorMessage = error.localizedDescription
             print("VRM Load Error: \(error)")
         }
     }
     
-    func update() {
-        guard let vrmEntity else { return }
-        
-        let now = Date()
-        let deltaTime = lastUpdateTime.map { now.timeIntervalSince($0) } ?? (1.0 / 60.0)
-        lastUpdateTime = now
-        
-        time += deltaTime
-        
-        // An animation that sways left and right
-        let cycle = time.truncatingRemainder(dividingBy: 1.0)
-        let angle: Float
-        if cycle < 0.5 {
-            let progress = Float(cycle) / 0.5
-            angle = -0.5 * progress
-        } else {
-            let progress = Float(cycle - 0.5) / 0.5
-            angle = -0.5 + 0.5 * progress
+    /// Starts or stops the bundled walk cycle, retargeted onto the model.
+    func setVRMAPlaying(_ isPlaying: Bool) {
+        guard isPlaying else {
+            vrmaController?.stop()
+            vrmaController = nil
+            return
         }
-        
-        vrmEntity.transform.rotation = simd_quatf(angle: baseRotation + angle, axis: SIMD3<Float>(0, 1, 0))
+        guard vrmaController == nil, let vrmEntity else { return }
+        do {
+            let animation = try loadedVRMAAnimation()
+            vrmaController = try vrmEntity.playAnimation(animation, loops: true)
+        } catch {
+            errorMessage = error.localizedDescription
+            print("VRMA Play Error: \(error)")
+        }
+    }
+
+    private func loadedVRMAAnimation() throws -> VRMAnimation {
+        if let vrmaAnimation { return vrmaAnimation }
+        let animation = try VRMAnimation(named: "walk.vrma")
+        vrmaAnimation = animation
+        return animation
     }
 }

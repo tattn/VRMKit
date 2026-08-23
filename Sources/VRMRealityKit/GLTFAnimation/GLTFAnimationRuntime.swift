@@ -8,9 +8,11 @@ import VRMKit
 /// exporters routinely share one input accessor across many samplers.
 struct GLTFAnimationDecoder {
     private let accessors: PackedAccessorCache
+    private let nodes: [GLTF.Node]
 
     init(document: GLTFDocument) {
         accessors = PackedAccessorCache(document: document)
+        nodes = document.gltf.nodes ?? []
     }
 
     /// A sampler input. The spec fixes it to FLOAT scalars that start at or after
@@ -83,6 +85,67 @@ struct GLTFAnimationDecoder {
         return try accessor.floatComponents(type)
     }
 
+    struct Channel {
+        let nodeIndex: Int
+        let path: GLTF.Animation.Channel.Target.TargetPath
+        let sampler: GLTF.Animation.Sampler
+    }
+
+    /// The animation's channels, checked against the rules the spec puts on
+    /// them. Channels without a node target or with an unknown (extension) path
+    /// are dropped rather than rejected, as the spec prescribes.
+    func validatedChannels(of animation: GLTF.Animation) throws -> [Channel] {
+        struct TargetKey: Hashable {
+            let node: Int
+            let path: GLTF.Animation.Channel.Target.TargetPath
+        }
+
+        var drivenTargets: Set<TargetKey> = []
+        return try animation.channels.compactMap { channel in
+            guard let nodeIndex = channel.target.node,
+                  let path = channel.target.targetPath else { return nil }
+            guard nodes.indices.contains(nodeIndex) else {
+                throw VRMError._dataInconsistent(
+                    "an animation channel targets node \(nodeIndex) of \(nodes.count) nodes"
+                )
+            }
+            // The spec keeps `matrix` off an animated node, whose channels
+            // state the TRS they drive.
+            guard nodes[nodeIndex]._matrix == nil else {
+                throw VRMError._dataInconsistent(
+                    "animated node \(nodeIndex) must use translation / rotation / scale instead of matrix"
+                )
+            }
+            // At most one channel of an animation may drive a (node, path):
+            // which of two wins would be arbitrary, so reject rather than pick.
+            guard drivenTargets.insert(TargetKey(node: nodeIndex, path: path)).inserted else {
+                throw VRMError._dataInconsistent(
+                    "two channels of this animation drive the \(path.rawValue) of node \(nodeIndex)"
+                )
+            }
+            guard animation.samplers.indices.contains(channel.sampler) else {
+                throw VRMError._dataInconsistent(
+                    "animation channel references sampler \(channel.sampler) of \(animation.samplers.count)"
+                )
+            }
+            return Channel(nodeIndex: nodeIndex, path: path, sampler: animation.samplers[channel.sampler])
+        }
+    }
+
+    /// The animation's length: the input accessors' spec-required `max` when
+    /// present, decoded input times otherwise.
+    func duration(of animation: GLTF.Animation) -> TimeInterval {
+        var duration: Float = 0
+        for sampler in animation.samplers {
+            if let max = (try? accessors.accessor(at: sampler.input))?.accessor.max?.first {
+                duration = Swift.max(duration, max)
+            } else if let last = try? times(at: sampler.input).last {
+                duration = Swift.max(duration, last)
+            }
+        }
+        return TimeInterval(duration)
+    }
+
     /// Groups a weights output into one `[Float]` per keyframe element, which the
     /// spec sizes by the morph target count of the mesh the channel drives.
     static func weightGroups(scalars: [Float], groupCount: Int, targetCount: Int) throws -> [[Float]] {
@@ -97,7 +160,7 @@ struct GLTFAnimationDecoder {
 
 /// One glTF animation decoded and bound to the entities it drives.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-final class GLTFAnimationRuntime {
+final class GLTFAnimationRuntime: GLTFAnimationApplying {
     /// Every transform channel of one node, so a node animated on more than one
     /// path takes a single `Transform` write per frame.
     private struct TransformBinding {
@@ -112,11 +175,6 @@ final class GLTFAnimationRuntime {
         let track: GLTFKeyframeTrack<[Float]>
     }
 
-    private struct TargetKey: Hashable {
-        let node: Int
-        let path: GLTF.Animation.Channel.Target.TargetPath
-    }
-
     private let transformBindings: [TransformBinding]
     private let weightBindings: [WeightBinding]
 
@@ -126,60 +184,44 @@ final class GLTFAnimationRuntime {
         // Keyed by node index so all of a node's channels land in one binding.
         var transforms: [Int: TransformBinding] = [:]
         var weights: [WeightBinding] = []
-        var drivenTargets: Set<TargetKey> = []
 
-        for channel in animation.channels {
-            // Channels without a node target or with an unknown (extension) path
-            // are skipped, as the spec prescribes.
-            guard let nodeIndex = channel.target.node,
-                  let path = channel.target.targetPath else { continue }
-            // At most one channel of an animation may drive a (node, path):
-            // which of two wins would be arbitrary, so reject rather than pick.
-            guard drivenTargets.insert(TargetKey(node: nodeIndex, path: path)).inserted else {
-                throw VRMError._dataInconsistent(
-                    "two channels of this animation drive the \(path.rawValue) of node \(nodeIndex)"
-                )
-            }
-            guard animation.samplers.indices.contains(channel.sampler) else {
-                throw VRMError._dataInconsistent("animation channel references sampler \(channel.sampler) of \(animation.samplers.count)")
-            }
-            let sampler = animation.samplers[channel.sampler]
-            let times = try decoder.times(at: sampler.input)
+        for channel in try decoder.validatedChannels(of: animation) {
+            let times = try decoder.times(at: channel.sampler.input)
 
-            if path == .weights {
-                guard let binding = entity.morphBindings[nodeIndex], !binding.modelEntities.isEmpty else { continue }
-                let scalars = try decoder.weights(at: sampler.output)
-                let perKeyframe = sampler.interpolation == .CUBICSPLINE ? 3 : 1
+            if channel.path == .weights {
+                guard let binding = entity.morphBindings[channel.nodeIndex], !binding.modelEntities.isEmpty else { continue }
+                let scalars = try decoder.weights(at: channel.sampler.output)
+                let perKeyframe = channel.sampler.interpolation == .CUBICSPLINE ? 3 : 1
                 let groups = try GLTFAnimationDecoder.weightGroups(scalars: scalars,
                                                                    groupCount: times.count * perKeyframe,
                                                                    targetCount: binding.targetCount)
                 weights.append(WeightBinding(modelEntities: binding.modelEntities,
                                              track: try .init(times: times,
-                                                              interpolation: sampler.interpolation,
+                                                              interpolation: channel.sampler.interpolation,
                                                               values: groups)))
                 continue
             }
 
-            guard let target = entity.entity(forNodeAt: nodeIndex) else { continue }
-            var binding = transforms[nodeIndex] ?? TransformBinding(target: target)
-            switch path {
+            guard let target = entity.entity(forNodeAt: channel.nodeIndex) else { continue }
+            var binding = transforms[channel.nodeIndex] ?? TransformBinding(target: target)
+            switch channel.path {
             case .translation:
                 binding.translation = try .init(times: times,
-                                                interpolation: sampler.interpolation,
-                                                values: decoder.vector3s(at: sampler.output))
+                                                interpolation: channel.sampler.interpolation,
+                                                values: decoder.vector3s(at: channel.sampler.output))
             case .rotation:
                 binding.rotation = try .init(times: times,
-                                             interpolation: sampler.interpolation,
-                                             values: decoder.quaternions(at: sampler.output,
-                                                                         interpolation: sampler.interpolation))
+                                             interpolation: channel.sampler.interpolation,
+                                             values: decoder.quaternions(at: channel.sampler.output,
+                                                                         interpolation: channel.sampler.interpolation))
             case .scale:
                 binding.scale = try .init(times: times,
-                                          interpolation: sampler.interpolation,
-                                          values: decoder.vector3s(at: sampler.output))
+                                          interpolation: channel.sampler.interpolation,
+                                          values: decoder.vector3s(at: channel.sampler.output))
             case .weights:
                 break // handled above
             }
-            transforms[nodeIndex] = binding
+            transforms[channel.nodeIndex] = binding
         }
 
         transformBindings = Array(transforms.values)

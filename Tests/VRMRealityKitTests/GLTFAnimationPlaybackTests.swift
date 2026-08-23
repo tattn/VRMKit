@@ -583,6 +583,35 @@ struct GLTFAnimationPlaybackTests {
         #expect(throws: VRMError.self) { try entity.playAnimation(at: 0) }
     }
 
+    /// A channel targets a node of the document, and an animated node states
+    /// its transform as TRS rather than as a `matrix`.
+    @Test
+    func testAnimationChannelTargetsAreValidated() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let outOfRange = try TestSupport.loader(.animatedTriangle) { json in
+            guard var animations = json["animations"] as? [[String: Any]], !animations.isEmpty,
+                  var channels = animations[0]["channels"] as? [[String: Any]], !channels.isEmpty,
+                  var target = channels[0]["target"] as? [String: Any] else {
+                throw GLBRewriter.Error.invalidJSON
+            }
+            target["node"] = 1
+            channels[0]["target"] = target
+            animations[0]["channels"] = channels
+            json["animations"] = animations
+        }.loadEntity()
+        #expect(throws: VRMError.self) { try outOfRange.playAnimation(at: 0) }
+
+        let matrixNode = try TestSupport.loader(.animatedTriangle) { json in
+            guard var nodes = json["nodes"] as? [[String: Any]], !nodes.isEmpty else {
+                throw GLBRewriter.Error.invalidJSON
+            }
+            nodes[0]["rotation"] = nil
+            nodes[0]["matrix"] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+            json["nodes"] = nodes
+        }.loadEntity()
+        #expect(throws: VRMError.self) { try matrixNode.playAnimation(at: 0) }
+    }
+
     @Test
     func testVRMEntityInheritsTheAnimationAPI() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

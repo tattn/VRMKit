@@ -18,6 +18,18 @@ extension GLTF.Vector4 {
     }
 }
 
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+extension GLTF.Node {
+    /// The node's local transform: its `matrix` when it has one, the TRS
+    /// properties otherwise, as the spec defines the two as alternatives.
+    var localTransform: Transform {
+        if let matrix = _matrix {
+            return Transform(matrix: matrix.simdMatrix)
+        }
+        return Transform(scale: scale.simd, rotation: rotation.simdQuat, translation: translation.simd)
+    }
+}
+
 extension GLTF.Matrix {
     var simdMatrix: simd_float4x4 {
         let v = values

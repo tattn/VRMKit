@@ -39,6 +39,10 @@ public final class VRMEntity: GLTFEntity {
     var blendShapeClips: [BlendShapeKey: BlendShapeClip] = [:]
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
     private var expressionWeights: [ExpressionKey: Float] = [:]
+    /// The VRM 0.x counterpart of ``expressionWeights``: input weights per blend
+    /// shape group, kept so that groups sharing a morph target accumulate
+    /// instead of overwriting one another.
+    private var blendShapeWeights: [BlendShapeKey: Float] = [:]
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
@@ -194,17 +198,16 @@ public final class VRMEntity: GLTFEntity {
             }
         }
 
-        buildExpressionBindingIndexes()
+        buildBindingIndexes()
     }
 
-    /// Indexes every expression binding once, so `applyExpressions()` only
-    /// accumulates weights instead of rediscovering the bindings each time.
-    private func buildExpressionBindingIndexes() {
-        for clip in expressionClips.values {
-            for binding in clip.values {
-                let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
-                morphBindingIndex[key] = binding
-            }
+    /// Indexes every expression binding once, so applying weights only
+    /// accumulates them instead of rediscovering the bindings each time.
+    private func buildBindingIndexes() {
+        let morphBindings = expressionClips.values.flatMap(\.values) + blendShapeClips.values.flatMap(\.values)
+        for binding in morphBindings {
+            let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
+            morphBindingIndex[key] = binding
         }
         for bindings in materialColorClips.values {
             for binding in bindings {
@@ -373,30 +376,41 @@ public final class VRMEntity: GLTFEntity {
     }
 
     public func setBlendShape(value: CGFloat, for key: BlendShapeKey) {
-        if case .v1 = vrm, let expressionKey = key.expressionKey {
-            setExpression(value: value, for: expressionKey)
+        setBlendShapes([key: value])
+    }
+
+    /// Sets several VRM 0.x blend shape weights and re-applies the result once.
+    ///
+    /// Prefer this over repeated ``setBlendShape(value:for:)`` calls when a single
+    /// frame changes more than one group (face tracking, lip sync, animation
+    /// playback): applying re-accumulates every active group in one pass.
+    public func setBlendShapes(_ weights: [BlendShapeKey: CGFloat]) {
+        // A VRM 1.0 model has expressions rather than blend shape groups; the
+        // legacy presets migrate onto them.
+        if case .v1 = vrm {
+            setExpressions(weights.reduce(into: [:]) { result, entry in
+                guard let key = entry.key.expressionKey else { return }
+                result[key] = entry.value
+            })
             return
         }
-        guard let clip = blendShapeClips[key] else { return }
-        let normalized = clip.normalizedWeight(Double(value))
-        for binding in clip.values {
-            let weight = Float(binding.weight / 100.0) * Float(normalized)
-            applyBlendShapeWeight(weight, targetIndex: binding.index, on: binding.mesh)
+        var changed = false
+        for (key, value) in weights where storeBlendShapeWeight(value, for: key) {
+            changed = true
         }
+        guard changed else { return }
+        applyBlendShapes()
     }
 
     public func blendShape(for key: BlendShapeKey) -> CGFloat {
         if case .v1 = vrm, let expressionKey = key.expressionKey {
             return expression(for: expressionKey)
         }
-        guard let clip = blendShapeClips[key],
-              let binding = clip.values.first else { return 0 }
-        return CGFloat(readBlendShapeWeight(targetIndex: binding.index, on: binding.mesh))
+        return CGFloat(blendShapeWeights[key] ?? 0)
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
-        guard storeExpressionWeight(value, for: key) else { return }
-        applyExpressions()
+        setExpressions([key: value])
     }
 
     /// Sets several expression weights and re-applies the result once.
@@ -405,6 +419,14 @@ public final class VRMEntity: GLTFEntity {
     /// frame changes more than one expression (face tracking, lip sync): applying
     /// re-accumulates every active clip and can rebuild MToon parameter textures.
     public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
+        // A VRM 0.x model drives the same presets through its blend shape groups.
+        if case .v0 = vrm {
+            setBlendShapes(weights.reduce(into: [:]) { result, entry in
+                guard let key = entry.key.legacyBlendShapeKey else { return }
+                result[key] = entry.value
+            })
+            return
+        }
         var changed = false
         for (key, value) in weights where storeExpressionWeight(value, for: key) {
             changed = true
@@ -417,18 +439,33 @@ public final class VRMEntity: GLTFEntity {
     private func storeExpressionWeight(_ value: CGFloat, for key: ExpressionKey) -> Bool {
         guard let key = canonicalExpressionKey(for: key),
               let clip = expressionClips[key] else { return false }
-        let normalized = clip.normalizedWeight(Double(value))
+        return Self.store(clip.normalizedWeight(Double(value)), for: key, in: &expressionWeights)
+    }
+
+    private func storeBlendShapeWeight(_ value: CGFloat, for key: BlendShapeKey) -> Bool {
+        guard let clip = blendShapeClips[key] else { return false }
+        return Self.store(clip.normalizedWeight(Double(value)), for: key, in: &blendShapeWeights)
+    }
+
+    /// Keeps `weights` free of the zero entries an accumulation would skip
+    /// anyway, and reports whether the stored weight actually moved.
+    private static func store<Key>(_ normalized: Double,
+                                   for key: Key,
+                                   in weights: inout [Key: Float]) -> Bool {
         let weight = normalized > 0 ? Float(normalized) : nil
-        guard weight != expressionWeights[key] else { return false }
+        guard weight != weights[key] else { return false }
         if let weight {
-            expressionWeights[key] = weight
+            weights[key] = weight
         } else {
-            expressionWeights.removeValue(forKey: key)
+            weights.removeValue(forKey: key)
         }
         return true
     }
 
     public func expression(for key: ExpressionKey) -> CGFloat {
+        if case .v0 = vrm, let legacyKey = key.legacyBlendShapeKey {
+            return blendShape(for: legacyKey)
+        }
         guard let key = canonicalExpressionKey(for: key) else { return 0 }
         return CGFloat(expressionWeights[key] ?? 0)
     }
@@ -509,23 +546,49 @@ public final class VRMEntity: GLTFEntity {
         return result
     }
 
-    private func applyExpressions() {
-        let expressionWeights = effectiveExpressionWeights()
-
+    /// The VRM 0.x counterpart of ``applyExpressions()``. Blend shape groups
+    /// carry none of the override or material bindings VRM 1.0 expressions do,
+    /// so accumulating their morph targets is all there is to it.
+    private func applyBlendShapes() {
         var morphWeights: [MorphBindingKey: Float] = [:]
-        for (expressionKey, expressionWeight) in expressionWeights {
-            guard let clip = expressionClips[expressionKey] else { continue }
-            for binding in clip.values {
-                let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
-                morphWeights[key, default: 0] += Float(binding.weight / 100.0) * expressionWeight
-            }
+        for (key, weight) in blendShapeWeights {
+            guard let clip = blendShapeClips[key] else { continue }
+            accumulate(clip.values, weight: weight, into: &morphWeights)
         }
+        flushMorphWeights(morphWeights)
+    }
+
+    /// Adds one clip's share of every morph target it binds. Groups and
+    /// expressions overlapping on a target sum up rather than overwrite.
+    private func accumulate(_ bindings: [BlendShapeBinding],
+                            weight: Float,
+                            into morphWeights: inout [MorphBindingKey: Float]) {
+        for binding in bindings {
+            let key = MorphBindingKey(mesh: binding.mesh, targetIndex: binding.index)
+            morphWeights[key, default: 0] += Float(binding.weight / 100.0) * weight
+        }
+    }
+
+    /// Pushes the accumulated weights to the meshes, resetting every bound
+    /// target no active clip touches and skipping the ones that did not move.
+    private func flushMorphWeights(_ morphWeights: [MorphBindingKey: Float]) {
         for (key, binding) in morphBindingIndex {
             let weight = morphWeights[key] ?? 0
             guard appliedMorphWeights[key] != weight else { continue }
             appliedMorphWeights[key] = weight
             applyBlendShapeWeight(weight, targetIndex: binding.index, on: binding.mesh)
         }
+    }
+
+    private func applyExpressions() {
+        let expressionWeights = effectiveExpressionWeights()
+
+        var morphWeights: [MorphBindingKey: Float] = [:]
+        for (expressionKey, expressionWeight) in expressionWeights {
+            guard let clip = expressionClips[expressionKey] else { continue }
+            accumulate(clip.values, weight: expressionWeight, into: &morphWeights)
+        }
+        flushMorphWeights(morphWeights)
 
         var colors: [MaterialColorBindingKey: SIMD4<Float>] = [:]
         for (expressionKey, expressionWeight) in expressionWeights {
@@ -619,23 +682,6 @@ public final class VRMEntity: GLTFEntity {
         }
         blendShapeSlotCache[key] = slots
         return slots
-    }
-
-    private func readBlendShapeWeight(targetIndex: Int, on mesh: Entity) -> Float {
-        let targetName = "blendShape_\(targetIndex)"
-        for modelEntity in mesh.modelEntitiesInHierarchy {
-            let weights = modelEntity.blendWeights
-            if let firstSet = weights.first, targetIndex < firstSet.count {
-                let names = modelEntity.blendWeightNames
-                if let firstNames = names.first,
-                   let nameIndex = firstNames.firstIndex(of: targetName),
-                   nameIndex < firstSet.count {
-                    return firstSet[nameIndex]
-                }
-                return firstSet[targetIndex]
-            }
-        }
-        return 0
     }
 
     private func ensureBlendShapeComponent(on modelEntity: ModelEntity) {

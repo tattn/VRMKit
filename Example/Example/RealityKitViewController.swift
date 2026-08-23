@@ -1,35 +1,46 @@
-import Combine
 import UIKit
 import RealityKit
 import simd
 internal import VRMKit
 internal import VRMRealityKit
 
-@available(iOS 18.0, *)
-final class RealityKitViewController: UIViewController, UIGestureRecognizerDelegate {
+final class RealityKitViewController: UIViewController, VRMRendererViewController, UIGestureRecognizerDelegate {
+    var model: VRMExampleModel = .alicia {
+        didSet {
+            guard isViewLoaded, model != oldValue else { return }
+            loadVRM()
+        }
+    }
+
     private var arView: ARView?
-    private var updateSubscription: Cancellable?
     private var loadedEntity: VRMEntity?
     private var loadedAnchor: AnchorEntity?
     private var cameraAnchor: AnchorEntity?
     private var cameraEntity: PerspectiveCamera?
     private var lightEntity: DirectionalLight?
     private var expressionSegmentedControl: UISegmentedControl?
-    private var orbitYaw: Float = 0
-    private var orbitPitch: Float = -0.1
+    var leadingBarButtonItems: [UIBarButtonItem] { [vrmaBarButtonItem] }
+    private lazy var vrmaBarButtonItem = UIBarButtonItem(image: nil,
+                                                         style: .plain,
+                                                         target: self,
+                                                         action: #selector(vrmaButtonTapped))
+    private var vrmaAnimation: VRMAnimation?
+    private var vrmaController: GLTFAnimationPlaybackController?
+    /// A three-quarter view from slightly above reads better than a straight-on
+    /// one for animations that move the model around.
+    private var orbitYaw: Float = -35 * .pi / 180
+    private var orbitPitch: Float = 21.5 * .pi / 180
     private var orbitDistance: Float = 2
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
-    private var currentModel: VRMExampleModel = .alicia
     private var currentExpression: ExampleExpression = .neutral
     private var isMToonEnabled = true
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "RealityKit"
         view.backgroundColor = .black
         setUpARView()
         setUpUI()
-        loadVRM(model: .alicia)
+        loadVRM()
     }
 
     private func setUpARView() {
@@ -51,14 +62,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     }
 
     private func setUpUI() {
-        let items = VRMExampleModel.allCases.map { $0.displayName }
-        let segmentedControl = UISegmentedControl(items: items)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.addTarget(self, action: #selector(segmentChanged(_:)), for: .valueChanged)
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(segmentedControl)
-
-        let expressionItems = ExampleExpression.allCases.map { $0.displayName(for: currentModel) }
+        let expressionItems = ExampleExpression.allCases.map { $0.displayName(for: model) }
         let expressionSegmentedControl = UISegmentedControl(items: expressionItems)
         expressionSegmentedControl.selectedSegmentIndex = 0
         expressionSegmentedControl.addTarget(self, action: #selector(expressionSegmentChanged(_:)), for: .valueChanged)
@@ -66,30 +70,55 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         view.addSubview(expressionSegmentedControl)
         self.expressionSegmentedControl = expressionSegmentedControl
 
-        let mtoonLabel = UILabel()
-        mtoonLabel.text = "MToon"
-        let mtoonSwitch = UISwitch()
-        mtoonSwitch.isOn = isMToonEnabled
-        mtoonSwitch.addTarget(self, action: #selector(mtoonChanged(_:)), for: .valueChanged)
-        let mtoonControl = UIStackView(arrangedSubviews: [mtoonLabel, mtoonSwitch])
-        mtoonControl.axis = .horizontal
-        mtoonControl.spacing = 8
-        mtoonControl.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(mtoonControl)
+        let mtoonButton = UIButton(type: .system)
+        mtoonButton.changesSelectionAsPrimaryAction = true
+        mtoonButton.isSelected = isMToonEnabled
+        mtoonButton.configurationUpdateHandler = { button in
+            var configuration: UIButton.Configuration = button.isSelected ? .filled() : .gray()
+            configuration.title = "MToon"
+            button.configuration = configuration
+        }
+        mtoonButton.addTarget(self, action: #selector(mtoonChanged(_:)), for: .primaryActionTriggered)
+
+        mtoonButton.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(mtoonButton)
 
         NSLayoutConstraint.activate([
-            segmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            segmentedControl.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -50),
             expressionSegmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            expressionSegmentedControl.bottomAnchor.constraint(equalTo: segmentedControl.topAnchor, constant: -20),
-            mtoonControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            mtoonControl.bottomAnchor.constraint(equalTo: expressionSegmentedControl.topAnchor, constant: -16)
+            expressionSegmentedControl.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            mtoonButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            mtoonButton.bottomAnchor.constraint(equalTo: expressionSegmentedControl.topAnchor, constant: -16)
         ])
     }
 
-    @objc private func segmentChanged(_ sender: UISegmentedControl) {
-        let model = VRMExampleModel.allCases[sender.selectedSegmentIndex]
-        loadVRM(model: model)
+    @objc private func vrmaButtonTapped() {
+        if let vrmaController {
+            vrmaController.isPaused.toggle()
+        } else {
+            playVRMA()
+        }
+        updateVRMAButton()
+    }
+
+    private func playVRMA() {
+        guard let loadedEntity else { return }
+        do {
+            vrmaController = try loadedEntity.playAnimation(loadedVRMAAnimation(), loops: true)
+        } catch {
+            print(error)
+        }
+    }
+
+    private func loadedVRMAAnimation() throws -> VRMAnimation {
+        if let vrmaAnimation { return vrmaAnimation }
+        let animation = try VRMAnimation(named: "walk.vrma")
+        vrmaAnimation = animation
+        return animation
+    }
+
+    private func updateVRMAButton() {
+        let isPlaying = vrmaController.map { !$0.isPaused } ?? false
+        vrmaBarButtonItem.image = UIImage(systemName: isPlaying ? "pause.fill" : "play.fill")
     }
 
     @objc private func expressionSegmentChanged(_ sender: UISegmentedControl) {
@@ -99,16 +128,17 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         loadedEntity?.setExampleExpression(currentExpression, value: 1.0)
     }
 
-    @objc private func mtoonChanged(_ sender: UISwitch) {
-        isMToonEnabled = sender.isOn
-        loadVRM(model: currentModel)
+    @objc private func mtoonChanged(_ sender: UIButton) {
+        isMToonEnabled = sender.isSelected
+        loadVRM()
     }
 
-    private func loadVRM(model: VRMExampleModel) {
+    private func loadVRM() {
         guard let arView = arView else { return }
 
-        currentModel = model
         updateExpressionLabels()
+
+        vrmaController = nil
 
         // Removing the anchor takes the whole model hierarchy out of the scene.
         if let loadedAnchor {
@@ -125,6 +155,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
 
             let anchor = AnchorEntity(world: .zero)
             vrmEntity.transform.translation = SIMD3<Float>(0, -1.0, -1.5)
+            vrmEntity.transform.rotation = simd_quatf(angle: model.initialRotation, axis: SIMD3<Float>(0, 1, 0))
             anchor.addChild(vrmEntity)
             arView.scene.addAnchor(anchor)
             setUpLight(in: arView)
@@ -132,57 +163,20 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
             updateOrbitTarget(for: vrmEntity, adjustDistance: false)
             updateCameraTransform()
 
-            let neck = vrmEntity.humanoid.node(for: .neck)
-            let leftArm: Entity?
-            let rightArm: Entity?
-            switch vrmEntity.vrm {
-            case .v1:
-                leftArm = vrmEntity.humanoid.node(for: .leftShoulder)
-                rightArm = vrmEntity.humanoid.node(for: .rightShoulder)
-            case .v0:
-                leftArm = vrmEntity.humanoid.node(for: .leftUpperArm)
-                rightArm = vrmEntity.humanoid.node(for: .rightUpperArm)
-            }
-
+            // The arms are left to the VRM animation started below.
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            let armRotation = simd_quatf(angle: 40 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            if let neck {
+            if let neck = vrmEntity.humanoid.node(for: .neck) {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
-            }
-            if let leftArm {
-                leftArm.transform.rotation = leftArm.transform.rotation * armRotation
-            }
-            if let rightArm {
-                rightArm.transform.rotation = rightArm.transform.rotation * armRotation
             }
             vrmEntity.setExampleExpression(currentExpression, value: 1.0)
 
             loadedEntity = vrmEntity
             loadedAnchor = anchor
-
-            let rotationOffset = model.initialRotation
-
-            var time: TimeInterval = 0
-            updateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
-                guard let loadedEntity = self?.loadedEntity else { return }
-
-                time += event.deltaTime
-
-                let cycle = time.truncatingRemainder(dividingBy: 1.0)
-                let angle: Float
-                if cycle < 0.5 {
-                    let progress = Float(cycle) / 0.5
-                    angle = -0.5 * progress
-                } else {
-                    let progress = Float(cycle - 0.5) / 0.5
-                    angle = -0.5 + 0.5 * progress
-                }
-
-                loadedEntity.transform.rotation = simd_quatf(angle: rotationOffset + angle, axis: SIMD3<Float>(0, 1, 0))
-            }
+            playVRMA()
         } catch {
             print(error)
         }
+        updateVRMAButton()
     }
 
     private func updateExpressionLabels() {
@@ -190,7 +184,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         let selectedIndex = expressionSegmentedControl.selectedSegmentIndex
         expressionSegmentedControl.removeAllSegments()
         for (index, expression) in ExampleExpression.allCases.enumerated() {
-            expressionSegmentedControl.insertSegment(withTitle: expression.displayName(for: currentModel),
+            expressionSegmentedControl.insertSegment(withTitle: expression.displayName(for: model),
                                                      at: index,
                                                      animated: false)
         }

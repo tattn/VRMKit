@@ -37,7 +37,8 @@ let package = Package(
             path: "Tests/VRMTestSupport",
             resources: [
                 .copy("../Assets/GLTF"),
-                .copy("../Assets/VRM")
+                .copy("../Assets/VRM"),
+                .copy("../Assets/VRMA")
             ]
         ),
 

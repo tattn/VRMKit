@@ -3,37 +3,44 @@ import SceneKit
 import simd
 internal import VRMSceneKit
 
-class ViewController: UIViewController {
-
-    @IBOutlet private weak var scnView: SCNView! {
+class ViewController: UIViewController, VRMRendererViewController {
+    var model: VRMExampleModel = .alicia {
         didSet {
-            scnView.autoenablesDefaultLighting = true
-            scnView.allowsCameraControl = true
-            scnView.showsStatistics = true
-            scnView.backgroundColor = UIColor.black
+            guard isViewLoaded, model != oldValue else { return }
+            loadVRM()
         }
     }
 
+    private let scnView = SCNView()
     private var vrmNode: VRMNode?
     private var expressionSegmentedControl: UISegmentedControl?
-    private var currentModel: VRMExampleModel = .alicia
     private var currentExpression: ExampleExpression = .neutral
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        setUpSCNView()
         setupUI()
-        loadVRM(model: .alicia)
+        loadVRM()
+    }
+
+    private func setUpSCNView() {
+        scnView.autoenablesDefaultLighting = true
+        scnView.allowsCameraControl = true
+        scnView.showsStatistics = true
+        scnView.backgroundColor = .black
+        scnView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scnView)
+
+        NSLayoutConstraint.activate([
+            scnView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scnView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scnView.topAnchor.constraint(equalTo: view.topAnchor),
+            scnView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
     }
 
     private func setupUI() {
-        let items = VRMExampleModel.allCases.map { $0.displayName }
-        let segmentedControl = UISegmentedControl(items: items)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.addTarget(self, action: #selector(segmentChanged(_:)), for: .valueChanged)
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(segmentedControl)
-
-        let expressionItems = ExampleExpression.allCases.map { $0.displayName(for: currentModel) }
+        let expressionItems = ExampleExpression.allCases.map { $0.displayName(for: model) }
         let expressionSegmentedControl = UISegmentedControl(items: expressionItems)
         expressionSegmentedControl.selectedSegmentIndex = 0
         expressionSegmentedControl.addTarget(self, action: #selector(expressionSegmentChanged(_:)), for: .valueChanged)
@@ -42,17 +49,9 @@ class ViewController: UIViewController {
         self.expressionSegmentedControl = expressionSegmentedControl
 
         NSLayoutConstraint.activate([
-            segmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            segmentedControl.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -50),
-
             expressionSegmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            expressionSegmentedControl.bottomAnchor.constraint(equalTo: segmentedControl.topAnchor, constant: -20)
+            expressionSegmentedControl.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20)
         ])
-    }
-
-    @objc private func segmentChanged(_ sender: UISegmentedControl) {
-        let model = VRMExampleModel.allCases[sender.selectedSegmentIndex]
-        loadVRM(model: model)
     }
 
     @objc private func expressionSegmentChanged(_ sender: UISegmentedControl) {
@@ -62,9 +61,8 @@ class ViewController: UIViewController {
         vrmNode?.setExampleExpression(currentExpression, value: 1.0)
     }
 
-    private func loadVRM(model: VRMExampleModel) {
+    private func loadVRM() {
         do {
-            currentModel = model
             updateExpressionLabels()
             let loader = try VRMSceneLoader(named: model.rawValue)
             let scene = try loader.loadScene()
@@ -106,7 +104,7 @@ class ViewController: UIViewController {
         let selectedIndex = expressionSegmentedControl.selectedSegmentIndex
         expressionSegmentedControl.removeAllSegments()
         for (index, expression) in ExampleExpression.allCases.enumerated() {
-            expressionSegmentedControl.insertSegment(withTitle: expression.displayName(for: currentModel),
+            expressionSegmentedControl.insertSegment(withTitle: expression.displayName(for: model),
                                                      at: index,
                                                      animated: false)
         }

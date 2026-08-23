@@ -17,8 +17,7 @@ public struct VRM0 {
     public init(data: Data) throws {
         gltf = try BinaryGLTF(data: data)
 
-        let rawExtensions = try gltf.jsonData.extensions ??? .keyNotFound("extensions")
-        let extensions = try rawExtensions.value as? [String: [String: Any]] ??? .dataInconsistent("extension type mismatch")
+        let extensions = try gltf.jsonData.rootExtensions()
 
         // VRM 0.x must have "VRM" extension
         let vrm = try extensions["VRM"] ??? .keyNotFound("VRM")
