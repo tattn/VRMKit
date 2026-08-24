@@ -107,6 +107,15 @@ extension GLTFEditableDocument {
         return vrm.objects("materialProperties")
     }
 
+    /// VRM 0.x keeps its material settings in an array parallel to `materials`,
+    /// so materials added to such a document need an entry each to keep the two
+    /// lined up. `VRM_USE_GLTFSHADER` says the glTF material describes itself,
+    /// which is what one just written or copied in does.
+    func appendVRM0MaterialProperties(named names: [String?]) {
+        guard !names.isEmpty, let properties = vrm0MaterialProperties() else { return }
+        setVRM0MaterialProperties(properties + names.map(VRM0MToonProperty.gltfShaderProperty(name:)))
+    }
+
     func setVRM0MaterialProperties(_ properties: [JSONObject]) {
         json.withObject("extensions") { extensions in
             extensions.withObject(GLTFExtension.vrm0.rawValue) { vrm in

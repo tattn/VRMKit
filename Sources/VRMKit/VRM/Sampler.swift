@@ -28,12 +28,12 @@ extension GLTF {
             case extras
         }
 
-        public enum MagFilter: Int, Codable {
+        public enum MagFilter: Int, Codable, Sendable {
             case NEAREST = 9728
             case LINEAR = 9729
         }
 
-        public enum MinFilter: Int, Codable {
+        public enum MinFilter: Int, Codable, Sendable {
             case NEAREST = 9728
             case LINEAR = 9729
             case NEAREST_MIPMAP_NEAREST = 9984
@@ -42,7 +42,7 @@ extension GLTF {
             case LINEAR_MIPMAP_LINEAR = 9987
         }
 
-        public enum Wrap: Int, Codable {
+        public enum Wrap: Int, Codable, Sendable {
             case CLAMP_TO_EDGE = 33071
             case MIRRORED_REPEAT = 33648
             case REPEAT = 10497

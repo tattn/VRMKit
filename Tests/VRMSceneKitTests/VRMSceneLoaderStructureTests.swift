@@ -85,4 +85,27 @@ struct VRMSceneLoaderStructureTests {
         let vertices = try #require(geometry.sources.first { $0.semantic == .vertex })
         #expect(normals.vectorCount == vertices.vectorCount)
     }
+
+    /// Estimating normals dereferences every triangle index. A malformed one is
+    /// rejected before that happens instead of indexing past the vertex array.
+    @Test
+    func testTriangleIndexBeyondPositionsFailsTheLoad() throws {
+        let loader = try loader { json in
+            var meshes = try #require(json["meshes"] as? [[String: Any]])
+            var primitives = try #require(meshes[0]["primitives"] as? [[String: Any]])
+            var attributes = try #require(primitives[0]["attributes"] as? [String: Any])
+            let position = try #require(attributes["POSITION"] as? Int)
+            attributes.removeValue(forKey: "NORMAL")
+            primitives[0]["attributes"] = attributes
+            primitives[0]["targets"] = nil
+            meshes[0]["primitives"] = [primitives[0]]
+            json["meshes"] = meshes
+
+            var accessors = try #require(json["accessors"] as? [[String: Any]])
+            accessors[position]["count"] = 1
+            json["accessors"] = accessors
+        }
+
+        #expect(throws: VRMError.self) { try loader.mesh(withMeshIndex: 0) }
+    }
 }

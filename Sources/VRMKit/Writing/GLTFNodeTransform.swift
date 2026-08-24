@@ -68,6 +68,18 @@ extension simd_quatf {
 }
 
 extension GLTFNodeTransform {
+    /// Rejects values JSON and glTF cannot represent. A finite zero-length
+    /// quaternion is still normalized to the identity by ``normalizedForGLTF``.
+    func validate() throws {
+        let quaternion = rotation.vector
+        guard quaternion.x.isFinite, quaternion.y.isFinite,
+              quaternion.z.isFinite, quaternion.w.isFinite,
+              translation.x.isFinite, translation.y.isFinite, translation.z.isFinite,
+              scale.x.isFinite, scale.y.isFinite, scale.z.isFinite else {
+            throw VRMError._dataInconsistent("a node transform cannot contain infinity or NaN")
+        }
+    }
+
     /// The transform a node JSON object describes, whether it writes TRS or a
     /// matrix. glTF forbids mixing the two, and the matrix wins if one does.
     init(node: JSONObject) {

@@ -28,10 +28,10 @@ final class VRMSpringBoneColliderGroup {
         let tail: SIMD3<Float>?
         let radius: Float
 
-        var worldCollider: VRMSpringBone.Collider {
-            VRMSpringBone.Collider(head: node.utx.transformPoint(offset),
-                                   tail: tail.map(node.utx.transformPoint),
-                                   radius: radius)
+        var worldCollider: SpringBoneCollider {
+            SpringBoneCollider(head: node.utx.transformPoint(offset),
+                               tail: tail.map(node.utx.transformPoint),
+                               radius: radius)
         }
         
         init(node: SCNNode, collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) {

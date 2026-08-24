@@ -1,6 +1,7 @@
 #if canImport(RealityKit)
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
@@ -29,10 +30,10 @@ final class VRMEntitySpringBoneColliderGroup {
         let tail: SIMD3<Float>?
         let radius: Float
 
-        var worldCollider: VRMEntitySpringBone.Collider {
-            VRMEntitySpringBone.Collider(head: node.utx.transformPoint(offset),
-                                         tail: tail.map(node.utx.transformPoint),
-                                         radius: radius)
+        var worldCollider: SpringBoneCollider {
+            SpringBoneCollider(head: node.utx.transformPoint(offset),
+                               tail: tail.map(node.utx.transformPoint),
+                               radius: radius)
         }
 
         init(node: Entity, collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) {

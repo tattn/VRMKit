@@ -59,6 +59,15 @@ package extension JSONObject {
         self[key] = existing
     }
 
+    /// Appends one object and returns the index it was given.
+    @discardableResult
+    mutating func appendObject(_ element: JSONObject, to array: GLTFArray) -> Int {
+        var existing = objects(array)
+        existing.append(element)
+        self[array] = existing
+        return existing.count - 1
+    }
+
     mutating func rebase(_ key: String, by offset: Int) {
         guard let value = index(key) else { return }
         self[key] = value + offset

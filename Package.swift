@@ -47,6 +47,10 @@ let package = Package(
             dependencies: ["VRMKit", "VRMTestSupport"]
         ),
         .testTarget(
+            name: "VRMKitRuntimeTests",
+            dependencies: ["VRMKit", "VRMKitRuntime"]
+        ),
+        .testTarget(
             name: "VRMSceneKitTests",
             dependencies: ["VRMSceneKit", "VRMTestSupport"]
         ),

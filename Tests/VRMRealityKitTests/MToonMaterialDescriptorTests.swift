@@ -2,7 +2,6 @@ import Foundation
 import Testing
 import VRMTestSupport
 @testable import VRMKit
-@testable import VRMKitRuntime
 
 @Suite
 struct MToonMaterialDescriptorTests {

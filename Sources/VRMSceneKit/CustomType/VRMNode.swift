@@ -182,20 +182,16 @@ open class VRMNode: SCNNode {
                 }
                 let springBone = VRMSpringBone(center: centerNode,
                                                rootBones: rootBones,
-                                               comment: boneGroup.comment,
-                                               stiffnessForce: Float(boneGroup.stiffiness),
-                                               gravityPower: Float(boneGroup.gravityPower),
-                                               gravityDir: boneGroup.gravityDir.simd,
-                                               dragForce: Float(boneGroup.dragForce),
-                                               hitRadius: Float(boneGroup.hitRadius),
+                                               setting: SpringBoneJointSetting(vrm0BoneGroup: boneGroup),
                                                colliderGroups: colliderGroups)
                 springBones.append(springBone)
             }
         case .v1(let vrm1):
             guard let springBone = vrm1.springBone else { break }
             for spring in springBone.springs ?? [] {
-                let jointNodes = try spring.joints.compactMap { try loader.node(withNodeIndex: $0.node) }
-                guard !jointNodes.isEmpty else { continue }
+                let jointNodes = try spring.joints.map { try loader.node(withNodeIndex: $0.node) }
+                // A chain of one joint is only a tail, so it swings nothing.
+                guard jointNodes.count > 1 else { continue }
                 let centerNode = try spring.center.map { try loader.node(withNodeIndex: $0) }
                 let colliderGroups = try spring.colliderGroups?.compactMap { groupIndex -> VRMSpringBoneColliderGroup? in
                     guard let groups = springBone.colliderGroups,
@@ -206,14 +202,11 @@ open class VRMNode: SCNNode {
                                                           springBone: springBone,
                                                           loader: loader)
                 } ?? []
-                let settings = Dictionary(uniqueKeysWithValues: zip(jointNodes, spring.joints).map { node, joint in
-                    (ObjectIdentifier(node), VRMSpringBone.JointSetting(joint: joint))
-                })
+                let chain = zip(jointNodes, spring.joints).map { node, joint in
+                    (node: node, setting: SpringBoneJointSetting(vrm1Joint: joint))
+                }
                 let springBone = VRMSpringBone(center: centerNode,
-                                               rootBones: [jointNodes[0]],
-                                               comment: spring.name,
-                                               jointChain: jointNodes,
-                                               jointSettings: settings,
+                                               chain: chain,
                                                colliderGroups: colliderGroups)
                 springBones.append(springBone)
             }
@@ -309,7 +302,7 @@ private struct NodeConstraintBinding {
     }
 
     func apply() {
-        target.utx.setLocalRotation(VRMNodeConstraintRuntime.evaluate(
+        let rotation = VRMNodeConstraintRuntime.evaluate(
             descriptor,
             sourceRestRotation: sourceRestRotation,
             sourceLocalRotation: source.utx.localRotation,
@@ -317,7 +310,10 @@ private struct NodeConstraintBinding {
             destinationRestRotation: targetRestRotation,
             destinationParentWorldRotation: target.parent?.utx.rotation ?? quat_identity_float,
             destinationWorldPosition: target.utx.position
-        ))
+        )
+        let current = target.utx.localRotation.vector
+        guard current != rotation.vector, current != -rotation.vector else { return }
+        target.utx.setLocalRotation(rotation)
     }
 
 }

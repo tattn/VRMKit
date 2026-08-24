@@ -37,7 +37,8 @@ struct GLTFAnimationPlaybackTests {
         do {
             let entity = try TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
             loaded = entity
-            animatedNode = try #require(entity.entity(forNodeAt: 0))
+            let node: Entity = try #require(entity.entity(forNodeAt: 0))
+            animatedNode = node
             controller = try entity.playAnimation(at: 0)
             controller?.stop()
         }

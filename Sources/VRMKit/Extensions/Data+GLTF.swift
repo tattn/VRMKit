@@ -62,6 +62,15 @@ package extension Data {
         self.init(bytes)
     }
 
+    /// The media type the bytes name themselves, for the two image formats a
+    /// glTF may carry, or nil for anything else. A GLB embeds an image without
+    /// the file name that would say what it is, so the signature is all there is.
+    var imageMediaType: String? {
+        if starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return "image/png" }
+        if starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }
+        return nil
+    }
+
     /// All-zero data for a glTF accessor with no bufferView.
     init(zeroedElementCount count: Int, elementSize: Int) throws {
         guard count >= 0, elementSize > 0 else {

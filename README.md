@@ -247,6 +247,24 @@ try document.serialize().write(to: outputURL)
 
 `addNode`, `setName` and `setTransform` edit the node graph by appending, never by renumbering, so the extensions that make a document a VRM keep pointing at what they used to. `detachNode` cuts a subtree's links to its parent and scenes and nothing else, and `moveNode(at:to:)` cuts them and hangs the subtree under another node, or under the default scene's roots when given none.
 
+`GLTFEditableDocument()` starts an empty document and `addMesh` fills it from vertex data, so a plate, a prop or a test fixture can be built without laying out accessors, buffer views and the GLB container by hand.
+
+```swift
+let document = GLTFEditableDocument()
+let plate = GLTFTriangleMesh(positions: positions,
+                             textureCoordinates: uvs,
+                             indices: [0, 1, 2, 0, 2, 3],
+                             material: GLTFSimpleMaterial(
+                                 baseColorImage: pngData,
+                                 baseColorSampler: GLTFTextureSampler(wrapS: .CLAMP_TO_EDGE,
+                                                                      wrapT: .CLAMP_TO_EDGE),
+                                 isUnlit: true))
+try document.addMesh(plate, name: "signboard")
+try document.serialize().write(to: outputURL)
+```
+
+The scope is one indexed triangle mesh and one material: positions, optional normals and texture coordinates, a base color factor and a PNG or JPEG image with its wrap and filter modes, unlit, alpha mode and double-sidedness. Any other image format is refused rather than transcoded. `addMesh` returns the node it added and takes the same `materials: .mtoon` as `append`. A mesh given no normals is flat-shaded, which is what `VRMRealityKit` draws; the deprecated `VRMSceneKit` shades it smooth.
+
 </details>
 
 # ToDo

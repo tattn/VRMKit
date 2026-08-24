@@ -17,10 +17,8 @@ struct BinaryReader {
     var bytesRead: Int { offset - data.startIndex }
 
     mutating func readUInt32() throws -> UInt32 {
-        // GLB is little-endian regardless of the host, so the value is
-        // assembled from the bytes instead of loaded.
         let bytes = try readData(count: MemoryLayout<UInt32>.size)
-        return bytes.reduce(UInt32(0)) { $0 >> 8 | UInt32($1) << 24 }
+        return bytes.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }.littleEndian
     }
 
     mutating func readData(count: Int) throws -> Data {

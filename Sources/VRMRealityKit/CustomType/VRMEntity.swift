@@ -293,21 +293,17 @@ public final class VRMEntity: GLTFEntity {
                     allColliderGroups.indices.contains(index) ? allColliderGroups[index] : nil
                 }
                 let springBone = VRMEntitySpringBone(center: centerNode,
-                                                         rootBones: rootBones,
-                                                         comment: boneGroup.comment,
-                                                         stiffnessForce: Float(boneGroup.stiffiness),
-                                                         gravityPower: Float(boneGroup.gravityPower),
-                                                         gravityDir: SIMD3<Float>(Float(boneGroup.gravityDir.x), Float(boneGroup.gravityDir.y), Float(boneGroup.gravityDir.z)),
-                                                         dragForce: Float(boneGroup.dragForce),
-                                                         hitRadius: Float(boneGroup.hitRadius),
-                                                         colliderGroups: colliderGroups)
+                                                     rootBones: rootBones,
+                                                     setting: SpringBoneJointSetting(vrm0BoneGroup: boneGroup),
+                                                     colliderGroups: colliderGroups)
                 springBones.append(springBone)
             }
         case .v1(let vrm1):
             guard let springBone = vrm1.springBone else { break }
             for spring in springBone.springs ?? [] {
-                let jointEntities = try spring.joints.compactMap { try loader.node(withNodeIndex: $0.node) }
-                guard !jointEntities.isEmpty else { continue }
+                let jointEntities = try spring.joints.map { try loader.node(withNodeIndex: $0.node) }
+                // A chain of one joint is only a tail, so it swings nothing.
+                guard jointEntities.count > 1 else { continue }
                 let centerEntity = try spring.center.map { try loader.node(withNodeIndex: $0) }
                 let colliderGroups = try spring.colliderGroups?.compactMap { groupIndex -> VRMEntitySpringBoneColliderGroup? in
                     guard let groups = springBone.colliderGroups,
@@ -318,14 +314,11 @@ public final class VRMEntity: GLTFEntity {
                                                                 springBone: springBone,
                                                                 loader: loader)
                 } ?? []
-                let settings = Dictionary(uniqueKeysWithValues: zip(jointEntities, spring.joints).map { entity, joint in
-                    (ObjectIdentifier(entity), VRMEntitySpringBone.JointSetting(joint: joint))
-                })
+                let chain = zip(jointEntities, spring.joints).map { entity, joint in
+                    (node: entity, setting: SpringBoneJointSetting(vrm1Joint: joint))
+                }
                 let springBone = VRMEntitySpringBone(center: centerEntity,
-                                                     rootBones: [jointEntities[0]],
-                                                     comment: spring.name,
-                                                     jointChain: jointEntities,
-                                                     jointSettings: settings,
+                                                     chain: chain,
                                                      colliderGroups: colliderGroups)
                 springBones.append(springBone)
             }
@@ -370,20 +363,15 @@ public final class VRMEntity: GLTFEntity {
         let deltaTime = max(0, deltaTime)
         // Skinning runs last so that this frame's constraint and spring-bone
         // poses reach the skinned meshes in the same frame they are solved.
-        nodeConstraints.forEach { $0.apply() }
+        var movedJoints = false
+        for constraint in nodeConstraints {
+            if constraint.apply() { movedJoints = true }
+        }
         springBones.forEach { $0.update(deltaTime: deltaTime) }
-        if movesItsOwnJoints {
+        if !springBones.isEmpty || movedJoints {
             invalidateSkinPose()
         }
         flushSkinPoseIfNeeded()
-    }
-
-    /// Whether this model moves joints of its own accord each frame. A model
-    /// with neither constraints nor spring bones holds whatever pose animation
-    /// or the caller last put it in, so re-solving every skeleton per frame
-    /// would only repeat the previous result.
-    var movesItsOwnJoints: Bool {
-        !nodeConstraints.isEmpty || !springBones.isEmpty
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
@@ -666,8 +654,8 @@ private struct NodeConstraintBinding {
     }
 
     @MainActor
-    func apply() {
-        target.utx.setLocalRotation(VRMNodeConstraintRuntime.evaluate(
+    func apply() -> Bool {
+        let rotation = VRMNodeConstraintRuntime.evaluate(
             descriptor,
             sourceRestRotation: sourceRestRotation,
             sourceLocalRotation: source.utx.localRotation,
@@ -675,7 +663,11 @@ private struct NodeConstraintBinding {
             destinationRestRotation: targetRestRotation,
             destinationParentWorldRotation: target.parent?.utx.rotation ?? quat_identity_float,
             destinationWorldPosition: target.utx.position
-        ))
+        )
+        let current = target.utx.localRotation.vector
+        guard current != rotation.vector, current != -rotation.vector else { return false }
+        target.utx.setLocalRotation(rotation)
+        return true
     }
 
 }

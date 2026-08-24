@@ -4,34 +4,23 @@ extension GLTFEditableDocument {
     /// Adds a node and returns its index.
     ///
     /// With no `parent` the node becomes a root of the document's default
-    /// scene, which ``defaultSceneIndex()`` resolves.
+    /// scene, which ``defaultSceneIndex()`` resolves. A document holding no
+    /// scene at all is given one to be a root of.
     @discardableResult
     public func addNode(name: String? = nil,
                         parent: Int? = nil,
                         transform: GLTFNodeTransform = .identity) throws -> Int {
-        // Checked before the node is appended, so a failure leaves the
-        // document as it was rather than one orphan larger.
-        if let parent {
-            try requireNode(at: parent)
-        } else {
-            _ = try defaultSceneIndex()
-        }
+        try transform.validate()
+        let placement = try resolveNodePlacement(under: parent)
 
         var node = JSONObject()
         node.set("name", name)
         transform.write(into: &node)
-
-        let index = appendNode(node)
-
-        if let parent {
-            try addChild(index, to: parent)
-        } else {
-            try addSceneRoot(index)
-        }
-        return index
+        return appendNode(node, at: placement)
     }
 
     public func setTransform(_ transform: GLTFNodeTransform, nodeAt index: Int) throws {
+        try transform.validate()
         try updateNode(at: index) { transform.write(into: &$0) }
     }
 
@@ -53,7 +42,7 @@ extension GLTFEditableDocument {
         // Checked before anything is cut, so a rejected move changes nothing.
         try requireNode(at: index)
         guard let parent else {
-            _ = try defaultSceneIndex()
+            _ = try sceneIndexForRoots()
             try detachNode(at: index)
             try addSceneRoot(index)
             return
@@ -105,10 +94,29 @@ extension GLTFEditableDocument {
     }
 
     func appendNode(_ node: JSONObject) -> Int {
-        var nodes = json.objects(.nodes)
-        nodes.append(node)
-        json[.nodes] = nodes
-        return nodes.count - 1
+        json.appendObject(node, to: .nodes)
+    }
+
+    enum NodePlacement {
+        case child(of: Int)
+        case sceneRoot(in: Int)
+    }
+
+    /// Resolves every fallible placement rule before an edit starts writing its
+    /// payload. The returned indices stay valid because edits only append.
+    func resolveNodePlacement(under parent: Int?) throws -> NodePlacement {
+        if let parent {
+            try requireNode(at: parent)
+            return .child(of: parent)
+        }
+        return .sceneRoot(in: try sceneIndexForRoots())
+    }
+
+    /// Appends and attaches a node whose placement has already been validated.
+    func appendNode(_ node: JSONObject, at placement: NodePlacement) -> Int {
+        let index = appendNode(node)
+        attachNode(index, at: placement)
+        return index
     }
 
     func node(at index: Int) throws -> JSONObject {
@@ -143,16 +151,40 @@ extension GLTFEditableDocument {
         guard child != parent else {
             throw VRMError._dataInconsistent("node \(child) cannot be its own parent")
         }
-        try updateNode(at: parent) { $0["children"] = ($0.ints("children") ?? []) + [child] }
+        try requireNode(at: parent)
+        attachNode(child, at: .child(of: parent))
     }
 
     /// Adds a root to the document's default scene: a node no scene reaches is
     /// one no renderer draws.
     func addSceneRoot(_ index: Int) throws {
-        let sceneIndex = try defaultSceneIndex()
-        var scenes = json.objects(.scenes)
-        scenes[sceneIndex]["nodes"] = (scenes[sceneIndex].ints("nodes") ?? []) + [index]
-        json[.scenes] = scenes
+        attachNode(index, at: .sceneRoot(in: try sceneIndexForRoots()))
+    }
+
+    private func attachNode(_ index: Int, at placement: NodePlacement) {
+        switch placement {
+        case .child(let parent):
+            var nodes = json.objects(.nodes)
+            nodes[parent]["children"] = (nodes[parent].ints("children") ?? []) + [index]
+            json[.nodes] = nodes
+        case .sceneRoot(let sceneIndex):
+            var scenes = json.objects(.scenes)
+            scenes[sceneIndex]["nodes"] = (scenes[sceneIndex].ints("nodes") ?? []) + [index]
+            json[.scenes] = scenes
+        }
+    }
+
+    /// The scene an edit puts a root in. A document holding none is given one,
+    /// having had nothing to draw until now, and named as the default so that a
+    /// loader asking which scene to draw is answered; one that holds scenes
+    /// still answers for which of them is default.
+    private func sceneIndexForRoots() throws -> Int {
+        guard json.count(.scenes) == 0, json["scene"] == nil else {
+            return try defaultSceneIndex()
+        }
+        json[.scenes] = [JSONObject()]
+        json["scene"] = 0
+        return 0
     }
 
     /// The scene the document draws, which is the one an edit adds roots to.

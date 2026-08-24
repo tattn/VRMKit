@@ -76,7 +76,6 @@ struct VRMUpdateSystemTests {
             }
         }
         let vrmEntity = try VRMEntityLoader(withData: data, shaders: []).loadEntity()
-        #expect(!vrmEntity.movesItsOwnJoints)
 
         let head = try #require(vrmEntity.humanoid.node(for: .head))
         let before = Self.jointRotations(of: vrmEntity)
@@ -97,7 +96,6 @@ struct VRMUpdateSystemTests {
     func testAModelWithSpringBonesStillRefreshesEveryFrame() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
-        #expect(vrmEntity.movesItsOwnJoints)
 
         let head = try #require(vrmEntity.humanoid.node(for: .head))
         let before = Self.jointRotations(of: vrmEntity)

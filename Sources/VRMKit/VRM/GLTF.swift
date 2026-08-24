@@ -22,27 +22,6 @@ public struct GLTF: Codable {
     public let textures: [Texture]?
     public let extensions: CodableAny?
     public let extras: CodableAny?
-    private enum CodingKeys: String, CodingKey {
-        case extensionsUsed
-        case extensionsRequired
-        case accessors
-        case animations
-        case asset
-        case buffers
-        case bufferViews
-        case cameras
-        case images
-        case materials
-        case meshes
-        case nodes
-        case samplers
-        case scene
-        case scenes
-        case skins
-        case textures
-        case extensions
-        case extras
-    }
 }
 
 extension GLTF {

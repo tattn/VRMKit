@@ -161,6 +161,23 @@ struct GLTFEditableDocumentTests {
     }
 
     @Test
+    func testNonFiniteTransformsAreRefusedWithoutChangingTheDocument() throws {
+        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        let index = try document.addNode(name: "item")
+        let before = try document.serialize()
+
+        #expect(throws: VRMError.self) {
+            try document.setTransform(GLTFNodeTransform(scale: SIMD3(1, .nan, 1)), nodeAt: index)
+        }
+        #expect(throws: VRMError.self) {
+            try document.addNode(transform: GLTFNodeTransform(
+                rotation: simd_quatf(vector: SIMD4(0, 0, 0, .infinity))
+            ))
+        }
+        #expect(try document.serialize() == before)
+    }
+
+    @Test
     func testTransformOfAMatrixNodeIsDecomposed() throws {
         let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let index = try document.addNode(name: "item")
@@ -383,8 +400,22 @@ struct GLTFEditableDocumentTests {
 
         #expect(throws: VRMError.self) { try document.setName("x", nodeAt: 0) }
         #expect(throws: VRMError.self) { try document.detachNode(at: 0) }
-        // A document with no scenes has nowhere to put a root.
-        #expect(throws: VRMError.self) { try document.addNode(name: "first") }
+    }
+
+    /// A document holding no scene has nowhere to draw a root, so adding one
+    /// gives it the scene to draw it in rather than leaving it unreachable.
+    @Test
+    func testAddingARootToADocumentWithoutScenesGivesItOne() throws {
+        let json = """
+        {"asset": {"version": "2.0"}}
+        """
+        let document = try GLTFEditableDocument(data: Data(json.utf8))
+
+        let index = try document.addNode(name: "first")
+
+        let gltf = try document.typed()
+        #expect(gltf.scenes?.count == 1)
+        #expect(gltf.scenes?[gltf.scene ?? 0].nodes == [index])
     }
 
     // MARK: - Helpers

@@ -122,69 +122,8 @@ extension SCNMaterial {
 
     private func createMetallicRoughnessTexture(from uiImage: VRMImage) throws -> (metal: VRMImage, rough: VRMImage) {
         let image = try uiImage.cgImage ??? ._dataInconsistent("failed to get cgImage")
-
-        // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#pbrmetallicroughnessmetallicroughnesstexture
-
-        let pixelCount = image.width * image.height
-        let bitsPerComponent = 8
-        let componentsPerPixel = 4 // RGBA
-        let srcBytesPerPixel = bitsPerComponent * componentsPerPixel / 8
-        let srcDataSize = pixelCount * srcBytesPerPixel
-
-        let ptr = UnsafeMutablePointer<UInt8>.allocate(capacity: srcDataSize)
-        let metalPtr = UnsafeMutablePointer<UInt8>.allocate(capacity: pixelCount)
-        let roughPtr = UnsafeMutablePointer<UInt8>.allocate(capacity: pixelCount)
-        defer {
-            ptr.deallocate()
-            metalPtr.deallocate()
-            roughPtr.deallocate()
-        }
-
-        let context = try CGContext(
-            data: UnsafeMutableRawPointer(ptr),
-            width: image.width,
-            height: image.height,
-            bitsPerComponent: bitsPerComponent,
-            bytesPerRow: srcBytesPerPixel * image.width,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
-            ??? ._dataInconsistent("failed to create cgcontext")
-        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-
-        for dstPos in 0..<pixelCount {
-            let srcPos = dstPos * srcBytesPerPixel
-            metalPtr[dstPos] = ptr[srcPos + 2] // blue
-            roughPtr[dstPos] = ptr[srcPos + 1] // green
-        }
-
-        let metalImage = try createGraySpaceImage(width: image.width,
-                                                  height: image.height,
-                                                  dataPointer: metalPtr)
-
-        let roughImage = try createGraySpaceImage(width: image.width,
-                                                  height: image.height,
-                                                  dataPointer: roughPtr)
-        return (metalImage, roughImage)
-    }
-
-    private func createGraySpaceImage(width: Int,
-                                      height: Int,
-                                      dataPointer: UnsafeMutablePointer<UInt8>) throws -> VRMImage {
-        let data = try CFDataCreate(nil, dataPointer, width * height) ??? ._dataInconsistent("failed to create CFDataCreate")
-        let provider = try CGDataProvider(data: data) ??? ._dataInconsistent("failed to create CGDataProvider")
-        let cgImage = try CGImage(
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bitsPerPixel: 8,
-            bytesPerRow: width * 1,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
-            provider: provider,
-            decode: nil,
-            shouldInterpolate: false,
-            intent: .defaultIntent) ??? ._dataInconsistent("failed to create CGImage")
-        return VRMImage(cgImage: cgImage)
+        let images = try metallicRoughnessImages(from: image)
+        return (VRMImage(cgImage: images.metal), VRMImage(cgImage: images.rough))
     }
 
     private func blendMode(of alphaMode: GLTF.Material.AlphaMode) -> SCNBlendMode {

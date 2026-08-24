@@ -1109,53 +1109,11 @@ public class GLTFEntityLoader {
             throw VRMError._dataInconsistent("failed to load cgImage")
         }
 
-        let images = try withRGBA8Pixels(of: image) { _, pixels, pixelCount in
-            let metalPtr = UnsafeMutablePointer<UInt8>.allocate(capacity: pixelCount)
-            let roughPtr = UnsafeMutablePointer<UInt8>.allocate(capacity: pixelCount)
-            defer {
-                metalPtr.deallocate()
-                roughPtr.deallocate()
-            }
-            for pixel in 0..<pixelCount {
-                metalPtr[pixel] = pixels[pixel * 4 + 2]
-                roughPtr[pixel] = pixels[pixel * 4 + 1]
-            }
-            return (metal: try createGraySpaceImage(width: image.width,
-                                                    height: image.height,
-                                                    dataPointer: metalPtr),
-                    rough: try createGraySpaceImage(width: image.width,
-                                                    height: image.height,
-                                                    dataPointer: roughPtr))
-        }
+        let images = try metallicRoughnessImages(from: image)
 
         // Metallic / roughness are linear data; .color would apply an sRGB conversion.
         return (try TextureResource(image: images.metal, options: .init(semantic: .raw)),
                 try TextureResource(image: images.rough, options: .init(semantic: .raw)))
-    }
-
-    private func createGraySpaceImage(width: Int,
-                                      height: Int,
-                                      dataPointer: UnsafeMutablePointer<UInt8>) throws -> CGImage {
-        guard let data = CFDataCreate(nil, dataPointer, width * height),
-              let provider = CGDataProvider(data: data) else {
-            throw VRMError._dataInconsistent("failed to create image data")
-        }
-        guard let image = CGImage(
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bitsPerPixel: 8,
-            bytesPerRow: width,
-            space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
-            provider: provider,
-            decode: nil,
-            shouldInterpolate: false,
-            intent: .defaultIntent
-        ) else {
-            throw VRMError._dataInconsistent("failed to create CGImage")
-        }
-        return image
     }
 
     private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,

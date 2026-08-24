@@ -36,29 +36,29 @@ package enum VRMNodeConstraintDescriptor {
 package enum VRMNodeConstraintRuntime {
     package static func evaluate(_ descriptor: VRMNodeConstraintDescriptor,
                                  sourceRestRotation: simd_quatf,
-                                 sourceLocalRotation: simd_quatf,
-                                 sourceWorldPosition: SIMD3<Float>,
+                                 sourceLocalRotation: @autoclosure () -> simd_quatf,
+                                 sourceWorldPosition: @autoclosure () -> SIMD3<Float>,
                                  destinationRestRotation: simd_quatf,
-                                 destinationParentWorldRotation: simd_quatf,
-                                 destinationWorldPosition: SIMD3<Float>) -> simd_quatf {
+                                 destinationParentWorldRotation: @autoclosure () -> simd_quatf,
+                                 destinationWorldPosition: @autoclosure () -> SIMD3<Float>) -> simd_quatf {
         switch descriptor {
         case .roll(_, let axis, let weight):
             return evaluateRoll(axis: axis,
                                 weight: weight,
                                 sourceRestRotation: sourceRestRotation,
-                                sourceLocalRotation: sourceLocalRotation,
+                                sourceLocalRotation: sourceLocalRotation(),
                                 destinationRestRotation: destinationRestRotation)
         case .aim(_, let axis, let weight):
             return evaluateAim(axis: axis,
                                weight: weight,
-                               sourceWorldPosition: sourceWorldPosition,
+                               sourceWorldPosition: sourceWorldPosition(),
                                destinationRestRotation: destinationRestRotation,
-                               destinationParentWorldRotation: destinationParentWorldRotation,
-                               destinationWorldPosition: destinationWorldPosition)
+                               destinationParentWorldRotation: destinationParentWorldRotation(),
+                               destinationWorldPosition: destinationWorldPosition())
         case .rotation(_, let weight):
             return evaluateRotation(weight: weight,
                                     sourceRestRotation: sourceRestRotation,
-                                    sourceLocalRotation: sourceLocalRotation,
+                                    sourceLocalRotation: sourceLocalRotation(),
                                     destinationRestRotation: destinationRestRotation)
         }
     }

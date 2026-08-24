@@ -1,5 +1,4 @@
 import VRMKit
-import VRMKitRuntime
 import SceneKit
 
 extension SCNSkinner {

@@ -46,6 +46,7 @@ extension GLTFEditableDocument {
                         name: String?,
                         transform: GLTFNodeTransform,
                         materials: GLTFMaterialConversion) throws -> Int {
+        try transform.validate()
         let sourceJSON = try source.rawJSON()
         try Self.validateAppendable(sourceJSON)
         // Both resolved up front, so a bad index cannot leave an orphaned copy
@@ -178,7 +179,7 @@ private struct GLTFMerger {
 
         let materials = sourceJSON.objects(.materials).map(rebasedMaterial)
         target.json.appendObjects(materials, to: .materials)
-        appendMaterialProperties(for: materials)
+        target.appendVRM0MaterialProperties(named: materials.map { $0.string("name") })
         mergeExtensionDeclarations()
         // The binary has stopped growing, so its `buffers` entry is written once.
         target.writeSingleBufferEntry()
@@ -326,15 +327,6 @@ private struct GLTFMerger {
     }
 
     // MARK: - Target consistency
-
-    /// VRM 0.x keeps its material settings in an array parallel to `materials`,
-    /// so appended materials need an entry each to keep the two lined up.
-    private func appendMaterialProperties(for materials: [JSONObject]) {
-        guard !materials.isEmpty, let properties = target.vrm0MaterialProperties() else { return }
-        target.setVRM0MaterialProperties(
-            properties + materials.map { VRM0MToonProperty.gltfShaderProperty(name: $0.string("name")) }
-        )
-    }
 
     /// An extension the source could not be rendered without stays one the
     /// merged document cannot either, so both lists come over.

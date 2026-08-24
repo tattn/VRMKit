@@ -1,5 +1,6 @@
 import SceneKit
 import SpriteKit
+import VRMKit
 
 extension SCNMaterial {
     static var `default`: SCNMaterial {
@@ -15,7 +16,9 @@ extension SCNMaterial {
 
 extension SCNMatrix4 {
     init(_ v: [Float]) throws {
-        guard v.count == 16 else { throw "SCNMatrix4: values.count must be 16" }
+        guard v.count == 16 else {
+            throw VRMError._dataInconsistent("SCNMatrix4 needs 16 values, got \(v.count)")
+        }
         #if os(macOS)
         self.init(m11: CGFloat(v[0]), m12: CGFloat(v[1]), m13: CGFloat(v[2]), m14: CGFloat(v[3]),
                   m21: CGFloat(v[4]), m22: CGFloat(v[5]), m23: CGFloat(v[6]), m24: CGFloat(v[7]),
@@ -33,5 +36,3 @@ extension SCNMatrix4 {
         SCNMatrix4Mult(left, right)
     }
 }
-
-extension String: @retroactive Error {}

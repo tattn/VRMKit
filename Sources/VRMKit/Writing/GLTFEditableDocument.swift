@@ -17,6 +17,14 @@ public final class GLTFEditableDocument {
     /// once the edit that grew it is done, rather than on every append.
     var binary: Data
 
+    /// An empty glTF 2.0 document, where an asset built from vertex data rather
+    /// than read from a file starts. It holds nothing at all, not even a scene:
+    /// adding the first node is what gives it one.
+    public init() {
+        json = ["asset": ["version": "2.0"]]
+        binary = Data()
+    }
+
     /// Loads GLB or JSON glTF data. External resources of a `.gltf` resolve
     /// against `rootDirectory`, as they do for ``GLTFDocument``.
     public convenience init(data: Data, rootDirectory: URL? = nil) throws {
@@ -208,8 +216,7 @@ extension GLTFEditableDocument {
         case "ktx2": return "image/ktx2"
         default: break
         }
-        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "image/png" }
-        if data.starts(with: [0xFF, 0xD8]) { return "image/jpeg" }
-        throw VRMError._dataInconsistent("the image at \"\(uri)\" is of no format a GLB can name")
+        return try data.imageMediaType
+            ??? ._dataInconsistent("the image at \"\(uri)\" is of no format a GLB can name")
     }
 }

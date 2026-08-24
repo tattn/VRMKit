@@ -35,6 +35,22 @@ struct GLTFEntityLoaderTests {
         #expect(entity.entity(forNodeAt: -1) == nil)
     }
 
+    /// Authoring names the scene it makes as the document's default, which is
+    /// the one `loadEntity()` asks a glTF for.
+    @Test
+    func testAnAuthoredDocumentLoadsThroughItsDefaultScene() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let document = GLTFEditableDocument()
+        let mesh = GLTFTriangleMesh(positions: [SIMD3(-0.5, -0.5, 0), SIMD3(0.5, -0.5, 0), SIMD3(0, 0.5, 0)],
+                                    indices: [0, 1, 2])
+        let nodeIndex = try document.addMesh(mesh, name: "plate")
+
+        let entity = try GLTFEntityLoader(withData: try document.serialize()).loadEntity()
+
+        #expect(entity.sceneIndex == 0)
+        #expect(entity.entity(forNodeAt: nodeIndex)?.name == "plate")
+    }
+
     @Test
     func testGenericLoadSetsUpSkinBindingsWithInitialPose() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

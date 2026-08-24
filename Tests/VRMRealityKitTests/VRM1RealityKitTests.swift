@@ -1107,6 +1107,64 @@ struct VRM1RealityKitTests {
         #expect(checkedJoints > 0)
     }
 
+    /// `VRMC_springBone` pairs the joints of a spring consecutively, so the
+    /// last of them is only the tail the one before it swings towards.
+    @Test
+    func testTheLastJointOfASpringIsOnlyItsTail() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        guard case .v1(let vrm1) = vrmEntity.vrm else {
+            Issue.record("Seed-san is a VRM 1.0 fixture")
+            return
+        }
+        let springs = try #require(vrm1.springBone?.springs)
+        let swinging = Set(springs.flatMap { $0.joints.dropLast().map(\.node) })
+        // A tail that another spring swings is one this cannot answer for.
+        let tailsOnly = Set(springs.compactMap { $0.joints.last?.node }).subtracting(swinging)
+        #expect(!tailsOnly.isEmpty)
+        let tails = tailsOnly.compactMap { vrmEntity.entity(forNodeAt: $0) }
+        let heads = swinging.compactMap { vrmEntity.entity(forNodeAt: $0) }
+        let tailRotations = tails.map(\.transform.rotation)
+        let headRotations = heads.map(\.transform.rotation)
+
+        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
+        vrmEntity.update(deltaTime: 1.0 / 60.0)
+
+        #expect(tails.map(\.transform.rotation) == tailRotations)
+        // Not an expectation a model standing still would meet anyway.
+        #expect(heads.map(\.transform.rotation) != headRotations)
+    }
+
+    /// A spring of one joint has no pair in it, so there is nothing to swing.
+    @Test
+    func testASpringOfOneJointSwingsNothing() throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        var jointNode = 0
+        let data = try TestSupport.modifiedSeedSanData(name: "one joint spring") { json in
+            var extensions = json["extensions"] as? [String: Any] ?? [:]
+            var springBone = extensions["VRMC_springBone"] as? [String: Any] ?? [:]
+            let springs = springBone["springs"] as? [[String: Any]] ?? []
+            let joints = springs.first?["joints"] as? [[String: Any]] ?? []
+            guard let node = joints.first?["node"] as? Int else {
+                throw VRMError.dataInconsistent("Missing Seed-san spring bone fixture data")
+            }
+            jointNode = node
+            springBone["springs"] = [["joints": [["node": node]]]]
+            extensions["VRMC_springBone"] = springBone
+            json["extensions"] = extensions
+        }
+        let vrmEntity = try VRMEntityLoader(withData: data, shaders: []).loadEntity()
+        let joint = try #require(vrmEntity.entity(forNodeAt: jointNode))
+        let rotation = joint.transform.rotation
+
+        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
+        vrmEntity.update(deltaTime: 1.0 / 60.0)
+
+        #expect(joint.transform.rotation == rotation)
+    }
+
     @Test
     func testScenesSharingNodesLoadIndependentEntityGraphs() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

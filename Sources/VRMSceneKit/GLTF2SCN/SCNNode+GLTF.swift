@@ -49,17 +49,21 @@ extension SCNNode {
         for primitive in mesh.primitives {
             let node = SCNNode()
             var attributes = try loader.attributes(primitive.attributes.rawValue)
-            let vertex = attributes.first { $0.semantic == .vertex }
+            let vertex = try attributes.first { $0.semantic == .vertex }
+                ??? ._dataInconsistent("a mesh primitive has no POSITION attribute")
             let hasNormal = attributes.contains { $0.semantic == .normal }
 
             var elements: [SCNGeometryElement] = []
             if let index = primitive.indices {
                 elements.append(try loader.indexAccessor(withAccessorIndex: index, mode: primitive.mode))
-            } else if let vertex = vertex {
+            } else {
                 elements.append(try vertex.createIndexAccessor(with: primitive.mode))
             }
+            for element in elements {
+                try element.validateIndices(vertexCount: vertex.vectorCount)
+            }
 
-            if !hasNormal, let vertex = vertex {
+            if !hasNormal {
                 attributes.append(try vertex.createEstimatedNormal(with: elements))
             }
 
@@ -153,6 +157,14 @@ private extension SCNGeometrySource {
 }
 
 private extension SCNGeometryElement {
+    func validateIndices(vertexCount: Int) throws {
+        if let index = createIndices().first(where: { $0 < 0 || $0 >= vertexCount }) {
+            throw VRMError._dataInconsistent(
+                "primitive index \(index) is out of range for \(vertexCount) vertices"
+            )
+        }
+    }
+
     /// Calls `body` with each triangle of the element, expanding a strip into
     /// the triangles it stands for so a mesh without `NORMAL` can be shaded
     /// whichever way its faces are stored.
