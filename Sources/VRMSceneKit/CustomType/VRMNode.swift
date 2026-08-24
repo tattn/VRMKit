@@ -11,6 +11,7 @@ open class VRMNode: SCNNode {
     private var springBones: [VRMSpringBone] = []
 
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
+    private var expressionWeights: [ExpressionKey: CGFloat] = [:]
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
@@ -31,6 +32,7 @@ open class VRMNode: SCNNode {
 
     func setUpBlendShapes(nodes: [SCNNode?], meshes: [Int: [SCNNode]], loader: VRMSceneLoader) throws {
         expressionClips = [:]
+        expressionWeights = [:]
         materialColorClips = [:]
         textureTransformClips = [:]
 
@@ -44,7 +46,7 @@ open class VRMNode: SCNNode {
                 let morphBindings: [BlendShapeBinding] = group.binds?
                     .flatMap { bind in
                         (meshes[bind.mesh] ?? []).map {
-                            BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
+                            BlendShapeBinding(mesh: $0.allMorphers, index: bind.index, weight: bind.weight)
                         }
                     } ?? []
                 let clip = ExpressionClip(name: group.name,
@@ -63,7 +65,9 @@ open class VRMNode: SCNNode {
                               let node = nodes[bind.node] else {
                             return nil
                         }
-                        return BlendShapeBinding(mesh: node, index: bind.index, weight: bind.weight * 100.0)
+                        return BlendShapeBinding(mesh: node.allMorphers,
+                                                 index: bind.index,
+                                                 weight: bind.weight * 100.0)
                     } ?? []
                 let runtimeClip = ExpressionClip(name: expressionClip.name,
                                                  preset: expressionClip.preset,
@@ -215,27 +219,26 @@ open class VRMNode: SCNNode {
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
-        guard let clip = expressionClip(for: key) else { return }
+        guard let canonicalKey = canonicalExpressionKey(for: key),
+              let clip = expressionClips[canonicalKey] else { return }
         let value = CGFloat(clip.normalizedWeight(Double(value)))
+        expressionWeights[canonicalKey] = value
         for binding in clip.values {
             let weight = CGFloat(binding.weight / 100.0)
-            for morpher in binding.mesh.allMorphers {
+            for morpher in binding.mesh {
                 morpher.setWeight(weight * value, forTargetAt: binding.index)
             }
         }
-        for binding in materialColorClip(for: key) {
+        for binding in materialColorClips[canonicalKey] ?? [] {
             binding.apply(value: Float(value))
         }
-        for binding in textureTransformClip(for: key) {
+        for binding in textureTransformClips[canonicalKey] ?? [] {
             binding.apply(value: Float(value))
         }
     }
 
     public func expression(for key: ExpressionKey) -> CGFloat {
-        guard let clip = expressionClip(for: key),
-            let binding = clip.values.first,
-            let morpher = binding.mesh.allMorphers.first else { return 0 }
-        return morpher.weight(forTargetAt: binding.index)
+        canonicalExpressionKey(for: key).flatMap { expressionWeights[$0] } ?? 0
     }
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
@@ -252,17 +255,6 @@ open class VRMNode: SCNNode {
         expressionClips.canonicalKey(for: key)
     }
 
-    private func expressionClip(for key: ExpressionKey) -> ExpressionClip? {
-        canonicalExpressionKey(for: key).flatMap { expressionClips[$0] }
-    }
-
-    private func materialColorClip(for key: ExpressionKey) -> [MaterialColorBinding] {
-        canonicalExpressionKey(for: key).flatMap { materialColorClips[$0] } ?? []
-    }
-
-    private func textureTransformClip(for key: ExpressionKey) -> [TextureTransformBinding] {
-        canonicalExpressionKey(for: key).flatMap { textureTransformClips[$0] } ?? []
-    }
 }
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")

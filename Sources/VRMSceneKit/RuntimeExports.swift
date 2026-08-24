@@ -5,9 +5,9 @@ import SceneKit
 // MARK: - BlendShapeBindings
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-typealias BlendShapeBinding = VRMKitRuntime.BlendShapeBinding<SCNNode>
+typealias BlendShapeBinding = VRMKitRuntime.BlendShapeBinding<[SCNMorpher]>
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-typealias ExpressionClip = VRMKitRuntime.ExpressionClip<SCNNode>
+typealias ExpressionClip = VRMKitRuntime.ExpressionClip<[SCNMorpher]>
 
 // MARK: - Humanoid
 

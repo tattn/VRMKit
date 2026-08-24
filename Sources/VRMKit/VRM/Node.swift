@@ -8,10 +8,7 @@ extension GLTF {
         public let camera: Int?
         public let children: [Int]?
         public let skin: Int?
-        public let _matrix: Matrix?
-        public var matrix: Matrix {
-            return self._matrix ?? .identity
-        }
+        public let matrix: Matrix?
         public let mesh: Int?
         let _rotation: SIMD4<Float>?
         public var rotation: SIMD4<Float> {
@@ -34,7 +31,7 @@ extension GLTF {
             case camera
             case children
             case skin
-            case _matrix = "matrix"
+            case matrix
             case mesh
             case _rotation = "rotation"
             case _scale = "scale"

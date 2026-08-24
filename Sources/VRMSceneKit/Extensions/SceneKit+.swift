@@ -31,8 +31,4 @@ extension SCNMatrix4 {
                   m41: v[12], m42: v[13], m43: v[14], m44: v[15])
         #endif
     }
-
-    static func * (_ left: SCNMatrix4, right: SCNMatrix4) -> SCNMatrix4 {
-        SCNMatrix4Mult(left, right)
-    }
 }

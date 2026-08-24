@@ -17,7 +17,7 @@ extension GLTF.Node {
     /// The node's local transform: its `matrix` when it has one, the TRS
     /// properties otherwise, as the spec defines the two as alternatives.
     var localTransform: Transform {
-        if let matrix = _matrix {
+        if let matrix {
             return Transform(matrix: matrix.simdMatrix)
         }
         return Transform(scale: scale, rotation: rotation.simdQuat, translation: translation)

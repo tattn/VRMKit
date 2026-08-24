@@ -91,6 +91,12 @@ package extension GLTFDocument {
     func bufferData(at index: Int) throws -> Data {
         if let cached = buffers[index] { return cached }
         let gltfBuffer = try gltf.load(\.buffers, at: index)
+        // In a GLB only buffer 0 may omit its URI and refer to the BIN chunk.
+        // Treating every URI-less buffer as the BIN chunk silently aliases
+        // malformed documents onto the same bytes.
+        guard gltfBuffer.uri != nil || index == 0 else {
+            throw VRMError._dataInconsistent("only the first glTF buffer may refer to the GLB BIN chunk")
+        }
         let data = try Data(buffer: gltfBuffer, relativeTo: rootDirectory, binaryBuffer: binaryBuffer)
         buffers[index] = data
         return data

@@ -38,7 +38,7 @@ final class VRMEntitySpringBoneColliderGroup {
 
         init(node: Entity, collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) {
             self.node = node
-            self.offset = SIMD3<Float>(Float(collider.offset.x), Float(collider.offset.y), Float(collider.offset.z))
+            self.offset = collider.offset.simd
             self.tail = nil
             self.radius = Float(collider.radius)
         }

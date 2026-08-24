@@ -4,7 +4,6 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md
 
 public struct BinaryGLTF {
-    public let version: GLTF.Version
     /// Chunk 0.
     public let jsonData: GLTF
     /// Chunk 0 as it was written, which the editing side re-parses so that the
@@ -45,10 +44,9 @@ extension BinaryGLTF {
         }
 
         let rawVersion = try reader.readUInt32()
-        guard let version = GLTF.Version(rawValue: rawVersion), version == .two else {
+        guard GLTF.Version(rawValue: rawVersion) == .two else {
             throw VRMError.notSupportedVersion(rawVersion)
         }
-        self.version = version
 
         // The header length covers the whole GLB, so fewer bytes than that means
         // the file is truncated and the chunk walk below cannot be trusted. Bytes

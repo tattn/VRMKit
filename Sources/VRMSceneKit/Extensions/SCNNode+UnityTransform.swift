@@ -10,10 +10,6 @@ extension UnityTransform where Base == SCNNode {
         base.simdConvertPosition(position, to: nil)
     }
     
-    func inverseTransformPoint(_ position: SIMD3<Float>) -> SIMD3<Float> {
-        base.simdConvertPosition(position, from: nil)
-    }
-    
     var localRotation: simd_quatf {
         base.simdOrientation
     }
@@ -32,10 +28,6 @@ extension UnityTransform where Base == SCNNode {
 
     func setRotation(_ rotation: simd_quatf) {
         base.simdWorldOrientation = rotation
-    }
-    
-    var childCount: Int {
-        base.childNodes.count
     }
     
     var localToWorldMatrix: simd_float4x4 {

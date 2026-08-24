@@ -12,13 +12,20 @@ public extension VRM {
 
     /// The glTF node a humanoid bone is mapped to, or nil when the model does
     /// not rig it.
-    func nodeIndex(of bone: HumanoidBone) -> Int? { boneNodes[bone] }
+    func nodeIndex(of bone: HumanoidBone) -> Int? {
+        switch self {
+        case .v0(let vrm0): vrm0.nodeIndex(of: bone)
+        case .v1(let vrm1): vrm1.nodeIndex(of: bone)
+        }
+    }
 }
 
 public extension VRM0 {
     var boneNodes: [HumanoidBone: Int] { humanoid.boneNodes }
 
-    func nodeIndex(of bone: HumanoidBone) -> Int? { boneNodes[bone] }
+    func nodeIndex(of bone: HumanoidBone) -> Int? {
+        humanoid.humanBones.first { $0.humanoidBone == bone }?.node
+    }
 }
 
 public extension VRM0.Humanoid {
@@ -40,7 +47,7 @@ public extension VRM0.Humanoid.HumanBone {
 public extension VRM1 {
     var boneNodes: [HumanoidBone: Int] { humanoid.boneNodes }
 
-    func nodeIndex(of bone: HumanoidBone) -> Int? { boneNodes[bone] }
+    func nodeIndex(of bone: HumanoidBone) -> Int? { humanoid.humanBones[bone]?.node }
 }
 
 public extension VRM1.Humanoid {
@@ -75,4 +82,3 @@ public extension HumanoidBone {
         }
     }
 }
-

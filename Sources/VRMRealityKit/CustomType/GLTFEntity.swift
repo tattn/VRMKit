@@ -72,19 +72,19 @@ public class GLTFEntity: Entity {
     }
 
     /// glTF node index → the entity built for it, for this scene.
-    private var nodeEntities: [Entity?] = []
+    private var nodeEntities: [Entity?]?
 
     /// Whether this entity carries the bindings the animation runtime drives.
     ///
     /// `clone(recursive:)` copies the entity graph and the document, but the
     /// bindings point at the entities of the original, so a copy is not
     /// animatable. Load the scene again to get one that is.
-    public private(set) var hasRuntimeBindings = false
+    public var hasRuntimeBindings: Bool { nodeEntities != nil }
 
     /// The entity built for the glTF node at `index`, or nil when the index is out
     /// of range or the node is not part of this scene.
     public func entity(forNodeAt index: Int) -> Entity? {
-        guard nodeEntities.indices.contains(index) else { return nil }
+        guard let nodeEntities, nodeEntities.indices.contains(index) else { return nil }
         return nodeEntities[index]
     }
 
@@ -176,7 +176,6 @@ public class GLTFEntity: Entity {
 
     func setNodeEntities(_ nodes: [Entity?]) {
         nodeEntities = nodes
-        hasRuntimeBindings = true
     }
 
     /// The pose is solved by ``updateSkinning()``, which the loader calls once

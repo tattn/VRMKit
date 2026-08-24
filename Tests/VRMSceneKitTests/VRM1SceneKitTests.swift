@@ -50,11 +50,42 @@ struct VRM1SceneLoaderTests {
 
         #expect(vrmNode.expressionClips.count == 18)
         let happyBinding = try #require(vrmNode.expressionClips[.preset(.happy)]?.values.first)
-        #expect(happyBinding.mesh === (try vrmLoader.node(withNodeIndex: 2)))
+        #expect(!happyBinding.mesh.isEmpty)
         #expect(vrmNode.expressionClips[.preset(.aa)]?.values.first?.index == 25)
 
         vrmNode.setExpression(value: 0.42, for: .preset(.aa))
         #expect(abs(vrmNode.expression(for: .preset(.aa)) - 0.42) < 0.001)
+    }
+
+    @Test
+    func testExpressionReturnsInputWeightRatherThanScaledMorphWeight() throws {
+        let data = try VRMSampleAsset.seedSan.rewritingJSON { json in
+            guard var extensions = json["extensions"] as? [String: Any],
+                  var vrm = extensions["VRMC_vrm"] as? [String: Any],
+                  var expressions = vrm["expressions"] as? [String: Any],
+                  var preset = expressions["preset"] as? [String: Any],
+                  var aa = preset["aa"] as? [String: Any],
+                  var binds = aa["morphTargetBinds"] as? [[String: Any]],
+                  !binds.isEmpty else {
+                throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
+            }
+            binds[0]["weight"] = 0.25
+            aa["morphTargetBinds"] = binds
+            preset["aa"] = aa
+            expressions["preset"] = preset
+            vrm["expressions"] = expressions
+            extensions["VRMC_vrm"] = vrm
+            json["extensions"] = extensions
+        }
+        let loader = try VRMSceneLoader(withData: data)
+        let vrmNode = try loader.loadScene().vrmNode
+        let binding = try #require(vrmNode.expressionClips[.preset(.aa)]?.values.first)
+
+        vrmNode.setExpression(value: 0.8, for: .preset(.aa))
+
+        #expect(abs(vrmNode.expression(for: .preset(.aa)) - 0.8) < 0.001)
+        let morpher = try #require(binding.mesh.first)
+        #expect(abs(morpher.weight(forTargetAt: binding.index) - 0.2) < 0.001)
     }
 
     @Test

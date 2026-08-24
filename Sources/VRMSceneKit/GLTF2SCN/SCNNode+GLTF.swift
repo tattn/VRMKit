@@ -28,7 +28,7 @@ extension SCNNode {
             }
         }
 
-        if let matrix = node._matrix {
+        if let matrix = node.matrix {
             transform = try SCNMatrix4(matrix.values)
         } else {
             position = node.translation.createSCNVector3()

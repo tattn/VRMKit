@@ -114,7 +114,7 @@ final class GLTFAnimationDecoder {
             }
             // The spec keeps `matrix` off an animated node, whose channels
             // state the TRS they drive.
-            guard nodes[nodeIndex]._matrix == nil else {
+            guard nodes[nodeIndex].matrix == nil else {
                 throw VRMError._dataInconsistent(
                     "animated node \(nodeIndex) must use translation / rotation / scale instead of matrix"
                 )

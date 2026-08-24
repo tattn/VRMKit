@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 /// One glTF accessor expanded into tightly packed elements, ready to be read as
 /// floats or as the unsigned integers glTF uses for indices and joint references.
@@ -32,6 +33,21 @@ package struct PackedAccessor {
             make { component in
                 accessor.floatComponent(base: base, offset: elementOffset + bytesPerComponent * component)
             }
+        }
+    }
+
+    /// Float MAT4 elements in glTF's column-major order.
+    package func float4x4Elements() throws -> [simd_float4x4] {
+        guard componentType == .float else {
+            throw VRMError._dataInconsistent("MAT4 accessor must be float")
+        }
+        return try floatElements(.MAT4) { component in
+            simd_float4x4(columns: (
+                SIMD4<Float>(component(0), component(1), component(2), component(3)),
+                SIMD4<Float>(component(4), component(5), component(6), component(7)),
+                SIMD4<Float>(component(8), component(9), component(10), component(11)),
+                SIMD4<Float>(component(12), component(13), component(14), component(15))
+            ))
         }
     }
 

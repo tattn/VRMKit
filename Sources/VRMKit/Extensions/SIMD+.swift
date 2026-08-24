@@ -15,10 +15,6 @@ package extension SIMD3 where Scalar == Float {
         simd_normalize(self)
     }
 
-    var length: Scalar {
-        simd_length(self)
-    }
-
     var length_squared: Scalar {
         simd_length_squared(self)
     }

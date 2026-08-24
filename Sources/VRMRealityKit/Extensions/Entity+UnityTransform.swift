@@ -13,12 +13,6 @@ extension UnityTransform where Base == Entity {
         return world.multiplyPoint(position)
     }
 
-    func inverseTransformPoint(_ position: SIMD3<Float>) -> SIMD3<Float> {
-        let world = base.transformMatrix(relativeTo: nil)
-        let inverse = simd_inverse(world)
-        return inverse.multiplyPoint(position)
-    }
-
     var localRotation: simd_quatf {
         base.transform.rotation
     }
@@ -42,10 +36,6 @@ extension UnityTransform where Base == Entity {
         } else {
             base.transform.rotation = rotation
         }
-    }
-
-    var childCount: Int {
-        base.children.count
     }
 
     var localToWorldMatrix: simd_float4x4 {

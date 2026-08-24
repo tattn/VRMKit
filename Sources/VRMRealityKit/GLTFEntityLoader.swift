@@ -1234,21 +1234,6 @@ public class GLTFEntityLoader {
         return MeshResource.JointInfluences(influences: buffer, influencesPerVertex: 4)
     }
 
-    private func matrix4s(_ accessorIndex: Int) throws -> [simd_float4x4] {
-        guard try accessors.accessor(at: accessorIndex).componentType == .float else {
-            throw VRMError._dataInconsistent("MAT4 accessor must be float")
-        }
-        // glTF stores matrices column-major, which is also simd's layout.
-        return try accessors.floatElements(at: accessorIndex, type: .MAT4) { component in
-            simd_float4x4(columns: (
-                SIMD4<Float>(component(0), component(1), component(2), component(3)),
-                SIMD4<Float>(component(4), component(5), component(6), component(7)),
-                SIMD4<Float>(component(8), component(9), component(10), component(11)),
-                SIMD4<Float>(component(12), component(13), component(14), component(15))
-            ))
-        }
-    }
-
     /// The skin at `index` resolved for RealityKit. Its skeleton and its joint
     /// remap come out of the same ordering pass, so they are cached together.
     private func skin(withSkinIndex index: Int) throws -> EntityData.Skin {
@@ -1261,7 +1246,7 @@ public class GLTFEntityLoader {
         // present one has to cover every joint.
         let inverseBindMatrices: [simd_float4x4]
         if let accessorIndex = skin.inverseBindMatrices {
-            inverseBindMatrices = try matrix4s(accessorIndex)
+            inverseBindMatrices = try accessors.accessor(at: accessorIndex).float4x4Elements()
             guard inverseBindMatrices.count >= skin.joints.count else {
                 throw VRMError._dataInconsistent(
                     "inverseBindMatrices has \(inverseBindMatrices.count) elements for \(skin.joints.count) skin joints"

@@ -30,7 +30,7 @@ struct VRMSceneKitTests {
         #expect(clip.values.count == 3)
         #expect(clip.values[0].index == 31)
         #expect(clip.values[0].weight == 100)
-        #expect(clip.values[0].mesh.name == "face.baked")
+        #expect(!clip.values[0].mesh.isEmpty)
         #expect(clips.filter({ $0.key.isPreset }).count == 17)
         #expect(clips.filter({ !$0.key.isPreset }).count == 1)
         // "joy" is what VRM 0.x calls the expression 1.0 calls "happy".
