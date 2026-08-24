@@ -464,34 +464,6 @@ public final class VRMEntity: GLTFEntity {
         expressionClips.canonicalKey(for: key)
     }
 
-    /// Applies VRMC_vrm expression overrides to the input weights. A binary
-    /// expression is suppressed outright rather than scaled, having no partial
-    /// state.
-    private func effectiveExpressionWeights() -> [ExpressionKey: Float] {
-        var states = ExpressionOverrideStates()
-        for (expressionKey, weight) in expressionWeights {
-            guard let clip = expressionClips[expressionKey] else { continue }
-            states.accumulate(clip, weight: Double(weight), excluding: expressionKey.overrideGroup)
-        }
-        guard states.isSuppressingAnyGroup else { return expressionWeights }
-
-        var result: [ExpressionKey: Float] = [:]
-        result.reserveCapacity(expressionWeights.count)
-        for (expressionKey, weight) in expressionWeights {
-            let state = expressionKey.overrideGroup.map { states[$0] }
-            guard let state, state.isSuppressing else {
-                result[expressionKey] = weight
-                continue
-            }
-            let isBinary = expressionClips[expressionKey]?.isBinary ?? false
-            let overridden = isBinary ? 0 : weight * Float(state.factor)
-            if overridden > 0 {
-                result[expressionKey] = overridden
-            }
-        }
-        return result
-    }
-
     /// Adds one clip's share of every morph target it binds. Expressions
     /// overlapping on a target sum up rather than overwrite.
     private func accumulate(_ bindings: [BlendShapeBinding],
@@ -515,7 +487,7 @@ public final class VRMEntity: GLTFEntity {
     }
 
     private func applyExpressions() {
-        let expressionWeights = effectiveExpressionWeights()
+        let expressionWeights = expressionClips.effectiveWeights(of: expressionWeights)
 
         var morphWeights: [MorphBindingKey: Float] = [:]
         for (expressionKey, expressionWeight) in expressionWeights {

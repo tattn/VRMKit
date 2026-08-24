@@ -96,3 +96,22 @@ extension GLTF {
         }
     }
 }
+
+package extension GLTF.Mesh {
+    /// The morph targets each POSITION accessor of this mesh is morphed by.
+    ///
+    /// Some VRM meshes split their primitives by indices while sharing one
+    /// POSITION accessor, and only one of those primitives carries the morph
+    /// targets: the rest morph with it. Both renderers read the sharing off
+    /// this, so a model blinks the same whichever of them draws it.
+    func morphTargetsByPositionAccessor() -> [Int: [[Primitive.AttributeKey: Int]]] {
+        var shared: [Int: [[Primitive.AttributeKey: Int]]] = [:]
+        for primitive in primitives {
+            guard let targets = primitive.targets, !targets.isEmpty,
+                  let position = primitive.attributes.rawValue[.POSITION],
+                  shared[position] == nil else { continue }
+            shared[position] = targets
+        }
+        return shared
+    }
+}

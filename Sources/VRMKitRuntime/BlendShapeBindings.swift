@@ -83,6 +83,36 @@ package struct ExpressionClip<Mesh> {
 package typealias ExpressionOverrideType = VRM1.Expressions.Expression.ExpressionOverrideType
 
 package extension Dictionary {
+    /// The weights left once the active expressions have overridden one
+    /// another, which is what a renderer applies rather than what it was given.
+    /// A binary expression is suppressed outright rather than scaled, having no
+    /// partial state to scale.
+    func effectiveWeights<Mesh>(of weights: [ExpressionKey: Float]) -> [ExpressionKey: Float]
+        where Key == ExpressionKey, Value == ExpressionClip<Mesh> {
+        var states = ExpressionOverrideStates()
+        for (key, weight) in weights {
+            guard let clip = self[key] else { continue }
+            states.accumulate(clip, weight: Double(weight), excluding: key.overrideGroup)
+        }
+        guard states.isSuppressingAnyGroup else { return weights }
+
+        var effective: [ExpressionKey: Float] = [:]
+        effective.reserveCapacity(weights.count)
+        for (key, weight) in weights {
+            guard let state = key.overrideGroup.map({ states[$0] }), state.isSuppressing else {
+                effective[key] = weight
+                continue
+            }
+            let overridden = self[key]?.isBinary == true ? 0 : weight * Float(state.factor)
+            if overridden > 0 {
+                effective[key] = overridden
+            }
+        }
+        return effective
+    }
+}
+
+package extension Dictionary {
     /// Resolves a custom key spelling a preset to the preset clip, while leaving
     /// ordinary custom expressions untouched.
     func canonicalKey<Mesh>(for key: ExpressionKey) -> ExpressionKey?

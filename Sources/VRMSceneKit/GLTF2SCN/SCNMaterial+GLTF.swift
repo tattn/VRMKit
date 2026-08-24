@@ -83,34 +83,34 @@ extension SCNMaterial {
         }
 
         if let mtoon {
-            applyMToon(mtoon, material: material, loader: loader)
+            try applyMToon(mtoon, material: material, loader: loader)
         }
     }
 
     private func applyMToon(_ mtoon: GLTF.Material.MaterialExtensions.MaterialsMToon,
                             material: GLTF.Material,
-                            loader: VRMSceneLoader) {
+                            loader: VRMSceneLoader) throws {
         if let shadeColor = mtoon.shadeColorFactor {
             multiply.contents = SKColor(color3: shadeColor, alpha: 1.0)
         }
         if let shadeTexture = mtoon.shadeMultiplyTexture {
-            try? multiply.setTexture(.init(shadeTexture), loader: loader)
+            try multiply.setTexture(.init(shadeTexture), loader: loader)
         }
         if let matcapTexture = mtoon.matcapTexture {
-            try? reflective.setTexture(.init(matcapTexture), loader: loader)
+            try reflective.setTexture(.init(matcapTexture), loader: loader)
         }
         if let rimColor = mtoon.parametricRimColorFactor {
             selfIllumination.contents = SKColor(color3: rimColor, alpha: 1.0)
             selfIllumination.intensity = CGFloat(mtoon.parametricRimLiftFactor ?? 0)
         }
         if let rimTexture = mtoon.rimMultiplyTexture {
-            try? selfIllumination.setTexture(.init(rimTexture), loader: loader)
+            try selfIllumination.setTexture(.init(rimTexture), loader: loader)
         }
         if let outlineColor = mtoon.outlineColorFactor {
             transparent.contents = SKColor(color3: outlineColor, alpha: 1.0)
         }
         if let uvMask = mtoon.uvAnimationMaskTexture {
-            try? ambient.setTexture(.init(uvMask), loader: loader)
+            try ambient.setTexture(.init(uvMask), loader: loader)
         }
         if material.alphaMode == .BLEND || mtoon.transparentWithZWrite == true {
             blendMode = .alpha

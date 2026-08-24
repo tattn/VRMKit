@@ -49,8 +49,7 @@ struct VRM1SceneLoaderTests {
         let vrmNode = scene.vrmNode
 
         #expect(vrmNode.expressionClips.count == 18)
-        let happyBinding = try #require(vrmNode.expressionClips[.preset(.happy)]?.values.first)
-        #expect(!happyBinding.mesh.isEmpty)
+        #expect(vrmNode.expressionClips[.preset(.happy)]?.values.isEmpty == false)
         #expect(vrmNode.expressionClips[.preset(.aa)]?.values.first?.index == 25)
 
         vrmNode.setExpression(value: 0.42, for: .preset(.aa))
@@ -84,8 +83,7 @@ struct VRM1SceneLoaderTests {
         vrmNode.setExpression(value: 0.8, for: .preset(.aa))
 
         #expect(abs(vrmNode.expression(for: .preset(.aa)) - 0.8) < 0.001)
-        let morpher = try #require(binding.mesh.first)
-        #expect(abs(morpher.weight(forTargetAt: binding.index) - 0.2) < 0.001)
+        #expect(abs(binding.mesh.weight(forTargetAt: binding.index) - 0.2) < 0.001)
     }
 
     @Test

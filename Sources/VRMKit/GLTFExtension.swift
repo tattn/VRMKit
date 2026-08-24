@@ -59,6 +59,22 @@ package extension GLTFExtension {
     /// may hold references of any shape.
     static let known = names(of: allCases)
 
+    /// The extensions pruning can follow every reference of, spelled out
+    /// rather than derived from ``known`` so that a case added to this enum
+    /// does not quietly widen what pruning walks. `KHR_animation_pointer` names
+    /// its target in a string this cannot read, and `KHR_audio` hangs its
+    /// buffer views off a draft this package has never read.
+    static let prunable = names(of: [
+        .vrm0, .vrm1, .springBone, .vrmAnimation,
+        .nodeConstraint, .materialsMToon,
+        .materialsAnisotropy, .materialsClearcoat, .materialsDispersion, .materialsEmissiveStrength,
+        .materialsIor, .materialsIridescence, .materialsPBRSpecularGlossiness, .materialsSheen,
+        .materialsSpecular, .materialsTransmission, .materialsUnlit, .materialsVolume,
+        .meshQuantization, .textureBasisu, .textureTransform, .textureWebP,
+        .dracoMeshCompression, .lightsPunctual, .materialsVariants,
+        .meshGPUInstancing, .meshoptCompression,
+    ])
+
     private static func names(of extensions: [GLTFExtension]) -> Set<String> {
         Set(extensions.map(\.rawValue))
     }
@@ -76,15 +92,21 @@ package extension JSONObject {
         Set(strings("extensionsUsed")).union(strings("extensionsRequired"))
     }
 
-    /// Every extension carried below the root: on a node, a primitive, a buffer
-    /// view, a material. glTF has a document declare all of them in
-    /// `extensionsUsed`, so reading them off the document itself is what catches
-    /// the one that does not, whose contents are no more knowable for that.
+    /// Every extension the document names anywhere: declared, at the root, or
+    /// carried below it. glTF has a document declare all of them, so reading
+    /// the tree as well is what catches the one that does not.
+    func carriedExtensions() -> Set<String> {
+        declaredExtensions().union(nestedExtensions())
+    }
+
+    /// Every extension carried anywhere in this object: at its root, on a node,
+    /// a primitive, a buffer view, a material, or inside another extension.
+    /// glTF has a document declare all of them in `extensionsUsed`, so reading
+    /// the tree itself is what catches the one that does not, whose contents
+    /// are no more knowable for that.
     func nestedExtensions() -> Set<String> {
         var names: Set<String> = []
-        for (key, value) in self where key != "extensions" {
-            collectExtensionNames(in: value, into: &names)
-        }
+        collectExtensionNames(in: self, into: &names)
         return names
     }
 }

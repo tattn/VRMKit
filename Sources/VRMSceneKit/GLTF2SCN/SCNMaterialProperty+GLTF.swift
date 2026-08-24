@@ -64,8 +64,11 @@ extension SCNMaterialProperty {
 }
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-private extension SCNMatrix4 {
+extension SCNMatrix4 {
     /// A `KHR_texture_transform` as a texture coordinate transform.
+    ///
+    /// An expression animating the transform writes through here too, so that
+    /// what it moves is the scale and the offset rather than the rotation.
     ///
     /// The extension composes translation * rotation * scale onto the UV, in
     /// the same top-left origin the geometry's UVs are handed to SceneKit in,

@@ -14,6 +14,12 @@ open class VRMNode: SCNNode {
     private var expressionWeights: [ExpressionKey: CGFloat] = [:]
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
+    // Every binding any expression holds, so that a target no active
+    // expression touches goes back to what it was rather than staying where
+    // the last expression to drive it left it.
+    private var morphBindings: [MorphBindingKey: BlendShapeBinding] = [:]
+    private var colorBindings: [MaterialColorBindingKey: MaterialColorBinding] = [:]
+    private var transformBindings: [ObjectIdentifier: TextureTransformBinding] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
     private var nodeConstraints: [NodeConstraintBinding] = []
 
@@ -35,6 +41,10 @@ open class VRMNode: SCNNode {
         expressionWeights = [:]
         materialColorClips = [:]
         textureTransformClips = [:]
+        morphBindings = [:]
+        colorBindings = [:]
+        transformBindings = [:]
+        defer { indexBindings() }
 
         switch vrm {
         case .v0(let vrm0):
@@ -45,8 +55,10 @@ open class VRMNode: SCNNode {
                 // mesh is drawn under.
                 let morphBindings: [BlendShapeBinding] = group.binds?
                     .flatMap { bind in
-                        (meshes[bind.mesh] ?? []).map {
-                            BlendShapeBinding(mesh: $0.allMorphers, index: bind.index, weight: bind.weight)
+                        (meshes[bind.mesh] ?? []).flatMap { node in
+                            node.allMorphers.map {
+                                BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
+                            }
                         }
                     } ?? []
                 let clip = ExpressionClip(name: group.name,
@@ -60,19 +72,21 @@ open class VRMNode: SCNNode {
             guard let expressions = vrm1.expressions else { return }
             for expressionClip in expressions.runtimeClips {
                 let morphBindings: [BlendShapeBinding] = expressionClip.expression.morphTargetBinds?
-                    .compactMap { bind in
-                        guard nodes.indices.contains(bind.node),
-                              let node = nodes[bind.node] else {
-                            return nil
+                    .flatMap { bind -> [BlendShapeBinding] in
+                        guard nodes.indices.contains(bind.node), let node = nodes[bind.node] else {
+                            return []
                         }
-                        return BlendShapeBinding(mesh: node.allMorphers,
-                                                 index: bind.index,
-                                                 weight: bind.weight * 100.0)
+                        return node.allMorphers.map {
+                            BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight * 100.0)
+                        }
                     } ?? []
                 let runtimeClip = ExpressionClip(name: expressionClip.name,
                                                  preset: expressionClip.preset,
                                                  values: morphBindings,
-                                                 isBinary: expressionClip.expression.isBinary ?? false)
+                                                 isBinary: expressionClip.expression.isBinary ?? false,
+                                                 overrideBlink: expressionClip.expression.overrideBlink ?? .none,
+                                                 overrideLookAt: expressionClip.expression.overrideLookAt ?? .none,
+                                                 overrideMouth: expressionClip.expression.overrideMouth ?? .none)
                 expressionClips[runtimeClip.key] = runtimeClip
 
                 let colorBindings: [MaterialColorBinding] = expressionClip.expression.materialColorBinds?
@@ -91,10 +105,9 @@ open class VRMNode: SCNNode {
                 let transformBindings: [TextureTransformBinding] = expressionClip.expression.textureTransformBinds?
                     .compactMap { bind in
                         guard let material = try? loader.material(withMaterialIndex: bind.material) else { return nil }
-                        let base = material.diffuse.scaleOffset
+                        let base = material.diffuse.uvTransform
                         return TextureTransformBinding(material: material,
-                                                       baseScale: base.scale,
-                                                       baseOffset: base.offset,
+                                                       base: base,
                                                        targetScale: SIMD2<Float>(bind.scale, default: 1.0),
                                                        targetOffset: SIMD2<Float>(bind.offset, default: 0.0))
                     } ?? []
@@ -221,19 +234,60 @@ open class VRMNode: SCNNode {
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
         guard let canonicalKey = canonicalExpressionKey(for: key),
               let clip = expressionClips[canonicalKey] else { return }
-        let value = CGFloat(clip.normalizedWeight(Double(value)))
-        expressionWeights[canonicalKey] = value
-        for binding in clip.values {
-            let weight = CGFloat(binding.weight / 100.0)
-            for morpher in binding.mesh {
-                morpher.setWeight(weight * value, forTargetAt: binding.index)
+        expressionWeights[canonicalKey] = CGFloat(clip.normalizedWeight(Double(value)))
+        applyExpressions()
+    }
+
+    /// Writes every active expression at once rather than one as it is set:
+    /// VRM has expressions overlapping on a morph target, a material colour or
+    /// a UV transform add up, and has an active expression suppress the blink,
+    /// lookAt and mouth ones, neither of which one expression can answer alone.
+    private func applyExpressions() {
+        let weights = expressionClips.effectiveWeights(of: expressionWeights.mapValues(Float.init))
+
+        var morphWeights: [MorphBindingKey: Float] = [:]
+        var colors: [MaterialColorBindingKey: SIMD4<Float>] = [:]
+        var transforms: [ObjectIdentifier: (scale: SIMD2<Float>, offset: SIMD2<Float>)] = [:]
+        for (key, weight) in weights {
+            for binding in expressionClips[key]?.values ?? [] {
+                morphWeights[binding.key, default: 0] += Float(binding.weight / 100.0) * weight
+            }
+            for binding in materialColorClips[key] ?? [] {
+                colors[binding.key, default: binding.baseValue] +=
+                    (binding.targetValue - binding.baseValue) * weight
+            }
+            for binding in textureTransformClips[key] ?? [] {
+                let transform = transforms[binding.key] ?? (binding.base.scale, binding.base.offset)
+                transforms[binding.key] = (
+                    transform.scale + (binding.targetScale - binding.base.scale) * weight,
+                    transform.offset + (binding.targetOffset - binding.base.offset) * weight
+                )
             }
         }
-        for binding in materialColorClips[canonicalKey] ?? [] {
-            binding.apply(value: Float(value))
+
+        for (key, binding) in morphBindings {
+            binding.mesh.setWeight(CGFloat(morphWeights[key] ?? 0), forTargetAt: binding.index)
         }
-        for binding in textureTransformClips[canonicalKey] ?? [] {
-            binding.apply(value: Float(value))
+        for (key, binding) in colorBindings {
+            binding.material.setColor(colors[key] ?? binding.baseValue, for: binding.type)
+        }
+        for (key, binding) in transformBindings {
+            let transform = transforms[key] ?? (binding.base.scale, binding.base.offset)
+            binding.apply(scale: transform.scale, offset: transform.offset)
+        }
+    }
+
+    /// Collects the bindings of every clip, so that applying the active ones
+    /// can put the rest back where they started.
+    private func indexBindings() {
+        for binding in expressionClips.values.flatMap(\.values) {
+            morphBindings[binding.key] = binding
+        }
+        for binding in materialColorClips.values.flatMap({ $0 }) {
+            colorBindings[binding.key] = binding
+        }
+        for binding in textureTransformClips.values.flatMap({ $0 }) {
+            transformBindings[binding.key] = binding
         }
     }
 
@@ -310,28 +364,47 @@ private struct NodeConstraintBinding {
 
 }
 
+/// Identifies one morph target of one morpher, so that expressions overlapping
+/// on a target accumulate into the same weight.
+private struct MorphBindingKey: Hashable {
+    let morpher: ObjectIdentifier
+    let index: Int
+}
+
+private extension BlendShapeBinding {
+    var key: MorphBindingKey { MorphBindingKey(morpher: ObjectIdentifier(mesh), index: index) }
+}
+
+private struct MaterialColorBindingKey: Hashable {
+    let material: ObjectIdentifier
+    let type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType
+}
+
 private struct MaterialColorBinding {
     let material: SCNMaterial
     let type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType
     let targetValue: SIMD4<Float>
     let baseValue: SIMD4<Float>
 
-    func apply(value: Float) {
-        material.setColor(baseValue + (targetValue - baseValue) * value, for: type)
+    var key: MaterialColorBindingKey {
+        MaterialColorBindingKey(material: ObjectIdentifier(material), type: type)
     }
 }
 
 private struct TextureTransformBinding {
     let material: SCNMaterial
-    let baseScale: SIMD2<Float>
-    let baseOffset: SIMD2<Float>
+    /// What the texture was loaded with, which the expression moves away from
+    /// and which the rotation of a `KHR_texture_transform` survives in.
+    let base: GLTFUVTransform
     let targetScale: SIMD2<Float>
     let targetOffset: SIMD2<Float>
 
-    func apply(value: Float) {
-        let scale = baseScale + (targetScale - baseScale) * value
-        let offset = baseOffset + (targetOffset - baseOffset) * value
-        material.diffuse.contentsTransform = SCNMatrix4(scale: scale, offset: offset)
+    var key: ObjectIdentifier { ObjectIdentifier(material) }
+
+    func apply(scale: SIMD2<Float>, offset: SIMD2<Float>) {
+        material.diffuse.contentsTransform = SCNMatrix4(
+            uvTransform: GLTFUVTransform(scale: scale, offset: offset, rotation: base.rotation)
+        )
     }
 }
 
@@ -342,10 +415,14 @@ private struct FirstPersonAnnotation {
 }
 
 private extension SCNNode {
+    /// Every morpher below this node, each once: the primitives of a mesh
+    /// sharing a POSITION accessor share the morpher driving them, and a
+    /// weight written to it twice would count twice.
     var allMorphers: [SCNMorpher] {
+        var seen: Set<ObjectIdentifier> = []
         var result: [SCNMorpher] = []
         enumerateHierarchy { node, _ in
-            if let morpher = node.morpher {
+            if let morpher = node.morpher, seen.insert(ObjectIdentifier(morpher)).inserted {
                 result.append(morpher)
             }
         }
@@ -400,19 +477,14 @@ private extension SCNMaterialProperty {
         return color.simd
     }
 
-    var scaleOffset: (scale: SIMD2<Float>, offset: SIMD2<Float>) {
+    /// The `KHR_texture_transform` the loader wrote, read back so that an
+    /// expression moving the scale and the offset leaves the rotation alone.
+    var uvTransform: GLTFUVTransform {
         let transform = contentsTransform
-        return (SIMD2<Float>(Float(transform.m11), Float(transform.m22)),
-                SIMD2<Float>(Float(transform.m41), Float(transform.m42)))
-    }
-}
-
-private extension SCNMatrix4 {
-    init(scale: SIMD2<Float>, offset: SIMD2<Float>) {
-        self = SCNMatrix4Identity
-        m11 = SCNFloat(scale.x)
-        m22 = SCNFloat(scale.y)
-        m41 = SCNFloat(offset.x)
-        m42 = SCNFloat(offset.y)
+        let (m11, m12) = (Float(transform.m11), Float(transform.m12))
+        let (m21, m22) = (Float(transform.m21), Float(transform.m22))
+        return GLTFUVTransform(scale: SIMD2<Float>(hypot(m11, m12), hypot(m21, m22)),
+                               offset: SIMD2<Float>(Float(transform.m41), Float(transform.m42)),
+                               rotation: atan2(-m12, m11))
     }
 }

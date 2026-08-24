@@ -160,9 +160,9 @@ private extension GLTF.Accessor {
                 case .unsignedByte:
                     indices.append(Int(base.load(fromByteOffset: offset, as: UInt8.self)))
                 case .unsignedShort:
-                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt16.self)))
+                    indices.append(Int(base.loadUnaligned(fromByteOffset: offset, as: UInt16.self)))
                 default:
-                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt32.self)))
+                    indices.append(Int(base.loadUnaligned(fromByteOffset: offset, as: UInt32.self)))
                 }
             }
         }

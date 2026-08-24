@@ -44,7 +44,12 @@ extension SCNNode {
     convenience init(mesh: GLTF.Mesh, loader: VRMSceneLoader) throws {
         self.init()
         name = mesh.name
-        var morpher: SCNMorpher?
+        // A primitive carrying no morph targets of its own morphs with those
+        // of whichever primitive shares its POSITION accessor, and with one
+        // morpher between them rather than a copy each. One carrying its own
+        // keeps them, however they compare to the rest of the mesh's.
+        let sharedTargets = mesh.morphTargetsByPositionAccessor()
+        var morphers: [Int: SCNMorpher] = [:]
 
         for primitive in mesh.primitives {
             let node = SCNNode()
@@ -85,11 +90,16 @@ extension SCNNode {
                 }
             }
 
+            let position = primitive.attributes.rawValue[.POSITION]
             if let targets = primitive.targets, !targets.isEmpty {
-                morpher = try SCNMorpher(primitiveTargets: targets, loader: loader)
+                let morpher = try SCNMorpher(primitiveTargets: targets, loader: loader)
                 node.morpher = morpher
-//                let path = "childNodes[0].childNodes[\(primitiveIndex)].morpher.weights[\(index)]"
-            } else {
+                // The first such primitive is the one the mesh shares, so the
+                // ones falling back to it read the morpher already built.
+                if let position, morphers[position] == nil { morphers[position] = morpher }
+            } else if let position, let targets = sharedTargets[position] {
+                let morpher = try morphers[position] ?? SCNMorpher(primitiveTargets: targets, loader: loader)
+                morphers[position] = morpher
                 node.morpher = morpher
             }
 

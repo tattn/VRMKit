@@ -96,14 +96,14 @@ extension GLTFEditableDocument {
     /// Replaces `buffers` with the one entry describing the BIN buffer, or with
     /// none when it has no bytes.
     func writeSingleBufferEntry() {
-        if binary.isEmpty {
+        guard !binary.isEmpty else {
             json.removeValue(forKey: GLTFArray.buffers.rawValue)
-        } else {
-            var buffer = json.objects(.buffers).first ?? [:]
-            buffer.removeValue(forKey: "uri")
-            buffer["byteLength"] = binary.count
-            json[.buffers] = [buffer]
+            return
         }
+        var buffer = json.objects(.buffers).first ?? [:]
+        buffer.removeValue(forKey: "uri")
+        buffer["byteLength"] = binary.count
+        json[.buffers] = [buffer]
     }
 
     /// Runs `body` so that it either takes effect whole or not at all: an edit
@@ -168,9 +168,7 @@ extension GLTFEditableDocument {
     private static func validateRelayout(of json: JSONObject) throws {
         let buffers = json.count(.buffers)
         guard buffers > 1 else { return }
-        let unknown = json.declaredExtensions()
-            .union(json.nestedExtensions())
-            .subtracting(GLTFExtension.known)
+        let unknown = json.carriedExtensions().subtracting(GLTFExtension.known)
         guard unknown.isEmpty else {
             throw VRMError._notSupported(
                 "the document carries \(unknown.sorted().joined(separator: ", ")) and holds \(buffers) "

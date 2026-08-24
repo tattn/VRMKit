@@ -18,6 +18,12 @@ package extension JSONObject {
         self[key].flatMap(jsonNumber).flatMap { Int(exactly: $0.doubleValue) }
     }
 
+    /// The keys of the `textureInfo`s directly under this object, which glTF
+    /// and the material extensions it defines all spell ending in `Texture`. A
+    /// key shaped like one under `extras` is the document's own field, so
+    /// nothing walks in there.
+    var textureSlotKeys: [String] { keys.filter { $0.hasSuffix("Texture") } }
+
     /// Nil unless every element is a number an edit or a load can have written.
     func floats(_ key: String) -> [Float]? {
         guard let values = self[key] as? [Any] else { return nil }
@@ -66,16 +72,6 @@ package extension JSONObject {
         existing.append(element)
         self[array] = existing
         return existing.count - 1
-    }
-
-    mutating func rebase(_ key: String, by offset: Int) {
-        guard let value = index(key) else { return }
-        self[key] = value + offset
-    }
-
-    mutating func rebaseAll(_ key: String, by offset: Int) {
-        guard let values = ints(key) else { return }
-        self[key] = values.map { $0 + offset }
     }
 
     /// Points a buffer view, or the meshopt slice shaped like one, at the one

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The `.vrma` fixtures that ship with the test bundle.
-public enum VRMASampleAsset: String, Sendable {
+public enum VRMASampleAsset: String, CaseIterable, Sendable {
     /// A CC0 walk cycle: a real full-body motion, 54 humanoid bones and a hips
     /// translation, authored on a skeleton unlike either bundled `.vrm`.
     case walk = "walk.vrma"

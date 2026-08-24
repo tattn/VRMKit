@@ -247,6 +247,8 @@ try document.serialize().write(to: outputURL)
 
 `addNode`, `setName` and `setTransform` edit the node graph by appending, never by renumbering, so the extensions that make a document a VRM keep pointing at what they used to. `detachNode` cuts a subtree's links to its parent and scenes and nothing else, and `moveNode(at:to:)` cuts them and hangs the subtree under another node, or under the default scene's roots when given none.
 
+`prune()` takes out what a detached subtree left behind and returns how many BIN bytes that reclaimed. It keeps what the scenes draw, what the animations still move and the thumbnail a VRM is listed under, byte for byte, and remaps every index the rest of the document holds, VRM extensions included. A node something still names keeps its transform alone, so a humanoid bone or a spring joint stays where it was without what it drew, and the bindings that named a node for what it drew go with it. It runs only when called, and refuses a document that names no scene or declares an extension VRMKit cannot follow the references of.
+
 `GLTFEditableDocument()` starts an empty document and `addMesh` fills it from vertex data, so a plate, a prop or a test fixture can be built without laying out accessors, buffer views and the GLB container by hand.
 
 ```swift

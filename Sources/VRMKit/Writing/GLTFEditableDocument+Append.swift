@@ -112,11 +112,10 @@ extension GLTFEditableDocument {
                 + "whose contents this merge cannot carry over"
             )
         }
-        // Below the root, the document is read for the extensions it carries as
-        // well as asked for the ones it declares: an undeclared one would come
-        // over with its indices still pointing into the source's own arrays.
-        let unsupported = sourceJSON.declaredExtensions()
-            .union(sourceJSON.nestedExtensions())
+        // The document is read for the extensions it carries as well as asked
+        // for the ones it declares: an undeclared one would come over with its
+        // indices still pointing into the source's own arrays.
+        let unsupported = sourceJSON.carriedExtensions()
             .subtracting(GLTFExtension.mergeable)
             // A VRM 1.0 source keeps its materials on the materials, so only
             // what makes it an avatar is dropped.
@@ -158,9 +157,17 @@ private struct GLTFMerger {
             bufferOffsets.append(target.appendToBinary(try source.bufferData(at: index)))
         }
 
-        var bufferViews = try sourceJSON.objects(.bufferViews).map(rebasedBufferView)
+        // A buffer view names a slice of a buffer rather than an entry of an
+        // array, so it is the one thing rebased by byte offset.
+        var bufferViews = try sourceJSON.objects(.bufferViews).map { view -> JSONObject in
+            var view = view
+            try view.rebaseOntoSingleBuffer(offsets: bufferOffsets)
+            return view
+        }
+        // An image already in a buffer view moves with it; one in a file or a
+        // data URI is read into the BIN buffer by ``embeddingImages`` after.
         let images = try GLTFEditableDocument.embeddingImages(
-            sourceJSON.objects(.images).map(rebasedImage),
+            rebased(.images),
             relativeTo: source.rootDirectory,
             into: &bufferViews,
             viewOffset: offset(of: .bufferViews)
@@ -168,16 +175,16 @@ private struct GLTFMerger {
 
         target.json.appendObjects(bufferViews, to: .bufferViews)
         target.json.appendObjects(images, to: .images)
-        target.json.appendObjects(sourceJSON.objects(.accessors).map(rebasedAccessor), to: .accessors)
-        target.json.appendObjects(sourceJSON.objects(.samplers), to: .samplers)
-        target.json.appendObjects(sourceJSON.objects(.cameras), to: .cameras)
-        target.json.appendObjects(sourceJSON.objects(.textures).map(rebasedTexture), to: .textures)
-        target.json.appendObjects(sourceJSON.objects(.meshes).map(rebasedMesh), to: .meshes)
-        target.json.appendObjects(sourceJSON.objects(.skins).map(rebasedSkin), to: .skins)
-        target.json.appendObjects(sourceJSON.objects(.nodes).map(rebasedNode), to: .nodes)
-        target.json.appendObjects(sourceJSON.objects(.animations).map(rebasedAnimation), to: .animations)
+        target.json.appendObjects(rebased(.accessors), to: .accessors)
+        target.json.appendObjects(rebased(.samplers), to: .samplers)
+        target.json.appendObjects(rebased(.cameras), to: .cameras)
+        target.json.appendObjects(rebased(.textures), to: .textures)
+        target.json.appendObjects(rebased(.meshes), to: .meshes)
+        target.json.appendObjects(rebased(.skins), to: .skins)
+        target.json.appendObjects(rebased(.nodes), to: .nodes)
+        target.json.appendObjects(rebased(.animations), to: .animations)
 
-        let materials = sourceJSON.objects(.materials).map(rebasedMaterial)
+        let materials = rebased(.materials)
         target.json.appendObjects(materials, to: .materials)
         target.appendVRM0MaterialProperties(named: materials.map { $0.string("name") })
         mergeExtensionDeclarations()
@@ -197,133 +204,14 @@ private struct GLTFMerger {
     /// How far every index into `array` moves.
     private func offset(of array: GLTFArray) -> Int { base[array] ?? 0 }
 
-    private func rebasedBufferView(_ view: JSONObject) throws -> JSONObject {
-        var view = view
-        try view.rebaseOntoSingleBuffer(offsets: bufferOffsets)
-        return view
-    }
-
-    private func rebasedAccessor(_ accessor: JSONObject) -> JSONObject {
-        var accessor = accessor
-        accessor.rebase("bufferView", by: offset(of: .bufferViews))
-        accessor.withObject("sparse") { sparse in
-            sparse.withObject("indices") { $0.rebase("bufferView", by: offset(of: .bufferViews)) }
-            sparse.withObject("values") { $0.rebase("bufferView", by: offset(of: .bufferViews)) }
+    /// Every source entry of `array`, with each index it holds moved to the
+    /// end of the target's arrays. What counts as an index is
+    /// ``GLTFReferences``'s answer, the same one pruning remaps by.
+    private func rebased(_ array: GLTFArray) -> [JSONObject] {
+        let base = base
+        return sourceJSON.objects(array).map { entry in
+            GLTFReferences.rewriting(entry, of: array) { array, index, _ in index + (base[array] ?? 0) }
         }
-        return accessor
-    }
-
-    /// An image already in a buffer view moves with it; one in a file or a
-    /// data URI is read into the BIN buffer by ``embeddingImages`` after.
-    private func rebasedImage(_ image: JSONObject) -> JSONObject {
-        var image = image
-        image.rebase("bufferView", by: offset(of: .bufferViews))
-        return image
-    }
-
-    private func rebasedTexture(_ texture: JSONObject) -> JSONObject {
-        var texture = texture
-        let imageOffset = offset(of: .images)
-        texture.rebase("source", by: imageOffset)
-        texture.rebase("sampler", by: offset(of: .samplers))
-        // KHR_texture_basisu and EXT_texture_webp name an alternative image
-        // the same way the texture itself does.
-        texture.withObject("extensions") { extensions in
-            for name in [GLTFExtension.textureBasisu, .textureWebP] {
-                extensions.withObject(name.rawValue) { $0.rebase("source", by: imageOffset) }
-            }
-        }
-        return texture
-    }
-
-    /// Rebases the texture references of one material: the slots glTF defines
-    /// and those of the extensions ``validateAppendable`` allowed. A key ending
-    /// in `Texture` under `extras` is the document's own field rather than a
-    /// texture reference, so nothing else is walked.
-    private func rebasedMaterial(_ material: JSONObject) -> JSONObject {
-        var material = rebasedTextureSlots(material)
-        material.withObject("pbrMetallicRoughness") { $0 = rebasedTextureSlots($0) }
-        material.withObject("extensions") { extensions in
-            for name in Array(extensions.keys) where GLTFExtension.mergeable.contains(name) {
-                extensions.withObject(name) { $0 = rebasedTextureSlots($0) }
-            }
-        }
-        return material
-    }
-
-    /// Rebases every `textureInfo` directly under `object`, which glTF and the
-    /// material extensions it defines all name with a key ending in `Texture`.
-    private func rebasedTextureSlots(_ object: JSONObject) -> JSONObject {
-        var object = object
-        for key in Array(object.keys) where key.hasSuffix("Texture") {
-            object.withObject(key) { $0.rebase("index", by: offset(of: .textures)) }
-        }
-        return object
-    }
-
-    private func rebasedMesh(_ mesh: JSONObject) -> JSONObject {
-        var mesh = mesh
-        mesh.mapObjects("primitives") { primitive in
-            var primitive = primitive
-            primitive.rebase("indices", by: offset(of: .accessors))
-            primitive.rebase("material", by: offset(of: .materials))
-            primitive.withObject("attributes") { $0 = rebasedAttributes($0) }
-            if let targets = primitive["targets"] as? [JSONObject] {
-                primitive["targets"] = targets.map(rebasedAttributes)
-            }
-            return primitive
-        }
-        return mesh
-    }
-
-    /// Every attribute names an accessor, so the object is rebased by value.
-    private func rebasedAttributes(_ attributes: JSONObject) -> JSONObject {
-        let accessorOffset = offset(of: .accessors)
-        return attributes.mapValues { value in
-            numericIndexValue(value).map { $0 + accessorOffset } ?? value
-        }
-    }
-
-    private func rebasedSkin(_ skin: JSONObject) -> JSONObject {
-        var skin = skin
-        skin.rebase("inverseBindMatrices", by: offset(of: .accessors))
-        skin.rebase("skeleton", by: offset(of: .nodes))
-        skin.rebaseAll("joints", by: offset(of: .nodes))
-        return skin
-    }
-
-    private func rebasedNode(_ node: JSONObject) -> JSONObject {
-        var node = node
-        node.rebaseAll("children", by: offset(of: .nodes))
-        node.rebase("mesh", by: offset(of: .meshes))
-        node.rebase("skin", by: offset(of: .skins))
-        node.rebase("camera", by: offset(of: .cameras))
-        node.withObject("extensions") { extensions in
-            extensions.withObject(GLTFExtension.nodeConstraint.rawValue) { nodeConstraint in
-                nodeConstraint.withObject("constraint") { constraint in
-                    for key in Array(constraint.keys) {
-                        constraint.withObject(key) { $0.rebase("source", by: offset(of: .nodes)) }
-                    }
-                }
-            }
-        }
-        return node
-    }
-
-    private func rebasedAnimation(_ animation: JSONObject) -> JSONObject {
-        var animation = animation
-        animation.mapObjects("channels") { channel in
-            var channel = channel
-            channel.withObject("target") { $0.rebase("node", by: offset(of: .nodes)) }
-            return channel
-        }
-        animation.mapObjects("samplers") { sampler in
-            var sampler = sampler
-            sampler.rebase("input", by: offset(of: .accessors))
-            sampler.rebase("output", by: offset(of: .accessors))
-            return sampler
-        }
-        return animation
     }
 
     // MARK: - Target consistency

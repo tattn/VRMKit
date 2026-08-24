@@ -42,8 +42,11 @@ extension GLTFEditableDocument {
                 )
             }
             let material = try materialObjects[index].decode(GLTF.Material.self)
-            let vrm0Property = vrm0Properties?[safe: index]
-                .flatMap { try? $0.decode(VRM0.MaterialProperty.self) }
+            // Decoded rather than read past: a property this cannot make sense
+            // of is one whose material would be rewritten from invented values,
+            // which is what the unsupported MToon version below refuses too.
+            let vrm0Property = try vrm0Properties?[safe: index]
+                .map { try $0.decode(VRM0.MaterialProperty.self) }
             // Already written in the form this document keeps MToon in, so
             // there is nothing to write that it does not already say.
             let isAuthoredHere = vrm0Properties == nil

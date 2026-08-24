@@ -96,29 +96,20 @@ public class VRMEntityLoader: GLTFEntityLoader {
     /// to the default one.
     override func enforcesRequiredExtension(_ name: String) -> Bool { false }
 
-    /// Some VRM meshes split primitives by indices but share the same POSITION
-    /// accessor, and only one of them carries the morph targets. SceneKit reuses
-    /// the morpher across such primitives, so mimic that by sharing the targets.
+    /// A primitive carrying no morph targets of its own morphs with those of
+    /// whichever primitive of the mesh carries them for its POSITION accessor.
     override func resolvedPrimitives(of mesh: GLTF.Mesh) -> [GLTF.Mesh.Primitive] {
-        var targetsByPositionAccessor: [Int: [[GLTF.Mesh.Primitive.AttributeKey: Int]]] = [:]
-        for primitive in mesh.primitives {
-            guard let targets = primitive.targets, !targets.isEmpty,
-                  let positionAccessor = primitive.attributes.rawValue[.POSITION] else { continue }
-            if targetsByPositionAccessor[positionAccessor] == nil {
-                targetsByPositionAccessor[positionAccessor] = targets
-            }
-        }
-        guard !targetsByPositionAccessor.isEmpty else { return mesh.primitives }
-
+        let shared = mesh.morphTargetsByPositionAccessor()
+        guard !shared.isEmpty else { return mesh.primitives }
         return mesh.primitives.map { primitive in
             guard primitive.targets?.isEmpty ?? true,
-                  let positionAccessor = primitive.attributes.rawValue[.POSITION],
-                  let sharedTargets = targetsByPositionAccessor[positionAccessor] else {
+                  let position = primitive.attributes.rawValue[.POSITION],
+                  let targets = shared[position] else {
                 return primitive
             }
-            var shared = primitive
-            shared.targets = sharedTargets
-            return shared
+            var primitive = primitive
+            primitive.targets = targets
+            return primitive
         }
     }
 
