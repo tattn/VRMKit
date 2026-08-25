@@ -9,14 +9,11 @@ extension GLTFEditableDocument {
     /// holding no scene is given one. `GLTFEditableDocument()` followed by one
     /// `addMesh` is therefore a whole asset.
     ///
-    /// The vertex data is packed tightly into the single BIN buffer and written
-    /// as one triangle primitive over it. Nothing already in the document moves,
-    /// so a mesh added to a VRM leaves the indices its extensions hold pointing
-    /// at what they used to, and a VRM 0.x model gets the `materialProperties`
-    /// entry that keeps that array parallel to its materials.
-    ///
-    /// `materials` writes the mesh's material as MToon rather than as the PBR
-    /// it describes, as it does for the materials `append` copies.
+    /// The vertex data is packed tightly into the BIN buffer and written as one
+    /// triangle primitive over it. Nothing already in the document moves, and a
+    /// VRM 0.x model gets the `materialProperties` entry that keeps that array
+    /// parallel to its materials. `materials` writes the mesh's material as MToon
+    /// rather than as the PBR it describes, as it does for `append`.
     ///
     /// A mesh glTF cannot describe is refused and the document left as it was.
     /// See ``GLTFTriangleMesh`` for what that rules out.
@@ -26,12 +23,12 @@ extension GLTFEditableDocument {
                         name: String? = nil,
                         transform: GLTFNodeTransform = .identity,
                         materials: GLTFMaterialConversion = .keep) throws -> Int {
-        // Resolve everything that can fail before any resource is appended.
+        // Resolve everything that can fail before any resource is appended. The
+        // MToon conversion can still fail once the mesh has been written.
         let validated = try mesh.validate()
         try transform.validate()
         let placement = try resolveNodePlacement(under: parentNode)
 
-        // The MToon conversion can still fail once the mesh has been written.
         return try atomicallyAppendingBinary {
             let material = try mesh.material.map { try appendMaterial($0, mediaType: validated.imageMediaType) }
             let primitive = appendPrimitive(of: mesh, validated: validated, material: material)
@@ -96,9 +93,9 @@ extension GLTFEditableDocument {
         return primitive
     }
 
-    /// `UInt16` where the indices fit in one, which halves what the indices of
-    /// a small mesh cost, and `UInt32` where they do not. `UInt16.max` is
-    /// glTF's primitive restart value, so a mesh reaching it is written wide.
+    /// `UInt16` where the indices fit in one, and `UInt32` where they do not.
+    /// `UInt16.max` is glTF's primitive restart value, so a mesh reaching it is
+    /// written wide.
     private func indexPayload(_ indices: [UInt32], maximum: UInt32) -> AccessorPayload {
         guard maximum >= UInt32(UInt16.max) else {
             return AccessorPayload(data: packedIntegers(indices, as: UInt16.self),
@@ -143,9 +140,9 @@ extension GLTFEditableDocument {
         }
     }
 
-    /// Appends `data` to the BIN buffer as a buffer view of its own, with an
-    /// accessor over the whole of it. Tightly packed, so the view writes no
-    /// `byteStride`: glTF reads a missing one as the accessor's element size.
+    /// Appends each payload to the BIN buffer as a buffer view of its own, with
+    /// an accessor over the whole of it. Tightly packed, so no `byteStride`: glTF
+    /// reads a missing one as the accessor's element size.
     private func appendAccessors(_ payloads: [AccessorPayload]) -> [Int] {
         let viewBase = json.count(.bufferViews)
         let accessorBase = json.count(.accessors)
@@ -209,8 +206,8 @@ extension GLTFEditableDocument {
     /// Writes the material and whatever it needs: an image, a texture, an
     /// extension declaration, a VRM 0.x property.
     private func appendMaterial(_ material: GLTFSimpleMaterial, mediaType: String?) throws -> Int {
-        // glTF defaults a material to fully metallic, which is a mirror
-        // rather than the plate this builds, and nothing here says otherwise.
+        // glTF defaults a material to fully metallic, which is a mirror rather
+        // than the plate this builds.
         var pbr: JSONObject = ["metallicFactor": 0]
         let color = material.baseColorFactor
         if color != SIMD4(1, 1, 1, 1) {

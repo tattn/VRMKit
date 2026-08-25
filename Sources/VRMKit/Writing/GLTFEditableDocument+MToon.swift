@@ -18,20 +18,17 @@ extension GLTFEditableDocument {
     /// Makes the materials at `indices` MToon, leaving the ones that already
     /// are as they were authored.
     ///
-    /// A material carrying no MToon data is converted from the standard Unlit /
-    /// PBR values it has, through `StandardMToonConverter`, which is also what a
-    /// renderer toon-shades a plain material with, so a preview and a save look
-    /// alike. One that carries MToon data keeps it: `style` describes what to
-    /// invent where there is nothing, not what to overwrite.
+    /// A material carrying no MToon data is converted through
+    /// `StandardMToonConverter`, the same one a renderer toon-shades with, so a
+    /// preview and a save look alike. One that carries MToon data keeps it:
+    /// `style` describes what to invent where there is nothing.
     ///
     /// The form follows the document: a VRM 0.x model gets the Unity material
     /// property its runtime reads, and every other document gets the
     /// `VRMC_materials_mtoon` extension with a `KHR_materials_unlit` fallback.
-    /// A material already MToon in the other form is carried across into this
-    /// one, so a VRM 1.0 material merged into a VRM 0.x avatar keeps its shading.
+    /// A material already MToon in the other form is carried across into this one.
     public func convertMaterialsToMToon(at indices: some Sequence<Int>,
                                         style: MToonConversionStyle = .init()) throws {
-        // Only the materials are decoded, not the whole document.
         let materialObjects = json.objects(.materials)
         let vrm0Properties = vrm0MaterialProperties()
         var converted: [ConvertedMaterial] = []
@@ -42,13 +39,11 @@ extension GLTFEditableDocument {
                 )
             }
             let material = try materialObjects[index].decode(GLTF.Material.self)
-            // Decoded rather than read past: a property this cannot make sense
-            // of is one whose material would be rewritten from invented values,
-            // which is what the unsupported MToon version below refuses too.
+            // Decoded rather than read past: a property this cannot make sense of
+            // is one whose material would be rewritten from invented values.
             let vrm0Property = try vrm0Properties?[safe: index]
                 .map { try $0.decode(VRM0.MaterialProperty.self) }
-            // Already written in the form this document keeps MToon in, so
-            // there is nothing to write that it does not already say.
+            // Already written in the form this document keeps MToon in.
             let isAuthoredHere = vrm0Properties == nil
                 ? material.extensions?.materialsMToon != nil
                 : vrm0Property?.vrmShader == .mToon
@@ -110,10 +105,10 @@ extension GLTFEditableDocument {
         return vrm.objects("materialProperties")
     }
 
-    /// VRM 0.x keeps its material settings in an array parallel to `materials`,
-    /// so materials added to such a document need an entry each to keep the two
-    /// lined up. `VRM_USE_GLTFSHADER` says the glTF material describes itself,
-    /// which is what one just written or copied in does.
+    /// VRM 0.x keeps its material settings in an array parallel to `materials`, so
+    /// materials added to such a document need an entry each to keep the two lined
+    /// up. `VRM_USE_GLTFSHADER` says the glTF material describes itself, which is
+    /// what one just written or copied in does.
     func appendVRM0MaterialProperties(named names: [String?]) throws {
         guard !names.isEmpty, let properties = vrm0MaterialProperties() else { return }
         try setVRM0MaterialProperties(properties + names.map(VRM0MToonProperty.gltfShaderProperty(name:)))

@@ -12,12 +12,11 @@ public struct GLTFTriangleMesh: Equatable, Sendable {
     /// One unit vector per position, or none to leave the mesh flat-shaded.
     public var normals: [SIMD3<Float>]?
 
-    /// One per position, in glTF's convention: `v` grows downwards from the
-    /// top edge of the image. A material showing an image needs them.
+    /// One per position, in glTF's convention: `v` grows downwards from the top
+    /// edge of the image. A material showing an image needs them.
     public var textureCoordinates: [SIMD2<Float>]?
 
-    /// Three into `positions` per triangle, wound counter-clockwise as seen
-    /// from the front.
+    /// Three into `positions` per triangle, wound counter-clockwise seen from the front.
     public var indices: [UInt32]
 
     /// None leaves the shading to the renderer's default.
@@ -46,8 +45,8 @@ public struct GLTFTextureSampler: Hashable, Sendable {
 
     public var wrapT: GLTF.Sampler.Wrap
 
-    /// Nil leaves the choice to the renderer, which is what glTF means by a
-    /// sampler naming no filter.
+    /// Nil leaves the choice to the renderer, as glTF does for a sampler naming no
+    /// filter.
     public var magFilter: GLTF.Sampler.MagFilter?
 
     public var minFilter: GLTF.Sampler.MinFilter?
@@ -63,16 +62,14 @@ public struct GLTFTextureSampler: Hashable, Sendable {
     }
 }
 
-/// The part of a glTF material an authored mesh needs: a base color, and how
-/// its alpha is read. Toon shading is `addMesh`'s `materials` parameter
-/// instead, as it is `append`'s.
+/// The part of a glTF material an authored mesh needs: a base color, and how its
+/// alpha is read. Toon shading is `addMesh`'s `materials` parameter instead.
 public struct GLTFSimpleMaterial: Equatable, Sendable {
     /// How the renderer reads the alpha of the base color.
     public enum AlphaMode: Equatable, Sendable {
         /// Alpha is ignored and the surface is drawn opaque.
         case opaque
-        /// A fragment below `cutoff` is not drawn, and one above it is drawn
-        /// fully opaque.
+        /// A fragment below `cutoff` is not drawn, one above it fully opaque.
         case mask(cutoff: Float)
         /// Alpha blends the surface over what is behind it.
         case blend
@@ -83,17 +80,15 @@ public struct GLTFSimpleMaterial: Equatable, Sendable {
     /// The linear color the base color texture, if any, is multiplied by.
     public var baseColorFactor: SIMD4<Float>
 
-    /// A PNG or a JPEG, the two formats a glTF image may hold. Anything else
-    /// is refused rather than transcoded, which would tie the package to an
-    /// image framework.
+    /// A PNG or a JPEG, the two formats a glTF image may hold. Anything else is
+    /// refused rather than transcoded.
     public var baseColorImage: Data?
 
-    /// A plate showing one picture wants `CLAMP_TO_EDGE` rather than the
-    /// tiling glTF defaults to.
+    /// A plate showing one picture wants `CLAMP_TO_EDGE` rather than the tiling
+    /// glTF defaults to.
     public var baseColorSampler: GLTFTextureSampler
 
-    /// Shades the surface with its base color alone, through
-    /// `KHR_materials_unlit`.
+    /// Shades the surface with its base color alone, through `KHR_materials_unlit`.
     public var isUnlit: Bool
 
     public var alphaMode: AlphaMode
@@ -125,8 +120,8 @@ struct ValidatedTriangleMesh {
 }
 
 extension GLTFTriangleMesh {
-    /// Checked before any of the mesh is written, so that one glTF cannot
-    /// describe leaves the document alone rather than half written into it.
+    /// Checked before any of the mesh is written, so that one glTF cannot describe
+    /// leaves the document alone rather than half written into it.
     func validate() throws -> ValidatedTriangleMesh {
         guard !positions.isEmpty else {
             throw VRMError._dataInconsistent("a mesh needs at least one vertex, and this one has no positions")
@@ -179,9 +174,9 @@ extension GLTFTriangleMesh {
         )
     }
 
-    /// glTF's `NORMAL` is the unit vector a renderer shades with, and a longer
-    /// one scales the light it reflects. Refused rather than normalized here,
-    /// so that an attribute holds what it was given.
+    /// glTF's `NORMAL` is the unit vector a renderer shades with, and a longer one
+    /// scales the light it reflects. Refused rather than normalized, so that an
+    /// attribute holds what it was given.
     private func validateNormalsAreUnit() throws {
         for normal in normals ?? [] {
             let length = simd_length(normal)
@@ -193,8 +188,7 @@ extension GLTFTriangleMesh {
         }
     }
 
-    /// glTF has every accessor of a primitive hold as many elements as its
-    /// positions: an attribute describes the same vertices they do.
+    /// glTF has every accessor of a primitive hold as many elements as its positions.
     private func validateAttribute<Vector: SIMD>(_ values: [Vector]?,
                                                  named attribute: String) throws
     where Vector.Scalar == Float {

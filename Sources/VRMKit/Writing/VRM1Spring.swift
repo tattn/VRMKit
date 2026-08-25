@@ -3,18 +3,18 @@ import simd
 
 /// One `VRMC_springBone` spring, as an edit adds it to a VRM 1.0 model.
 ///
-/// A spring swings each joint towards the next, so the last is a tail rather
-/// than a joint that swings, and its parameters go unread. VRM 0.x describes a
-/// swing differently, and ``VRM0SpringBoneGroup`` is that shape.
+/// A spring swings each joint towards the next, so the last is a tail rather than
+/// a joint that swings, and its parameters go unread. ``VRM0SpringBoneGroup`` is
+/// the shape VRM 0.x describes a swing in.
 public struct VRM1Spring: Equatable, Sendable {
     /// The joints the swing runs through, each below the one before it. A node
-    /// skipped between two of them belongs to the chain all the same, so no
-    /// other spring may name it.
+    /// skipped between two of them belongs to the chain all the same, so no other
+    /// spring may name it.
     public var joints: [VRM1SpringJoint]
     public var name: String?
-    /// The node the swing is measured against, so that carrying the model
-    /// across the world does not fling what hangs off it. It is the first joint
-    /// or one of its ancestors, and never a node another spring swings.
+    /// The node the swing is measured against, so that carrying the model across
+    /// the world does not fling what hangs off it. It is the first joint or one of
+    /// its ancestors, and never a node another spring swings.
     public var center: Int?
     /// The collider groups the spring is kept out of. Authoring colliders is
     /// not part of this.

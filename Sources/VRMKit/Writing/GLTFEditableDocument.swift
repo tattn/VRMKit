@@ -2,24 +2,19 @@ import Foundation
 
 /// A glTF document that can be edited and written back out as a GLB.
 ///
-/// Editing works on the JSON as it was parsed, not on ``GLTF``: the typed model
-/// covers only the fields VRMKit reads, so encoding it back out would drop
-/// every extension, `extras` and vendor field it does not know. An edit
-/// therefore changes nothing but what it was asked to.
-///
-/// Loading pulls the binary resources into a single BIN buffer, so a `.gltf`
-/// with external files or data URIs saves as one self-contained GLB.
+/// Editing works on the parsed JSON rather than on ``GLTF``, which covers only
+/// the fields VRMKit reads, so an edit changes nothing but what it was asked to.
+/// Loading pulls every resource into a single BIN buffer, so a `.gltf` with
+/// external files or data URIs saves as one self-contained GLB.
 public final class GLTFEditableDocument {
     var json: JSONObject
 
     /// The single buffer every buffer view indexes into. Its JSON `byteLength`
-    /// is derived when a typed or serialized snapshot is requested, so edits
-    /// cannot leave two copies of the same state out of sync.
+    /// is derived when a snapshot is requested, so the two cannot fall out of sync.
     var binary: Data
 
-    /// An empty glTF 2.0 document, where an asset built from vertex data rather
-    /// than read from a file starts. It holds nothing at all, not even a scene:
-    /// adding the first node is what gives it one.
+    /// An empty glTF 2.0 document, which holds not even a scene: adding the
+    /// first node is what gives it one.
     public init() {
         json = ["asset": ["version": "2.0"]]
         binary = Data()
@@ -31,7 +26,6 @@ public final class GLTFEditableDocument {
         try self.init(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
     }
 
-    /// Takes over an already-loaded document.
     public init(document: GLTFDocument) throws {
         var json = try document.rawJSON()
         binary = try Self.embedResources(of: document, into: &json)
@@ -48,7 +42,6 @@ public final class GLTFEditableDocument {
         var jsonChunk = try JSONSerialization.data(withJSONObject: jsonSnapshot(),
                                                    options: [.sortedKeys, .withoutEscapingSlashes])
         jsonChunk.padToFourByteBoundary(with: 0x20)
-        // Padded as it is appended, rather than in a copy of the whole buffer.
         let binaryPadding = binary.isEmpty ? 0 : binary.fourByteBoundaryPadding
         let binaryLength = binary.count + binaryPadding
 
@@ -90,17 +83,15 @@ extension GLTFEditableDocument {
     /// The root `extensions` object, empty for a document carrying none.
     var rootExtensions: JSONObject { json.object("extensions") ?? [:] }
 
-    /// The object of the root extension `name`, or nil when the document
-    /// carries none. One that is there but is not an object is refused rather
-    /// than read as absent, since writing would throw away what it holds.
+    /// The object of the root extension `name`, or nil when the document carries
+    /// none. One that is not an object is refused rather than read as absent.
     func rootExtensionObject(_ name: String) throws -> JSONObject? {
         try rootExtensions.requiredObject(name, of: "extensions")
     }
 
     /// Writes through to the object of the root extension `name`, leaving every
     /// other field of it as it was. A document carrying no such extension is
-    /// given one and declares it; one that already carried it is left declaring
-    /// what it declared.
+    /// given one and declares it.
     @discardableResult
     func updateRootExtension<T>(_ name: String, _ body: (inout JSONObject) throws -> T) throws -> T {
         let existing = try rootExtensionObject(name)
@@ -137,11 +128,9 @@ extension GLTFEditableDocument {
     /// Runs `body`, which may only append to the BIN buffer, so that it either
     /// takes effect whole or not at all.
     ///
-    /// The buffer is rolled back by its length rather than by a saved copy,
-    /// which is why `body` may not shorten it: a second reference would make
-    /// the first append copy however many megabytes it holds. An edit that
-    /// relays the buffer out builds the new one and swaps it in once nothing
-    /// can throw, as ``prune()`` does.
+    /// The buffer is rolled back by its length rather than by a saved copy, whose
+    /// second reference would make the next append copy the whole of it. An edit
+    /// that relays the buffer out swaps in a new one instead, as ``prune()`` does.
     func atomicallyAppendingBinary<T>(_ body: () throws -> T) throws -> T {
         let savedJSON = json
         let savedBinaryCount = binary.count
@@ -184,19 +173,15 @@ extension GLTFEditableDocument {
         let images = try embeddingImages(json.objects(.images),
                                          relativeTo: document.rootDirectory,
                                          into: &views) { binary.appendAligned($0) }
-        // A document that had no such array is left without one.
         if !images.isEmpty { json[.images] = images }
         if !views.isEmpty { json[.bufferViews] = views }
         return binary
     }
 
-    /// Merging several buffers into the one a GLB holds moves byte offsets and
-    /// drops all but one `buffers` entry, and an extension this does not know
-    /// may name a buffer and an offset itself, the way
-    /// `EXT_meshopt_compression` does, so such a document is refused.
-    ///
-    /// A document already on one buffer keeps every offset it had, whatever it
-    /// declares.
+    /// Merging several buffers into the one a GLB holds moves byte offsets, and an
+    /// unknown extension may name a buffer and an offset itself the way
+    /// `EXT_meshopt_compression` does, so such a document is refused. One already
+    /// on a single buffer keeps every offset it had.
     private static func validateRelayout(of json: JSONObject) throws {
         let buffers = json.count(.buffers)
         guard buffers > 1 else { return }
@@ -209,10 +194,9 @@ extension GLTFEditableDocument {
         }
     }
 
-    /// Reads every image kept in a file or a data URI into the BIN buffer,
-    /// adding a buffer view for each: a GLB has nowhere else to keep one.
-    /// `viewOffset` is where `views` lands in the document the images end up
-    /// in, so that loading and merging can share the one mapping.
+    /// Reads every image kept in a file or a data URI into the BIN buffer, adding
+    /// a buffer view for each. `viewOffset` is where `views` lands in the document
+    /// the images end up in, so loading and merging can share the one mapping.
     static func embeddingImages(_ images: [JSONObject],
                                 relativeTo rootDirectory: URL?,
                                 into views: inout [JSONObject],

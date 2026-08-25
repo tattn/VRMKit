@@ -2,8 +2,8 @@ import Foundation
 import simd
 
 /// The local transform of a glTF node, as the translation / rotation / scale
-/// triple glTF writes it in. A node carrying a 4x4 `matrix` instead is
-/// decomposed, since editing writes TRS back either way.
+/// triple glTF writes it in. A node carrying a 4x4 `matrix` instead is decomposed,
+/// since editing writes TRS back either way.
 public struct GLTFNodeTransform: Equatable {
     public var translation: SIMD3<Float>
     public var rotation: simd_quatf
@@ -19,8 +19,8 @@ public struct GLTFNodeTransform: Equatable {
         self.scale = scale
     }
 
-    /// Decomposes a column-major 4x4 transform. A mirroring matrix has no
-    /// rotation of its own, so its negative determinant folds into the scale.
+    /// Decomposes a column-major 4x4 transform. A mirroring matrix has no rotation
+    /// of its own, so its negative determinant folds into the scale.
     public init(matrix: float4x4) {
         translation = matrix.translation
 
@@ -56,7 +56,7 @@ public struct GLTFNodeTransform: Equatable {
 
 extension GLTFNodeTransform {
     /// Rejects values JSON and glTF cannot represent. A finite zero-length
-    /// quaternion is still normalized to the identity by ``safelyNormalized``.
+    /// quaternion is normalized to the identity by ``safelyNormalized``.
     func validate() throws {
         let quaternion = rotation.vector
         guard quaternion.x.isFinite, quaternion.y.isFinite,

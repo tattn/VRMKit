@@ -84,7 +84,7 @@ struct ContentView: View {
 }
 ```
 
-`VRMEntity` is an `Entity`, so it drops into any RealityKit scene, `ARView` included. Skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself.
+`VRMEntity` is an `Entity`, so it drops into any RealityKit scene. Skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself.
 
 > VRMSceneKit, the SceneKit renderer, is deprecated. Use VRMRealityKit instead.
 
@@ -97,7 +97,7 @@ vrmEntity.setExpression(value: 1.0, for: .preset(.happy))
 vrmEntity.setExpression(value: 1.0, for: .custom("><"))
 ```
 
-VRM 0.x and 1.0 are driven through the same API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`.
+VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`.
 
 ## Bone animation
 
@@ -113,7 +113,7 @@ vrmEntity.invalidateSkinPose()
 
 ## VRM animation (.vrma)
 
-A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike. Humanoid bone rotations, the hips motion scaled to the model's size, and expression tracks all play. An optional bone the model lacks, such as `upperChest`, hands its rotation to the bones that stand in for it.
+A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike: humanoid bone rotations, the hips motion scaled to the model's size, and expression tracks. An optional bone the model lacks, such as `upperChest`, hands its rotation to the bones that stand in for it.
 
 ```swift
 let animation = try VRMAnimation(named: "walk.vrma")
@@ -166,7 +166,7 @@ final class MyShader: GLTFMaterialShader {
 let custom = try VRMEntityLoader(withData: data, shaders: [MyShader(), MToonShader()])
 ```
 
-`GLTFShadedMaterial` also carries extra render passes, MToon's outline being one, and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. The `GLTFMaterialShader` documentation comments cover both.
+`GLTFShadedMaterial` also carries extra render passes, MToon's outline being one, and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. See the `GLTFMaterialShader` documentation comments.
 
 A pass can be built hidden and shown later with `entity.setPassEnabled(_:named:)`, which is how MToon outlines double as a selection highlight. An override outranks the authored values, and releasing it puts them back.
 
@@ -179,7 +179,7 @@ entity.setMToonOutlineOverride(
 entity.setMToonOutlineOverride(nil) // back to the authored outlines
 ```
 
-The override also takes a material set, so part of a model can be outlined on its own. `materialIndices(under:)` answers with the materials under a node. The unit is the glTF material, so one shared beyond the subtree is outlined everywhere it draws.
+The override also takes a material set, so part of a model can be outlined on its own. `materialIndices(under:)` answers with the materials under a node. The unit is the glTF material, so one shared beyond the subtree is outlined wherever it draws.
 
 ```swift
 let selection = entity.materialIndices(under: selectedNode)
@@ -203,7 +203,7 @@ entity.animations  // [GLTFAnimation]: index, name, duration
 let controller = try entity.playAnimation(at: 0, loops: true)  // same controller as above
 ```
 
-`loadEntity()` renders the asset's default scene, and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance.
+`loadEntity()` renders the asset's default scene and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance.
 
 <details>
 <summary>Renderer limitations</summary>
@@ -229,7 +229,7 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 <details>
 <summary>Details</summary>
 
-`GLTFEditableDocument` edits an asset's glTF JSON and writes it back out as a GLB. Fields VRMKit does not model are carried over untouched, and nothing already in the document changes index. A VRM edit is refused on a document that does not say it is VRM 1.0 or VRM 0.x outright: `1.0-beta`, both versions at once, and a node hierarchy a loader would reject are all turned away rather than written over.
+`GLTFEditableDocument` edits an asset's glTF JSON and writes it back out as a GLB. Fields VRMKit does not model are carried over untouched, and nothing already in the document changes index. A VRM edit is refused on a document that does not say it is VRM 1.0 or VRM 0.x outright.
 
 ```swift
 let vrm = try VRM(data: data)
@@ -241,7 +241,7 @@ if let hand = vrm.nodeIndex(of: .leftHand) {
 try document.serialize().write(to: outputURL)
 ```
 
-`append` copies a whole source document to the end of the arrays it belongs in and embeds its external resources into the GLB buffer. The source's default scene decides which of the copied nodes are drawn, or the one `append(_:sceneAt:under:)` names. A source it cannot rebase is refused rather than written out broken: one declaring an unknown extension, Draco and meshopt among them, and a VRM 0.x model.
+`append` copies a whole source document to the end of the arrays it belongs in and embeds its external resources into the GLB buffer. The source's default scene decides which of the copied nodes are drawn, or the one `append(_:sceneAt:under:)` names. A source it cannot rebase, such as one declaring an unknown extension or a VRM 0.x model, is refused rather than written out broken.
 
 `materials: .mtoon` writes the copied materials as MToon. A material that already carries MToon is kept as it is, and one that carries none converts through the same `MToonConversionStyle` as `MToonShader(source: .convertAll)`. `convertMaterialsToMToon(at:style:)` does the same to materials already in the document.
 
@@ -249,13 +249,13 @@ try document.serialize().write(to: outputURL)
 
 `prune()` drops what a detached subtree left behind, remaps the remaining indices and returns how many BIN bytes it reclaimed. A node something still references keeps its transform but loses what it drew, so a humanoid bone or a spring joint stays where it was. It runs only when called.
 
-`setVRMThumbnail`, `setVRMName` and `setVRMAuthors` rewrite the model's own metadata in whichever form the document keeps, leaving every other field of it alone, and refuse what that version would not validate: VRM 1.0 asks for a square thumbnail, a name and at least one author. A thumbnail is written as the PNG or JPEG it is given, and has to decode as one. The image it replaces is left for `prune()`. The license fields are not writable: they are the distributor's to set.
+`setVRMThumbnail`, `setVRMName` and `setVRMAuthors` rewrite the model's own metadata in whichever form the document keeps, leaving every other field alone, and refuse what that version would not validate: VRM 1.0 asks for a square thumbnail, a name and at least one author. The license fields are not writable: they are the distributor's to set.
 
-`addVRM1SpringBone` and `addVRM0SpringBone` give merged content its motion. The two versions describe a swing differently, so each has its own model: a `VRM1Spring` lists the joints a spring runs down, each below the one before it and each with its own parameters, while a `VRM0SpringBoneGroup` names the nodes a swing starts at and swings everything below them. A spring is checked against what `VRMC_springBone` says one is: a line of the hierarchy, no node another spring already swings, and a center that is an unswung ancestor of the first joint. Colliders are not authored here.
+`addVRM1SpringBone` and `addVRM0SpringBone` give merged content its motion. A `VRM1Spring` lists the joints a spring runs down, each below the one before it and each with its own parameters, while a `VRM0SpringBoneGroup` names the nodes a swing starts at and swings everything below them. A spring is checked against what `VRMC_springBone` says one is. Colliders are not authored here.
 
 A merged animation needs no writing: `append` rebases the source's animations, and `VRMEntity` plays them through the same `animations` and `playAnimation(at:)` any glTF scene has.
 
-`GLTFEditableDocument()` starts an empty document and `addMesh` fills it from vertex data, so a plate, a prop or a test fixture can be built without laying out accessors, buffer views and the GLB container by hand.
+`GLTFEditableDocument()` starts an empty document and `addMesh` fills it from vertex data, so a plate, a prop or a test fixture can be built without laying out accessors, buffer views and the GLB container by hand. A mesh given no normals is flat-shaded.
 
 ```swift
 let document = GLTFEditableDocument()
@@ -271,7 +271,7 @@ try document.addMesh(plate, name: "signboard")
 try document.serialize().write(to: outputURL)
 ```
 
-The scope is one indexed triangle mesh and one material: positions, optional normals and texture coordinates, a base color factor and a PNG or JPEG image with its wrap and filter modes, unlit, alpha mode and double-sidedness. Any other image format is refused rather than transcoded. `addMesh` returns the node it added and takes the same `materials: .mtoon` as `append`. A mesh given no normals is flat-shaded.
+The scope is one indexed triangle mesh and one material: positions, optional normals and texture coordinates, a base color factor and a PNG or JPEG image with its wrap and filter modes, unlit, alpha mode and double-sidedness. `addMesh` returns the node it added and takes the same `materials: .mtoon` as `append`.
 
 </details>
 

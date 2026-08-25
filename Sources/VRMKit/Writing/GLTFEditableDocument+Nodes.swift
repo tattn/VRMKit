@@ -36,10 +36,10 @@ extension GLTFEditableDocument {
     /// Moves a node, and everything below it, under `parent`, or to the
     /// default scene's roots when there is none.
     ///
-    /// The node keeps the index it had, so the extensions naming it keep
-    /// pointing at what they used to; only its links change.
+    /// The node keeps the index it had, so the extensions naming it keep pointing
+    /// at what they used to; only its links change. Everything is checked before
+    /// anything is cut, so a rejected move changes nothing.
     public func moveNode(at index: Int, to parent: Int?) throws {
-        // Checked before anything is cut, so a rejected move changes nothing.
         try requireNode(at: index)
         guard let parent else {
             _ = try sceneIndexForRoots()
@@ -63,9 +63,9 @@ extension GLTFEditableDocument {
     /// Detaches a node from its parent and from the scenes that draw it, and
     /// with it everything below it.
     ///
-    /// Only the links are cut: the nodes keep what they held and the indices
-    /// they had, so the extensions naming them keep pointing at what they used
-    /// to and what was detached can be drawn again with ``moveNode(at:to:)``.
+    /// Only the links are cut: the nodes keep what they held and the indices they
+    /// had, so the extensions naming them go on pointing at what they used to and
+    /// what was detached can be drawn again with ``moveNode(at:to:)``.
     public func detachNode(at index: Int) throws {
         try requireNode(at: index)
         json.mapObjects(.nodes) { node in
@@ -167,10 +167,8 @@ extension GLTFEditableDocument {
         }
     }
 
-    /// The scene an edit puts a root in. A document holding none is given one,
-    /// having had nothing to draw until now, and named as the default so that a
-    /// loader asking which scene to draw is answered; one that holds scenes
-    /// still answers for which of them is default.
+    /// The scene an edit puts a root in. A document holding none is given one, and
+    /// named as the default so that a loader asking which scene to draw is answered.
     private func sceneIndexForRoots() throws -> Int {
         guard json.count(.scenes) == 0, json["scene"] == nil else {
             return try defaultSceneIndex()
@@ -187,10 +185,10 @@ extension GLTFEditableDocument {
 
     /// The scene a document draws.
     ///
-    /// glTF leaves `scene` optional, and a document that names none is not
-    /// naming its first. A document of one scene has nothing to name, which is
-    /// how UniVRM 0.x writes its models, but one holding several and pointing
-    /// at none says nothing about which to draw, and that is not this to decide.
+    /// glTF leaves `scene` optional, and a document that names none is not naming
+    /// its first. A document of one scene has nothing to name, which is how UniVRM
+    /// 0.x writes its models, but one holding several and naming none says nothing
+    /// about which to draw, and that is not this to decide.
     static func defaultSceneIndex(of json: JSONObject, of subject: String) throws -> Int {
         let scenes = json.count(.scenes)
         guard let index = json.index("scene") else {

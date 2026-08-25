@@ -186,6 +186,25 @@ struct GLTFSnapshotTests {
         #expect(drawn[Self.size - 2].allSatisfy { !$0 })
     }
 
+    /// RealityKit hands its render target the values it drew rather than the
+    /// encoded ones, so a linear target reads back far darker than what was drawn.
+    @Test
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    func snapshotDrawsAColorAtTheBrightnessItWasGiven() async throws {
+        let entity = GLTFEntity()
+        let gray: CGFloat = 0.5
+        var material = UnlitMaterial(applyPostProcessToneMap: false)
+        material.color = .init(tint: .init(srgbRed: gray, green: gray, blue: gray, alpha: 1))
+        entity.addChild(ModelEntity(mesh: .generateBox(size: 1), materials: [material]))
+
+        let bytes = try rgbaBytes(try await entity.snapshot(Self.options))
+
+        let center = ((Self.size / 2) * Self.size + Self.size / 2) * 4
+        let expected = Double(gray) * 255
+        #expect(abs(Double(bytes[center]) - expected) <= 4,
+                "a face painted \(expected) came back at \(bytes[center])")
+    }
+
     /// The mean brightness of what was drawn, ignoring the background.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func brightness(_ image: CGImage) throws -> Double {

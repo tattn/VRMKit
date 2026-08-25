@@ -5,9 +5,7 @@ extension GLTFEditableDocument {
     /// VRM 0.x lists a thumbnail as a texture and 1.0 as an image, and this
     /// writes whichever the document keeps.
     ///
-    /// VRM 1.0 requires a square thumbnail, of roughly 1024x1024, so one that
-    /// is not square is refused. Rendering it is the caller's.
-    ///
+    /// VRM 1.0 requires a square thumbnail, so one that is not square is refused.
     /// The thumbnail this replaces is left where it is: the image may be one a
     /// material samples as well, and ``prune()`` is what works that out.
     public func setVRMThumbnail(_ image: Data) throws {
@@ -40,8 +38,7 @@ extension GLTFEditableDocument {
     /// VRM 1.0 its name.
     ///
     /// VRM 1.0 requires a name of at least one character, so an empty one is
-    /// refused rather than written into a file that would no longer validate.
-    /// VRM 0.x puts no such length on its title.
+    /// refused. VRM 0.x puts no such length on its title.
     public func setVRMName(_ name: String) throws {
         let version = try vrmSpecVersion()
         if version == .v1 {
@@ -60,9 +57,9 @@ extension GLTFEditableDocument {
     /// Sets who made the model. VRM 1.0 lists its authors one by one; VRM 0.x
     /// has the single `meta.author` line, so several names are joined into it.
     ///
-    /// VRM 1.0 requires at least one author, each of at least one character, so
-    /// an empty list or an empty name is refused. VRM 0.x puts no such length
-    /// on its author line.
+    /// VRM 1.0 requires at least one author, each of at least one character, so an
+    /// empty list or an empty name is refused. VRM 0.x puts no such length on its
+    /// author line.
     public func setVRMAuthors(_ authors: [String]) throws {
         let version = try vrmSpecVersion()
         if version == .v1 {

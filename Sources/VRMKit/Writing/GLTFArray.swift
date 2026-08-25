@@ -1,8 +1,7 @@
 import Foundation
 
-/// The top-level arrays of a glTF document, which its indices point into.
-/// Naming them as a type makes a rebasing rule wrong at compile time rather
-/// than at load time.
+/// The top-level arrays of a glTF document, which its indices point into. Naming
+/// them as a type makes a rebasing rule wrong at compile time, not at load time.
 package enum GLTFArray: String, Sendable, CaseIterable {
     case accessors
     case animations

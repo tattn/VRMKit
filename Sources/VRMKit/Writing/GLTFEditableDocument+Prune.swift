@@ -5,18 +5,18 @@ extension GLTFEditableDocument {
     /// many BIN bytes that reclaimed.
     ///
     /// ``detachNode(at:)`` leaves the meshes and textures a subtree drew where
-    /// they were, so a document edited and saved repeatedly grows while looking
-    /// the same. This takes those bytes back, and only when asked, since
-    /// keeping unreachable data can be the point of an edit.
+    /// they were, so a document edited and saved repeatedly grows while looking the
+    /// same. This takes those bytes back, and only when asked, since keeping
+    /// unreachable data can be the point of an edit.
     ///
-    /// The entries go with the bytes and every index is remapped, so the result
-    /// is an ordinary glTF document. ``GLTFReachability`` decides what stays. A
-    /// node something still names keeps its transform without the mesh it drew,
-    /// so a humanoid bone stays where it was, but a pruned detached subtree can
-    /// no longer be drawn again with ``moveNode(at:to:)``.
+    /// The entries go with the bytes and every index is remapped, so the result is
+    /// an ordinary glTF document. ``GLTFReachability`` decides what stays: a node
+    /// something still names keeps its transform without the mesh it drew, so a
+    /// humanoid bone stays where it was, but a pruned detached subtree can no
+    /// longer be drawn again with ``moveNode(at:to:)``.
     ///
-    /// A document declaring an extension this package cannot follow the
-    /// references of is refused rather than pruned.
+    /// A document declaring an extension this package cannot follow the references
+    /// of is refused rather than pruned.
     @discardableResult
     public func prune() throws -> Int {
         try validatePrunable()
@@ -39,9 +39,9 @@ extension GLTFEditableDocument {
             extensions = GLTFReferences.rewritingRootExtensions(extensions, with: compaction.map)
         }
 
-        // Everything that could fail is behind us, so the document changes in
-        // one go rather than through `atomicallyAppendingBinary`, which rolls it
-        // back by its length and so covers only an edit that appends to it.
+        // Everything that could fail is behind us, so the document changes in one
+        // go rather than through `atomicallyAppendingBinary`, which covers only an
+        // edit that appends.
         let reclaimed = binary.count - compacted.count
         binary = compacted
         json = pruned
@@ -88,8 +88,8 @@ extension GLTFEditableDocument {
             if let slice = try binarySlice(of: entries[view], at: view, compressed: false) {
                 slices.append(slice)
             }
-            // A meshopt view carries a second slice, the compressed bytes
-            // its own are the decoded fallback for.
+            // A meshopt view carries a second slice, the compressed bytes its own
+            // are the decoded fallback for.
             if let meshopt = entries[view].object("extensions")?.object(GLTFExtension.meshoptCompression.rawValue),
                let slice = try binarySlice(of: meshopt, at: view, compressed: true) {
                 slices.append(slice)
@@ -121,13 +121,12 @@ extension GLTFEditableDocument {
                            length: length)
     }
 
-    /// Lays the slices out from the start of the buffer and says where each
-    /// landed.
+    /// Lays the slices out from the start of the buffer and says where each landed.
     ///
-    /// Slices that touch or overlap move together, so views over the same bytes
-    /// go on sharing them rather than each getting a copy. A cluster only ever
-    /// moves earlier and only by a multiple of four, which is what keeps every
-    /// view on the boundary its component type needs.
+    /// Slices that touch or overlap move together, so views over the same bytes go
+    /// on sharing them rather than each getting a copy. A cluster only ever moves
+    /// earlier and only by a multiple of four, which keeps every view on the
+    /// boundary its component type needs.
     private func relocating(_ slices: [BinarySlice]) -> (binary: Data, placements: [BinarySliceKey: Int]) {
         var compacted = Data(capacity: binary.count)
         var placements: [BinarySliceKey: Int] = [:]
@@ -177,8 +176,8 @@ private struct GLTFCompaction {
     private var keeping: [GLTFArray: [Int]] = [:]
     /// The new index of each old one, and no entry at all for what went.
     private var moved: [GLTFArray: [Int: Int]] = [:]
-    /// The nodes still drawing, which is what a binding to what a node draws
-    /// asks about rather than whether the node itself survived.
+    /// The nodes still drawing, which is what a binding to what a node draws asks
+    /// about rather than whether the node itself survived.
     private let drawn: Set<Int>
 
     init(of json: JSONObject, keeping reachability: GLTFReachability) {
@@ -231,9 +230,9 @@ private struct BinarySlice {
 }
 
 private extension JSONObject {
-    /// Rewrites where a slice starts. One that did not move is left spelled the
-    /// way it was written, so a document with nothing to reclaim comes out of
-    /// ``prune()`` unchanged.
+    /// Rewrites where a slice starts. One that did not move is left as it was
+    /// written, so a document with nothing to reclaim comes out of ``prune()``
+    /// unchanged.
     mutating func relocateSlice(to offset: Int?) {
         guard let offset else {
             removeValue(forKey: "byteOffset")

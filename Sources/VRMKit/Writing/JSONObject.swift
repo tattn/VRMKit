@@ -8,18 +8,18 @@ package extension JSONObject {
     func object(_ key: String) -> JSONObject? { self[key] as? JSONObject }
     func objects(_ key: String) -> [JSONObject] { self[key] as? [JSONObject] ?? [] }
 
-    /// The object at `key`, nil where the document holds none. One that is
-    /// there but is not an object is refused rather than read as absent, since
-    /// writing through it would throw away whatever it holds. `subject` names
-    /// what holds the key, for the message.
+    /// The object at `key`, nil where the document holds none. One that is not an
+    /// object is refused rather than read as absent, since writing through it would
+    /// throw away whatever it holds. `subject` names what holds the key, for the
+    /// message.
     func requiredObject(_ key: String, of subject: String) throws -> JSONObject? {
         guard let value = self[key] else { return nil }
         return try value as? JSONObject ??? ._dataInconsistent("\(subject).\(key) is not a JSON object")
     }
 
-    /// The objects of the array at `key`, nil where the document holds none.
-    /// One that is there but is not an array of objects is refused, since
-    /// appending to it would throw away whatever it holds.
+    /// The objects of the array at `key`, nil where the document holds none. One
+    /// that is not an array of objects is refused, since appending to it would
+    /// throw away whatever it holds.
     func requiredObjects(_ key: String, of subject: String) throws -> [JSONObject]? {
         guard let value = self[key] else { return nil }
         return try value as? [JSONObject] ??? ._dataInconsistent("\(subject).\(key) is not an array of JSON objects")
@@ -35,10 +35,10 @@ package extension JSONObject {
         self[key].flatMap(jsonNumber).flatMap { Int(exactly: $0.doubleValue) }
     }
 
-    /// The keys of the `textureInfo`s directly under this object, which glTF
-    /// and the material extensions it defines all spell ending in `Texture`. A
-    /// key shaped like one under `extras` is the document's own field, so
-    /// nothing walks in there.
+    /// The keys of the `textureInfo`s directly under this object, which glTF and
+    /// the material extensions it defines all spell ending in `Texture`. A key
+    /// shaped like one under `extras` is the document's own field, so nothing walks
+    /// in there.
     var textureSlotKeys: [String] { keys.filter { $0.hasSuffix("Texture") } }
 
     /// Nil unless every element is a number an edit or a load can have written.
@@ -48,8 +48,8 @@ package extension JSONObject {
         return floats.count == values.count ? floats : nil
     }
 
-    /// Decodes through the serialization a save goes through, so numbers an
-    /// edit wrote as Swift values decode like the ones a load parsed.
+    /// Decodes through the serialization a save goes through, so numbers an edit
+    /// wrote as Swift values decode like the ones a load parsed.
     func decode<T: Decodable>(_ type: T.Type) throws -> T {
         try JSONValue.decode(type, from: self)
     }
@@ -92,9 +92,9 @@ package extension JSONObject {
     }
 
     /// Points a buffer view, or the meshopt slice shaped like one, at the one
-    /// buffer a GLB has, `offsets` saying where each source buffer landed in it.
-    /// A view already on it keeps the offset it had, so that loading and saving
-    /// a single-buffer document changes nothing.
+    /// buffer a GLB has, `offsets` saying where each source buffer landed in it. A
+    /// view already on it keeps the offset it had, so loading and saving a
+    /// single-buffer document changes nothing.
     ///
     /// A view naming a buffer the document does not hold is refused rather than
     /// pointed at the first one, which would be loadable but wrong.

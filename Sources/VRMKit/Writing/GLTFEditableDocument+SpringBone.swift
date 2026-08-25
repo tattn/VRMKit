@@ -40,9 +40,7 @@ extension GLTFEditableDocument {
     ///
     /// The spring is appended and nothing already in the document moves. What a
     /// spring may swing is decided against the springs already there, so a model
-    /// whose own springs cannot be read is refused rather than added to. The
-    /// chain itself is checked against what `VRMC_springBone` says one is, which
-    /// ``validateChain(of:against:)`` spells out.
+    /// whose own springs cannot be read is refused rather than added to.
     @discardableResult
     public func addVRM1SpringBone(_ spring: VRM1Spring) throws -> Int {
         try requireVRMSpecVersion(.v1, forWriting: "a VRMC_springBone spring")
@@ -67,8 +65,6 @@ extension GLTFEditableDocument {
     /// A VRM 1.0 model keeps them in ``GLTFExtension/springBone`` beside it.
     private static let vrm0SpringBonesKey = "secondaryAnimation"
 
-    /// The document's VRM version, refused when it is not the one that can hold
-    /// what is being written.
     private func requireVRMSpecVersion(_ required: VRMSpecVersion, forWriting subject: String) throws {
         let version = try vrmSpecVersion()
         guard version == required else {
@@ -82,12 +78,8 @@ extension GLTFEditableDocument {
 
     /// What adding a spring has to know about the ones already there: the nodes
     /// each swings, so that no two claim one, and how many collider groups a new
-    /// spring may name.
-    ///
-    /// Only what the edit reads, so a collider or an extension it never touches
-    /// is carried over as it is rather than standing in the way. What it does
-    /// read it reads strictly: a spring cannot be kept clear of springs that
-    /// cannot be made out, and appending to what is not an array loses it.
+    /// spring may name. Read strictly, since a spring cannot be kept clear of
+    /// springs that cannot be made out.
     private func existingVRM1Springs() throws -> (springs: [[Int]], colliderGroups: Int) {
         let name = GLTFExtension.springBone.rawValue
         guard let object = try rootExtensionObject(name) else { return ([], 0) }
@@ -108,17 +100,16 @@ extension GLTFEditableDocument {
         guard let vrm = try rootExtensionObject(GLTFExtension.vrm0.rawValue),
               let secondaryAnimation = try vrm.requiredObject(Self.vrm0SpringBonesKey,
                                                               of: GLTFExtension.vrm0.rawValue) else { return 0 }
-        // Read for its shape alone: appending to something that is not an array
-        // of groups would throw away whatever it holds.
+        // Read for its shape alone: appending to something that is not an array of
+        // groups would throw away whatever it holds.
         _ = try secondaryAnimation.requiredObjects("boneGroups", of: name)
         return try secondaryAnimation.requiredObjects("colliderGroups", of: name)?.count ?? 0
     }
 
     // MARK: - Parameters
 
-    // The ranges a parameter is written in. VRM 1.0 states them in its schema.
-    // VRM 0.x states none, so these are the ranges its runtime behaves in, and
-    // a model written here swings the same whichever version it is.
+    // The ranges a parameter is written in. VRM 1.0 states them in its schema; VRM
+    // 0.x states none, so these are the ranges its runtime behaves in.
 
     private func requireFiniteNonnegative(_ value: Float, named name: String) throws {
         guard value.isFinite, value >= 0 else {
@@ -179,9 +170,8 @@ extension GLTFEditableDocument {
     }
 
     /// The nodes a spring occupies: the joints it names, and the ones skipped
-    /// between them, which `VRMC_springBone` counts as part of the chain.
-    /// Throws when a joint is not a node of the document, or not below the
-    /// joint before it.
+    /// between them, which `VRMC_springBone` counts as part of the chain. Throws
+    /// when a joint is not a node of the document, or not below the joint before it.
     private func springChain(joints: [Int], in hierarchy: GLTFNodeHierarchy) throws -> Set<Int> {
         guard let root = joints.first else { return [] }
         try requireNode(at: root)

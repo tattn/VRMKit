@@ -23,8 +23,7 @@ extension GLTFEditableDocument {
     }
 
     /// Nothing is written when the sampler asks for what glTF already reads a
-    /// texture naming none as, and a field at its default is left out for the
-    /// same reason.
+    /// texture naming none as, and a field at its default is left out likewise.
     private func appendSampler(_ sampler: GLTFTextureSampler) -> Int? {
         guard sampler != GLTFTextureSampler() else { return nil }
 

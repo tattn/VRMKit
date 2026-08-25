@@ -1,17 +1,16 @@
 import Foundation
 
-/// Which of a glTF document's entries are still there for a reason, which is
-/// what tells ``GLTFEditableDocument/prune()`` what it may throw away.
+/// Which of a glTF document's entries are still there for a reason, which tells
+/// ``GLTFEditableDocument/prune()`` what it may throw away.
 ///
-/// An entry is **drawn** when a scene reaches it, down through the nodes,
-/// meshes, materials and accessors it hangs together, and that is what keeps
-/// bytes in the BIN buffer. A node is merely **named** when something points at
-/// it without drawing it: a skin's joints, a spring bone's colliders, a
-/// humanoid bone. Naming keeps the node's entry, which costs nothing but its
-/// transform, and not the mesh it used to draw.
+/// An entry is **drawn** when a scene reaches it, down through the nodes, meshes,
+/// materials and accessors it hangs together, and that is what keeps bytes in the
+/// BIN buffer. A node is merely **named** when something points at it without
+/// drawing it: a skin's joints, a spring bone's colliders, a humanoid bone. Naming
+/// keeps the node's entry and its transform, not the mesh it used to draw.
 ///
-/// References are read through ``GLTFReferences``, so the walk cannot fall
-/// behind what rewriting knows.
+/// References are read through ``GLTFReferences``, so the walk cannot fall behind
+/// what rewriting knows.
 struct GLTFReachability {
     /// The entries the document still has a use for, by array.
     let live: [GLTFArray: Set<Int>]
@@ -20,8 +19,8 @@ struct GLTFReachability {
 
     static func of(_ json: JSONObject) -> GLTFReachability {
         var walk = Walk(json: json)
-        // Drained whole first, so that what follows can tell a node it merely
-        // names from one already being drawn.
+        // Drained whole first, so that what follows can tell a node it merely names
+        // from one already being drawn.
         walk.markDrawnRoots()
         walk.follow()
         walk.markNamed()
@@ -60,9 +59,8 @@ private struct Walk {
         for index in indices(of: .scenes) {
             mark(index, in: .scenes)
         }
-        // A `VRMC_vrm_animation` document is not a model, and the scenes it may
-        // hold are not the point of it: what it describes is the humanoid it
-        // drives, so that is its hierarchy the way a scene is a model's.
+        // A `VRMC_vrm_animation` document is not a model: what it describes is the
+        // humanoid it drives, so that is its hierarchy the way a scene is a model's.
         guard let vrma = json.object("extensions")?[GLTFExtension.vrmAnimation.rawValue] else { return }
         for (array, index, _) in references(of: [GLTFExtension.vrmAnimation.rawValue: vrma],
                                             GLTFReferences.rewritingRootExtensions) where array == .nodes {
@@ -72,9 +70,9 @@ private struct Walk {
     }
 
     mutating func markNamed() {
-        // An animation is played by name rather than reached through a scene,
-        // so its keyframes are read whatever it animates. One whose every
-        // channel drives a node no scene draws has nothing left to move.
+        // An animation is played by name rather than reached through a scene, so
+        // its keyframes are read whatever it animates. One whose every channel
+        // drives a node no scene draws has nothing left to move.
         for index in indices(of: .animations) where drivesSomethingDrawn(entries[.animations]?[index]) {
             mark(index, in: .animations)
         }
@@ -82,8 +80,7 @@ private struct Walk {
         // The thumbnail is the one resource of a VRM that no scene draws.
         mark(extensions.object(GLTFExtension.vrm0.rawValue)?.object("meta")?.index("texture"), in: .textures)
         mark(extensions.object(GLTFExtension.vrm1.rawValue)?.object("meta")?.index("thumbnailImage"), in: .images)
-        // The rest of what they name is a node, kept for its entry alone: a
-        // mesh or a material they bind to follows the scenes out when it goes.
+        // The rest of what they name is a node, kept for its entry alone.
         for (array, index, _) in references(of: extensions, GLTFReferences.rewritingRootExtensions)
         where array == .nodes {
             mark(index, in: .nodes)
@@ -101,9 +98,8 @@ private struct Walk {
     mutating func follow() {
         while let next = pending.popLast() {
             guard let entry = entries[next.array]?[safe: next.index] else { continue }
-            // A node the scenes never reached keeps its transform and nothing
-            // else, and the rewrite says so by dropping what it hung together
-            // rather than the walk by declining to follow it.
+            // A node the scenes never reached keeps its transform and nothing else,
+            // which the rewrite says by dropping what it hung together.
             let drawing = next.array != .nodes || drawn.contains(next.index)
             for (array, index, kind) in references(of: entry, { entry, map in
                 GLTFReferences.rewriting(entry, of: next.array, drawing: drawing, with: map)
@@ -130,8 +126,7 @@ private struct Walk {
     // MARK: - Marking
 
     /// Whether a reference is one to follow at all. What names a node for its
-    /// drawing is answered by the hierarchy rather than by the reference, so
-    /// the walk stops there rather than keeping the node alive on its account.
+    /// drawing is answered by the hierarchy rather than by the reference.
     private static func keeps(_ index: Int, as kind: GLTFReferenceKind, drawn: Set<Int>) -> Bool {
         switch kind {
         case .drawnSubject: drawn.contains(index)
@@ -139,10 +134,9 @@ private struct Walk {
         }
     }
 
-    /// The references worth following out of `object`. The rewrite runs for
-    /// them alone and its copy is thrown away; a reference ``keeps(_:as:drawn:)``
-    /// turns down is dropped there too, so what the walk keeps alive and what
-    /// the rewrite keeps in the document cannot disagree.
+    /// The references worth following out of `object`. The rewrite runs for them
+    /// alone and its copy is thrown away, so what the walk keeps alive and what the
+    /// rewrite keeps in the document cannot disagree.
     private func references(
         of object: JSONObject,
         _ rewrite: (JSONObject, @escaping GLTFIndexMap) -> JSONObject
@@ -157,9 +151,9 @@ private struct Walk {
         return found
     }
 
-    /// Puts a node in the hierarchy a scene draws. It may have been walked
-    /// already as one something merely named, and that walk stopped short of
-    /// what it draws, so it is queued again.
+    /// Puts a node in the hierarchy a scene draws. It may have been walked already
+    /// as one something merely named, and that walk stopped short of what it draws,
+    /// so it is queued again.
     private mutating func draw(_ index: Int) {
         guard drawn.insert(index).inserted else { return }
         guard live[.nodes]?.contains(index) == true else { return }

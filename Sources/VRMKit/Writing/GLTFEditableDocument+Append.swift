@@ -4,11 +4,10 @@ extension GLTFEditableDocument {
     /// Appends the default scene of `source` under `parentNode`, wrapped in one
     /// container node, and returns that container's index.
     ///
-    /// The whole source document is copied to the end of the arrays it belongs
-    /// in and rebased, not only what the chosen scene reaches, so a source of
-    /// several scenes costs the size of all of them and draws one. Nothing
-    /// already in the target moves, so the extensions that make it a VRM keep
-    /// pointing at what they used to.
+    /// The whole source document is copied and rebased, not only what the chosen
+    /// scene reaches, so a source of several scenes costs the size of all of them
+    /// and draws one. Nothing already in the target moves, so the extensions that
+    /// make it a VRM keep pointing at what they used to.
     ///
     /// The source's own VRM extensions are not copied: this composes props and
     /// clothing onto an avatar, not avatars onto each other. Its materials come
@@ -49,11 +48,10 @@ extension GLTFEditableDocument {
         let sourceJSON = try source.rawJSON()
         try Self.validateAppendable(sourceJSON)
         // Both resolved up front, so a bad index cannot leave an orphaned copy
-        // of the whole source behind.
+        // of the whole source behind. What follows can still fail mid-write.
         let roots = try Self.sceneRoots(of: sourceJSON, sceneAt: sceneIndex)
         try requireNode(at: parentNode)
 
-        // What follows can still fail once the merge has begun writing.
         return try atomicallyAppendingBinary {
             let materialBase = json.count(.materials)
             var merger = GLTFMerger(source: source, sourceJSON: sourceJSON, target: self)
@@ -110,13 +108,12 @@ extension GLTFEditableDocument {
                 + "whose contents this merge cannot carry over"
             )
         }
-        // The document is read for the extensions it carries as well as asked
-        // for the ones it declares: an undeclared one would come over with its
-        // indices still pointing into the source's own arrays.
+        // Read for the extensions it carries as well as asked for the ones it
+        // declares: an undeclared one would come over with its indices still
+        // pointing into the source's own arrays. A VRM 1.0 source keeps its
+        // materials on the materials, so only what makes it an avatar is dropped.
         let unsupported = sourceJSON.carriedExtensions()
             .subtracting(GLTFExtension.mergeable)
-            // A VRM 1.0 source keeps its materials on the materials, so only
-            // what makes it an avatar is dropped.
             .subtracting(GLTFExtension.vrmRoot)
         guard unsupported.isEmpty else {
             throw VRMError._notSupported(
@@ -163,7 +160,7 @@ private struct GLTFMerger {
             return view
         }
         // An image already in a buffer view moves with it; one in a file or a
-        // data URI is read into the BIN buffer by ``embeddingImages`` after.
+        // data URI is read into the BIN buffer here.
         let images = try GLTFEditableDocument.embeddingImages(
             rebased(.images),
             relativeTo: source.rootDirectory,
@@ -200,9 +197,8 @@ private struct GLTFMerger {
     /// How far every index into `array` moves.
     private func offset(of array: GLTFArray) -> Int { base[array] ?? 0 }
 
-    /// Every source entry of `array`, with each index it holds moved to the
-    /// end of the target's arrays. What counts as an index is
-    /// ``GLTFReferences``'s answer, the same one pruning remaps by.
+    /// Every source entry of `array`, with each index it holds moved to the end
+    /// of the target's arrays. ``GLTFReferences`` decides what counts as an index.
     private func rebased(_ array: GLTFArray) -> [JSONObject] {
         let base = base
         return sourceJSON.objects(array).map { entry in

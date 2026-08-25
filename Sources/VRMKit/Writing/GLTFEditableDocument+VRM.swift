@@ -2,8 +2,7 @@ import Foundation
 
 extension GLTFEditableDocument {
     /// The `VRMC_vrm` and `VRMC_springBone` version an edit writes. Reading also
-    /// takes `1.0-beta`, but the two differ in what they hold, so a document
-    /// written to is one this can write the whole of.
+    /// takes `1.0-beta`, but the two differ in what they hold.
     static let writableSpecVersion = "1.0"
 
     /// Which VRM the document is, or an error for one this cannot write.

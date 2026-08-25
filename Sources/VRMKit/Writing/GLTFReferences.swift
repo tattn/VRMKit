@@ -1,34 +1,33 @@
 import Foundation
 
-/// What a reference wants with the entry it names, which is what decides
-/// whether the entry outlives what draws it.
+/// What a reference wants with the entry it names, which decides whether the
+/// entry outlives what draws it.
 enum GLTFReferenceKind {
     /// A scene's `nodes` or a node's `children`: the hierarchy a renderer draws.
     case hierarchy
-    /// Names an entry for itself, the way a skin names its joints, a humanoid
-    /// its bones or a mesh its material.
+    /// Names an entry for itself, the way a skin names its joints, a humanoid its
+    /// bones or a mesh its material.
     case plain
     /// Names a node for what it draws rather than for itself: a VRM 1.0
-    /// expression's morph bind, a first-person annotation, an animation
-    /// channel's target. Worth nothing once the node has stopped drawing, so
-    /// it goes when the drawing does.
+    /// expression's morph bind, a first-person annotation, an animation channel's
+    /// target. It goes when the drawing does.
     case drawnSubject
 }
 
 /// The index to write in place of one the document holds, or nil when what it
-/// named is gone. Reading a document's references is the same walk with a map
-/// that records the index and keeps it.
+/// named is gone. Reading a document's references is the same walk with a map that
+/// records the index and keeps it.
 typealias GLTFIndexMap = (GLTFArray, Int, GLTFReferenceKind) -> Int?
 
 /// Every index a glTF or VRM document holds into its top-level arrays, written
-/// down once so that merging, pruning and reachability cannot disagree about
-/// what a reference is: teaching this file about an extension teaches all three.
+/// down once so that merging, pruning and reachability cannot disagree about what
+/// a reference is: teaching this file about an extension teaches all three.
 ///
-/// A buffer view's `buffer` is not here. Both editing paths put every view on
-/// the one buffer a GLB holds, rebasing it by byte offset instead.
+/// A buffer view's `buffer` is not here. Both editing paths put every view on the
+/// one buffer a GLB holds, rebasing it by byte offset instead.
 enum GLTFReferences {
-    /// Rewrites the references one entry of `array` holds. A node the scenes
-    /// no longer reach is `drawing: false`, and keeps its transform alone.
+    /// Rewrites the references one entry of `array` holds. A node the scenes no
+    /// longer reach is `drawing: false`, and keeps its transform alone.
     static func rewriting(_ entry: JSONObject,
                           of array: GLTFArray,
                           drawing: Bool = true,
@@ -71,8 +70,7 @@ enum GLTFReferences {
                 extensions.removeEmpty(GLTFExtension.meshGPUInstancing.rawValue, keyedBy: "attributes")
             }
         } else {
-            // Nothing this node hung together outlives the drawing of it, and
-            // glTF has no node weighting or skinning a mesh it does not draw.
+            // Nothing this node hung together outlives the drawing of it.
             for key in ["children", "mesh", "skin", "camera", "weights"] {
                 node.removeValue(forKey: key)
             }
@@ -80,8 +78,8 @@ enum GLTFReferences {
                 $0.removeValue(forKey: GLTFExtension.meshGPUInstancing.rawValue)
             }
         }
-        // A constraint drives this node from another one's transform, which it
-        // goes on doing whether or not either of them is drawn.
+        // A constraint drives this node from another one's transform, which it goes
+        // on doing whether or not either of them is drawn.
         node.withObject("extensions") { extensions in
             extensions.withObject(GLTFExtension.nodeConstraint.rawValue) { constraint in
                 constraint.withObject("constraint") { sources in
@@ -110,8 +108,8 @@ enum GLTFReferences {
                 }
             }
             primitive.withObject("extensions") { extensions in
-                // Draco keeps the primitive in a view of its own, which its
-                // attributes index into rather than the accessors.
+                // Draco keeps the primitive in a view of its own, which its attributes
+                // index into rather than the accessors.
                 extensions.withObject(GLTFExtension.dracoMeshCompression.rawValue) {
                     $0.mapIndex("bufferView", to: .bufferViews, map)
                 }
@@ -173,9 +171,9 @@ enum GLTFReferences {
         return accessor
     }
 
-    /// An animation's samplers are indexed by its channels alone, so the ones
-    /// left behind when a channel goes are compacted here rather than through
-    /// the document's arrays, and the surviving channels renumbered onto them.
+    /// An animation's samplers are indexed by its channels alone, so the ones left
+    /// behind when a channel goes are compacted here rather than through the
+    /// document's arrays, and the surviving channels renumbered onto them.
     private static func animation(_ animation: JSONObject, _ map: GLTFIndexMap) -> JSONObject {
         var animation = animation
         let samplers = animation.objects("samplers")
@@ -209,9 +207,9 @@ enum GLTFReferences {
 
     // MARK: - VRM
 
-    /// Rewrites what the VRM extensions name from the root of a document. A
-    /// binding whose subject is gone goes with it: an expression cannot morph
-    /// a mesh the document no longer holds.
+    /// Rewrites what the VRM extensions name from the root of a document. A binding
+    /// whose subject is gone goes with it: an expression cannot morph a mesh the
+    /// document no longer holds.
     static func rewritingRootExtensions(_ extensions: JSONObject, with map: GLTFIndexMap) -> JSONObject {
         var extensions = extensions
         extensions.withObject(GLTFExtension.vrm0.rawValue) { $0 = vrm0($0, map) }
