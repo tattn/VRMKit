@@ -51,7 +51,7 @@ extension GLTFEditableDocument {
         guard parent != index else {
             throw VRMError._dataInconsistent("node \(index) cannot be its own parent")
         }
-        guard !descendants(of: index).contains(parent) else {
+        guard !(try nodeHierarchy().lineage(of: parent).contains(index)) else {
             throw VRMError._dataInconsistent(
                 "node \(parent) is below node \(index), so moving it there would close a cycle"
             )
@@ -80,17 +80,10 @@ extension GLTFEditableDocument {
         }
     }
 
-    /// Every node below `index`, each visited once so that a cycle already in
-    /// the document does not loop here.
-    private func descendants(of index: Int) -> Set<Int> {
-        let nodes = json.objects(.nodes)
-        var visited: Set<Int> = []
-        var pending = nodes[safe: index]?.ints("children") ?? []
-        while let next = pending.popLast() {
-            guard visited.insert(next).inserted else { continue }
-            pending.append(contentsOf: nodes[safe: next]?.ints("children") ?? [])
-        }
-        return visited
+    /// Who the document's nodes hang off, validated as it is built, so that an
+    /// edit reads the hierarchy a loader would and refuses the ones it would.
+    func nodeHierarchy() throws -> GLTFNodeHierarchy {
+        try GLTFNodeHierarchy(childIndices: json.objects(.nodes).map { $0.ints("children") ?? [] })
     }
 
     func appendNode(_ node: JSONObject) -> Int {

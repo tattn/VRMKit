@@ -21,9 +21,3 @@ extension SCNMatrix4 {
         ]
     }
 }
-
-extension SCNMatrix4 {
-    static func == (lhs: SCNMatrix4, rhs: SCNMatrix4) -> Bool {
-        lhs.array == rhs.array
-    }
-}

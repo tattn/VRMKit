@@ -7,8 +7,8 @@ import VRMTestSupport
 @testable import VRMRealityKit
 
 /// What the MToon outline actually measures on screen. Both width modes are
-/// defined in units the parameter rows cannot show — meters of world space, and
-/// a fraction of the screen height — so they are asserted against pixels.
+/// defined in units the parameter rows cannot show, meters of world space and
+/// a fraction of the screen height, so they are asserted against pixels.
 @Suite
 @MainActor
 struct MToonOutlineRenderingTests {
@@ -20,7 +20,7 @@ struct MToonOutlineRenderingTests {
     /// A cube turned 45°, since head-on every normal would point at the camera
     /// and the inverted hull would widen nothing. The fixture's node scales the
     /// mesh by 100, so a width resolved in the mesh's own space comes out a
-    /// hundred times too wide — which is the point of measuring.
+    /// hundred times too wide, which is the point of measuring.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func cube(outlinedWith mode: MToonOutlineWidthMode?,
                       scale: SIMD3<Float>,
@@ -174,8 +174,8 @@ struct MToonOutlineRenderingTests {
     /// far from a perspective camera its world-space offset grows toward the
     /// mesh radius funding the culling margin. Still within that radius here;
     /// the pass must survive culling at the frustum edge like the world one.
-    /// (Past the radius the shader clamps the offset instead — see the budget
-    /// test below — so the outline can never outrun the box it is culled by.)
+    /// Past the radius the shader clamps the offset instead, see the budget
+    /// test below, so the outline can never outrun the box it is culled by.
     @Test
     func testScreenCoordinateOutlineSurvivesCullingAtTheFrustumEdgeFarAway() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
@@ -185,8 +185,8 @@ struct MToonOutlineRenderingTests {
         // half-width at the cube's depth.
         let frameHalfWidth = distance * tan(Float.pi / 6)
         // Far enough right that the cube itself is outside the frustum, near
-        // enough that the outline — 0.06 of the screen height, which is
-        // 0.06 * 2 * distance * tan(30°) ≈ 0.42 in the world here — reaches in.
+        // enough that the outline reaches in: 0.06 of the screen height is
+        // 0.06 * 2 * distance * tan(30°) ≈ 0.42 in the world here.
         let offscreen = frameHalfWidth + 0.65
 
         let bare = try OffscreenRenderer.renderPerspective(

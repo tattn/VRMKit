@@ -7,6 +7,23 @@ package typealias JSONObject = [String: Any]
 package extension JSONObject {
     func object(_ key: String) -> JSONObject? { self[key] as? JSONObject }
     func objects(_ key: String) -> [JSONObject] { self[key] as? [JSONObject] ?? [] }
+
+    /// The object at `key`, nil where the document holds none. One that is
+    /// there but is not an object is refused rather than read as absent, since
+    /// writing through it would throw away whatever it holds. `subject` names
+    /// what holds the key, for the message.
+    func requiredObject(_ key: String, of subject: String) throws -> JSONObject? {
+        guard let value = self[key] else { return nil }
+        return try value as? JSONObject ??? ._dataInconsistent("\(subject).\(key) is not a JSON object")
+    }
+
+    /// The objects of the array at `key`, nil where the document holds none.
+    /// One that is there but is not an array of objects is refused, since
+    /// appending to it would throw away whatever it holds.
+    func requiredObjects(_ key: String, of subject: String) throws -> [JSONObject]? {
+        guard let value = self[key] else { return nil }
+        return try value as? [JSONObject] ??? ._dataInconsistent("\(subject).\(key) is not an array of JSON objects")
+    }
     func string(_ key: String) -> String? { self[key] as? String }
     func strings(_ key: String) -> [String] { self[key] as? [String] ?? [] }
     func ints(_ key: String) -> [Int]? { self[key] as? [Int] }
@@ -67,10 +84,10 @@ package extension JSONObject {
 
     /// Appends one object and returns the index it was given.
     @discardableResult
-    mutating func appendObject(_ element: JSONObject, to array: GLTFArray) -> Int {
-        var existing = objects(array)
+    mutating func appendObject(_ element: JSONObject, to key: String) -> Int {
+        var existing = objects(key)
         existing.append(element)
-        self[array] = existing
+        self[key] = existing
         return existing.count - 1
     }
 

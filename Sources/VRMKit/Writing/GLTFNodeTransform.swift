@@ -42,11 +42,11 @@ public struct GLTFNodeTransform: Equatable {
         // `simd_quatf` yields NaNs. Tested axis by axis rather than by `min()`,
         // which a mirroring matrix's negative axis would answer for.
         let isFlattened = scale.x == 0 || scale.y == 0 || scale.z == 0
-        rotation = isFlattened ? .identityRotation : simd_quatf(basis)
+        rotation = isFlattened ? quat_identity_float : simd_quatf(basis)
     }
 
     public var matrix: float4x4 {
-        let basis = float3x3(rotation)
+        let basis = float3x3(rotation.safelyNormalized)
         return float4x4(SIMD4(basis.columns.0 * scale.x, 0),
                         SIMD4(basis.columns.1 * scale.y, 0),
                         SIMD4(basis.columns.2 * scale.z, 0),
@@ -54,22 +54,9 @@ public struct GLTFNodeTransform: Equatable {
     }
 }
 
-extension simd_quatf {
-    /// The rotation a glTF node has when it writes none.
-    static var identityRotation: simd_quatf { .init(vector: SIMD4<Float>(0, 0, 0, 1)) }
-
-    /// The unit quaternion glTF requires. One of no length names no rotation,
-    /// so it becomes the identity rather than NaNs.
-    var normalizedForGLTF: simd_quatf {
-        let length = simd_length(vector)
-        guard length.isNormal else { return .identityRotation }
-        return simd_quatf(vector: vector / length)
-    }
-}
-
 extension GLTFNodeTransform {
     /// Rejects values JSON and glTF cannot represent. A finite zero-length
-    /// quaternion is still normalized to the identity by ``normalizedForGLTF``.
+    /// quaternion is still normalized to the identity by ``safelyNormalized``.
     func validate() throws {
         let quaternion = rotation.vector
         guard quaternion.x.isFinite, quaternion.y.isFinite,
@@ -83,15 +70,16 @@ extension GLTFNodeTransform {
     /// The transform a node JSON object describes, whether it writes TRS or a
     /// matrix. glTF forbids mixing the two, and the matrix wins if one does.
     init(node: JSONObject) {
-        if let c = node.floats("matrix"), c.count == 16 {
-            self.init(matrix: float4x4(SIMD4(c[0], c[1], c[2], c[3]),
-                                       SIMD4(c[4], c[5], c[6], c[7]),
-                                       SIMD4(c[8], c[9], c[10], c[11]),
-                                       SIMD4(c[12], c[13], c[14], c[15])))
+        if let components = node.floats("matrix"), components.count == 16 {
+            self.init(matrix: float4x4(SIMD4(components[0], components[1], components[2], components[3]),
+                                       SIMD4(components[4], components[5], components[6], components[7]),
+                                       SIMD4(components[8], components[9], components[10], components[11]),
+                                       SIMD4(components[12], components[13], components[14], components[15])))
             return
         }
         self.init(translation: Self.vector3(node.floats("translation")) ?? .zero,
-                  rotation: Self.vector4(node.floats("rotation")).map(simd_quatf.init(vector:)) ?? .identityRotation,
+                  rotation: Self.vector4(node.floats("rotation")).map(simd_quatf.init(vector:))
+                      ?? quat_identity_float,
                   scale: Self.vector3(node.floats("scale")) ?? .one)
     }
 
@@ -110,8 +98,8 @@ extension GLTFNodeTransform {
     func write(into node: inout JSONObject) {
         node.removeValue(forKey: "matrix")
         node.set("translation", translation == .zero ? nil : [translation.x, translation.y, translation.z])
-        let unitRotation = rotation.normalizedForGLTF
-        node.set("rotation", unitRotation == .identityRotation
+        let unitRotation = rotation.safelyNormalized
+        node.set("rotation", unitRotation == quat_identity_float
                  ? nil
                  : [unitRotation.vector.x, unitRotation.vector.y, unitRotation.vector.z, unitRotation.vector.w])
         node.set("scale", scale == .one ? nil : [scale.x, scale.y, scale.z])

@@ -36,7 +36,25 @@ struct VRM1Tests {
         #expect(throws: Never.self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion("1.0-beta")) }
         #expect(throws: (any Error).self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion("2.0")) }
     }
-    
+
+    /// `VRMC_springBone` is versioned on its own, and springs of a version this
+    /// cannot read would be simulated as if they said something else.
+    @Test
+    func testAnUnsupportedSpringBoneSpecVersionIsRejected() throws {
+        #expect(VRM1.SpringBone.supports(specVersion: "1.0"))
+        #expect(VRM1.SpringBone.supports(specVersion: "1.0-beta"))
+        #expect(!VRM1.SpringBone.supports(specVersion: "2.0"))
+
+        let raised = try VRMSampleAsset.seedSan.rewritingJSON { json in
+            var extensions = json["extensions"] as? [String: Any] ?? [:]
+            var springBone = try #require(extensions["VRMC_springBone"] as? [String: Any])
+            springBone["specVersion"] = "2.0"
+            extensions["VRMC_springBone"] = springBone
+            json["extensions"] = extensions
+        }
+        #expect(throws: (any Error).self) { try VRM1(data: raised) }
+    }
+
     
     @Test
     func testMeta() {

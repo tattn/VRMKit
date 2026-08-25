@@ -181,7 +181,7 @@ open class VRMNode: SCNNode {
             sourceIndex: { $0.sourceIndex }
         )
     }
-    
+
     func setUpSpringBones(loader: VRMSceneLoader) throws {
         var springBones: [VRMSpringBone] = []
         switch vrm {
@@ -194,9 +194,7 @@ open class VRMNode: SCNNode {
                 guard !boneGroup.bones.isEmpty else { continue }
                 let rootBones: [SCNNode] = try boneGroup.bones.compactMap { try loader.node(withNodeIndex: $0) }
                 let centerNode = try? loader.node(withNodeIndex: boneGroup.center)
-                let colliderGroups = boneGroup.colliderGroups.compactMap { index in
-                    allColliderGroups.indices.contains(index) ? allColliderGroups[index] : nil
-                }
+                let colliderGroups = boneGroup.colliderGroups.compactMap { allColliderGroups[safe: $0] }
                 let springBone = VRMSpringBone(center: centerNode,
                                                rootBones: rootBones,
                                                setting: SpringBoneJointSetting(vrm0BoneGroup: boneGroup),
@@ -205,20 +203,15 @@ open class VRMNode: SCNNode {
             }
         case .v1(let vrm1):
             guard let springBone = vrm1.springBone else { break }
+            let allColliderGroups = try (springBone.colliderGroups ?? []).map {
+                try VRMSpringBoneColliderGroup(colliderGroup: $0, springBone: springBone, loader: loader)
+            }
             for spring in springBone.springs ?? [] {
                 let jointNodes = try spring.joints.map { try loader.node(withNodeIndex: $0.node) }
                 // A chain of one joint is only a tail, so it swings nothing.
                 guard jointNodes.count > 1 else { continue }
                 let centerNode = try spring.center.map { try loader.node(withNodeIndex: $0) }
-                let colliderGroups = try spring.colliderGroups?.compactMap { groupIndex -> VRMSpringBoneColliderGroup? in
-                    guard let groups = springBone.colliderGroups,
-                          groups.indices.contains(groupIndex) else {
-                        return nil
-                    }
-                    return try VRMSpringBoneColliderGroup(colliderGroup: groups[groupIndex],
-                                                          springBone: springBone,
-                                                          loader: loader)
-                } ?? []
+                let colliderGroups = (spring.colliderGroups ?? []).compactMap { allColliderGroups[safe: $0] }
                 let chain = zip(jointNodes, spring.joints).map { node, joint in
                     (node: node, setting: SpringBoneJointSetting(vrm1Joint: joint))
                 }
@@ -371,6 +364,7 @@ private struct MorphBindingKey: Hashable {
     let index: Int
 }
 
+@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 private extension BlendShapeBinding {
     var key: MorphBindingKey { MorphBindingKey(morpher: ObjectIdentifier(mesh), index: index) }
 }
@@ -391,6 +385,7 @@ private struct MaterialColorBinding {
     }
 }
 
+@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 private struct TextureTransformBinding {
     let material: SCNMaterial
     /// What the texture was loaded with, which the expression moves away from

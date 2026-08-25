@@ -102,6 +102,10 @@ public final class VRMEntity: GLTFEntity {
     /// runtime drives this entity the animation tick must not solve it too.
     override var refreshesSkinningPerFrame: Bool { isAutomaticUpdateEnabled }
 
+    /// The versions disagree about which way a model faces, and loading
+    /// converts no coordinates, so the entity faces whichever way its VRM does.
+    public override var frontDirection: SIMD3<Float> { vrm.forwardDirection }
+
     func setUpHumanoid(nodes: [Entity?]) {
         humanoid.setUp(boneNodes: vrm.boneNodes, nodes: nodes)
     }
@@ -289,9 +293,7 @@ public final class VRMEntity: GLTFEntity {
                 guard !boneGroup.bones.isEmpty else { continue }
                 let rootBones: [Entity] = try boneGroup.bones.compactMap { try loader.node(withNodeIndex: $0) }
                 let centerNode = try? loader.node(withNodeIndex: boneGroup.center)
-                let colliderGroups = boneGroup.colliderGroups.compactMap { index in
-                    allColliderGroups.indices.contains(index) ? allColliderGroups[index] : nil
-                }
+                let colliderGroups = boneGroup.colliderGroups.compactMap { allColliderGroups[safe: $0] }
                 let springBone = VRMEntitySpringBone(center: centerNode,
                                                      rootBones: rootBones,
                                                      setting: SpringBoneJointSetting(vrm0BoneGroup: boneGroup),
@@ -300,20 +302,15 @@ public final class VRMEntity: GLTFEntity {
             }
         case .v1(let vrm1):
             guard let springBone = vrm1.springBone else { break }
+            let allColliderGroups = try (springBone.colliderGroups ?? []).map {
+                try VRMEntitySpringBoneColliderGroup(colliderGroup: $0, springBone: springBone, loader: loader)
+            }
             for spring in springBone.springs ?? [] {
                 let jointEntities = try spring.joints.map { try loader.node(withNodeIndex: $0.node) }
                 // A chain of one joint is only a tail, so it swings nothing.
                 guard jointEntities.count > 1 else { continue }
                 let centerEntity = try spring.center.map { try loader.node(withNodeIndex: $0) }
-                let colliderGroups = try spring.colliderGroups?.compactMap { groupIndex -> VRMEntitySpringBoneColliderGroup? in
-                    guard let groups = springBone.colliderGroups,
-                          groups.indices.contains(groupIndex) else {
-                        return nil
-                    }
-                    return try VRMEntitySpringBoneColliderGroup(colliderGroup: groups[groupIndex],
-                                                                springBone: springBone,
-                                                                loader: loader)
-                } ?? []
+                let colliderGroups = (spring.colliderGroups ?? []).compactMap { allColliderGroups[safe: $0] }
                 let chain = zip(jointEntities, spring.joints).map { entity, joint in
                     (node: entity, setting: SpringBoneJointSetting(vrm1Joint: joint))
                 }
@@ -364,8 +361,8 @@ public final class VRMEntity: GLTFEntity {
         // Skinning runs last so that this frame's constraint and spring-bone
         // poses reach the skinned meshes in the same frame they are solved.
         var movedJoints = false
-        for constraint in nodeConstraints {
-            if constraint.apply() { movedJoints = true }
+        for constraint in nodeConstraints where constraint.apply() {
+            movedJoints = true
         }
         springBones.forEach { $0.update(deltaTime: deltaTime) }
         if !springBones.isEmpty || movedJoints {

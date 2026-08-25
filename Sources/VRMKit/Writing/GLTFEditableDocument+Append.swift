@@ -5,9 +5,8 @@ extension GLTFEditableDocument {
     /// container node, and returns that container's index.
     ///
     /// The whole source document is copied to the end of the arrays it belongs
-    /// in and rebased, not only what the chosen scene reaches: the scene
-    /// decides which of the copied nodes hang under the container, so a source
-    /// of several scenes costs the size of all of them and draws one. Nothing
+    /// in and rebased, not only what the chosen scene reaches, so a source of
+    /// several scenes costs the size of all of them and draws one. Nothing
     /// already in the target moves, so the extensions that make it a VRM keep
     /// pointing at what they used to.
     ///
@@ -55,7 +54,7 @@ extension GLTFEditableDocument {
         try requireNode(at: parentNode)
 
         // What follows can still fail once the merge has begun writing.
-        return try atomically {
+        return try atomicallyAppendingBinary {
             let materialBase = json.count(.materials)
             var merger = GLTFMerger(source: source, sourceJSON: sourceJSON, target: self)
             let nodeOffset = try merger.merge()
@@ -91,9 +90,8 @@ extension GLTFEditableDocument {
     }
 
     /// A merge rebases every index it carries over, so it may only carry over
-    /// extensions whose shape it knows. An unknown one is refused rather than
-    /// copied and hoped about, since the ones holding indices would come out
-    /// silently pointing at the wrong thing.
+    /// extensions whose shape it knows. An unknown one is refused, since one
+    /// holding indices would come out silently pointing at the wrong thing.
     private static func validateAppendable(_ sourceJSON: JSONObject) throws {
         // VRM 0.x keeps a material's MToon settings in the root extension,
         // which describes the avatar the source is rather than the nodes
@@ -186,10 +184,8 @@ private struct GLTFMerger {
 
         let materials = rebased(.materials)
         target.json.appendObjects(materials, to: .materials)
-        target.appendVRM0MaterialProperties(named: materials.map { $0.string("name") })
+        try target.appendVRM0MaterialProperties(named: materials.map { $0.string("name") })
         mergeExtensionDeclarations()
-        // The binary has stopped growing, so its `buffers` entry is written once.
-        target.writeSingleBufferEntry()
 
         return offset(of: .nodes)
     }

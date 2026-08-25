@@ -4,18 +4,16 @@ extension GLTFEditableDocument {
     /// Takes out everything the document has stopped drawing and returns how
     /// many BIN bytes that reclaimed.
     ///
-    /// ``detachNode(at:)`` cuts a subtree's links and leaves the meshes and
-    /// textures it drew exactly where they were, so a document that is edited
-    /// and saved over and over grows while looking the same. This is what takes
-    /// those bytes back. It happens only when asked, since keeping unreachable
-    /// data can be the point of an edit.
+    /// ``detachNode(at:)`` leaves the meshes and textures a subtree drew where
+    /// they were, so a document edited and saved repeatedly grows while looking
+    /// the same. This takes those bytes back, and only when asked, since
+    /// keeping unreachable data can be the point of an edit.
     ///
-    /// The entries go with the bytes and every index is remapped, so what
-    /// comes out is a glTF document like any other rather than one full of
-    /// holes. ``GLTFReachability`` decides what stays. A node something still
-    /// names keeps its transform without the mesh it drew, so a humanoid bone
-    /// stays where it was; a detached subtree, though, cannot be drawn again
-    /// with ``moveNode(at:to:)`` once it has been pruned.
+    /// The entries go with the bytes and every index is remapped, so the result
+    /// is an ordinary glTF document. ``GLTFReachability`` decides what stays. A
+    /// node something still names keeps its transform without the mesh it drew,
+    /// so a humanoid bone stays where it was, but a pruned detached subtree can
+    /// no longer be drawn again with ``moveNode(at:to:)``.
     ///
     /// A document declaring an extension this package cannot follow the
     /// references of is refused rather than pruned.
@@ -42,12 +40,11 @@ extension GLTFEditableDocument {
         }
 
         // Everything that could fail is behind us, so the document changes in
-        // one go rather than through `atomically`, which rolls the BIN buffer
+        // one go rather than through `atomicallyAppendingBinary`, which rolls it
         // back by its length and so covers only an edit that appends to it.
         let reclaimed = binary.count - compacted.count
         binary = compacted
         json = pruned
-        writeSingleBufferEntry()
         return reclaimed
     }
 
@@ -66,11 +63,9 @@ extension GLTFEditableDocument {
                 + "whose references pruning cannot follow"
             )
         }
-        // What a document draws is what it keeps, and one naming no scene draws
-        // nothing, so pruning it would take everything. That is a document this
-        // cannot read rather than one with nothing in it. A `VRMC_vrm_animation`
-        // is the exception: what it drives stands in for the scene it needs no
-        // more than an animation needs one.
+        // A document naming no scene draws nothing, so pruning it would take
+        // everything: it is refused rather than emptied. A `VRMC_vrm_animation`
+        // is the exception, since what it drives stands in for a scene.
         guard json.count(.scenes) != 0
             || json.count(.nodes) == 0
             || json.object("extensions")?[GLTFExtension.vrmAnimation.rawValue] != nil else {

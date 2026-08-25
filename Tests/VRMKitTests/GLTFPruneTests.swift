@@ -37,16 +37,16 @@ struct GLTFPruneTests {
     func testPruneKeepsTheVRMExtensionsPointingAtTheSameEntries(asset: VRMSampleAsset) throws {
         let document = try GLTFEditableDocument(data: asset.data)
         let detached = try #require(drawingSceneRoot(of: try document.typed()))
-        let gone = try [try #require(try document.typed().nodes?[detached].name),
-                        try #require(try document.typed().nodes?[detached].mesh
-                            .flatMap { try document.typed().meshes?[$0].name })]
+        let gone = [try #require(try document.typed().nodes?[detached].name),
+                    try #require(try document.typed().nodes?[detached].mesh
+                        .flatMap { try document.typed().meshes?[$0].name })]
         try document.detachNode(at: detached)
         let before = try GLTFDocument(data: try document.serialize())
         let bones = try humanoidBoneNames(of: before)
         let joints = try springBoneJointNames(of: before)
         let subjects = try renderedSubjectNames(of: before)
         #expect(!bones.isEmpty)
-        #expect(!subjects.intersection(gone).isEmpty)
+        #expect(!subjects.isDisjoint(with: gone))
 
         try document.prune()
 

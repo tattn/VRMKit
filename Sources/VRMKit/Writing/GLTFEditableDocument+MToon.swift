@@ -81,7 +81,7 @@ extension GLTFEditableDocument {
             }
             properties[index] = try VRM0MToonProperty.materialProperty(from: descriptor, name: name)
         }
-        setVRM0MaterialProperties(properties)
+        try setVRM0MaterialProperties(properties)
     }
 
     private func writeMToonExtensions(_ converted: [ConvertedMaterial]) {
@@ -114,17 +114,13 @@ extension GLTFEditableDocument {
     /// so materials added to such a document need an entry each to keep the two
     /// lined up. `VRM_USE_GLTFSHADER` says the glTF material describes itself,
     /// which is what one just written or copied in does.
-    func appendVRM0MaterialProperties(named names: [String?]) {
+    func appendVRM0MaterialProperties(named names: [String?]) throws {
         guard !names.isEmpty, let properties = vrm0MaterialProperties() else { return }
-        setVRM0MaterialProperties(properties + names.map(VRM0MToonProperty.gltfShaderProperty(name:)))
+        try setVRM0MaterialProperties(properties + names.map(VRM0MToonProperty.gltfShaderProperty(name:)))
     }
 
-    func setVRM0MaterialProperties(_ properties: [JSONObject]) {
-        json.withObject("extensions") { extensions in
-            extensions.withObject(GLTFExtension.vrm0.rawValue) { vrm in
-                vrm["materialProperties"] = properties
-            }
-        }
+    func setVRM0MaterialProperties(_ properties: [JSONObject]) throws {
+        try updateRootExtension(GLTFExtension.vrm0.rawValue) { $0["materialProperties"] = properties }
     }
 }
 

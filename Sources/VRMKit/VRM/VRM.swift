@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 /// VRM data, supporting both VRM0 and VRM1 formats
 public enum VRM {
@@ -25,9 +26,12 @@ public enum VRM {
     /// Reads whichever version an already-loaded document holds. The document
     /// is handed on rather than parsed again.
     public init(document: GLTFDocument) throws {
-        if try document.gltf.rootExtensions().keys.contains(GLTFExtension.vrm1.rawValue) {
+        switch VRMSpecVersion(rootExtensions: try document.gltf.rootExtensions()) {
+        case .v1:
             self = .v1(try VRM1(document: document))
-        } else {
+        // A document that is no VRM at all is read as the 0.x it most looks
+        // like, and ``VRM0`` is what says it is not one.
+        case .v0, nil:
             self = .v0(try VRM0(document: document))
         }
     }
@@ -56,6 +60,16 @@ public enum VRM {
         switch self {
         case .v0(let vrm): return vrm.meta.title
         case .v1(let vrm): return vrm.meta.name
+        }
+    }
+
+    /// The way the model faces, in the space its nodes are written in: +Z for
+    /// VRM 1.0 and -Z for VRM 0.x. Loading converts no coordinates, so this is
+    /// also where a camera looking the model in the face goes.
+    public var forwardDirection: SIMD3<Float> {
+        switch self {
+        case .v0: return SIMD3(0, 0, -1)
+        case .v1: return SIMD3(0, 0, 1)
         }
     }
 }

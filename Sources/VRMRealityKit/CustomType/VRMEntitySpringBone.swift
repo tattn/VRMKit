@@ -100,9 +100,7 @@ final class VRMEntitySpringBone {
 
         colliders.removeAll(keepingCapacity: true)
         for group in colliderGroups {
-            for collider in group.colliders {
-                colliders.append(collider.worldCollider)
-            }
+            group.appendWorldColliders(to: &colliders)
         }
 
         let centerTransform = Self.centerTransform(center)

@@ -36,4 +36,9 @@ package extension JSONObject {
     mutating func appendObjects(_ elements: [JSONObject], to array: GLTFArray) {
         appendObjects(elements, to: array.rawValue)
     }
+
+    @discardableResult
+    mutating func appendObject(_ element: JSONObject, to array: GLTFArray) -> Int {
+        appendObject(element, to: array.rawValue)
+    }
 }

@@ -31,11 +31,14 @@ public struct VRM0 {
 
         meta = try vrm.decodeJSON(Meta.self, forKey: "meta")
         version = vrm["version"] as? String
-        materialProperties = try vrm.decodeJSON([MaterialProperty].self, forKey: "materialProperties")
+        // Absent in some files, and in `prune()` output once every material died
+        materialProperties = try vrm.decodeJSONIfPresent([MaterialProperty].self, forKey: "materialProperties") ?? []
         humanoid = try vrm.decodeJSON(Humanoid.self, forKey: "humanoid")
         blendShapeMaster = try vrm.decodeJSON(BlendShapeMaster.self, forKey: "blendShapeMaster")
         firstPerson = try vrm.decodeJSON(FirstPerson.self, forKey: "firstPerson")
-        secondaryAnimation = try vrm.decodeJSON(SecondaryAnimation.self, forKey: "secondaryAnimation")
+        // Absent in a model that swings nothing, `prune()` output among them
+        secondaryAnimation = try vrm.decodeJSONIfPresent(SecondaryAnimation.self, forKey: "secondaryAnimation")
+            ?? SecondaryAnimation()
     }
 }
 
@@ -139,8 +142,17 @@ public extension VRM0 {
     struct FirstPerson: Codable {
         public let firstPersonBone: Int
         public let firstPersonBoneOffset: Vector3
+        /// Absent in files with nothing annotated, `prune()` output among them
         public let meshAnnotations: [MeshAnnotation]
         public let lookAtTypeName: LookAtType
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            firstPersonBone = try container.decode(Int.self, forKey: .firstPersonBone)
+            firstPersonBoneOffset = try container.decode(Vector3.self, forKey: .firstPersonBoneOffset)
+            meshAnnotations = try container.decodeIfPresent([MeshAnnotation].self, forKey: .meshAnnotations) ?? []
+            lookAtTypeName = try container.decode(LookAtType.self, forKey: .lookAtTypeName)
+        }
 
         public struct MeshAnnotation: Codable {
             public let firstPersonFlag: String
@@ -154,8 +166,22 @@ public extension VRM0 {
     }
 
     struct SecondaryAnimation: Codable {
+        /// Either array is absent in a model that states nothing for it, and
+        /// both are in one that swings nothing at all.
         public let boneGroups: [BoneGroup]
         public let colliderGroups: [ColliderGroup]
+
+        init(boneGroups: [BoneGroup] = [], colliderGroups: [ColliderGroup] = []) {
+            self.boneGroups = boneGroups
+            self.colliderGroups = colliderGroups
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            boneGroups = try container.decodeIfPresent([BoneGroup].self, forKey: .boneGroups) ?? []
+            colliderGroups = try container.decodeIfPresent([ColliderGroup].self, forKey: .colliderGroups) ?? []
+        }
+
         public struct BoneGroup: Codable {
             public let bones: [Int]
             public let center: Int

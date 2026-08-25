@@ -22,6 +22,47 @@ package struct SpringBoneCollider {
     }
 }
 
+/// A collider as either version states one: a shape in the space of the node it
+/// hangs off. Only the renderer holds the scene graph, so it hands
+/// ``world(in:)`` the node's transform.
+package struct SpringBoneColliderShape {
+    private let offset: SIMD3<Float>
+    private let tail: SIMD3<Float>?
+    private let radius: Float
+
+    package init(vrm0Collider collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) {
+        offset = collider.offset.simd
+        tail = nil
+        radius = Float(collider.radius)
+    }
+
+    /// A VRM 1.0 collider is a sphere or a capsule. One that is neither is kept
+    /// at zero radius, so it collides with nothing without shifting the indices
+    /// the groups refer to.
+    package init(vrm1Collider collider: VRM1.SpringBone.Collider) {
+        if let sphere = collider.shape.sphere {
+            offset = SIMD3<Float>(sphere.offset, default: .zero)
+            tail = nil
+            radius = Float(sphere.radius)
+        } else if let capsule = collider.shape.capsule {
+            offset = SIMD3<Float>(capsule.offset, default: .zero)
+            tail = SIMD3<Float>(capsule.tail, default: .zero)
+            radius = Float(capsule.radius)
+        } else {
+            offset = .zero
+            tail = nil
+            radius = 0
+        }
+    }
+
+    /// Where the shape is, given where the node it hangs off is.
+    package func world(in localToWorld: simd_float4x4) -> SpringBoneCollider {
+        SpringBoneCollider(head: localToWorld.multiplyPoint(offset),
+                           tail: tail.map(localToWorld.multiplyPoint),
+                           radius: radius)
+    }
+}
+
 /// What one joint swings like. VRM 0.x gives a whole bone group the one
 /// setting, VRM 1.0 gives every joint its own, and the two do not agree on what
 /// a missing field means, so none of them is defaulted here.
@@ -55,11 +96,11 @@ package struct SpringBoneJointSetting {
     /// Fills in what the joint leaves out with the defaults `VRMC_springBone`
     /// declares for them.
     package init(vrm1Joint joint: VRM1.SpringBone.Spring.Joint) {
-        self.init(stiffnessForce: Float(joint.stiffness ?? 1.0),
-                  gravityPower: Float(joint.gravityPower ?? 0.0),
-                  gravityDir: SIMD3<Float>(joint.gravityDir, default: SIMD3<Float>(0, -1, 0)),
-                  dragForce: Float(joint.dragForce ?? 0.5),
-                  hitRadius: Float(joint.hitRadius ?? 0.0))
+        self.init(stiffnessForce: joint.stiffness.map(Float.init) ?? VRMSpringBoneDefaults.stiffness,
+                  gravityPower: joint.gravityPower.map(Float.init) ?? VRMSpringBoneDefaults.gravityPower,
+                  gravityDir: SIMD3<Float>(joint.gravityDir, default: VRMSpringBoneDefaults.gravityDirection),
+                  dragForce: joint.dragForce.map(Float.init) ?? VRMSpringBoneDefaults.dragForce,
+                  hitRadius: joint.hitRadius.map(Float.init) ?? VRMSpringBoneDefaults.hitRadius)
     }
 }
 

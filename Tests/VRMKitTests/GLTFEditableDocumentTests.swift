@@ -213,7 +213,7 @@ struct GLTFEditableDocumentTests {
             let mirrors = scale.x * scale.y * scale.z < 0
             #expect((decomposed.scale.min() < 0) == mirrors, "\(scale)")
             if scale.min() == 0 || scale.max() == 0 {
-                #expect(decomposed.rotation == .identityRotation, "\(scale)")
+                #expect(decomposed.rotation == quat_identity_float, "\(scale)")
             }
         }
     }
@@ -226,6 +226,24 @@ struct GLTFEditableDocumentTests {
         let turn = simd_quatf(angle: .pi / 3, axis: normalize(SIMD3<Float>(0, 1, 0)))
 
         try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: turn.vector * 4)), nodeAt: index)
+
+        let written = try #require(try document.typed().nodes?[index].rotation)
+        let vector = SIMD4<Float>(Float(written.x), Float(written.y), Float(written.z), Float(written.w))
+        #expect(abs(simd_length(vector) - 1) < 1e-5)
+        #expect(abs(abs(simd_dot(vector, turn.vector)) - 1) < 1e-5)
+    }
+
+    /// A quaternion far from unit length still names an orientation. Squaring
+    /// its components would lose a tiny one to underflow and a huge one to
+    /// overflow, and either would be written out as no rotation at all.
+    @Test(arguments: [Float(1e-4), 1e-20, 1e20, 1e30])
+    func testARotationFarFromUnitLengthKeepsItsOrientation(magnitude: Float) throws {
+        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        let index = try document.addNode(name: "item")
+        let turn = simd_quatf(angle: .pi / 3, axis: normalize(SIMD3<Float>(0, 1, 0)))
+
+        try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: turn.vector * magnitude)),
+                                  nodeAt: index)
 
         let written = try #require(try document.typed().nodes?[index].rotation)
         let vector = SIMD4<Float>(Float(written.x), Float(written.y), Float(written.z), Float(written.w))

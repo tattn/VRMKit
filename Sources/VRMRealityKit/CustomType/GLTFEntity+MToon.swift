@@ -65,7 +65,7 @@ extension GLTFEntity {
     /// outlines nothing, so it hides the passes instead.
     ///
     /// Passing nil puts the model back as it was: authored colors and widths,
-    /// and the pass visibility from before the override — a
+    /// and the pass visibility from before the override, a
     /// ``GLTFEntity/setPassEnabled(_:named:)`` of the caller's own included. A
     /// VRM `materialColorBind` expression drives the color underneath meanwhile,
     /// so releasing reveals its current value.
@@ -97,9 +97,9 @@ extension GLTFEntity {
             state.outlineOverride = override
             return true
         }
-        // The visibility follows what the GPU draws, not what the rows say:
-        // showing a pass early would draw whatever is underneath the override —
-        // nothing at all, for a material `.always` built an empty pass for — and
+        // The visibility follows what the GPU draws, not what the rows say.
+        // Showing a pass early would draw whatever is underneath the override,
+        // nothing at all for a material `.always` built an empty pass for, and
         // hiding one early would take away an outline still being drawn.
         guard isDrawn else { return }
         if let override {

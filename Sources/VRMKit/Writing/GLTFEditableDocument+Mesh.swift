@@ -32,8 +32,8 @@ extension GLTFEditableDocument {
         let placement = try resolveNodePlacement(under: parentNode)
 
         // The MToon conversion can still fail once the mesh has been written.
-        return try atomically {
-            let material = mesh.material.map { appendMaterial($0, mediaType: validated.imageMediaType) }
+        return try atomicallyAppendingBinary {
+            let material = try mesh.material.map { try appendMaterial($0, mediaType: validated.imageMediaType) }
             let primitive = appendPrimitive(of: mesh, validated: validated, material: material)
 
             var meshObject = JSONObject()
@@ -47,8 +47,6 @@ extension GLTFEditableDocument {
             node["mesh"] = meshIndex
             let index = appendNode(node, at: placement)
 
-            // The binary has stopped growing, so its `buffers` entry is written once.
-            writeSingleBufferEntry()
             if case .mtoon(let style) = materials, let material {
                 try convertMaterialsToMToon(at: [material], style: style)
             }
@@ -210,7 +208,7 @@ extension GLTFEditableDocument {
 
     /// Writes the material and whatever it needs: an image, a texture, an
     /// extension declaration, a VRM 0.x property.
-    private func appendMaterial(_ material: GLTFSimpleMaterial, mediaType: String?) -> Int {
+    private func appendMaterial(_ material: GLTFSimpleMaterial, mediaType: String?) throws -> Int {
         // glTF defaults a material to fully metallic, which is a mirror
         // rather than the plate this builds, and nothing here says otherwise.
         var pbr: JSONObject = ["metallicFactor": 0]
@@ -243,39 +241,7 @@ extension GLTFEditableDocument {
         }
 
         let index = json.appendObject(object, to: .materials)
-        appendVRM0MaterialProperties(named: [material.name])
+        try appendVRM0MaterialProperties(named: [material.name])
         return index
-    }
-
-    /// The texture reading `image` through `sampler`.
-    private func appendTexture(_ image: Data, mediaType: String, sampler: GLTFTextureSampler) -> Int {
-        var texture: JSONObject = ["source": appendImage(image, mediaType: mediaType)]
-        texture.set("sampler", appendSampler(sampler))
-        return json.appendObject(texture, to: .textures)
-    }
-
-    /// Writes the image into the BIN buffer, the only place a GLB has to keep
-    /// one.
-    private func appendImage(_ image: Data, mediaType: String) -> Int {
-        let view = json.appendObject(["buffer": 0,
-                                      "byteOffset": appendToBinary(image),
-                                      "byteLength": image.count],
-                                     to: .bufferViews)
-        return json.appendObject(["bufferView": view, "mimeType": mediaType], to: .images)
-    }
-
-    /// Nothing is written when the sampler asks for what glTF already reads a
-    /// texture naming none as, and a field at its default is left out for the
-    /// same reason.
-    private func appendSampler(_ sampler: GLTFTextureSampler) -> Int? {
-        guard sampler != GLTFTextureSampler() else { return nil }
-
-        var object = JSONObject()
-        if sampler.wrapS != .REPEAT { object["wrapS"] = sampler.wrapS.rawValue }
-        if sampler.wrapT != .REPEAT { object["wrapT"] = sampler.wrapT.rawValue }
-        object.set("magFilter", sampler.magFilter?.rawValue)
-        object.set("minFilter", sampler.minFilter?.rawValue)
-
-        return json.appendObject(object, to: .samplers)
     }
 }

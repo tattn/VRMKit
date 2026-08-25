@@ -86,10 +86,12 @@ final class VRMAnimationRuntime {
         let animation = try gltf.load(\.animations, at: animationIndex)
         let decoder = GLTFAnimationDecoder(document: vrmAnimation.document)
 
-        let isVRM0Target = if case .v0 = entity.vrm { true } else { false }
-        // Turning the animation's world by 180° around Y conjugates rotations
-        // and rotates translations; identity leaves both formulas untouched.
-        let flip = isVRM0Target ? simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0)) : quat_identity_float
+        // A `.vrma` is authored against VRM 1.0, and a 0.x model faces the other
+        // way, so its world turns half a circle about Y. That conjugates
+        // rotations and rotates translations; identity leaves both untouched.
+        let flip = entity.vrm.forwardDirection.z < 0
+            ? simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
+            : quat_identity_float
 
         // The animation's document has nowhere to cache one; the model's does.
         let animationRest = try GLTFRestPose(nodes: gltf.nodes ?? [])

@@ -34,6 +34,7 @@ let package = Package(
         // Test-only helpers shared by the test targets.
         .target(
             name: "VRMTestSupport",
+            dependencies: ["VRMKit"],
             path: "Tests/VRMTestSupport",
             resources: [
                 .copy("../Assets/GLTF"),

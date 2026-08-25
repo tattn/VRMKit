@@ -2,7 +2,7 @@ import simd
 import VRMKit
 
 /// An outline drawn in place of the one a model was authored with, for as long
-/// as it is set — a selection highlight being the case it exists for.
+/// as it is set, a selection highlight being the case it exists for.
 ///
 /// It reaches every material that has an outline pass, including those whose own
 /// MToon data draws none, which ``MToonShader/OutlinePass/always`` builds for.

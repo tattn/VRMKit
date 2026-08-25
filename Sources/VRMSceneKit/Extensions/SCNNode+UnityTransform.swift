@@ -2,14 +2,12 @@ import SceneKit
 import VRMKitRuntime
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-extension SCNNode: UnityTransformCompatible {}
+extension SCNNode {
+    var utx: UnityTransform<SCNNode> { UnityTransform(self) }
+}
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 extension UnityTransform where Base == SCNNode {
-    func transformPoint(_ position: SIMD3<Float>) -> SIMD3<Float> {
-        base.simdConvertPosition(position, to: nil)
-    }
-    
     var localRotation: simd_quatf {
         base.simdOrientation
     }

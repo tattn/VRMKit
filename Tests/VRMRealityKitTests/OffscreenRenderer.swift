@@ -1,11 +1,10 @@
 #if canImport(RealityKit)
 import CoreGraphics
 import Foundation
-import ImageIO
 import Metal
 import RealityKit
-import UniformTypeIdentifiers
 import simd
+@testable import VRMRealityKit
 
 /// Renders an entity into a Metal texture, so a test can assert on what
 /// RealityKit actually draws rather than on the parameters handed to it.
@@ -140,15 +139,7 @@ enum OffscreenRenderer {
                                   intent: .defaultIntent) else {
             throw RenderError.encodingFailed
         }
-        let data = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
-            throw RenderError.encodingFailed
-        }
-        CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else {
-            throw RenderError.encodingFailed
-        }
-        return data as Data
+        return try GLTFEntity.encode(image, as: .png)
     }
 }
 #endif

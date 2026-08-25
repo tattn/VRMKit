@@ -176,7 +176,7 @@ public final class MToonShader: GLTFMaterialShader {
     /// A material authored against an unimplemented MToon version is neither:
     /// converting it would invent toon values over the ones it already has, so it
     /// drops to the Unlit approximation the MToon specification names as the
-    /// fallback — unless the document requires the extension.
+    /// fallback, unless the document requires the extension.
     private func resolvedDescriptor(for context: GLTFMaterialShaderContext) throws -> MToonMaterialDescriptor? {
         switch try context.mtoonResolution() {
         case .supported(let authored):

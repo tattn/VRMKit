@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import ImageIO
 
 /// Splits glTF's packed metallic-roughness image into the linear grayscale
 /// images the rendering backends consume: roughness from green, metalness from
@@ -54,4 +55,13 @@ private func grayscaleImage(width: Int, height: Int, pixels: Data) throws -> CGI
                        shouldInterpolate: false,
                        intent: .defaultIntent)
         ??? ._dataInconsistent("failed to create a grayscale image")
+}
+
+extension Data {
+    /// The image the bytes hold, or nil when no decoder on this platform reads
+    /// them. Its size is in pixels, unlike the points a ``VRMImage`` reports.
+    var decodedImage: CGImage? {
+        guard let source = CGImageSourceCreateWithData(self as CFData, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
 }

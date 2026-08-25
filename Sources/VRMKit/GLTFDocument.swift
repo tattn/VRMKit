@@ -126,6 +126,7 @@ package extension GLTFDocument {
         // A slice, not a copy: the attributes of an interleaved view each read
         // their own elements out of it, and copying the whole view per attribute
         // is what made a load scale with how many of them share one.
-        return (buffer[bufferView.byteOffset..<end.partialValue], bufferView.byteStride)
+        let startIndex = buffer.startIndex + bufferView.byteOffset
+        return (buffer[startIndex..<startIndex + bufferView.byteLength], bufferView.byteStride)
     }
 }

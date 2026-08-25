@@ -78,16 +78,16 @@ struct VRMUpdateSystemTests {
         let vrmEntity = try VRMEntityLoader(withData: data, shaders: []).loadEntity()
 
         let head = try #require(vrmEntity.humanoid.node(for: .head))
-        let before = Self.jointRotations(of: vrmEntity)
+        let before = TestSupport.jointRotations(in: vrmEntity)
         #expect(!before.isEmpty)
 
         head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
-        #expect(Self.jointRotations(of: vrmEntity) == before)
+        #expect(TestSupport.jointRotations(in: vrmEntity) == before)
 
         vrmEntity.invalidateSkinPose()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
-        #expect(Self.jointRotations(of: vrmEntity) != before)
+        #expect(TestSupport.jointRotations(in: vrmEntity) != before)
     }
 
     /// A model that does move its own joints keeps refreshing every frame, so
@@ -98,19 +98,11 @@ struct VRMUpdateSystemTests {
         let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
 
         let head = try #require(vrmEntity.humanoid.node(for: .head))
-        let before = Self.jointRotations(of: vrmEntity)
+        let before = TestSupport.jointRotations(in: vrmEntity)
         head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
 
-        #expect(Self.jointRotations(of: vrmEntity) != before)
-    }
-
-    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private static func jointRotations(of entity: Entity) -> [SIMD4<Float>] {
-        TestSupport.modelEntities(in: entity).flatMap { modelEntity in
-            modelEntity.components[SkeletalPosesComponent.self]?.poses.default?
-                .jointTransforms.map(\.rotation.vector) ?? []
-        }
+        #expect(TestSupport.jointRotations(in: vrmEntity) != before)
     }
 
     /// The VRM rides on the entity as a component, so a clone can still be asked

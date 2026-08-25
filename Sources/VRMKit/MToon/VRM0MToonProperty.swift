@@ -30,7 +30,7 @@ package enum VRM0MToonProperty {
         // MToon 0.x has no `_ZWRITE_ON` shader keyword: the render mode lives in
         // `_BlendMode` (3 = TransparentWithZWrite), which is what MToon10Migrator
         // reads. `_ZWrite` is derived state, so it only separates the two
-        // transparent modes -- opaque materials write depth as well.
+        // transparent modes, since opaque materials write depth as well.
         let transparentWithZWrite: Bool
         switch floats.float("_BlendMode") {
         case .some(3):

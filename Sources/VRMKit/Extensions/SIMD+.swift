@@ -48,12 +48,20 @@ package extension SIMD2 where Scalar == Float {
 }
 
 package extension simd_quatf {
-    /// The unit quaternion with the same orientation, or identity when the vector
-    /// is degenerate. Decoding and interpolation both produce off-unit values.
+    /// The unit quaternion with the same orientation, or identity when the
+    /// vector holds no orientation at all. Decoding and interpolation both
+    /// produce off-unit values, and writing glTF needs unit ones.
+    ///
+    /// Dividing by the largest component first is what lets a quaternion far
+    /// from unit length keep its orientation: squaring the components of one as
+    /// small as `(1e-4, 0, 0, 1e-4)`, or as large as `(1e30, 0, 0, 0)`, loses it
+    /// to underflow or overflow.
     var safelyNormalized: simd_quatf {
-        let lengthSquared = simd_dot(vector, vector)
-        guard lengthSquared > Float.ulpOfOne else { return quat_identity_float }
-        return simd_quatf(vector: vector / sqrt(lengthSquared))
+        guard vector.x.isFinite, vector.y.isFinite,
+              vector.z.isFinite, vector.w.isFinite else { return quat_identity_float }
+        let largest = simd_abs(vector).max()
+        guard largest > 0 else { return quat_identity_float }
+        return simd_quatf(vector: simd_normalize(vector / largest))
     }
 
     static func * (_ left: simd_quatf, _ right: SIMD3<Float>) -> SIMD3<Float> {

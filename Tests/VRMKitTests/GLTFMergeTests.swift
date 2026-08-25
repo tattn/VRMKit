@@ -111,6 +111,60 @@ struct GLTFMergeTests {
         #expect(try #require(merged.gltf.nodes)[container].children?.count == 2)
     }
 
+    /// A merged animation is the same animation: every channel drives the node
+    /// it drove in the source, at the index it moved to, and every sampler
+    /// reads back the keyframes it was authored with.
+    @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
+    func testAppendedAnimationsKeepTheirChannelsAndKeyframes(model: VRMSampleAsset) throws {
+        let document = try GLTFEditableDocument(data: model.data)
+        let source = try GLTFDocument(withURL: GLTFSampleAsset.interpolationTest.url)
+        let before = try document.typed()
+        let nodeBase = before.nodes?.count ?? 0
+        let accessorBase = before.accessors?.count ?? 0
+
+        try document.append(source, under: 0, name: "animated")
+
+        let merged = try GLTFDocument(data: try document.serialize())
+        let sourceAnimations = try #require(source.gltf.animations)
+        let mergedAnimations = try #require(merged.gltf.animations)
+        // The model carried none of its own, so these are all of them.
+        #expect(before.animations == nil)
+        #expect(mergedAnimations.count == sourceAnimations.count)
+        for (sourceAnimation, mergedAnimation) in zip(sourceAnimations, mergedAnimations) {
+            #expect(mergedAnimation.name == sourceAnimation.name)
+            #expect(mergedAnimation.channels.map(\.target.path) == sourceAnimation.channels.map(\.target.path))
+            #expect(mergedAnimation.channels.map(\.sampler) == sourceAnimation.channels.map(\.sampler))
+            #expect(mergedAnimation.channels.map { $0.target.node }
+                == sourceAnimation.channels.map { $0.target.node.map { $0 + nodeBase } })
+            #expect(mergedAnimation.samplers.map(\.interpolation) == sourceAnimation.samplers.map(\.interpolation))
+            #expect(mergedAnimation.samplers.map(\.input) == sourceAnimation.samplers.map { $0.input + accessorBase })
+            #expect(mergedAnimation.samplers.map(\.output) == sourceAnimation.samplers.map { $0.output + accessorBase })
+        }
+        try expectSameAccessors(source, merged,
+                                offset: accessorBase,
+                                indices: sourceAnimations.flatMap { $0.samplers.flatMap { [$0.input, $0.output] } })
+    }
+
+    /// Appending is appending for animations too: a second source leaves the
+    /// first one's channels and keyframes as they were.
+    @Test
+    func testAppendingAgainLeavesTheAnimationsAlreadyThereAlone() throws {
+        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        try document.append(try GLTFDocument(withURL: GLTFSampleAsset.interpolationTest.url), under: 0)
+        let once = try GLTFDocument(data: try document.serialize())
+        let animations = try #require(once.gltf.animations)
+
+        try document.append(try GLTFDocument(withURL: GLTFSampleAsset.animatedMorphCube.url), under: 0)
+
+        let twice = try GLTFDocument(data: try document.serialize())
+        #expect(try #require(twice.gltf.animations).count > animations.count)
+        let before = try once.rawJSON().objects("animations")
+        let after = try twice.rawJSON().objects("animations")
+        #expect(jsonDifference(before, Array(after.prefix(before.count))) == nil)
+        try expectSameAccessors(once, twice,
+                                indices: animations.flatMap { $0.samplers.flatMap { [$0.input, $0.output] } })
+    }
+
     /// A GLB has nowhere to keep a texture but inside itself, so an image the
     /// source left in a file of its own is read into the buffer.
     @Test

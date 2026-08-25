@@ -355,7 +355,7 @@ struct MToonOutlineTests {
         #expect(mainPasses.allSatisfy { $0.isEnabled })
     }
     /// A recursive clone renders but carries no material runtime state, so
-    /// visibility — read from the entity graph — still works on one, while the
+    /// visibility, read from the entity graph, still works on one, while the
     /// setters that write parameter rows are safe no-ops.
     @Test
     func testOutlineVisibilityWorksOnClonesWhileParameterSettersDoNot() throws {
@@ -451,7 +451,7 @@ struct MToonOutlineTests {
 
     /// Disjoint selections compose, and within an overlap the last set wins
     /// per material while a release restores what the first covering set
-    /// replaced — the authored outline, not the earlier override.
+    /// replaced: the authored outline, not the earlier override.
     @Test
     func testScopedOverridesComposePerMaterial() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -500,8 +500,8 @@ struct MToonOutlineTests {
         #expect(state1.outlineOverride == nil)
     }
 
-    /// A scoped release restores the visibility the override replaced — a
-    /// global hide of the caller's own included — for its materials alone.
+    /// A scoped release restores the visibility the override replaced, a
+    /// global hide of the caller's own included, for its materials alone.
     @Test
     func testScopedReleaseRestoresTheVisibilityItReplacedForItsMaterialsAlone() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

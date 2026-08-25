@@ -165,13 +165,9 @@ public class GLTFEntityLoader {
 
     /// RealityKit gives a material one UV transform, and its mesh one UV set, so
     /// `KHR_texture_transform` is only fully implemented while a material's
-    /// textures agree on both; the extension's `texCoord` overrides the texture
-    /// info's, so the UV set is as much part of it as the transform.
-    ///
-    /// An asset that merely *uses* the extension renders through the first
-    /// UV-accessed texture's set and transform and logs the approximation; one
-    /// that *requires* it is asking for a result this renderer cannot draw, so it
-    /// is rejected instead.
+    /// textures agree on both. An asset that merely *uses* the extension renders
+    /// through the first UV-accessed texture's set and transform and logs the
+    /// approximation; one that *requires* it is rejected instead.
     ///
     /// This covers the textures of the core glTF material. A shader sampling
     /// textures the core material does not name, such as MToon's shade and rim
@@ -558,11 +554,9 @@ public class GLTFEntityLoader {
 
     /// Widens the bounding box RealityKit culls `passEntity` by, so a pass whose
     /// geometry modifier pushes vertices outward is not culled while part of it
-    /// is still on screen, and tells the modifier how much room it got.
-    ///
-    /// The mesh's own radius stands in for a budget nothing else can supply:
-    /// how far the vertices travel is a world distance or a screen fraction,
-    /// and neither converts into mesh space before the entity is in a scene.
+    /// is still on screen, and tells the modifier how much room it got. The
+    /// mesh's own radius stands in for a budget, since how far the vertices
+    /// travel does not convert into mesh space before the entity is in a scene.
     private func grantBoundsBudget(to passEntity: ModelEntity,
                                    mesh: MeshResource,
                                    applying applyBudget: (any Material, Float) -> any Material) {
@@ -678,9 +672,8 @@ public class GLTFEntityLoader {
         try shadedMaterial(withMaterialIndex: index).material
     }
 
-    /// Builds (or returns the cached) materials for one glTF material. This is
-    /// the single place "what does this material render as" is decided, so every
-    /// later question about it, the runtime state included, gets one answer.
+    /// Builds, or returns the cached, materials for one glTF material. The
+    /// single place "what does this material render as" is decided.
     func shadedMaterial(withMaterialIndex index: Int) throws -> GLTFShadedMaterial {
         if let cached = try entityData.load(\.materials, index: index) { return cached }
         defer { standardMaterialCache.removeValue(forKey: index) }
@@ -713,10 +706,9 @@ public class GLTFEntityLoader {
     }
 
     /// The built-in Unlit / PBR path of the glTF core specification, rendering
-    /// every material the shader chain leaves unclaimed. Shaders can also reach
-    /// it through ``GLTFMaterialShaderContext/standardMaterial()`` to decorate
-    /// its result instead of rebuilding it. It is memoized, so a shader
-    /// inspecting it and then declining does not make the fallback rebuild it.
+    /// every material the shader chain leaves unclaimed. Shaders reach it
+    /// through ``GLTFMaterialShaderContext/standardMaterial()`` to decorate its
+    /// result, and it is memoized so inspecting it costs nothing.
     func standardMaterial(for context: GLTFMaterialShaderContext) throws -> Material {
         if let cached = standardMaterialCache[context.materialIndex] { return cached }
         let material = try makeStandardMaterial(for: context)
@@ -859,12 +851,9 @@ public class GLTFEntityLoader {
     }
 
     /// What MToon data the material at `index` carries, decoded from the
-    /// `VRMC_materials_mtoon` extension or the VRM 0.x material property.
-    ///
-    /// The loader keeps this data-model knowledge even though ``MToonShader``
-    /// does the MToon rendering: the built-in fallback renders MToon-authored
-    /// materials unlit, and tangent generation asks it for the normal map VRM 0.x
-    /// keeps in Unity's `_BumpMap`.
+    /// `VRMC_materials_mtoon` extension or the VRM 0.x material property. The
+    /// loader keeps it even though ``MToonShader`` does the MToon rendering,
+    /// since the built-in fallback and tangent generation both read it.
     func mtoonResolution(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor.Resolution {
         if let cached = mtoonResolutionCache[index] {
             return cached
@@ -906,8 +895,7 @@ public class GLTFEntityLoader {
     }
 
     /// A fresh mutable runtime state for the material, made by the material on
-    /// screen: asking anything else could hand out a state describing a
-    /// material that is not.
+    /// screen, so the state always describes what is actually drawn.
     func makeAnimatableMaterialState(forMaterialIndex index: Int) -> (any VRMAnimatableMaterialState)? {
         (try? shadedMaterial(withMaterialIndex: index))?.makeAnimatableState?()
     }
@@ -987,11 +975,9 @@ public class GLTFEntityLoader {
     }
 
     /// A texture with one of glTF's scalar factors baked into its pixels, built
-    /// once per texture and factor.
-    ///
-    /// RealityKit's normal and ambient-occlusion parameters carry a texture and
-    /// no scalar beside it, so a factor other than the neutral 1 has nowhere
-    /// else to go.
+    /// once per texture and factor. RealityKit's normal and ambient-occlusion
+    /// parameters carry no scalar beside the texture, so a factor other than
+    /// the neutral 1 has nowhere else to go.
     private func bakedTexture(withTextureIndex index: Int,
                               factor: Float,
                               semantic: TextureResource.Semantic,
@@ -1466,11 +1452,9 @@ public class GLTFEntityLoader {
     }
 
     /// Per-triangle UV gradients accumulated per vertex, then orthonormalized
-    /// against the normal.
-    ///
-    /// The spec only *recommends* MikkTSpace for a primitive that ships no
-    /// `TANGENT`; this averaging is the cheaper approximation, so a mesh whose
-    /// baked normal map assumes MikkTSpace can differ slightly along UV seams.
+    /// against the normal. The spec only *recommends* MikkTSpace here, and this
+    /// averaging is the cheaper approximation, so a mesh whose baked normal map
+    /// assumes MikkTSpace can differ slightly along UV seams.
     private func generatedTangentFrame(positions: [SIMD3<Float>],
                                        normals: [SIMD3<Float>],
                                        texcoords: [SIMD2<Float>],

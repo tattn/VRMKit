@@ -29,6 +29,8 @@ struct BinaryReader {
             )
         }
         defer { offset = end.partialValue }
-        return data.subdata(in: offset..<end.partialValue)
+        // A slice shares the source storage. In particular, the usually large
+        // GLB BIN chunk does not need a second file-sized allocation.
+        return data[offset..<end.partialValue]
     }
 }

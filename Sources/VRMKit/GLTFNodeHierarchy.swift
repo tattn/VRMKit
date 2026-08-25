@@ -1,20 +1,29 @@
-import VRMKit
+import Foundation
 
 /// The parent of every node of a glTF document, validated as it is built: a
 /// child index in range, no node claimed by two parents, and no loop.
 ///
-/// Everything that walks the nodes upwards reads it, so a model to load and an
-/// animation to retarget reject the same broken hierarchies.
+/// Everything that walks the nodes upwards reads it, so loading a model,
+/// retargeting an animation and editing a document all read one hierarchy and
+/// refuse the same broken ones.
 package struct GLTFNodeHierarchy {
     /// Node index → parent node index, nil for roots.
     private let parents: [Int?]
 
     package init(nodes: [GLTF.Node]) throws {
-        var parents = [Int?](repeating: nil, count: nodes.count)
-        for (index, node) in nodes.enumerated() {
-            for child in node.children ?? [] {
-                guard nodes.indices.contains(child) else {
-                    throw VRMError._dataInconsistent("node \(index) has a child \(child) of \(nodes.count) nodes")
+        try self.init(childIndices: nodes.map { $0.children ?? [] })
+    }
+
+    /// From the children each node names, which is how an edit reads them out
+    /// of its JSON without decoding the whole document.
+    package init(childIndices: [[Int]]) throws {
+        var parents = [Int?](repeating: nil, count: childIndices.count)
+        for (index, children) in childIndices.enumerated() {
+            for child in children {
+                guard parents.indices.contains(child) else {
+                    throw VRMError._dataInconsistent(
+                        "node \(index) has a child \(child) of \(childIndices.count) nodes"
+                    )
                 }
                 guard parents[child] == nil else {
                     throw VRMError._dataInconsistent("node \(child) is a child of more than one node")
@@ -25,7 +34,7 @@ package struct GLTFNodeHierarchy {
         // With at most one parent each, the hierarchy is a forest unless walking
         // up from a node returns to a node already on the way up.
         var verified: Set<Int> = []
-        for index in nodes.indices where !verified.contains(index) {
+        for index in parents.indices where !verified.contains(index) {
             var chain: Set<Int> = []
             var current = index
             while !verified.contains(current) {
@@ -44,6 +53,25 @@ package struct GLTFNodeHierarchy {
     /// The node's parent, nil for a root or an index outside the document.
     package func parent(at index: Int) -> Int? {
         parents.indices.contains(index) ? parents[index] : nil
+    }
+
+    /// `index` and every node above it, nearest first. Empty for an index
+    /// outside the document.
+    package func lineage(of index: Int) -> [Int] {
+        guard parents.indices.contains(index) else { return [] }
+        var lineage = [index]
+        while let parent = parents[lineage[lineage.count - 1]] {
+            lineage.append(parent)
+        }
+        return lineage
+    }
+
+    /// The nodes from `descendant` up to `ancestor`, both ends included and
+    /// `descendant` first, or nil when `ancestor` is not above `descendant`.
+    package func path(from ancestor: Int, to descendant: Int) -> [Int]? {
+        let lineage = self.lineage(of: descendant)
+        guard let end = lineage.firstIndex(of: ancestor) else { return nil }
+        return Array(lineage.prefix(through: end))
     }
 
     /// Rejects the malformed node graphs and skins a loader takes for granted:

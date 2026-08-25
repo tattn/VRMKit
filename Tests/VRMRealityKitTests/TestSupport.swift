@@ -148,6 +148,17 @@ enum TestSupport {
         root.modelEntitiesInHierarchy
     }
 
+    /// The skeletal pose of everything `root` draws, as the one value that says
+    /// whether the model moved at all.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func jointRotations(in root: Entity) -> [SIMD4<Float>] {
+        modelEntities(in: root).flatMap { modelEntity in
+            modelEntity.components[SkeletalPosesComponent.self]?.poses.default?
+                .jointTransforms.map(\.rotation.vector) ?? []
+        }
+    }
+
     /// Whether `entity` hangs under `ancestor`, i.e. whether it is part of that
     /// entity graph at all.
     @MainActor

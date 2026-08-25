@@ -11,10 +11,9 @@ import VRMKitRuntime
 /// implements the glTF core specification and cannot be removed.
 ///
 /// A shader replaces material *construction* only. The mesh it draws is the one
-/// the loader builds from the core glTF material: that material's textures
-/// decide which UV set the mesh carries, and its normal texture decides whether
-/// tangents are generated. A shader cannot ask for vertex data the core material
-/// does not, so it renders within those inputs.
+/// the loader builds from the core glTF material, whose textures decide the UV
+/// set and whether tangents are generated, so a shader cannot ask for vertex
+/// data the core material does not.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public protocol GLTFMaterialShader: AnyObject {
@@ -54,10 +53,8 @@ public struct GLTFShadedMaterial {
         /// Appended to the mesh's name to name the pass entity: pass "glow" of
         /// the mesh "mesh_0" is drawn by "mesh_0_glow". The entity also carries
         /// it in a ``GLTFMaterialPassComponent``, for lookups not tied to names.
-        ///
-        /// Pass names share one space across the whole shader chain, so give
-        /// one a name unlikely to collide, as ``MToonShader/outlinePassName``
-        /// does.
+        /// Names share one space across the whole shader chain, so pick one
+        /// unlikely to collide, as ``MToonShader/outlinePassName`` does.
         public var name: String
         /// Whether the pass entity starts enabled. A pass built only to be shown
         /// later issues no draw call while it stays disabled, though its entity
@@ -65,13 +62,9 @@ public struct GLTFShadedMaterial {
         public var isInitiallyEnabled: Bool
         /// Set by a pass whose geometry modifier pushes vertices outside the
         /// mesh's bounding box, which RealityKit culls by. The loader widens
-        /// that box by a budget it derives from the mesh and hands it here, so
-        /// the material can carry it to the modifier, which has to stay inside
-        /// it or be culled while still on screen.
-        ///
-        /// Internal rather than public: the budget the loader can offer suits
-        /// an outline-scale displacement and little else, and how a material
-        /// passes a number to its modifier is that shader's own encoding.
+        /// that box by a budget it derives from the mesh and hands it here, and
+        /// the modifier has to stay within it or be culled while on screen.
+        /// Internal, since the budget only suits an outline-scale displacement.
         var applyBoundsBudget: ((any Material, Float) -> any Material)?
 
         public init(material: any Material,
@@ -116,11 +109,8 @@ public struct GLTFMaterialShaderContext {
     public let materialIndex: Int
     public let material: GLTF.Material
     /// The VRM 0.x Unity material property describing ``material``, when the
-    /// document is a VRM 0.x model.
-    ///
-    /// Not public: a VRM 0.x material model hanging off a generic glTF context
-    /// couples the two. It can be opened up once a shader outside this module
-    /// needs it; the reverse is not a change that can be made.
+    /// document is a VRM 0.x model. Not public, so that a generic glTF context
+    /// stays uncoupled from the VRM 0.x material model.
     let vrm0MaterialProperty: VRM0.MaterialProperty?
 
     /// The document being loaded, the escape hatch for anything the services
@@ -152,11 +142,8 @@ public struct GLTFMaterialShaderContext {
     }
 
     /// The glTF sampler the texture at `index` references, or nil when it uses
-    /// the defaults.
-    ///
-    /// Not public: the raw glTF record, of use only to a shader packing its own
-    /// sampler state the way MToon does. Assigning a texture to a material
-    /// parameter wants ``materialTexture(withTextureIndex:semantic:)`` instead.
+    /// the defaults. Assigning a texture to a material parameter wants
+    /// ``materialTexture(withTextureIndex:semantic:)`` instead.
     func gltfSampler(withTextureIndex index: Int) throws -> GLTF.Sampler? {
         try loader.gltfSampler(withTextureIndex: index)
     }
@@ -202,9 +189,8 @@ public struct GLTFMaterialShaderContext {
 ///
 /// A state claims values one at a time: it answers nil / false for a value it
 /// does not animate, and the runtime then drives that value through the
-/// RealityKit material properties, as it does for a material with no state at
-/// all. The defaults below claim nothing, so a state only implements what it
-/// animates and the rest keeps working.
+/// RealityKit material properties instead. The defaults below claim nothing, so
+/// a state only implements what it animates.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public protocol VRMAnimatableMaterialState: AnyObject {

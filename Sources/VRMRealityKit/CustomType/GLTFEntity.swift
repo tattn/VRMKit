@@ -42,9 +42,9 @@ struct GLTFSkinIndexComponent: Component {
 
 /// The root entity of a loaded glTF scene.
 ///
-/// Besides the entity graph it keeps what the animation runtime binds against —
-/// the document, the node index → `Entity` mapping and the skin / morph
-/// bindings — and the render state of each glTF material, which the MToon and
+/// Besides the entity graph it keeps what the animation runtime binds against:
+/// the document, the node index to `Entity` mapping, the skin and morph
+/// bindings, and the render state of each glTF material, which the MToon and
 /// VRM expression runtimes drive.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public class GLTFEntity: Entity {
@@ -109,9 +109,8 @@ public class GLTFEntity: Entity {
     /// glTF node index → the blend shapes a `weights` channel writes to.
     private(set) var morphBindings: [Int: MorphBinding] = [:]
 
-    /// Everything the runtime tracks per glTF material. Keying this by material
-    /// index, rather than copying it onto every entity, is what keeps the
-    /// animatable shader parameters single-source.
+    /// Everything the runtime tracks per glTF material, keyed by material index
+    /// so that the animatable shader parameters stay single-source.
     struct MaterialRuntimeState {
         /// Every entity rendering the material, its additional passes included,
         /// so a parameter flush reaches all of them.
@@ -210,11 +209,9 @@ public class GLTFEntity: Entity {
     /// additional render passes included, for scoping the runtime material
     /// APIs to part of a model.
     ///
-    /// Only this entity's own runtime is counted: an entity loaded from
-    /// another document and parented under `root`, an attached accessory say,
-    /// is skipped, since its indices point into that document's materials. A
-    /// `clone(recursive:)` copy carries no material runtime, so under one the
-    /// answer is empty.
+    /// Only this entity's own runtime is counted, so an entity loaded from
+    /// another document and parented under `root` is skipped, and a
+    /// `clone(recursive:)` copy, which carries no material runtime, is empty.
     public func materialIndices(under root: Entity) -> Set<Int> {
         var indices: Set<Int> = []
         for modelEntity in root.modelEntitiesInHierarchy {
@@ -358,12 +355,16 @@ public class GLTFEntity: Entity {
     /// own, in which case the animation tick must not solve the same skeleton.
     var refreshesSkinningPerFrame: Bool { false }
 
+    /// The way this entity faces. A plain glTF scene is taken to face +Z; a
+    /// kind of model that knows better overrides this.
+    public var frontDirection: SIMD3<Float> { SIMD3(0, 0, 1) }
+
     /// Tells the runtime that a joint entity was posed from outside it, so that
     /// the skinned meshes catch up on the next update.
     ///
     /// Animation playback, node constraints and spring bones do this for what
-    /// they move; only code that poses a joint entity itself — a humanoid bone
-    /// driven by head tracking, say — has to call it.
+    /// they move. Only code that poses a joint entity itself, a humanoid bone
+    /// driven by head tracking say, has to call it.
     public func invalidateSkinPose() {
         isSkinPoseDirty = true
     }

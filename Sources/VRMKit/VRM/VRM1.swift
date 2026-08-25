@@ -43,6 +43,9 @@ public struct VRM1 {
         lookAt = try vrm.decodeJSONIfPresent(LookAt.self, forKey: "lookAt")
         expressions = try vrm.decodeJSONIfPresent(Expressions.self, forKey: "expressions")
         springBone = try extensions.decodeJSONIfPresent(SpringBone.self, forKey: "VRMC_springBone")
+        if let springBone, !SpringBone.supports(specVersion: springBone.specVersion) {
+            throw VRMError._notSupported("VRMC_springBone specVersion \(springBone.specVersion)")
+        }
         self.extensions = try vrm.decodeJSONIfPresent(CodableAny.self, forKey: "extensions")
         extras = try vrm.decodeJSONIfPresent(CodableAny.self, forKey: "extras")
     }
@@ -290,6 +293,12 @@ public extension VRM1 {
 // VRMC_springBone
 extension VRM1 {
     public struct SpringBone: Codable {
+        /// The `VRMC_springBone` spec versions this type models. The extension
+        /// carries its own version rather than the model's.
+        public static func supports(specVersion: String) -> Bool {
+            specVersion == "1.0" || specVersion == "1.0-beta"
+        }
+
         public let specVersion: String
         public let colliders: [Collider]?
         public let colliderGroups: [ColliderGroup]?

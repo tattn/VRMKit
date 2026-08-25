@@ -3,16 +3,12 @@ import RealityKit
 import simd
 import VRMKitRuntime
 
-extension Entity: UnityTransformCompatible {}
+extension Entity {
+    var utx: UnityTransform<Entity> { UnityTransform(self) }
+}
 
 @MainActor
-
 extension UnityTransform where Base == Entity {
-    func transformPoint(_ position: SIMD3<Float>) -> SIMD3<Float> {
-        let world = base.transformMatrix(relativeTo: nil)
-        return world.multiplyPoint(position)
-    }
-
     var localRotation: simd_quatf {
         base.transform.rotation
     }

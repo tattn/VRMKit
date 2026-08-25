@@ -12,9 +12,9 @@ import Foundation
 public final class GLTFEditableDocument {
     var json: JSONObject
 
-    /// The single buffer every buffer view indexes into.
-    /// ``writeSingleBufferEntry()`` writes the `buffers` entry describing it
-    /// once the edit that grew it is done, rather than on every append.
+    /// The single buffer every buffer view indexes into. Its JSON `byteLength`
+    /// is derived when a typed or serialized snapshot is requested, so edits
+    /// cannot leave two copies of the same state out of sync.
     var binary: Data
 
     /// An empty glTF 2.0 document, where an asset built from vertex data rather
@@ -36,17 +36,16 @@ public final class GLTFEditableDocument {
         var json = try document.rawJSON()
         binary = try Self.embedResources(of: document, into: &json)
         self.json = json
-        writeSingleBufferEntry()
     }
 
     /// The document as the typed model, decoded from its JSON on each call.
     public func typed() throws -> GLTF {
-        try json.decode(GLTF.self)
+        try jsonSnapshot().decode(GLTF.self)
     }
 
     /// Writes the document as a GLB: the JSON chunk, then the BIN chunk.
     public func serialize() throws -> Data {
-        var jsonChunk = try JSONSerialization.data(withJSONObject: json,
+        var jsonChunk = try JSONSerialization.data(withJSONObject: jsonSnapshot(),
                                                    options: [.sortedKeys, .withoutEscapingSlashes])
         jsonChunk.padToFourByteBoundary(with: 0x20)
         // Padded as it is appended, rather than in a copy of the whole buffer.
@@ -88,37 +87,70 @@ extension GLTFEditableDocument {
         declare(required, in: "extensionsRequired")
     }
 
+    /// The root `extensions` object, empty for a document carrying none.
+    var rootExtensions: JSONObject { json.object("extensions") ?? [:] }
+
+    /// The object of the root extension `name`, or nil when the document
+    /// carries none. One that is there but is not an object is refused rather
+    /// than read as absent, since writing would throw away what it holds.
+    func rootExtensionObject(_ name: String) throws -> JSONObject? {
+        try rootExtensions.requiredObject(name, of: "extensions")
+    }
+
+    /// Writes through to the object of the root extension `name`, leaving every
+    /// other field of it as it was. A document carrying no such extension is
+    /// given one and declares it; one that already carried it is left declaring
+    /// what it declared.
+    @discardableResult
+    func updateRootExtension<T>(_ name: String, _ body: (inout JSONObject) throws -> T) throws -> T {
+        let existing = try rootExtensionObject(name)
+        var extensionObject = existing ?? [:]
+        let result = try body(&extensionObject)
+        var extensions = rootExtensions
+        extensions[name] = extensionObject
+        json["extensions"] = extensions
+        if existing == nil {
+            declareExtensions(used: [name])
+        }
+        return result
+    }
+
     private func declare(_ names: Set<String>, in key: String) {
         guard !names.isEmpty else { return }
         json[key] = Set(json.strings(key)).union(names).sorted()
     }
 
-    /// Replaces `buffers` with the one entry describing the BIN buffer, or with
-    /// none when it has no bytes.
-    func writeSingleBufferEntry() {
+    /// The editable JSON with its one derived buffer entry materialized.
+    private func jsonSnapshot() -> JSONObject {
+        var snapshot = json
         guard !binary.isEmpty else {
-            json.removeValue(forKey: GLTFArray.buffers.rawValue)
-            return
+            snapshot.removeValue(forKey: GLTFArray.buffers.rawValue)
+            return snapshot
         }
-        var buffer = json.objects(.buffers).first ?? [:]
+        var buffer = snapshot.objects(.buffers).first ?? [:]
         buffer.removeValue(forKey: "uri")
         buffer["byteLength"] = binary.count
-        json[.buffers] = [buffer]
+        snapshot[.buffers] = [buffer]
+        return snapshot
     }
 
-    /// Runs `body` so that it either takes effect whole or not at all: an edit
-    /// that throws part way through leaves the document as it was.
+    /// Runs `body`, which may only append to the BIN buffer, so that it either
+    /// takes effect whole or not at all.
     ///
-    /// The BIN buffer is rolled back by its length rather than by a saved copy:
-    /// an edit only ever appends to it, and holding a second reference to it
-    /// would make the first append copy however many megabytes it already
-    /// holds, once per edit.
-    func atomically<T>(_ body: () throws -> T) throws -> T {
+    /// The buffer is rolled back by its length rather than by a saved copy,
+    /// which is why `body` may not shorten it: a second reference would make
+    /// the first append copy however many megabytes it holds. An edit that
+    /// relays the buffer out builds the new one and swaps it in once nothing
+    /// can throw, as ``prune()`` does.
+    func atomicallyAppendingBinary<T>(_ body: () throws -> T) throws -> T {
         let savedJSON = json
         let savedBinaryCount = binary.count
         do {
-            return try body()
+            let result = try body()
+            assert(binary.count >= savedBinaryCount, "an atomic edit may only append to the BIN buffer")
+            return result
         } catch {
+            assert(binary.count >= savedBinaryCount, "an atomic edit may only append to the BIN buffer")
             json = savedJSON
             binary.removeLast(binary.count - savedBinaryCount)
             throw error
