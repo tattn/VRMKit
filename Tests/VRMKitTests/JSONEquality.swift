@@ -2,11 +2,10 @@ import Foundation
 import Testing
 import VRMKit
 
-/// Compares two glTF JSON trees the way the format reads them: key order and
-/// the spelling of a number are not part of the document, everything else is.
+/// Compares two glTF JSON trees the way the format reads them: key order and the spelling
+/// of a number are not part of the document, everything else is.
 ///
-/// Returns the path of the first difference, or nil when the two are the same
-/// document.
+/// Returns the path of the first difference, or nil when the two are the same document.
 func jsonDifference(_ lhs: JSONValue, _ rhs: JSONValue, path: String = "") -> String? {
     if let lhs = lhs.objectValue, let rhs = rhs.objectValue {
         let keys = Set(lhs.keys).union(rhs.keys)
@@ -28,8 +27,8 @@ func jsonDifference(_ lhs: JSONValue, _ rhs: JSONValue, path: String = "") -> St
     }
     if lhs.isNull, rhs.isNull { return nil }
     if let left = lhs.doubleValue, let right = rhs.doubleValue {
-        // A number survives a rewrite to within an ulp or two rather than exactly,
-        // which is far below the precision of the floats glTF reads it back as.
+        // A number survives a rewrite to within an ulp or two, far below the precision of
+        // the floats glTF reads it back as.
         let tolerance = 1e-12 * Swift.max(abs(left), abs(right))
         guard abs(left - right) > tolerance else { return nil }
         return "\(path): \(left) vs \(right)"
@@ -47,8 +46,8 @@ func jsonDifference(_ lhs: [JSONObject], _ rhs: [JSONObject], path: String = "")
 }
 
 extension JSONObject {
-    /// The same JSON object without the given keys, for comparing the parts of
-    /// two documents that are meant to be identical.
+    /// The same JSON object without the given keys, for comparing the parts of two
+    /// documents that are meant to be identical.
     func removing(_ keys: String...) -> Self {
         var copy = self
         keys.forEach { copy.removeValue(forKey: $0) }
@@ -56,15 +55,15 @@ extension JSONObject {
     }
 }
 
-/// Compares what two documents' accessors actually read, rather than the
-/// indices and offsets they read it through, which editing is free to move.
-/// `offset` is where `lhs`'s accessors landed in `rhs`.
+/// Compares what two documents' accessors actually read, rather than the indices and
+/// offsets they read it through, which editing is free to move. `offset` is where
+/// `lhs`'s accessors landed in `rhs`.
 func expectSameAccessors(_ lhs: GLTFDocument,
                          _ rhs: GLTFDocument,
                          offset: Int = 0,
                          indices: [Int]? = nil,
                          sourceLocation: SourceLocation = #_sourceLocation) throws {
-    for index in indices ?? Array((lhs.gltf.accessors ?? []).indices) {
+    for index in indices ?? Array((lhs.gltf.accessors).indices) {
         let expected = try (try lhs.gltf.load(\.accessors, at: index))
             .packedData(bufferView: lhs.bufferViewProvider)
         let actual = try (try rhs.gltf.load(\.accessors, at: index + offset))

@@ -1,11 +1,10 @@
 import Foundation
 import simd
 
-/// One glTF accessor expanded into tightly packed elements, ready to be read as
-/// floats or as the unsigned integers glTF uses for indices and joint references.
+/// One glTF accessor expanded into tightly packed elements.
 ///
-/// Expanding an accessor removes its buffer view's stride and applies its sparse
-/// substitution, so it is done once here and every reader works off the result.
+/// Expanding removes the buffer view's stride and applies the sparse substitution,
+/// so it is done once here and every reader works off the result.
 package struct PackedAccessor: Sendable {
     package let accessor: GLTF.Accessor
     package let data: Data
@@ -29,6 +28,14 @@ package struct PackedAccessor: Sendable {
     package func floatElements<Element>(_ type: GLTF.Accessor.`Type`,
                                         make: (_ component: (Int) -> Float) -> Element) throws -> [Element] {
         try validate(type)
+        // Fast path: plain floats load directly, without dispatching per component.
+        if componentType == .float {
+            return elements { base, elementOffset in
+                make { component in
+                    base.loadUnaligned(fromByteOffset: elementOffset + 4 * component, as: Float.self)
+                }
+            }
+        }
         return elements { base, elementOffset in
             make { component in
                 accessor.floatComponent(base: base, offset: elementOffset + bytesPerComponent * component)
@@ -51,8 +58,7 @@ package struct PackedAccessor: Sendable {
         }
     }
 
-    /// The same, reading the components as the unsigned integers glTF defines for
-    /// indices and `JOINTS_n`.
+    /// The same, reading the components as unsigned integers.
     package func unsignedElements<Element>(_ type: GLTF.Accessor.`Type`,
                                            make: (_ component: (Int) -> UInt32) -> Element) throws -> [Element] {
         try validate(type)
@@ -64,8 +70,7 @@ package struct PackedAccessor: Sendable {
         }
     }
 
-    /// The packed bytes of a `type` accessor, checking that its components are
-    /// the unsigned integers glTF requires of an index or a joint reference.
+    /// The packed bytes of a `type` accessor, checking that its components are unsigned integers.
     package func unsignedData(_ type: GLTF.Accessor.`Type`) throws -> Data {
         try validate(type)
         _ = try unsignedReader()
@@ -80,7 +85,26 @@ package struct PackedAccessor: Sendable {
 
     /// The same, whatever element type the accessor holds.
     package func floatComponents() -> [Float] {
-        var result = [Float](repeating: 0, count: count * componentsPerElement)
+        let total = count * componentsPerElement
+        // Packed float storage is already the little-endian bytes of the result: one copy.
+        if componentType == .float {
+            return [Float](unsafeUninitializedCapacity: total) { buffer, initialized in
+                guard let destination = buffer.baseAddress else { return }
+                let expected = total * MemoryLayout<Float>.size
+                data.withUnsafeBytes { raw in
+                    let bytes = min(expected, raw.count)
+                    if bytes > 0, let base = raw.baseAddress {
+                        memcpy(destination, base, bytes)
+                    }
+                    // Packed data always covers the accessor; zero any short tail all the same.
+                    if bytes < expected {
+                        memset(UnsafeMutableRawPointer(destination).advanced(by: bytes), 0, expected - bytes)
+                    }
+                }
+                initialized = total
+            }
+        }
+        var result = [Float](repeating: 0, count: total)
         data.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return }
             for index in result.indices {
@@ -114,8 +138,7 @@ package struct PackedAccessor: Sendable {
     }
 }
 
-/// The skinning attributes, whose component types glTF constrains further than
-/// an accessor of the same shape.
+/// The skinning attributes, whose component types glTF constrains further.
 package extension PackedAccessor {
     /// `JOINTS_n` as glTF defines it: unsigned byte or short indices into the skin.
     func jointIndices() throws -> [SIMD4<UInt32>] {
@@ -150,11 +173,10 @@ package extension PackedAccessor {
     }
 }
 
-/// Accessors expanded once and reused, so the primitives, skins and animation
-/// samplers sharing one accessor expand it a single time.
+/// Accessors expanded once and reused, so readers sharing one accessor expand it a single time.
 ///
-/// A cache holds decoded geometry, so it belongs to whatever needs it and is
-/// dropped with it. Locked because a load expands primitives in parallel.
+/// Owned by whatever needs the decoded geometry. Locked because a load expands
+/// primitives in parallel.
 package final class PackedAccessorCache: Sendable {
     private let document: GLTFDocument
     private let packedAccessors = Locked<[Int: PackedAccessor]>([:])
@@ -165,8 +187,7 @@ package final class PackedAccessorCache: Sendable {
 
     package func accessor(at index: Int) throws -> PackedAccessor {
         if let cached = packedAccessors.withLock({ $0[index] }) { return cached }
-        // Expanded outside the lock: two tasks racing on the same accessor agree
-        // on the result anyway.
+        // Expanded outside the lock: two tasks racing on one accessor agree on the result.
         let packed = try PackedAccessor(accessor: document.gltf.load(\.accessors, at: index),
                                         bufferView: document.bufferViewProvider)
         packedAccessors.withLock { $0[index] = packed }
@@ -178,8 +199,7 @@ package final class PackedAccessorCache: Sendable {
         packedAccessors.withLock { $0 = [:] }
     }
 
-    /// Expands a float-valued accessor of `type` element by element. `make`
-    /// receives a reader for the element's components.
+    /// Expands a float-valued accessor of `type` element by element.
     package func floatElements<Element>(at index: Int,
                                         type: GLTF.Accessor.`Type`,
                                         make: (_ component: (Int) -> Float) -> Element) throws -> [Element] {

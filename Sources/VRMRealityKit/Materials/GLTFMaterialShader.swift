@@ -103,9 +103,8 @@ public struct GLTFMaterialShaderContext {
     /// below do not cover.
     public var document: GLTFDocument { loader.document }
 
-    /// Whether the document declares itself undrawable without `name` and this
-    /// load honors that declaration, so a shader that degrades gracefully should
-    /// still throw. VRM loads answer false even for a listed extension.
+    /// Whether the document declares itself undrawable without `name`, so a shader
+    /// that degrades gracefully should still throw.
     public func enforcesRequiredExtension(_ name: String) -> Bool {
         loader.enforcesRequiredExtension(name)
     }

@@ -3,13 +3,11 @@ import Foundation
 /// Which of a glTF document's entries are still there for a reason, which tells
 /// ``GLTFEditableDocument/prune()`` what it may throw away.
 ///
-/// An entry is drawn when a scene reaches it, which is what keeps bytes in the BIN
-/// buffer. A node is merely named when something points at it without drawing it,
-/// as a skin's joints or a humanoid bone are: naming keeps the node's entry and
-/// its transform, not the mesh it used to draw.
-///
-/// References are read through ``GLTFReferences``, so the walk cannot fall behind
-/// what rewriting knows.
+/// An entry is drawn when a scene reaches it, which is what keeps bytes in the BIN buffer.
+/// A node is merely named when something points at it without drawing it, as a skin's
+/// joints or a humanoid bone are: naming keeps the node's entry and its transform, not the
+/// mesh it used to draw. References are read through ``GLTFReferences``, so the walk cannot
+/// fall behind what rewriting knows.
 struct GLTFReachability {
     /// The entries the document still has a use for, by array.
     let live: [GLTFArray: Set<Int>]

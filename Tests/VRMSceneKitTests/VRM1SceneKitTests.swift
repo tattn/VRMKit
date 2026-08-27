@@ -23,12 +23,12 @@ struct VRM1SceneLoaderTests {
 
         #expect(vrm1.meta.name == "Seed-san")
         #expect(gltf.asset.version == "2.0")
-        let buffers = try #require(gltf.buffers, "GLTF buffers should not be nil")
+        let buffers = gltf.buffers
         #expect(buffers.map(\.byteLength) == [10783033])
-        let bufferViews = try #require(gltf.bufferViews, "GLTF bufferViews should not be nil")
+        let bufferViews = gltf.bufferViews
         #expect(bufferViews.count == 404)
         #expect(gltf.scene == 0)
-        let scenes = try #require(gltf.scenes, "GLTF scenes should not be nil")
+        let scenes = gltf.scenes
         #expect(scenes.map(\.nodes).map(\.?.count) == [7])
 
         let thumbnail = try vrmLoader.loadThumbnail()
@@ -86,8 +86,8 @@ struct VRM1SceneLoaderTests {
         #expect(abs(binding.mesh.weight(forTargetAt: binding.index) - 0.2) < 0.001)
     }
 
-    /// A `thirdPersonOnly` mesh goes in first person. What goes is the mesh,
-    /// not the node drawing it, so the nodes hanging off that one keep drawing.
+    /// A `thirdPersonOnly` mesh goes in first person. What goes is the mesh, not the node
+    /// drawing it, so the nodes hanging off that one keep drawing.
     @Test
     func testVRM1ThirdPersonOnlyMeshIsHiddenInFirstPerson() throws {
         let vrmLoader = try vrmLoader()
@@ -107,7 +107,7 @@ struct VRM1SceneLoaderTests {
     func testVRM1MToonMaterialIsLoadedFromExtension() throws {
         let vrmLoader = try vrmLoader()
         let material = try vrmLoader.material(withMaterialIndex: 0)
-        let gltfMaterial = try #require(vrmLoader.vrm.document.gltf.materials?[0])
+        let gltfMaterial = try #require(vrmLoader.vrm.document.gltf.materials[safe: 0])
 
         #expect(material.name == gltfMaterial.name)
         #expect(material.lightingModel == .constant)

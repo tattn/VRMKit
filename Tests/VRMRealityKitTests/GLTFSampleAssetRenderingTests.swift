@@ -6,9 +6,9 @@ import VRMKit
 import VRMTestSupport
 @testable import VRMRealityKit
 
-/// Renders the Khronos CC0 sample assets through ``GLTFEntityLoader``, covering
-/// what the VRM fixtures cannot: JSON glTF with external resources, non-indexed
-/// geometry, plain PBR materials, cameras and animations.
+/// Renders the Khronos CC0 sample assets through ``GLTFEntityLoader``, covering what the
+/// VRM fixtures cannot: JSON glTF with external resources, non-indexed geometry, plain
+/// PBR materials, cameras and animations.
 @Suite
 @MainActor
 struct GLTFSampleAssetRenderingTests {
@@ -27,13 +27,13 @@ struct GLTFSampleAssetRenderingTests {
         }
     }
 
-    /// The loader falls back to the default material when one fails to build, and
-    /// only logs it, so each material is built explicitly here.
+    /// The loader falls back to the default material when one fails to build and only
+    /// logs it, so each material is built explicitly here.
     @Test(arguments: GLTFSampleAsset.allCases)
     func testEveryMaterialOfEverySampleAssetBuilds(_ asset: GLTFSampleAsset) throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try GLTFEntityLoader(withURL: asset.url)
-        let materialCount = loader.document.gltf.materials?.count ?? 0
+        let materialCount = loader.document.gltf.materials.count
 
         for index in 0..<materialCount {
             #expect(throws: Never.self, "\(asset.rawValue) material \(index)") {
@@ -75,8 +75,8 @@ struct GLTFSampleAssetRenderingTests {
         let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url)
         let material = try #require(try loader.material(withMaterialIndex: 0) as? PhysicallyBasedMaterial)
 
-        // The image is a sibling file of the .gltf, so a non-nil texture proves the
-        // root directory reached the image loader.
+        // The image is a sibling file of the .gltf, so a non-nil texture proves the root
+        // directory reached the image loader.
         #expect(material.baseColor.texture != nil)
     }
 
@@ -93,8 +93,8 @@ struct GLTFSampleAssetRenderingTests {
         #expect(binding.modelEntity.components.has(SkeletalPosesComponent.self))
     }
 
-    /// SimpleMorph declares `mesh.weights = [0.5, 0.5]` and no node weights, so
-    /// it is the fixture for the `node.weights` → `mesh.weights` fallback.
+    /// SimpleMorph declares `mesh.weights = [0.5, 0.5]` and no node weights, so it is the
+    /// fixture for the `node.weights` → `mesh.weights` fallback.
     @Test
     func testInitialMorphWeightsFallBackToMeshWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -127,8 +127,8 @@ struct GLTFSampleAssetRenderingTests {
         #expect(orthographic.scale.isApproximatelyEqual(to: 1))
     }
 
-    /// A loaded animated model sits in its rest pose until something plays an
-    /// animation. Playback itself is covered by GLTFAnimationPlaybackTests.
+    /// A loaded animated model sits in its rest pose until something plays an animation.
+    /// Playback itself is covered by GLTFAnimationPlaybackTests.
     @Test
     func testAnimatedSamplesRenderTheirRestPose() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -136,7 +136,7 @@ struct GLTFSampleAssetRenderingTests {
 
         let node = try #require(entity.entity(forNodeAt: 0))
         #expect(node.transform.rotation.vector.isApproximatelyEqual(to: SIMD4<Float>(0, 0, 0, 1)))
-        #expect(entity.gltf.animations?.isEmpty == false)
+        #expect(entity.gltf.animations.isEmpty == false)
     }
 
     @Test
@@ -144,18 +144,17 @@ struct GLTFSampleAssetRenderingTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedMorphCube)
 
-        // The weights channel targets a node, which has to resolve to the
-        // blend-shape model entities the animation runtime writes to.
-        let channel = try #require(entity.gltf.animations?.first?.channels.first { $0.target.targetPath == .weights })
+        // The weights channel targets a node, which has to resolve to the blend-shape
+        // model entities the animation runtime writes to.
+        let channel = try #require(entity.gltf.animations.first?.channels.first { $0.target.targetPath == .weights })
         let nodeIndex = try #require(channel.target.node)
         let binding = try #require(entity.morphBindings[nodeIndex])
         #expect(!binding.modelEntities.isEmpty)
         #expect(binding.modelEntities.allSatisfy { !$0.blendWeights.isEmpty })
     }
 
-    /// glTF puts no restriction on where a skinned mesh sits, so it may hang
-    /// below one of its own joints, a joint whose entity is then asked for while
-    /// its own node is still under construction.
+    /// glTF puts no restriction on where a skinned mesh sits, so it may hang below one of
+    /// its own joints, whose entity is then asked for while its node is still being built.
     @Test
     func testSkinnedMeshBelowOneOfItsJointsResolvesToTheSameJointEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -184,8 +183,8 @@ struct GLTFSampleAssetRenderingTests {
         #expect(TestSupport.isDescendant(binding.modelEntity, of: meshNode))
     }
 
-    /// glTF requires every primitive of a skinned mesh to carry both skinning
-    /// attributes, so a file missing one is malformed rather than unskinned.
+    /// glTF requires every primitive of a skinned mesh to carry both skinning attributes,
+    /// so a file missing one is malformed rather than unskinned.
     @Test
     func testSkinnedPrimitiveWithoutSkinningAttributesFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -207,8 +206,8 @@ struct GLTFSampleAssetRenderingTests {
         }
     }
 
-    /// The loader keeps no scene cache, so one loader can hand out several
-    /// independently animatable copies of the same scene.
+    /// The loader keeps no scene cache, so one loader can hand out several independently
+    /// animatable copies of the same scene.
     @Test
     func testLoadingOneSceneTwiceBuildsIndependentEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -237,8 +236,8 @@ struct GLTFSampleAssetRenderingTests {
             return material.textureCoordinateTransform
         }
 
-        // Offsets and scales carry over as-is; only the rotation direction mirrors,
-        // which `TextureTransformRenderingTests` is what proves right.
+        // Offsets and scales carry over as-is; only the rotation direction mirrors, which
+        // `TextureTransformRenderingTests` proves right.
         // Material 2 "Offset UV", 3 "Rotation" (π/8), 4 "Scale", 5 "All":
         #expect(try transform(2).offset.isApproximatelyEqual(to: SIMD2<Float>(0.5, 0.5)))
         #expect(try transform(3).rotation.isApproximatelyEqual(to: -0.39269908))

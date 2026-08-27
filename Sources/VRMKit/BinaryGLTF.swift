@@ -4,10 +4,10 @@ import Foundation
 
 public struct BinaryGLTF: Sendable {
     /// Chunk 0.
-    public let jsonData: GLTF
-    /// Chunk 0 as it was written, which the editing side re-parses so that the
-    /// fields ``GLTF`` does not model survive a rewrite.
-    package let jsonChunk: Data
+    public let gltf: GLTF
+    /// Chunk 0 as it was parsed, kept whole so that what ``GLTF`` does not model survives
+    /// a rewrite.
+    package let jsonTree: JSONValue
     /// Chunk 1.
     public let binaryBuffer: Data?
 
@@ -26,8 +26,7 @@ public struct BinaryGLTF: Sendable {
 }
 
 extension BinaryGLTF {
-    /// Whether the data starts with the GLB magic and so should be parsed as a
-    /// binary glTF container rather than as JSON.
+    /// Whether the data starts with the GLB magic and so is a binary glTF container.
     public static func isGLB(_ data: Data) -> Bool {
         guard data.count >= 4 else { return false }
         return data.prefix(4).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }.littleEndian == magic
@@ -47,25 +46,22 @@ extension BinaryGLTF {
             throw VRMError.notSupportedVersion(rawVersion)
         }
 
-        // `Int(exactly:)` rather than `Int(_:)`: a GLB may declare up to 4 GB,
-        // which traps a 32 bit Int on watchOS rather than failing the load.
+        // The header length is the whole container. `Int(exactly:)`: a GLB may declare up to
+        // 4 GB, which traps a 32 bit Int on watchOS.
         let rawLength = try reader.readUInt32()
-        guard let length = Int(exactly: rawLength), length <= data.count else {
+        guard let length = Int(exactly: rawLength), length == data.count else {
             throw VRMError._dataInconsistent(
-                "GLB header length \(rawLength) overruns the \(data.count) byte file"
+                "GLB header length \(rawLength) is not the length of the \(data.count) byte file"
             )
         }
 
-        // Chunk 0 holds the JSON, chunk 1 the optional BIN; every other chunk
-        // type is one this parser does not know and the spec says to skip.
-        var json: (gltf: GLTF, chunk: Data)?
+        // Chunk 0 holds the JSON, chunk 1 the optional BIN. The spec says to skip other types.
+        var json: (gltf: GLTF, tree: JSONValue)?
         var binaryBuffer: Data?
         var chunkIndex = 0
         while reader.bytesRead + Self.chunkHeaderLength <= length {
             let rawChunkLength = try reader.readUInt32()
             let chunkType = try reader.readUInt32()
-            // Every chunk starts and ends on a 4 byte boundary, and so, given the
-            // 12 and 8 byte headers, does every payload.
             guard rawChunkLength.isMultiple(of: 4) else {
                 throw VRMError._dataInconsistent(
                     "GLB chunk of \(rawChunkLength) bytes breaks the container's 4 byte alignment"
@@ -83,7 +79,9 @@ extension BinaryGLTF {
                 guard chunkIndex == 0 else {
                     throw VRMError._dataInconsistent("the JSON chunk must be the first GLB chunk")
                 }
-                json = (try JSONDecoder().decode(GLTF.self, from: chunkData), chunkData)
+                // Parsed once: the typed model decodes off the same tree editing reads.
+                let tree = try JSONValue(parsing: chunkData)
+                json = (try tree.decode(GLTF.self), tree)
             case .bin:
                 guard chunkIndex == 1 else {
                     throw VRMError._dataInconsistent("the BIN chunk must be the second GLB chunk")
@@ -105,11 +103,10 @@ extension BinaryGLTF {
         }
 
         let chunk = try json ??? ._dataInconsistent("GLB carries no JSON chunk")
-        // The GLB container version and the asset version are independent: a 2.x
-        // container can still declare an asset this parser does not implement.
+        // The container version and the asset version are independent.
         try chunk.gltf.validateSupportedAssetVersion()
-        self.jsonData = chunk.gltf
-        self.jsonChunk = chunk.chunk
+        self.gltf = chunk.gltf
+        self.jsonTree = chunk.tree
         self.binaryBuffer = binaryBuffer
     }
 }

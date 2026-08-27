@@ -43,37 +43,49 @@ extension GLTF {
         }
 
         public struct NodeExtensions: Codable, Sendable {
+            /// Every extension on the node as the document wrote it, the modeled ones
+            /// included, so an unmodeled one is still readable.
+            public let raw: [String: JSONValue]
             public let nodeConstraint: NodeConstraint?
 
-            private enum CodingKeys: String, CodingKey {
-                case nodeConstraint = "VRMC_node_constraint"
+            /// The extension named `name`, as it was written.
+            public subscript(name: String) -> JSONValue? { raw[name] }
+
+            public init(from decoder: Decoder) throws {
+                raw = try JSONValue(from: decoder).objectValue ?? [:]
+                nodeConstraint = try raw[GLTFExtension.nodeConstraint.rawValue]?.decode(NodeConstraint.self)
+            }
+
+            public func encode(to encoder: Encoder) throws {
+                try JSONValue.object(raw).encode(to: encoder)
             }
 
             public struct NodeConstraint: Codable, Sendable {
                 /// The `VRMC_node_constraint` spec versions this type models.
-                public static func supports(specVersion: String) -> Bool {
+                public static func supports(specVersion: String?) -> Bool {
                     specVersion == "1.0" || specVersion == "1.0-beta"
                 }
 
-                public let specVersion: String
-                public let constraint: Constraint
+                public let specVersion: String?
+                /// The constraint, or nil for a spec version this package does not model:
+                /// the node goes unconstrained, and what the document wrote still travels
+                /// in the raw JSON.
+                public let constraint: Constraint?
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
 
                 public init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
-                    specVersion = try container.decode(String.self, forKey: .specVersion)
-                    guard Self.supports(specVersion: specVersion) else {
-                        throw VRMError._notSupported("VRMC_node_constraint specVersion \(specVersion)")
-                    }
-                    constraint = try container.decode(Constraint.self, forKey: .constraint)
+                    specVersion = try container.decodeIfPresent(String.self, forKey: .specVersion)
+                    constraint = Self.supports(specVersion: specVersion)
+                        ? try container.decode(Constraint.self, forKey: .constraint)
+                        : nil
                     extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
                     extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
                 }
 
-                /// How a node is driven by another's transform. The extension
-                /// defines exactly one per constraint, so one naming none or
-                /// several is refused rather than resolved by reading order.
+                /// How a node is driven by another's transform. The extension defines exactly
+                /// one per constraint, so naming none or several is refused.
                 public enum Constraint: Codable, Sendable {
                     case roll(RollConstraint)
                     case aim(AimConstraint)

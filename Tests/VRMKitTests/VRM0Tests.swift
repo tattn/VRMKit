@@ -21,9 +21,9 @@ struct VRM0Tests {
         #expect(vrm.meta.version == "1.0.0")
 
         #expect(vrm.meta.allowedUserName == "Everyone")
-        #expect(vrm.meta.violentUssageName == "Disallow")
-        #expect(vrm.meta.sexualUssageName == "Disallow")
-        #expect(vrm.meta.commercialUssageName == "Allow")
+        #expect(vrm.meta.violentUsage == "Disallow")
+        #expect(vrm.meta.sexualUsage == "Disallow")
+        #expect(vrm.meta.commercialUsage == "Allow")
         #expect(vrm.meta.otherPermissionUrl == "http://3d.nicovideo.jp/alicia/rule.html")
 
         #expect(vrm.meta.licenseName == "Other")
@@ -61,10 +61,10 @@ struct VRM0Tests {
     @Test
     func testBlendShapeMaster() {
         let target = vrm.blendShapeMaster.blendShapeGroups[1]
-        #expect(target.binds?[0].index == 0)
-        #expect(target.binds?[0].mesh == 3)
-        #expect(target.binds?[0].weight == 100)
-        #expect(target.materialValues?.isEmpty == true)
+        #expect(target.binds[0].index == 0)
+        #expect(target.binds[0].mesh == 3)
+        #expect(target.binds[0].weight == 100)
+        #expect(target.materialValues.isEmpty)
         #expect(target.name == "A")
         #expect(target.presetName == "a")
         #expect(target.isBinary == false)
@@ -72,12 +72,12 @@ struct VRM0Tests {
 
     @Test
     func testFirstPerson() {
-        #expect(vrm.firstPerson.firstPersonBone == 36)
-        #expect(vrm.firstPerson.firstPersonBoneOffset.x == 0)
-        #expect(vrm.firstPerson.firstPersonBoneOffset.y == 0.06)
-        #expect(vrm.firstPerson.firstPersonBoneOffset.z == 0)
-        #expect(vrm.firstPerson.meshAnnotations[0].firstPersonFlag == "Auto")
-        #expect(vrm.firstPerson.meshAnnotations[0].mesh == 0)
+        #expect(vrm.firstPerson?.firstPersonBone == 36)
+        #expect(vrm.firstPerson?.firstPersonBoneOffset.x == 0)
+        #expect(vrm.firstPerson?.firstPersonBoneOffset.y == 0.06)
+        #expect(vrm.firstPerson?.firstPersonBoneOffset.z == 0)
+        #expect(vrm.firstPerson?.meshAnnotations[0].firstPersonFlag == "Auto")
+        #expect(vrm.firstPerson?.meshAnnotations[0].mesh == 0)
     }
 
     @Test
@@ -93,7 +93,7 @@ struct VRM0Tests {
         #expect(target.gravityDir.z == 0.0)
         #expect(target.gravityPower == 0.0)
         #expect(target.hitRadius == 0.01)
-        #expect(target.stiffiness == 0.65)
+        #expect(target.stiffness == 0.65)
     }
 
     @Test

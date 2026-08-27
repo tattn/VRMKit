@@ -2,14 +2,12 @@ import Foundation
 
 /// One JSON value of a glTF document.
 ///
-/// An asset carries extensions and `extras` this package does not model, and both
-/// a load and an edit hand them through untouched. This is the one shape they
-/// travel in.
+/// The shape extensions and `extras` this package does not model travel in, so
+/// that a load and an edit hand them through untouched.
 public enum JSONValue: Hashable, Sendable {
     case null
     case bool(Bool)
-    /// Kept apart from ``double(_:)`` so a rewrite spells a number the way the
-    /// document did.
+    /// Kept apart from ``double(_:)`` so a rewrite spells a number the way the document did.
     case int(Int)
     case double(Double)
     case string(String)
@@ -65,8 +63,8 @@ public extension JSONValue {
         }
     }
 
-    /// Nil for a number a `Float` cannot represent, since `1e100` overflowing
-    /// to infinity is worse for a renderer than falling back to a default.
+    /// Nil for a number a `Float` cannot represent: `1e100` overflowing to infinity
+    /// is worse for a renderer than falling back to a default.
     var floatValue: Float? {
         guard let double = doubleValue else { return nil }
         let float = Float(double)
@@ -148,17 +146,15 @@ extension JSONValue: ExpressibleByDictionaryLiteral {
 // MARK: - Equality
 
 public extension JSONValue {
-    /// JSON has one number type, so `1` and `1.0` are the same number however
-    /// this package spells them.
+    /// JSON has one number type, so `1` and `1.0` are equal however this package spells them.
     static func == (lhs: JSONValue, rhs: JSONValue) -> Bool {
         switch (lhs, rhs) {
         case (.null, .null): return true
         case let (.bool(lhs), .bool(rhs)): return lhs == rhs
         case let (.int(lhs), .int(rhs)): return lhs == rhs
         case let (.double(lhs), .double(rhs)): return lhs == rhs
-        // `Double(exactly:)` rather than `Double(_:)`: past 2^53 the conversion
-        // rounds, and two integers a `Double` cannot tell apart are still two
-        // different numbers.
+        // `Double(exactly:)`: past 2^53 the conversion rounds, and two integers a
+        // `Double` cannot tell apart are still two different numbers.
         case let (.int(lhs), .double(rhs)), let (.double(rhs), .int(lhs)): return Double(exactly: lhs) == rhs
         case let (.string(lhs), .string(rhs)): return lhs == rhs
         case let (.array(lhs), .array(rhs)): return lhs == rhs
@@ -174,8 +170,7 @@ public extension JSONValue {
         case .bool(let value):
             hasher.combine(1)
             hasher.combine(value)
-        // Both number cases hash as the one number they stand for, so the two
-        // spellings land in the same bucket as they compare equal.
+        // Both number cases hash as the one number they stand for, matching `==`.
         case .int(let value):
             hasher.combine(2)
             hasher.combine(value)
@@ -208,8 +203,7 @@ extension JSONValue: Codable {
             self = .null
         } else if let value = try? container.decode(Bool.self) {
             self = .bool(value)
-        // Before `Double`, so that a number written without a fraction is
-        // written back out without one.
+        // Before `Double`, so a number written without a fraction is written back without one.
         } else if let value = try? container.decode(Int.self) {
             self = .int(value)
         } else if let value = try? container.decode(Double.self) {
@@ -245,11 +239,11 @@ extension JSONValue: Codable {
 public extension JSONValue {
     /// The JSON an `Encodable` value writes itself as.
     init<T: Encodable>(encoding value: T) throws {
-        self = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
+        self = try JSONValueEncoding.encode(value)
     }
 
     func decode<T: Decodable>(_ type: T.Type) throws -> T {
-        try JSONDecoder().decode(type, from: serialized())
+        try JSONValueDecoding.decode(type, from: self)
     }
 
     /// Keys sorted, so writing the same document twice gives the same bytes.
@@ -260,6 +254,36 @@ public extension JSONValue {
     }
 
     init(parsing data: Data) throws {
-        self = try JSONDecoder().decode(JSONValue.self, from: data)
+        let object: Any
+        do {
+            object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        } catch {
+            throw VRMError._dataInconsistent("not valid JSON: \(error.localizedDescription)")
+        }
+        self.init(foundation: object)
+    }
+
+    /// Wraps what `JSONSerialization` parsed, keeping how each number was spelled.
+    private init(foundation object: Any) {
+        switch object {
+        case let number as NSNumber:
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                self = .bool(number.boolValue)
+            } else if UnicodeScalar(UInt8(number.objCType.pointee)) == "d" {
+                self = .double(number.doubleValue)
+            } else if let int = Int(exactly: number) {
+                self = .int(int)
+            } else {
+                self = .double(number.doubleValue)
+            }
+        case let string as String:
+            self = .string(string)
+        case let elements as [Any]:
+            self = .array(elements.map(JSONValue.init(foundation:)))
+        case let members as [String: Any]:
+            self = .object(members.mapValues(JSONValue.init(foundation:)))
+        default:
+            self = .null
+        }
     }
 }

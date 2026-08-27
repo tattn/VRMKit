@@ -30,8 +30,9 @@ struct VRM1RealityKitTests {
         // pass's geometry modifier samples, so the main material leaves it free.
         #expect(customMaterial.clearcoat.texture == nil)
 
-        let direction = MToonMaterialParameters.defaultLightDirection
-        #expect(customMaterial.custom.value.isApproximatelyEqual(to: SIMD4<Float>(direction, 0)))
+        // The light direction rides in the parameter texture; custom.value only
+        // carries the outline budget.
+        #expect(customMaterial.custom.value.isApproximatelyEqual(to: SIMD4<Float>(0, 0, 0, 0)))
     }
 
     @Test
@@ -63,9 +64,9 @@ struct VRM1RealityKitTests {
         let texture = try parameters.textureResource()
         let shader = TestSupport.mtoonShaderSource
 
-        #expect(MToonMaterialParameters.baseParameterRowCount == 17)
+        #expect(MToonMaterialParameters.baseParameterRowCount == 18)
         #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
-        #expect(MToonMaterialParameters.textureRowCount == 26)
+        #expect(MToonMaterialParameters.textureRowCount == 27)
         #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
         #expect(texture.width == MToonMaterialParameters.textureRowCount)
         #expect(texture.height == 1)
@@ -479,8 +480,8 @@ struct VRM1RealityKitTests {
         }
     }
 
-    /// The light direction is carried in `custom.value` and the light color in a
-    /// parameter row, so updating one must not drop the other.
+    /// The light direction and the light color each ride in their own parameter
+    /// row, so updating one must not drop the other.
     @Test
     func testMToonLightColorUpdateKeepsTheCustomLightDirection() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -495,7 +496,6 @@ struct VRM1RealityKitTests {
         #expect(parameters.lightDirection.isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
 #if !os(visionOS)
         let material = try firstCustomMaterial(in: vrmEntity)
-        #expect(material.custom.value.isApproximatelyEqual(to: SIMD4<Float>(0, 0, -1, 0)))
         #expect(material.custom.texture != nil)
 #endif
     }
@@ -1345,30 +1345,48 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testSetMToonLightDirectionUpdatesRegisteredMaterials() async throws {
+    func testSetMToonLightDirectionUpdatesParameterRows() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let vrmLoader = try VRMEntityLoader(withData: seedSan)
         let vrmEntity = try await vrmLoader.loadEntity()
+        let writesBefore = mtoonParameterWriteCounts(in: vrmEntity)
 
-        // The direction is normalized before it reaches the parameter rows.
+        // The direction is normalized before it reaches the parameter rows, and
+        // rides there rather than in the materials: tracking a light per frame
+        // rewrites no ModelComponent.
         vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
 
-        // Every MToon material is rebound, each keeping the parameter texture the
-        // shader samples. Only xyz carries the direction; w is the bounds budget.
-        var checkedMaterials = 0
+        var checkedStates = 0
+        for index in vrmEntity.materialStates.keys {
+            guard let state = vrmEntity.mtoonState(forMaterialIndex: index) else { continue }
+            #expect(state.parameters.lightDirection.isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
+            checkedStates += 1
+        }
+        #expect(checkedStates > 0)
+        #expect(mtoonParameterWriteCounts(in: vrmEntity) != writesBefore)
+
+        // The materials still hold the shared parameter texture, with only the
+        // outline budget in custom.value.
         for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
             guard let model = modelEntity.components[ModelComponent.self] else { continue }
             let isOutlinePass = modelEntity.components.has(GLTFMaterialPassComponent.self)
             for material in model.materials.compactMap({ $0 as? CustomMaterial }) {
                 let value = material.custom.value
-                #expect(SIMD3<Float>(value.x, value.y, value.z).isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
+                #expect(SIMD3<Float>(value.x, value.y, value.z) == .zero)
                 #expect(isOutlinePass ? value.w > 0 : value.w == 0)
                 #expect(material.custom.texture != nil)
-                checkedMaterials += 1
             }
         }
-        #expect(checkedMaterials > 0)
+    }
+
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func mtoonParameterWriteCounts(in entity: VRMEntity) -> [Int: Int] {
+        var counts: [Int: Int] = [:]
+        for index in entity.materialStates.keys {
+            counts[index] = entity.mtoonState(forMaterialIndex: index)?.parameterTexture?.writeCount
+        }
+        return counts
     }
 
     @Test

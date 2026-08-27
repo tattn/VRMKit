@@ -7,11 +7,11 @@ import Testing
 
 @Suite
 struct VRMSceneLoaderMaterialTests {
-    /// glTF lets several nodes draw one mesh while an `SCNNode` belongs to one
-    /// parent, so sharing a node would leave the first of them empty.
+    /// glTF lets several nodes draw one mesh while an `SCNNode` belongs to one parent,
+    /// so sharing a node would leave the first of them empty.
     @Test
     func testAMeshDrawnByTwoNodesAppearsUnderBoth() throws {
-        let original = try #require(try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data).gltf.nodes)
+        let original = try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data).gltf.nodes
         let drawing = try #require(original.firstIndex { $0.mesh != nil })
         let instanced = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
             var nodes = json.objects(.nodes)
@@ -41,12 +41,12 @@ struct VRMSceneLoaderMaterialTests {
         #expect(first.childNodes[0].childNodes.first !== second.childNodes[0].childNodes.first)
     }
 
-    /// `VRM_USE_GLTFSHADER` asks for the glTF material as it is, which is what
-    /// a plain glTF prop appended to a VRM 0.x avatar gets.
+    /// `VRM_USE_GLTFSHADER` asks for the glTF material as it is, which is what a plain
+    /// glTF prop appended to a VRM 0.x avatar gets.
     @Test
     func testAGLTFShaderMaterialIsShadedAsGLTFRatherThanFlat() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let appendedIndex = try document.typed().materials?.count ?? 0
+        let appendedIndex = try document.typed().materials.count
         try document.append(try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url), under: 0)
 
         let loader = try VRMSceneLoader(withData: try document.serialize())
@@ -56,8 +56,8 @@ struct VRMSceneLoaderMaterialTests {
         #expect(try loader.material(withMaterialIndex: 0).lightingModel == .constant)
     }
 
-    /// A model painting its vertices is drawn with them: SceneKit multiplies
-    /// the material's diffuse by the colour source, as glTF has COLOR_0 do.
+    /// A model painting its vertices is drawn with them: SceneKit multiplies the
+    /// material's diffuse by the colour source, as glTF has COLOR_0 do.
     @Test
     func testVertexColoursReachTheGeometry() throws {
         let coloured = try VRMSampleAsset.seedSan.rewritingJSON { json in
@@ -80,12 +80,12 @@ struct VRMSceneLoaderMaterialTests {
         #expect(colours.vectorCount == geometry.sources(for: .vertex).first?.vectorCount)
     }
 
-    /// Every attribute describes the same vertices. One holding fewer would be
-    /// read past its end, so it fails the load instead.
+    /// Every attribute describes the same vertices. One holding fewer would be read past
+    /// its end, so it fails the load instead.
     @Test
     func testAVertexAttributeShorterThanPositionFailsTheLoad() throws {
         let document = try GLTFDocument(data: VRMSampleAsset.seedSan.data)
-        let normal = try #require(document.gltf.meshes?.first?.primitives.first?.attributes[.NORMAL])
+        let normal = try #require(document.gltf.meshes.first?.primitives.first?.attributes[.NORMAL])
         let short = try VRMSampleAsset.seedSan.rewritingJSON { json in
             var accessors = json.objects(.accessors)
             accessors[normal]["count"] = 1
@@ -96,8 +96,8 @@ struct VRMSceneLoaderMaterialTests {
         #expect(throws: VRMError.self) { try loader.mesh(withMeshIndex: 0, skinIndex: nil, nodeIndex: 0) }
     }
 
-    /// An `auto` mesh keeps the triangles no head bone draws, and a primitive
-    /// the head draws whole goes with it.
+    /// An `auto` mesh keeps the triangles no head bone draws, and a primitive the head
+    /// draws whole goes with it.
     @Test
     func testFirstPersonAutoDrawsAMeshWithoutTheHeadsTriangles() throws {
         // Alicia annotates every mesh `Auto`, hers being split head from body.
@@ -108,8 +108,8 @@ struct VRMSceneLoaderMaterialTests {
         vrmNode.setFirstPersonRenderMode(.firstPerson)
         let firstPerson = vrmNode.drawnPrimitives
 
-        // The body is still drawn, the head is not, and one primitive draws
-        // part of what it did through a node standing in for it.
+        // The body is still drawn, the head is not, and one primitive draws part of what
+        // it did through a node standing in for it.
         #expect(!firstPerson.isEmpty)
         #expect(firstPerson.values.reduce(0, +) < thirdPerson.values.reduce(0, +))
         #expect(!Set(thirdPerson.keys).subtracting(firstPerson.keys).isEmpty)
@@ -120,8 +120,8 @@ struct VRMSceneLoaderMaterialTests {
         #expect(vrmNode.drawnPrimitives == thirdPerson)
     }
 
-    /// glTF multiplies the textures a material samples by the factors beside
-    /// them, none of which SceneKit applies on its own.
+    /// glTF multiplies the textures a material samples by the factors beside them, none
+    /// of which SceneKit applies on its own.
     @Test
     func testTheFactorsBesideATexturedMaterialsSlotsAreApplied() throws {
         let index = 7
@@ -149,16 +149,15 @@ struct VRMSceneLoaderMaterialTests {
 
         let tint = try #require(material.multiply.contents as? VRMColor).simd
         #expect(simd_distance(tint, SIMD4<Float>(0.5, 0.25, 0.125, 1)) < 1e-4)
-        // The strongest channel of the emissive factor is as much of it as an
-        // intensity can carry.
+        // The strongest channel of the emissive factor is as much as an intensity carries.
         #expect(abs(material.emission.intensity - 0.5) < 1e-4)
         // Nothing between transparent and opaque survives a cutoff.
         #expect(material.blendMode == .replace)
         #expect(material.shaderModifiers?[.fragment]?.contains("0.25") == true)
     }
 
-    /// A material emitting a colour of its own emits it without a texture to
-    /// sample, which SceneKit reads off the same property.
+    /// A material emitting a colour of its own emits it without a texture to sample,
+    /// which SceneKit reads off the same property.
     @Test
     func testAnUntexturedEmissiveFactorIsTheEmittedColour() throws {
         let index = 7
@@ -175,9 +174,8 @@ struct VRMSceneLoaderMaterialTests {
         #expect(simd_distance(colour, SIMD4<Float>(1, 0.5, 0, 1)) < 1e-4)
     }
 
-    /// An `SCNGeometrySource` carries the semantic it was built for, so a cache
-    /// keyed by accessor alone would hand the second attribute the first's
-    /// source.
+    /// An `SCNGeometrySource` carries the semantic it was built for, so a cache keyed by
+    /// accessor alone would hand the second attribute the first's source.
     @Test
     func testAnAccessorReadAsTwoSemanticsGivesEachItsOwnSource() throws {
         let shared = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
@@ -192,7 +190,7 @@ struct VRMSceneLoaderMaterialTests {
             }
         }
         let loader = try VRMSceneLoader(withData: shared)
-        let position = try #require(try GLTFDocument(data: shared).gltf.meshes?.first?
+        let position = try #require(try GLTFDocument(data: shared).gltf.meshes.first?
             .primitives.first?.attributes[.POSITION])
 
         let sources = try loader.attributes([.POSITION: position, .NORMAL: position])
@@ -201,12 +199,12 @@ struct VRMSceneLoaderMaterialTests {
         #expect(sources.count == 2)
     }
 
-    /// glTF indices are unsigned, and the check is the one the RealityKit
-    /// loader uses rather than one that only rejects floats.
+    /// glTF indices are unsigned, checked the way the RealityKit loader checks them
+    /// rather than by only rejecting floats.
     @Test
     func testAnIndexAccessorWithSignedComponentsFailsTheLoad() throws {
         let document = try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let accessorIndex = try #require(document.gltf.meshes?.first?.primitives.first?.indices)
+        let accessorIndex = try #require(document.gltf.meshes.first?.primitives.first?.indices)
         let signed = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
             var accessors = json.objects(.accessors)
             accessors[accessorIndex]["componentType"] = 5122  // SHORT
@@ -217,12 +215,12 @@ struct VRMSceneLoaderMaterialTests {
         #expect(throws: VRMError.self) { try loader.loadScene() }
     }
 
-    /// A skin claiming more inverse bind matrices than its buffer view holds
-    /// fails the load rather than reading past it.
+    /// A skin claiming more inverse bind matrices than its buffer view holds fails the
+    /// load rather than reading past it.
     @Test
     func testInverseBindMatricesBeyondTheirBufferViewFailTheLoad() throws {
         let document = try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let accessorIndex = try #require(document.gltf.skins?.compactMap(\.inverseBindMatrices).first)
+        let accessorIndex = try #require(document.gltf.skins.compactMap(\.inverseBindMatrices).first)
         let overrunning = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
             var accessors = json.objects(.accessors)
             accessors[accessorIndex]["count"] = 1_000_000
@@ -233,12 +231,12 @@ struct VRMSceneLoaderMaterialTests {
         #expect(throws: VRMError.self) { try loader.inverseBindMatrix(withAccessorIndex: accessorIndex) }
     }
 
-    /// A `VRM_USE_GLTFSHADER` entry carries no meaningful Unity queue, so the
-    /// order follows the glTF alpha mode.
+    /// A `VRM_USE_GLTFSHADER` entry carries no meaningful Unity queue, so the order
+    /// follows the glTF alpha mode.
     @Test
     func testAGLTFShaderMaterialTakesItsRenderQueueFromTheAlphaMode() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let appendedIndex = try document.typed().materials?.count ?? 0
+        let appendedIndex = try document.typed().materials.count
         try document.append(try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url), under: 0)
 
         let blended = try GLBRewriter.rewritingJSON(of: try document.serialize()) { json in
@@ -254,14 +252,13 @@ struct VRMSceneLoaderMaterialTests {
             .materialProperties[0].renderQueue)
     }
 
-    /// An `SCNGeometryElement` carries the primitive mode as well as the
-    /// accessor, so two primitives sharing one indices accessor must each get
-    /// the mode they were built for.
+    /// An `SCNGeometryElement` carries the primitive mode as well as the accessor, so two
+    /// primitives sharing one indices accessor each get the mode they were built for.
     @Test
     func testAnIndexAccessorReadAsTwoModesGivesEachItsOwnElement() throws {
         let loader = try VRMSceneLoader(withData: VRMSampleAsset.aliciaSolid.data)
         let indices = try #require(try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
-            .gltf.meshes?.first?.primitives.first?.indices)
+            .gltf.meshes.first?.primitives.first?.indices)
 
         let triangles = try loader.indexAccessor(withAccessorIndex: indices, mode: .TRIANGLES)
         let lines = try loader.indexAccessor(withAccessorIndex: indices, mode: .LINES)
@@ -284,9 +281,8 @@ struct VRMSceneLoaderMaterialTests {
                                   expected: [1, 32768 / 65535, 0, 0])
     }
 
-    /// glTF stores skin weights as floats or as normalized integers, and
-    /// `SCNSkinner` reads bone weights as floats, so the integers are expanded
-    /// into the fractions they stand for rather than handed over as they are.
+    /// glTF stores skin weights as floats or normalized integers, and `SCNSkinner` reads
+    /// floats, so the integers are expanded into the fractions they stand for.
     private func expectExpandedWeights(componentType: Int,
                                        bytes: [UInt8],
                                        expected: [Float],
@@ -326,12 +322,12 @@ struct VRMSceneLoaderMaterialTests {
         #expect(Array(source.data) == [3, 1, 0, 0])
     }
 
-    /// `KHR_texture_transform` moves the UVs a material samples its textures
-    /// with, which SceneKit reads off the property's contents transform.
+    /// `KHR_texture_transform` moves the UVs a material samples its textures with, which
+    /// SceneKit reads off the property's contents transform.
     @Test(arguments: [Float(0), .pi / 2])
     func testTextureTransformReachesTheMaterialProperty(rotation: Float) throws {
         let materialIndex = try #require(try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
-            .gltf.materials?.firstIndex { $0.pbrMetallicRoughness?.baseColorTexture != nil })
+            .gltf.materials.firstIndex { $0.pbrMetallicRoughness?.baseColorTexture != nil })
         let transformed = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
             var materials = json.objects(.materials)
             materials[materialIndex].withObject("pbrMetallicRoughness") { pbr in
@@ -363,8 +359,7 @@ private extension SCNNode {
         childNodes.flatMap { [$0] + $0.allDescendants }
     }
 
-    /// Every primitive drawn below this node, and how many triangle indices
-    /// each draws.
+    /// Every primitive drawn below this node, and how many triangle indices each draws.
     var drawnPrimitives: [ObjectIdentifier: Int] {
         allDescendants.reduce(into: [:]) { drawn, node in
             guard !node.isHiddenBelow(self), let count = node.geometry?.triangleIndexCount else { return }

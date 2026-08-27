@@ -23,9 +23,7 @@ public final class MToonShader: GLTFMaterialShader {
 
     /// Which materials this shader renders as MToon.
     public enum Source: Sendable {
-        /// Only materials authored as MToon, through the
-        /// `VRMC_materials_mtoon` extension or a VRM 0.x MToon material
-        /// property. The default.
+        /// Only materials authored as MToon. The default.
         case authoredOnly
         /// Materials authored as MToon keep their authored values, and every
         /// other material, PBR and Unlit alike, is converted to MToon with
@@ -36,9 +34,9 @@ public final class MToonShader: GLTFMaterialShader {
         public static var convertAll: Source { .convertAll(MToonConversionStyle()) }
     }
 
-    /// When an MToon material gets the sibling entity drawing its
-    /// inverted-hull outline. The pass set is fixed at load; what an existing
-    /// pass draws stays adjustable through the ``GLTFEntity`` outline API.
+    /// When an MToon material gets the sibling entity drawing its inverted-hull
+    /// outline. The pass set is fixed at load; what an existing pass draws stays
+    /// adjustable through the ``GLTFEntity`` outline API.
     public enum OutlinePass: Sendable {
         /// A pass for materials whose MToon data draws an outline. The default.
         case automatic
@@ -72,7 +70,7 @@ public final class MToonShader: GLTFMaterialShader {
 
 #if !os(visionOS)
     /// Everything derived from one MToon material. A non-nil state is what
-    /// "this material renders as MToon" means.
+    /// "renders as MToon" means.
     private struct MToonState {
         let descriptor: MToonMaterialDescriptor
         let parameters: MToonMaterialParameters
@@ -101,9 +99,8 @@ public final class MToonShader: GLTFMaterialShader {
         do {
             return try shadedMToonMaterial(for: context)
         } catch {
-            // A document requiring `VRMC_materials_mtoon` cannot be drawn without
-            // MToon at all, and an `UnrenderableRequirement` is ruled out whatever
-            // draws the material next.
+            // A document requiring `VRMC_materials_mtoon` cannot be drawn without MToon
+            // at all, whatever draws the material next.
             guard !isMToonRequired(by: context),
                   !(error is UnrenderableRequirement) else { throw error }
             logFallback(error, context: context)
@@ -134,8 +131,8 @@ public final class MToonShader: GLTFMaterialShader {
 
     private func shadedMToonMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
         guard let state = try makeState(for: context) else { return nil }
-        // The rows the expression runtime animates are built here, so the state
-        // factory only hands every entity graph its own copy.
+        // The rows the expression runtime animates are built here; the state factory
+        // only hands every entity graph its own copy.
         let parameters = state.parameters
         var shaded = GLTFShadedMaterial(material: try customMToonMaterial(state, context: context),
                                         makeAnimatableState: { MToonAnimatableMaterialState(parameters: parameters) })
@@ -164,13 +161,12 @@ public final class MToonShader: GLTFMaterialShader {
                           library: library)
     }
 
-    /// The MToon material model to render: the authored one when the material
-    /// carries MToon data, else, under ``Source/convertAll(_:)``, one synthesized
-    /// from its standard Unlit / PBR values.
+    /// The authored MToon model, or under ``Source/convertAll(_:)`` one synthesized from
+    /// the material's standard Unlit / PBR values.
     ///
-    /// A material authored against an unimplemented MToon version is neither, and
-    /// drops to the Unlit approximation the MToon specification names as the
-    /// fallback, unless the document requires the extension.
+    /// A material authored against an unimplemented MToon version is neither, and drops to
+    /// the Unlit approximation the specification names as the fallback, unless the document
+    /// requires the extension.
     private func resolvedDescriptor(for context: GLTFMaterialShaderContext) throws -> MToonMaterialDescriptor? {
         switch try context.mtoonResolution() {
         case .supported(let authored):
@@ -203,9 +199,8 @@ public final class MToonShader: GLTFMaterialShader {
         let mtoon = state.descriptor
         let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: state.library)
         var material = try CustomMaterial(surfaceShader: surface, lightingModel: .unlit)
-        // MToon needs more textures than CustomMaterial has semantic channels, so
-        // the extra slots ride on unrelated ones. MToon.metal reads them back the
-        // same way.
+        // MToon needs more textures than CustomMaterial has semantic channels, so the
+        // extra slots ride on unrelated ones. MToon.metal reads them back the same way.
         material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base, context: context))
         material.roughness.texture = try mtoonTexture(mtoon, slot: .shade, context: context)
         material.specular.texture = try mtoonTexture(mtoon, slot: .shadingShift, context: context)
@@ -243,9 +238,8 @@ public final class MToonShader: GLTFMaterialShader {
     }
 
     /// MToon.metal applies the UV transform from the parameter rows, so
-    /// `textureCoordinateTransform` is left at identity here. The outline budget
-    /// starts at 0, which the geometry modifier reads as unbudgeted; the loader
-    /// writes the real one per pass entity.
+    /// `textureCoordinateTransform` is left at identity here. The outline budget starts
+    /// at 0, read as unbudgeted; the loader writes the real one per pass entity.
     private func applyParameters(_ state: MToonState, to material: inout CustomMaterial) {
         material.custom.value = state.parameters.customValue(outlineBudget: 0)
         material.custom.texture = state.parameterTexture
@@ -315,13 +309,13 @@ public final class MToonShader: GLTFMaterialShader {
                                                                  rotation: selected.rotation)
     }
 
-    /// RealityKit gives a material one UV transform and its mesh one UV set, so
-    /// MToon draws all of its textures through the first UV-accessed texture's
+    /// RealityKit gives a material one UV transform and its mesh one UV set, so MToon
+    /// draws all of its textures through the first UV-accessed texture's
     /// `KHR_texture_transform`, on the UV set the core material selected.
     ///
-    /// This covers the textures only MToon names, which the loader never sees. A
-    /// document that merely uses the extension renders through the approximation
-    /// and logs it; one that requires it fails the material instead.
+    /// Covers the textures only MToon names, which the loader never sees. A document that
+    /// merely uses the extension renders through the approximation and logs it; one that
+    /// requires it fails the material instead.
     private func validateTextureTransformsAreRenderable(_ textures: [MToonMaterialDescriptor.Texture],
                                                         context: GLTFMaterialShaderContext) throws {
         guard context.enforcesRequiredExtension(GLTFExtension.textureTransform.rawValue) else { return }
@@ -422,9 +416,8 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
     /// rows underneath, so releasing it reveals their current values.
     var outlineOverride: MToonOutlineOverride?
 #if !os(visionOS)
-    /// This entity's own rows on the GPU, written in place. The loader hands
-    /// every entity graph the same material, so the first flush swaps in this one
-    /// and later writes reach the GPU without a material to rewrite.
+    /// This entity's own rows on the GPU, written in place. The loader hands every entity
+    /// graph the same material, so the first flush swaps in this one.
     private(set) var parameterTexture: MToonParameterTexture?
     /// Whether ``apply(to:)`` has put ``parameterTexture`` on the materials yet.
     private var isParameterTextureInstalled = false
@@ -455,9 +448,8 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
         return true
     }
 
-    /// The light direction rides in `custom.value` rather than in a parameter
-    /// row, so it reaches the materials through ``apply(to:)`` alone, without
-    /// rebuilding the packed texture.
+    /// The light direction rides in its own parameter row, so tracking a light per frame
+    /// is one texture blit rather than a `ModelComponent` rewrite on every material.
     func setLightDirection(_ direction: SIMD3<Float>) {
         parameters.lightDirection = direction
     }
@@ -465,6 +457,14 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
     func setLighting(color: SIMD3<Float>, ambient: SIMD3<Float>) {
         parameters.lightColor = SIMD4<Float>(color, 1)
         parameters.ambientColor = SIMD4<Float>(ambient, 1)
+    }
+
+    /// Blocks until this material's committed parameter writes reach the GPU,
+    /// for a caller about to render on another queue: the snapshot.
+    func waitForParameterWrites() {
+#if !os(visionOS)
+        parameterTexture?.waitForWrites()
+#endif
     }
 
     private var drawnParameters: MToonMaterialParameters {
@@ -494,9 +494,8 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 #endif
     }
 
-    /// Only the first flush has anything to push: it puts this entity's own
-    /// parameter texture on the materials, and every write after that lands in
-    /// the texture they already sample.
+    /// Only the first flush has anything to push: every write after it lands in the
+    /// parameter texture the materials already sample.
     var updatesMaterialsOnFlush: Bool {
 #if os(visionOS)
         return false
@@ -519,16 +518,5 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 #endif
     }
 
-    /// Pushes ``setLightDirection(_:)``'s value alone, leaving the parameter
-    /// texture untouched, which is cheap enough for per-frame light tracking.
-    func applyLightDirection(to material: any Material) -> any Material {
-#if os(visionOS)
-        return material
-#else
-        guard var material = material as? CustomMaterial else { return material }
-        material.custom.value = parameters.customValue(outlineBudget: material.custom.value.w)
-        return material
-#endif
-    }
 }
 #endif

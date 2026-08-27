@@ -1,25 +1,25 @@
 import Foundation
+import simd
 
 public struct VRM0: Sendable {
-    /// The underlying glTF document, which carries the model's glTF and the
-    /// binary resources it is drawn from.
+    /// The underlying glTF document, carrying the model's glTF and binary resources.
     public let document: GLTFDocument
     public let meta: Meta
     public let version: String?
     public let materialProperties: [MaterialProperty]
     public let humanoid: Humanoid
     public let blendShapeMaster: BlendShapeMaster
-    public let firstPerson: FirstPerson
+    public let firstPerson: FirstPerson?
     public let secondaryAnimation: SecondaryAnimation
 
-    /// Initialize from VRM 0.x data. `rootDirectory` is the base directory for
-    /// external resources.
+    /// Initialize from VRM 0.x data, resolving external resources against `rootDirectory`.
     public init(data: Data, rootDirectory: URL? = nil) throws {
         try self.init(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
     }
 
-    /// Initialize from an already-loaded document, so that deciding which
-    /// version a file is does not mean parsing it twice.
+    /// Initialize from an already-loaded document, so deciding a file's version does not
+    /// mean parsing it twice. VRM 0.x leaves every part optional, so whatever a file leaves
+    /// out reads as the defaults rather than failing the load.
     public init(document: GLTFDocument) throws {
         self.document = document
 
@@ -27,31 +27,29 @@ public struct VRM0: Sendable {
 
         let vrm = try extensions["VRM"] ??? .keyNotFound("VRM")
 
-        meta = try vrm.decodeJSON(Meta.self, forKey: "meta")
+        meta = try JSONValue.object(vrm["meta"]?.dictionaryValue ?? [:]).decode(Meta.self)
         version = vrm.string("version")
-        // Absent in some files, and in `prune()` output once every material died
         materialProperties = try vrm.decodeJSONIfPresent([MaterialProperty].self, forKey: "materialProperties") ?? []
-        humanoid = try vrm.decodeJSON(Humanoid.self, forKey: "humanoid")
-        blendShapeMaster = try vrm.decodeJSON(BlendShapeMaster.self, forKey: "blendShapeMaster")
-        firstPerson = try vrm.decodeJSON(FirstPerson.self, forKey: "firstPerson")
-        // Absent in a model that swings nothing, `prune()` output among them
+        humanoid = try JSONValue.object(vrm["humanoid"]?.dictionaryValue ?? [:]).decode(Humanoid.self)
+        blendShapeMaster = try JSONValue.object(vrm["blendShapeMaster"]?.dictionaryValue ?? [:])
+            .decode(BlendShapeMaster.self)
+        firstPerson = try vrm.decodeJSONIfPresent(FirstPerson.self, forKey: "firstPerson")
         secondaryAnimation = try vrm.decodeJSONIfPresent(SecondaryAnimation.self, forKey: "secondaryAnimation")
             ?? SecondaryAnimation()
     }
 }
 
 public extension VRM0 {
-    /// The Unity material settings describing the material at `index`. VRM 0.x
-    /// writes `materialProperties` as an array parallel to the glTF `materials`,
-    /// so the index pairs the two.
+    /// The Unity material settings describing the material at `index`. VRM 0.x writes
+    /// `materialProperties` parallel to the glTF `materials`, so the index pairs the two.
     func materialProperty(at index: Int) -> MaterialProperty? {
         materialProperties[safe: index]
     }
 }
 
 public extension VRM {
-    /// The VRM 0.x material settings for the material at `index`, or nil for a
-    /// VRM 1.0 model, which describes its materials on the materials.
+    /// The VRM 0.x material settings for the material at `index`, or nil for a VRM 1.0
+    /// model, which describes its materials on the materials themselves.
     func vrm0MaterialProperty(at index: Int) -> VRM0.MaterialProperty? {
         guard case .v0(let vrm0) = self else { return nil }
         return vrm0.materialProperty(at: index)
@@ -68,42 +66,51 @@ public extension VRM0 {
         public let version: String?
 
         public let allowedUserName: String?
-        public let violentUssageName: String?
-        public let sexualUssageName: String?
-        public let commercialUssageName: String?
+        public let violentUsage: String?
+        public let sexualUsage: String?
+        public let commercialUsage: String?
         public let otherPermissionUrl: String?
 
         public let licenseName: String?
         public let otherLicenseUrl: String?
+
+        // 0.x really does spell "Ussage" this way; the typo stays out of the API.
+        private enum CodingKeys: String, CodingKey {
+            case title, author, contactInformation, reference, texture, version
+            case allowedUserName
+            case violentUsage = "violentUssageName"
+            case sexualUsage = "sexualUssageName"
+            case commercialUsage = "commercialUssageName"
+            case otherPermissionUrl
+            case licenseName, otherLicenseUrl
+        }
     }
 
     struct MaterialProperty: Codable, Sendable {
         public let name: String
         public let shader: String
+        /// Unity's render queue, 2000 (opaque geometry) where the file states none.
         public let renderQueue: Int
-        /// Unity's `float` shader properties, `_Cutoff` and `_BlendMode` among
-        /// them.
+        /// Unity's `float` shader properties, `_Cutoff` and `_BlendMode` among them.
         public let floatProperties: [String: Float]
         public let keywordMap: [String: Bool]
         public let tagMap: [String: String]
         public let textureProperties: [String: Int]
-        /// Unity's `vector` shader properties: a colour, or the `_MainTex`
-        /// offset and scale pair.
+        /// Unity's `vector` shader properties: a colour, or the `_MainTex` offset and scale pair.
         public let vectorProperties: [String: [Float]]
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            name = try container.decode(String.self, forKey: .name)
-            shader = try container.decode(String.self, forKey: .shader)
-            renderQueue = try container.decode(Int.self, forKey: .renderQueue)
-            keywordMap = try container.decode([String: Bool].self, forKey: .keywordMap)
-            tagMap = try container.decode([String: String].self, forKey: .tagMap)
-            textureProperties = try container.decode([String: Int].self, forKey: .textureProperties)
-            // A property whose value is of no use to a renderer is dropped
-            // rather than failing the load of the whole model.
-            floatProperties = try container.decode([String: JSONValue].self, forKey: .floatProperties)
+            name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+            shader = try container.decodeIfPresent(String.self, forKey: .shader) ?? ""
+            renderQueue = try container.decodeIfPresent(Int.self, forKey: .renderQueue) ?? 2000
+            keywordMap = try container.decodeIfPresent([String: Bool].self, forKey: .keywordMap) ?? [:]
+            tagMap = try container.decodeIfPresent([String: String].self, forKey: .tagMap) ?? [:]
+            textureProperties = try container.decodeIfPresent([String: Int].self, forKey: .textureProperties) ?? [:]
+            // A property of no use to a renderer is dropped rather than failing the load.
+            floatProperties = (try container.decodeIfPresent([String: JSONValue].self, forKey: .floatProperties) ?? [:])
                 .compactMapValues(\.floatValue)
-            vectorProperties = try container.decode([String: JSONValue].self, forKey: .vectorProperties)
+            vectorProperties = (try container.decodeIfPresent([String: JSONValue].self, forKey: .vectorProperties) ?? [:])
                 .compactMapValues { $0.arrayValue?.compactMap(\.floatValue) }
         }
     }
@@ -119,29 +126,58 @@ public extension VRM0 {
         public let upperLegTwist: Double
         public let humanBones: [HumanBone]
 
+        // What a file leaves out reads as the UniVRM defaults.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            armStretch = try container.decodeIfPresent(Double.self, forKey: .armStretch) ?? 0.05
+            feetSpacing = try container.decodeIfPresent(Double.self, forKey: .feetSpacing) ?? 0
+            hasTranslationDoF = try container.decodeIfPresent(Bool.self, forKey: .hasTranslationDoF) ?? false
+            legStretch = try container.decodeIfPresent(Double.self, forKey: .legStretch) ?? 0.05
+            lowerArmTwist = try container.decodeIfPresent(Double.self, forKey: .lowerArmTwist) ?? 0.5
+            lowerLegTwist = try container.decodeIfPresent(Double.self, forKey: .lowerLegTwist) ?? 0.5
+            upperArmTwist = try container.decodeIfPresent(Double.self, forKey: .upperArmTwist) ?? 0.5
+            upperLegTwist = try container.decodeIfPresent(Double.self, forKey: .upperLegTwist) ?? 0.5
+            humanBones = try container.decodeIfPresent([HumanBone].self, forKey: .humanBones) ?? []
+        }
+
         public struct HumanBone: Codable, Sendable {
             public let bone: String
             public let node: Int
             public let useDefaultValues: Bool
+
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                bone = try container.decode(String.self, forKey: .bone)
+                node = try container.decode(Int.self, forKey: .node)
+                useDefaultValues = try container.decodeIfPresent(Bool.self, forKey: .useDefaultValues) ?? true
+            }
         }
     }
 
     struct BlendShapeMaster: Codable, Sendable {
         public let blendShapeGroups: [BlendShapeGroup]
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            blendShapeGroups = try container.decodeIfPresent([BlendShapeGroup].self, forKey: .blendShapeGroups) ?? []
+        }
+
         public struct BlendShapeGroup: Codable, Sendable {
-            public let binds: [Bind]?
-            public let materialValues: [MaterialValueBind]?
+            public let binds: [Bind]
+            public let materialValues: [MaterialValueBind]
             public let name: String
             public let presetName: String
-            let _isBinary: Bool?
-            public var isBinary: Bool { return _isBinary ?? false }
-            private enum CodingKeys: String, CodingKey {
-                case binds
-                case materialValues
-                case name
-                case presetName
-                case _isBinary = "isBinary"
+            public let isBinary: Bool
+
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                binds = try container.decodeIfPresent([Bind].self, forKey: .binds) ?? []
+                materialValues = try container.decodeIfPresent([MaterialValueBind].self, forKey: .materialValues) ?? []
+                name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+                presetName = try container.decodeIfPresent(String.self, forKey: .presetName) ?? ""
+                isBinary = try container.decodeIfPresent(Bool.self, forKey: .isBinary) ?? false
             }
+
             public struct Bind: Codable, Sendable {
                 public let index: Int
                 public let mesh: Int
@@ -156,18 +192,35 @@ public extension VRM0 {
     }
 
     struct FirstPerson: Codable, Sendable {
-        public let firstPersonBone: Int
-        public let firstPersonBoneOffset: Vector3
-        /// Absent in files with nothing annotated, `prune()` output among them
+        /// The node the first-person camera hangs off, or nil where the file
+        /// states none, which VRM 0.x also spells as -1: the head bone stands in.
+        public let firstPersonBone: Int?
+        public let firstPersonBoneOffset: SIMD3<Float>
+        /// Absent in files with nothing annotated, `prune()` output among them.
         public let meshAnnotations: [MeshAnnotation]
         public let lookAtTypeName: LookAtType
 
+        private enum CodingKeys: String, CodingKey {
+            case firstPersonBone, firstPersonBoneOffset, meshAnnotations, lookAtTypeName
+        }
+
         public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            firstPersonBone = try container.decode(Int.self, forKey: .firstPersonBone)
-            firstPersonBoneOffset = try container.decode(Vector3.self, forKey: .firstPersonBoneOffset)
+            let bone = try container.decodeIfPresent(Int.self, forKey: .firstPersonBone)
+            firstPersonBone = bone.flatMap { $0 >= 0 ? $0 : nil }
+            firstPersonBoneOffset = try container.simd3Object(forKey: .firstPersonBoneOffset, default: .zero)
             meshAnnotations = try container.decodeIfPresent([MeshAnnotation].self, forKey: .meshAnnotations) ?? []
-            lookAtTypeName = try container.decode(LookAtType.self, forKey: .lookAtTypeName)
+            // An unknown look-at type moves nothing, the way the spec's own "None" does.
+            let lookAt = try container.decodeIfPresent(String.self, forKey: .lookAtTypeName)
+            lookAtTypeName = lookAt.flatMap(LookAtType.init(rawValue:)) ?? .none
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(firstPersonBone ?? -1, forKey: .firstPersonBone)
+            try container.encodeSimd3Object(firstPersonBoneOffset, forKey: .firstPersonBoneOffset)
+            try container.encode(meshAnnotations, forKey: .meshAnnotations)
+            try container.encode(lookAtTypeName, forKey: .lookAtTypeName)
         }
 
         public struct MeshAnnotation: Codable, Sendable {
@@ -182,8 +235,7 @@ public extension VRM0 {
     }
 
     struct SecondaryAnimation: Codable, Sendable {
-        /// Either array is absent in a model that states nothing for it, and
-        /// both are in one that swings nothing at all.
+        /// Either array is absent in a model that states nothing for it.
         public let boneGroups: [BoneGroup]
         public let colliderGroups: [ColliderGroup]
 
@@ -200,28 +252,111 @@ public extension VRM0 {
 
         public struct BoneGroup: Codable, Sendable {
             public let bones: [Int]
+            /// The node swings settle relative to, or -1 for world space, in a field
+            /// VRM 0.x always writes.
             public let center: Int
             public let colliderGroups: [Int]
             public let comment: String?
             public let dragForce: Double
-            public let gravityDir: Vector3
+            public let gravityDir: SIMD3<Float>
             public let gravityPower: Double
             public let hitRadius: Double
-            public let stiffiness: Double
+            public let stiffness: Double
+
+            // 0.x really does spell "stiffiness" this way; the typo stays out of the API.
+            // What a file leaves out reads as the UniVRM defaults.
+            private enum CodingKeys: String, CodingKey {
+                case bones, center, colliderGroups, comment, dragForce, gravityDir
+                case gravityPower, hitRadius
+                case stiffness = "stiffiness"
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                bones = try container.decodeIfPresent([Int].self, forKey: .bones) ?? []
+                center = try container.decodeIfPresent(Int.self, forKey: .center) ?? -1
+                colliderGroups = try container.decodeIfPresent([Int].self, forKey: .colliderGroups) ?? []
+                comment = try container.decodeIfPresent(String.self, forKey: .comment)
+                dragForce = try container.decodeIfPresent(Double.self, forKey: .dragForce) ?? 0.4
+                gravityDir = try container.simd3Object(forKey: .gravityDir, default: SIMD3<Float>(0, -1, 0))
+                gravityPower = try container.decodeIfPresent(Double.self, forKey: .gravityPower) ?? 0
+                hitRadius = try container.decodeIfPresent(Double.self, forKey: .hitRadius) ?? 0.02
+                stiffness = try container.decodeIfPresent(Double.self, forKey: .stiffness) ?? 1
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(bones, forKey: .bones)
+                try container.encode(center, forKey: .center)
+                try container.encode(colliderGroups, forKey: .colliderGroups)
+                try container.encodeIfPresent(comment, forKey: .comment)
+                try container.encode(dragForce, forKey: .dragForce)
+                try container.encodeSimd3Object(gravityDir, forKey: .gravityDir)
+                try container.encode(gravityPower, forKey: .gravityPower)
+                try container.encode(hitRadius, forKey: .hitRadius)
+                try container.encode(stiffness, forKey: .stiffness)
+            }
         }
 
         public struct ColliderGroup: Codable, Sendable {
             public let node: Int
             public let colliders: [Collider]
 
+            public init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                node = try container.decodeIfPresent(Int.self, forKey: .node) ?? -1
+                colliders = try container.decodeIfPresent([Collider].self, forKey: .colliders) ?? []
+            }
+
             public struct Collider: Codable, Sendable {
-                public let offset: Vector3
+                public let offset: SIMD3<Float>
                 public let radius: Double
+
+                private enum CodingKeys: String, CodingKey {
+                    case offset, radius
+                }
+
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    offset = try container.simd3Object(forKey: .offset, default: .zero)
+                    radius = try container.decodeIfPresent(Double.self, forKey: .radius) ?? 0
+                }
+
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: CodingKeys.self)
+                    try container.encodeSimd3Object(offset, forKey: .offset)
+                    try container.encode(radius, forKey: .radius)
+                }
             }
         }
     }
+}
 
-    struct Vector3: Codable, Sendable {
-        public let x, y, z: Double
+// VRM 0.x spells a vector as an `{"x":, "y":, "z":}` object rather than an array.
+private struct VRM0Vector3: Codable {
+    let x, y, z: Double?
+
+    init(_ value: SIMD3<Float>) {
+        x = Double(value.x)
+        y = Double(value.y)
+        z = Double(value.z)
+    }
+
+    func simd(default defaultValue: SIMD3<Float>) -> SIMD3<Float> {
+        SIMD3<Float>(x.map(Float.init) ?? defaultValue.x,
+                     y.map(Float.init) ?? defaultValue.y,
+                     z.map(Float.init) ?? defaultValue.z)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func simd3Object(forKey key: Key, default defaultValue: SIMD3<Float>) throws -> SIMD3<Float> {
+        try decodeIfPresent(VRM0Vector3.self, forKey: key)?.simd(default: defaultValue) ?? defaultValue
+    }
+}
+
+private extension KeyedEncodingContainer {
+    mutating func encodeSimd3Object(_ value: SIMD3<Float>, forKey key: Key) throws {
+        try encode(VRM0Vector3(value), forKey: key)
     }
 }

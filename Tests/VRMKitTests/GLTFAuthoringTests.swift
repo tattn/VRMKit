@@ -9,8 +9,8 @@ import VRMTestSupport
 struct GLTFAuthoringTests {
     // MARK: - Round trip
 
-    /// What `addMesh` writes has to read back as what it was given, through
-    /// the loader any other asset goes through.
+    /// What `addMesh` writes has to read back as what it was given, through the loader
+    /// any other asset goes through.
     @Test
     func testAuthoredMeshRoundTripsThroughAGLB() throws {
         var document = GLTFEditableDocument()
@@ -24,9 +24,9 @@ struct GLTFAuthoringTests {
         #expect(gltf.asset.version == "2.0")
         // The scene the document was given, named as the one it draws.
         #expect(gltf.scene == 0)
-        let scene = try #require(gltf.scenes?[0])
+        let scene = try #require(gltf.scenes[safe: 0])
         #expect(scene.nodes == [nodeIndex.rawValue])
-        let node = try #require(gltf.nodes?[nodeIndex.rawValue])
+        let node = try #require(gltf.nodes[safe: nodeIndex.rawValue])
         #expect(node.name == "plate")
         #expect(node.translation == SIMD3(0, 1, 0))
 
@@ -55,18 +55,18 @@ struct GLTFAuthoringTests {
 
         let saved = try GLTFDocument(data: try document.serialize())
         let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
-        let written = try #require(saved.gltf.materials?[materialIndex])
+        let written = try #require(saved.gltf.materials[safe: materialIndex])
         let textureIndex = try #require(written.pbrMetallicRoughness?.baseColorTexture?.index)
-        let samplerIndex = try #require(saved.gltf.textures?[textureIndex].sampler)
-        let sampler = try #require(saved.gltf.samplers?[samplerIndex])
+        let samplerIndex = try #require(saved.gltf.textures[textureIndex].sampler)
+        let sampler = try #require(saved.gltf.samplers[safe: samplerIndex])
         #expect(sampler.wrapS == .CLAMP_TO_EDGE)
         #expect(sampler.wrapT == .MIRRORED_REPEAT)
         #expect(sampler.magFilter == .NEAREST)
         #expect(sampler.minFilter == .LINEAR_MIPMAP_LINEAR)
     }
 
-    /// A texture naming no sampler already repeats and filters as the reader
-    /// likes, so a sampler asking for that is not written.
+    /// A texture naming no sampler already repeats and filters as the reader likes, so
+    /// a sampler asking for that is not written.
     @Test
     func testASamplerAtItsDefaultsIsNotWritten() throws {
         var document = GLTFEditableDocument()
@@ -75,10 +75,10 @@ struct GLTFAuthoringTests {
 
         let saved = try GLTFDocument(data: try document.serialize())
         let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
-        let written = try #require(saved.gltf.materials?[materialIndex])
+        let written = try #require(saved.gltf.materials[safe: materialIndex])
         let textureIndex = try #require(written.pbrMetallicRoughness?.baseColorTexture?.index)
-        #expect(saved.gltf.textures?[textureIndex].sampler == nil)
-        #expect(saved.gltf.samplers == nil)
+        #expect(saved.gltf.textures[textureIndex].sampler == nil)
+        #expect(saved.gltf.samplers.isEmpty)
     }
 
     /// A sampler naming only a filter leaves the wrapping unwritten.
@@ -96,8 +96,7 @@ struct GLTFAuthoringTests {
         #expect(sampler.index("magFilter") == GLTF.Sampler.MagFilter.NEAREST.rawValue)
     }
 
-    /// glTF requires the bounds of a position accessor, and a plate's four
-    /// corners are what they are computed from.
+    /// glTF requires the bounds of a position accessor, computed from the plate's corners.
     @Test
     func testPositionAccessorCarriesTheBoundsGLTFRequires() throws {
         var document = GLTFEditableDocument()
@@ -107,7 +106,7 @@ struct GLTFAuthoringTests {
         let saved = try GLTFDocument(data: try document.serialize())
         let primitive = try saved.primitive(onNodeAt: nodeIndex.rawValue)
         let index = try #require(primitive.attributes[.POSITION])
-        let accessor = try #require(saved.gltf.accessors?[index])
+        let accessor = try #require(saved.gltf.accessors[safe: index])
         #expect(accessor.min == [-0.5, -0.5, 0])
         #expect(accessor.max == [0.5, 0.5, 0])
     }
@@ -122,7 +121,7 @@ struct GLTFAuthoringTests {
         let saved = try GLTFDocument(data: try document.serialize())
         let primitive = try saved.primitive(onNodeAt: nodeIndex.rawValue)
         let index = try #require(primitive.indices)
-        let accessor = try #require(saved.gltf.accessors?[index])
+        let accessor = try #require(saved.gltf.accessors[safe: index])
         #expect(accessor.componentType == .unsignedShort)
     }
 
@@ -136,7 +135,7 @@ struct GLTFAuthoringTests {
 
         let saved = try GLTFDocument(data: try document.serialize())
         let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
-        let written = try #require(saved.gltf.materials?[materialIndex])
+        let written = try #require(saved.gltf.materials[safe: materialIndex])
         #expect(written.name == "picture")
         #expect(written.pbrMetallicRoughness?.baseColorFactor == SIMD4(1, 0.5, 0.25, 1))
         #expect(written.pbrMetallicRoughness?.metallicFactor == 0)
@@ -144,12 +143,12 @@ struct GLTFAuthoringTests {
         #expect(written.alphaCutoff == 0.25)
         #expect(written.doubleSided)
         #expect(written.extensions?.materialsUnlit != nil)
-        #expect(saved.gltf.extensionsUsed?.contains("KHR_materials_unlit") == true)
+        #expect(saved.gltf.extensionsUsed.contains("KHR_materials_unlit") == true)
 
         // The image is in the buffer, which is the only place a GLB has for it.
         let textureIndex = try #require(written.pbrMetallicRoughness?.baseColorTexture?.index)
-        let source = try #require(saved.gltf.textures?[textureIndex].source)
-        let image = try #require(saved.gltf.images?[source])
+        let source = try #require(saved.gltf.textures[safe: textureIndex]?.source)
+        let image = try #require(saved.gltf.images[safe: source])
         #expect(image.uri == nil)
         #expect(image.mimeType == "image/png")
         let view = try #require(image.bufferView)
@@ -163,12 +162,12 @@ struct GLTFAuthoringTests {
         let nodeIndex = try document.addMesh(.plate(material: nil))
 
         let saved = try GLTFDocument(data: try document.serialize())
-        #expect(saved.gltf.materials == nil)
+        #expect(saved.gltf.materials.isEmpty)
         #expect(try saved.primitive(onNodeAt: nodeIndex.rawValue).material == nil)
     }
 
-    /// `materials: .mtoon` is the same choice `append` offers, so a plate added
-    /// to a toon-shaded model is shaded like it.
+    /// `materials: .mtoon` is the same choice `append` offers, so a plate added to a
+    /// toon-shaded model is shaded like it.
     @Test
     func testAMeshAddedAsMToonCarriesTheMToonExtension() throws {
         var document = GLTFEditableDocument()
@@ -177,9 +176,9 @@ struct GLTFAuthoringTests {
 
         let saved = try GLTFDocument(data: try document.serialize())
         let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
-        let material = try #require(saved.gltf.materials?[materialIndex])
+        let material = try #require(saved.gltf.materials[safe: materialIndex])
         #expect(material.extensions?.materialsMToon != nil)
-        #expect(saved.gltf.extensionsUsed?.contains("VRMC_materials_mtoon") == true)
+        #expect(saved.gltf.extensionsUsed.contains("VRMC_materials_mtoon") == true)
     }
 
     // MARK: - Placement
@@ -187,11 +186,11 @@ struct GLTFAuthoringTests {
     @Test
     func testAMeshHangsUnderTheNodeItWasGiven() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
-        let nodesBefore = try #require(try document.typed().nodes)
+        let nodesBefore = try document.typed().nodes
 
         let nodeIndex = try document.addMesh(.plate(material: nil), under: 0, name: "held")
 
-        let nodes = try #require(try document.typed().nodes)
+        let nodes = try document.typed().nodes
         #expect(nodeIndex.rawValue == nodesBefore.count)
         #expect(nodes[0].children?.contains(nodeIndex.rawValue) == true)
         // Nothing that was there moved, so the VRM extensions still name it.
@@ -212,21 +211,21 @@ struct GLTFAuthoringTests {
 
     // MARK: - Composition
 
-    /// Authoring and merging meet: what was built here is a source `append`
-    /// takes like any other document.
+    /// Authoring and merging meet: what was built here is a source `append` takes like
+    /// any other document.
     @Test
     func testAnAuthoredDocumentCanBeAppendedIntoAnother() throws {
         var authored = GLTFEditableDocument()
         try authored.addMesh(.plate(material: .picture), name: "plate")
         var target = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
-        let materialsBefore = try target.typed().materials?.count ?? 0
+        let materialsBefore = try target.typed().materials.count
 
         let container = try target.append(try GLTFDocument(data: try authored.serialize()),
                                           under: 0,
                                           name: "item")
 
         let merged = try GLTFDocument(data: try target.serialize())
-        let nodes = try #require(merged.gltf.nodes)
+        let nodes = merged.gltf.nodes
         #expect(nodes[container.rawValue].name == "item")
         let plate = try #require(nodes[container.rawValue].children?.first)
         #expect(nodes[plate].name == "plate")
@@ -239,18 +238,18 @@ struct GLTFAuthoringTests {
 
     // MARK: - VRM consistency
 
-    /// VRM 0.x describes its materials in an array parallel to `materials`, so
-    /// a material added to one needs an entry to keep the two lined up.
+    /// VRM 0.x describes its materials in an array parallel to `materials`, so a material
+    /// added to one needs an entry to keep the two lined up.
     @Test
     func testAddingAMeshToAVRM0KeepsItsMaterialPropertiesParallel() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let materialsBefore = try document.typed().materials?.count ?? 0
+        let materialsBefore = try document.typed().materials.count
 
         let nodeIndex = try document.addMesh(.plate(material: .picture), under: 0)
 
         let saved = try VRM0(data: try document.serialize())
         #expect(try saved.document.primitive(onNodeAt: nodeIndex.rawValue).material == materialsBefore)
-        let materials = try #require(saved.document.gltf.materials)
+        let materials = saved.document.gltf.materials
         #expect(materials.count == materialsBefore + 1)
         #expect(saved.materialProperties.count == materials.count)
         #expect(saved.materialProperties.last?.vrmShader == .gltfShader)
@@ -259,8 +258,8 @@ struct GLTFAuthoringTests {
         #expect(saved.materialProperties.dropLast().allSatisfy { $0.vrmShader != .gltfShader })
     }
 
-    /// A document that is not a VRM 0.x model has no such array, and adding a
-    /// mesh may not invent one.
+    /// A document that is not a VRM 0.x model has no such array, and adding a mesh may
+    /// not invent one.
     @Test
     func testAddingAMeshToAVRM1AddsNoMaterialProperties() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
@@ -272,13 +271,13 @@ struct GLTFAuthoringTests {
 
     // MARK: - Alignment
 
-    /// Every buffer view starts on a four byte boundary, whatever length the
-    /// image or the index data appended before it happened to have.
+    /// Every buffer view starts on a four byte boundary, whatever length the image or
+    /// index data appended before it happened to have.
     @Test
     func testOddlySizedDataKeepsTheBufferViewsAligned() throws {
         var document = GLTFEditableDocument()
-        // Nine bytes of image and a triangle's three shorts both leave the
-        // buffer needing padding.
+        // Nine bytes of image and a triangle's three shorts both leave the buffer
+        // needing padding.
         let images = (0..<3).map { GLTFSimpleMaterial.pngBytes + Data([UInt8($0)]) }
         for image in images {
             var material = GLTFSimpleMaterial.picture
@@ -290,13 +289,13 @@ struct GLTFAuthoringTests {
         }
 
         let saved = try GLTFDocument(data: try document.serialize())
-        let views = try #require(saved.gltf.bufferViews)
+        let views = saved.gltf.bufferViews
         // An image, positions, texture coordinates and indices, three times.
         #expect(views.count == 12)
         #expect(views.allSatisfy { $0.byteOffset % 4 == 0 })
-        // The padding lies between the views rather than inside them, so each
-        // still reads back exactly the bytes it was given.
-        let written = try #require(saved.gltf.images)
+        // The padding lies between the views rather than inside them, so each still
+        // reads back exactly the bytes it was given.
+        let written = saved.gltf.images
         #expect(written.count == 3)
         for (image, expected) in zip(written, images) {
             let view = try #require(image.bufferView)
@@ -306,8 +305,8 @@ struct GLTFAuthoringTests {
 
     // MARK: - Failed edits
 
-    /// Placement is resolved before any resource is written, so an edit that
-    /// cannot place its node leaves the document as it was.
+    /// Placement is resolved before any resource is written, so an edit that cannot
+    /// place its node leaves the document as it was.
     @Test
     func testAMeshThatCannotBePlacedLeavesTheDocumentWritable() throws {
         // Two scenes and no default one, so there is no unambiguous root scene.
@@ -315,18 +314,18 @@ struct GLTFAuthoringTests {
         var document = try GLTFEditableDocument(data: Data(json.utf8))
 
         #expect(throws: VRMError.self) { try document.addMesh(.plate(material: .picture)) }
-        #expect(try document.typed().images == nil)
+        #expect(try document.typed().images.isEmpty)
 
         // The same mesh again, this time somewhere it can go.
         let nodeIndex = try document.addMesh(.plate(material: .picture), under: 0)
 
         let saved = try GLTFDocument(data: try document.serialize())
-        let images = try #require(saved.gltf.images)
+        let images = saved.gltf.images
         #expect(images.count == 1)
         let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
-        let material = try #require(saved.gltf.materials?[materialIndex])
+        let material = try #require(saved.gltf.materials[safe: materialIndex])
         let textureIndex = try #require(material.pbrMetallicRoughness?.baseColorTexture?.index)
-        let source = try #require(saved.gltf.textures?[textureIndex].source)
+        let source = try #require(saved.gltf.textures[safe: textureIndex]?.source)
         let view = try #require(images[source].bufferView)
         #expect(try saved.bufferViewData(at: view).data == GLTFSimpleMaterial.pngBytes)
     }
@@ -383,8 +382,7 @@ struct GLTFAuthoringTests {
         #expect(try document.serialize() == before)
     }
 
-    /// glTF holds PNG and JPEG and nothing else, and transcoding is the
-    /// caller's to do rather than this package's.
+    /// glTF holds PNG and JPEG and nothing else; transcoding is the caller's to do.
     @Test
     func testAnImageThatIsNeitherPNGNorJPEGIsRefusedWithoutChangingTheDocument() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
@@ -407,8 +405,7 @@ private extension Array where Element == SIMD3<Float> {
 }
 
 private extension GLTFTriangleMesh {
-    /// A unit square on the XY plane, wound counter-clockwise, which is the
-    /// billboard this API is for.
+    /// A unit square on the XY plane, wound counter-clockwise: the billboard this API is for.
     static func plate(material: GLTFSimpleMaterial?) -> GLTFTriangleMesh {
         GLTFTriangleMesh(positions: [SIMD3(-0.5, -0.5, 0), SIMD3(0.5, -0.5, 0),
                                      SIMD3(0.5, 0.5, 0), SIMD3(-0.5, 0.5, 0)],
@@ -420,8 +417,8 @@ private extension GLTFTriangleMesh {
 }
 
 private extension GLTFSimpleMaterial {
-    /// The eight byte PNG signature. Nothing here decodes an image, so it
-    /// stands for one: what matters is that it is read back unchanged.
+    /// The eight byte PNG signature. Nothing here decodes an image, so it stands for one:
+    /// what matters is that it is read back unchanged.
     static let pngBytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
 
     static var picture: GLTFSimpleMaterial {
@@ -439,9 +436,9 @@ private extension GLTFSimpleMaterial {
 private extension GLTFDocument {
     /// The one primitive of the mesh hanging on `node`.
     func primitive(onNodeAt node: Int) throws -> GLTF.Mesh.Primitive {
-        let nodes = try #require(gltf.nodes)
+        let nodes = gltf.nodes
         let mesh = try #require(nodes[node].mesh)
-        let meshes = try #require(gltf.meshes)
+        let meshes = gltf.meshes
         return try #require(meshes[mesh].primitives.first)
     }
 
@@ -462,7 +459,7 @@ private extension GLTFDocument {
     }
 
     private func packed(accessorAt index: Int) throws -> PackedAccessor {
-        let accessor = try #require(gltf.accessors?[index])
+        let accessor = try #require(gltf.accessors[safe: index])
         return try PackedAccessor(accessor: accessor) { index in
             let view = try bufferViewData(at: index)
             return (view.data, view.stride)

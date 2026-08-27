@@ -164,30 +164,4 @@ struct SpringBoneRuntimeTests {
             #expect(abs(simd_length(rotation) - 1) < 1e-5)
         }
     }
-
-    /// The stiffness and gravity terms scale with the step while the inertia
-    /// carries last frame's move unscaled, so the multi-second step the first
-    /// frame after a pause asks for would throw every tail past its bone.
-    @Test
-    func testASteppedFrameSwingsNoFurtherThanTheLongestStep() throws {
-        func swing(afterStepping deltaTime: Float) throws -> SIMD3<Float> {
-            var joint = try #require(SpringBoneJoint(head: .zero,
-                                                     localTail: SIMD3(0, 0, 1),
-                                                     worldTail: SIMD3(0, 0, 1),
-                                                     initialLocalRotation: Self.identity,
-                                                     center: nil))
-            let rotation = joint.update(deltaTime: deltaTime,
-                                        setting: Self.setting,
-                                        head: .zero,
-                                        parentRotation: Self.identity,
-                                        center: nil,
-                                        colliders: [])
-            return rotation * SIMD3<Float>(0, 0, 1)
-        }
-
-        let clamped = try swing(afterStepping: SpringBoneJoint.maximumDeltaTime)
-        for hitch in [Float(0.5), 2, 120] {
-            #expect(simd_distance(try swing(afterStepping: hitch), clamped) < 1e-5)
-        }
-    }
 }

@@ -6,9 +6,8 @@ import VRMTestSupport
 /// The indices the authoring API takes, and how one survives a prune.
 @Suite
 struct GLTFIndexTests {
-    /// Pruning renumbers what it keeps, so an index saved before it names a
-    /// different entry afterwards. What it answers with is how one is carried
-    /// across.
+    /// Pruning renumbers what it keeps, so an index saved before it names a different
+    /// entry afterwards. Its result is how one is carried across.
     @Test
     func testPruneSaysWhereTheIndicesItKeptEndedUp() throws {
         var document = GLTFEditableDocument()
@@ -21,14 +20,13 @@ struct GLTFIndexTests {
         let result = try document.prune()
 
         let saved = try GLTFDocument(data: try document.serialize()).gltf
-        #expect(saved.nodes?.map(\.name) == ["third"])
-        // The two detached nodes went, and the one still drawn moved down to
-        // where they used to be.
+        #expect(saved.nodes.map(\.name) == ["third"])
+        // The two detached nodes went, and the one still drawn moved down into their place.
         #expect(result.newIndex(of: first) == nil)
         #expect(result.newIndex(of: second) == nil)
         let moved = try #require(result.newIndex(of: third))
         #expect(moved != third)
-        #expect(saved.nodes?[moved.rawValue].name == "third")
+        #expect(saved.nodes[moved.rawValue].name == "third")
     }
 
     @Test
@@ -42,8 +40,8 @@ struct GLTFIndexTests {
         #expect(result.newIndex(of: node) == node)
     }
 
-    /// An index is a name for an entry of one array, and the arrays are not
-    /// interchangeable however alike their integers are.
+    /// An index names an entry of one array, and the arrays are not interchangeable
+    /// however alike their integers are.
     @Test
     func testAnIndexSaysWhichArrayItPointsInto() {
         #expect(GLTFNodeIndex(3).rawValue == 3)

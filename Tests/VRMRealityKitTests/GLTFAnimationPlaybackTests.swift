@@ -162,6 +162,26 @@ struct GLTFAnimationPlaybackTests {
         #expect(!entity.components.has(GLTFAnimationPlaybackComponent.self))
     }
 
+    /// A NaN or infinite rate would put NaN through every pose it drives, so the
+    /// controller keeps the rate it had.
+    @Test
+    func testANonFiniteSpeedOrSeekIsRefused() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
+
+        let controller = try entity.playAnimation(at: 0, loops: true, speed: .nan)
+        #expect(controller.speed == 1)
+
+        controller.speed = .infinity
+        #expect(controller.speed == 1)
+
+        entity.updateAnimations(deltaTime: 0.5)
+        #expect(controller.time.isApproximatelyEqual(to: 0.5, tolerance: 0.001))
+
+        controller.seek(to: .nan)
+        #expect(controller.time.isApproximatelyEqual(to: 0.5, tolerance: 0.001))
+    }
+
     /// A CUBICSPLINE rotation output interleaves in-tangent / value / out-tangent,
     /// and normalizing the tangents would rescale the curve's slope.
     @Test

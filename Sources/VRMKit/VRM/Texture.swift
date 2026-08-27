@@ -5,7 +5,8 @@ import Foundation
 extension GLTF {
     public struct Texture: Codable, Sendable {
         public let sampler: Int?
-        public let source: Int
+        /// Left out for a texture whose image an extension supplies, such as `KHR_texture_basisu`.
+        public let source: Int?
         public let name: String?
         public let extensions: JSONValue?
         public let extras: JSONValue?

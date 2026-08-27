@@ -72,6 +72,9 @@ extension Data {
     /// them. Its size is in pixels, unlike the points a ``VRMImage`` reports.
     var decodedImage: CGImage? {
         guard let source = CGImageSourceCreateWithData(self as CFData, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        // Decoded now, on this thread, rather than lazily on whichever thread
+        // first draws the image: a loader decodes off the main actor on purpose.
+        let options = [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
+        return CGImageSourceCreateImageAtIndex(source, 0, options)
     }
 }

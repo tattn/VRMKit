@@ -1,4 +1,5 @@
 import Foundation
+import simd
 import Testing
 import VRMKit
 import VRMTestSupport
@@ -17,8 +18,8 @@ struct VRM1Tests {
         #expect(vrm.specVersion == "1.0")
     }
 
-    /// A missing or mistyped specVersion has to surface as a thrown error rather
-    /// than trapping in the initializer.
+    /// A missing or mistyped specVersion surfaces as a thrown error rather than
+    /// trapping in the initializer.
     @Test
     func testMalformedSpecVersionThrowsInsteadOfCrashing() throws {
         #expect(throws: (any Error).self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion(nil)) }
@@ -37,10 +38,10 @@ struct VRM1Tests {
         #expect(throws: (any Error).self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion("2.0")) }
     }
 
-    /// `VRMC_springBone` is versioned on its own, and springs of a version this
-    /// cannot read would be simulated as if they said something else.
+    /// `VRMC_springBone` is versioned on its own, and springs of a version this cannot
+    /// read would be simulated as if they said something else.
     @Test
-    func testAnUnsupportedSpringBoneSpecVersionIsRejected() throws {
+    func testAnUnsupportedSpringBoneSpecVersionStillLoads() throws {
         #expect(VRM1.SpringBone.supports(specVersion: "1.0"))
         #expect(VRM1.SpringBone.supports(specVersion: "1.0-beta"))
         #expect(!VRM1.SpringBone.supports(specVersion: "2.0"))
@@ -52,7 +53,11 @@ struct VRM1Tests {
             extensions["VRMC_springBone"] = .object(springBone)
             json["extensions"] = .object(extensions)
         }
-        #expect(throws: (any Error).self) { try VRM1(data: raised) }
+        // Decoded leniently: the version travels with the data, and building the rig is
+        // what leaves an unsupported one out.
+        let vrm = try VRM1(data: raised)
+        #expect(vrm.springBone?.specVersion == "2.0")
+        #expect(!VRM1.SpringBone.supports(specVersion: vrm.springBone?.specVersion))
     }
 
     
@@ -96,19 +101,18 @@ struct VRM1Tests {
     
     @Test
     func testLookAt() {
-        #expect(vrm.lookAt?.offsetFromHeadBone.count == 3)
-        #expect(vrm.lookAt?.offsetFromHeadBone[0] == 0)
-        #expect(vrm.lookAt?.offsetFromHeadBone[1] == 0.07764859)
-        #expect(vrm.lookAt?.offsetFromHeadBone[2] == 0.100730225)
+        #expect(vrm.lookAt?.offsetFromHeadBone.x == 0)
+        #expect(vrm.lookAt?.offsetFromHeadBone.y == 0.07764859)
+        #expect(vrm.lookAt?.offsetFromHeadBone.z == 0.100730225)
         #expect(vrm.lookAt?.type == .expression)
-        #expect(vrm.lookAt?.rangeMapHorizontalInner.inputMaxValue == 90)
-        #expect(vrm.lookAt?.rangeMapHorizontalInner.outputScale == 1)
-        #expect(vrm.lookAt?.rangeMapHorizontalOuter.inputMaxValue == 90)
-        #expect(vrm.lookAt?.rangeMapHorizontalOuter.outputScale == 1)
-        #expect(vrm.lookAt?.rangeMapVerticalDown.inputMaxValue == 90)
-        #expect(vrm.lookAt?.rangeMapVerticalDown.outputScale == 1)
-        #expect(vrm.lookAt?.rangeMapVerticalUp.inputMaxValue == 90)
-        #expect(vrm.lookAt?.rangeMapVerticalUp.outputScale == 1)
+        #expect(vrm.lookAt?.rangeMapHorizontalInner?.inputMaxValue == 90)
+        #expect(vrm.lookAt?.rangeMapHorizontalInner?.outputScale == 1)
+        #expect(vrm.lookAt?.rangeMapHorizontalOuter?.inputMaxValue == 90)
+        #expect(vrm.lookAt?.rangeMapHorizontalOuter?.outputScale == 1)
+        #expect(vrm.lookAt?.rangeMapVerticalDown?.inputMaxValue == 90)
+        #expect(vrm.lookAt?.rangeMapVerticalDown?.outputScale == 1)
+        #expect(vrm.lookAt?.rangeMapVerticalUp?.inputMaxValue == 90)
+        #expect(vrm.lookAt?.rangeMapVerticalUp?.outputScale == 1)
     }
     
     @Test
@@ -216,9 +220,9 @@ struct VRM1Tests {
         assertSpeechAndEyeExpressions()
     }
 
-    /// Every emotion preset of the fixture is bound the same way: one morph
-    /// target on node 2, one texture transform on material 11 scaled 1:1, and
-    /// binary blending. Only the target, the offset and the overrides differ.
+    /// Every emotion preset of the fixture is bound the same way: one morph target on
+    /// node 2, one texture transform on material 11 scaled 1:1, and binary blending.
+    /// Only the target, the offset and the overrides differ.
     private func assertEmotionExpressions() {
         assertEmotionExpression(vrm.expressions?.preset?.happy,
                                 morphTargetIndex: 33,
@@ -256,7 +260,7 @@ struct VRM1Tests {
 
     private func assertEmotionExpression(_ expression: VRM1.Expressions.Expression?,
                                          morphTargetIndex: Int,
-                                         textureOffset: [Double],
+                                         textureOffset: SIMD2<Float>,
                                          overrideBlink: ExpressionOverride,
                                          overrideLookAt: ExpressionOverride,
                                          overrideMouth: ExpressionOverride,
@@ -276,9 +280,9 @@ struct VRM1Tests {
         #expect(expression?.overrideMouth == overrideMouth, sourceLocation: sourceLocation)
     }
 
-    /// The speech and eye presets of the fixture bind morph targets on node 2
-    /// at full weight and nothing else: no material colour, no texture
-    /// transform, no binary blending and no overrides.
+    /// The speech and eye presets of the fixture bind morph targets on node 2 at full
+    /// weight and nothing else: no material colour, texture transform, binary blending
+    /// or overrides.
     private func assertSpeechAndEyeExpressions() {
         assertPlainExpression(vrm.expressions?.preset?.aa, morphTargetIndices: [25])
         assertPlainExpression(vrm.expressions?.preset?.ih, morphTargetIndices: [26])
@@ -320,8 +324,8 @@ struct VRM1Tests {
         assertSprings()
     }
 
-    /// Every collider of the fixture is a capsule but one, and each one hangs
-    /// off a node with an offset and a radius.
+    /// Every collider of the fixture is a capsule but one, and each hangs off a node
+    /// with an offset and a radius.
     private func assertColliders() {
         #expect(vrm.springBone?.colliders?.count == 8)
         assertCapsuleCollider(0, node: 4,
@@ -387,8 +391,16 @@ struct VRM1Tests {
         #expect(sphere.radius == radius, sourceLocation: sourceLocation)
     }
 
-    /// Checks a vector one component at a time so that a mismatch names the
-    /// component rather than printing two whole arrays.
+    /// Checks a vector one component at a time so a mismatch names the component rather
+    /// than printing two whole arrays.
+    private func assertComponents(_ vector: SIMD3<Float>?,
+                                  _ expected: [Double],
+                                  sourceLocation: SourceLocation = #_sourceLocation) {
+        for (position, value) in expected.enumerated() {
+            #expect(vector?[position] == Float(value), sourceLocation: sourceLocation)
+        }
+    }
+
     private func assertComponents(_ vector: [Double]?,
                                   _ expected: [Double],
                                   sourceLocation: SourceLocation = #_sourceLocation) {
@@ -414,8 +426,8 @@ struct VRM1Tests {
         }
     }
 
-    /// The fixture springs the tail hair, seven strands of front hair and the
-    /// robot wire, and only the first and the last of those meet a collider.
+    /// The fixture springs the tail hair, seven strands of front hair and the robot wire,
+    /// and only the first and the last meet a collider.
     private func assertSprings() {
         #expect(vrm.springBone?.springs?.count == 9)
         assertTailHairSpring()
@@ -443,8 +455,8 @@ struct VRM1Tests {
         #expect(spring?.name == "TailHair")
     }
 
-    /// Every strand of front hair is two equally soft joints centred on the
-    /// hips and touched by no collider.
+    /// Every strand of front hair is two equally soft joints centred on the hips and
+    /// touched by no collider.
     private func assertFrontHairSpring(_ index: Int,
                                        name: String,
                                        jointNodes: [Int],
@@ -475,8 +487,8 @@ struct VRM1Tests {
         #expect(spring?.name == "RoboWire")
     }
 
-    /// Every joint of the fixture drags at full force and aims its gravity
-    /// straight down at no power at all.
+    /// Every joint of the fixture drags at full force and aims its gravity straight
+    /// down at no power at all.
     private func assertJoint(_ joint: VRM1.SpringBone.Spring.Joint?,
                              node: Int,
                              hitRadius: Double,
@@ -496,9 +508,9 @@ struct VRM1Tests {
         assertMaterialsWithoutMToon()
     }
 
-    /// Every MToon material of the fixture shares its outline and rim lighting
-    /// mix, its render queue, its spec version, its opaque z write and its
-    /// still UV animation. Only the factors and the textures below differ.
+    /// Every MToon material of the fixture shares its outline and rim lighting mix,
+    /// render queue, spec version, opaque z write and still UV animation. Only the
+    /// factors and the textures below differ.
     private func assertMToonMaterials() {
         assertMToonMaterial(0,
                             giEqualizationFactor: 0.9,
@@ -655,7 +667,7 @@ struct VRM1Tests {
                                      shadingShiftTextureScale: Double? = nil,
                                      shadingToonyFactor: Double,
                                      sourceLocation: SourceLocation = #_sourceLocation) {
-        let mToon = vrm.document.gltf.materials?[index].extensions?.materialsMToon
+        let mToon = vrm.document.gltf.materials[index].extensions?.materialsMToon
         #expect(mToon?.giEqualizationFactor == giEqualizationFactor, sourceLocation: sourceLocation)
         assertComponents(mToon?.matcapFactor, matcapFactor, sourceLocation: sourceLocation)
         #expect(mToon?.matcapTexture?.index == matcapTextureIndex, sourceLocation: sourceLocation)
@@ -682,21 +694,21 @@ struct VRM1Tests {
         #expect(mToon?.uvAnimationScrollYSpeedFactor == 0, sourceLocation: sourceLocation)
     }
 
-    /// The rest of the materials of the fixture are shaded by plain glTF and
-    /// carry no MToon extension at all.
+    /// The rest of the fixture's materials are shaded by plain glTF and carry no MToon
+    /// extension at all.
     private func assertMaterialsWithoutMToon() {
         for index in [7, 9, 12, 13, 14, 15, 16] {
-            #expect(vrm.document.gltf.materials?[index].extensions?.materialsMToon == nil)
+            #expect(vrm.document.gltf.materials[index].extensions?.materialsMToon == nil)
         }
     }
 
     @Test
     func testNodeConstraint() {
-        // Nodes 14...35 are each rotation-constrained by one node, node 85
-        // being the one gap in the sources they name.
+        // Nodes 14...35 are each rotation-constrained by one node, node 85 being the one
+        // gap in the sources they name.
         let sources = Array(82...84) + Array(86...104)
         for (node, source) in zip(14...35, sources) {
-            let constraint = vrm.document.gltf.nodes?[node].extensions?.nodeConstraint
+            let constraint = vrm.document.gltf.nodes[node].extensions?.nodeConstraint
             #expect(constraint?.specVersion == "1.0")
             guard case .rotation(let rotation) = constraint?.constraint else {
                 Issue.record("node \(node) is not rotation-constrained")
@@ -707,8 +719,8 @@ struct VRM1Tests {
         }
     }
 
-    /// The version decides how everything else is read, so a document carrying
-    /// both extensions, or neither, is refused rather than guessed at.
+    /// The version decides how everything else is read, so a document carrying both
+    /// extensions, or neither, is refused rather than guessed at.
     @Test
     func testADocumentThatIsNotOneVRMIsRefused() throws {
         let both = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
@@ -739,10 +751,10 @@ struct VRM1Tests {
         }
     }
 
-    /// The extension carries its own version, and a constraint of one this
-    /// cannot read would be solved as if it said something else.
+    /// The extension carries its own version, and a constraint of one this cannot read
+    /// would be solved as if it said something else.
     @Test
-    func testAnUnsupportedNodeConstraintSpecVersionIsRejected() throws {
+    func testAnUnsupportedNodeConstraintSpecVersionLoadsUnconstrained() throws {
         typealias NodeConstraint = GLTF.Node.NodeExtensions.NodeConstraint
         #expect(NodeConstraint.supports(specVersion: "1.0"))
         #expect(NodeConstraint.supports(specVersion: "1.0-beta"))
@@ -755,6 +767,11 @@ struct VRM1Tests {
             nodes[14]["extensions"] = ["VRMC_node_constraint": .object(constraint)]
             json["nodes"] = .objects(nodes)
         }
-        #expect(throws: (any Error).self) { try VRM1(data: data) }
+        // Decoded leniently: the node just goes unconstrained, and the raw JSON still
+        // carries what the document wrote.
+        let vrm = try VRM1(data: data)
+        let raised = vrm.document.gltf.nodes[14].extensions?.nodeConstraint
+        #expect(raised?.specVersion == "2.0")
+        #expect(raised?.constraint == nil)
     }
 }

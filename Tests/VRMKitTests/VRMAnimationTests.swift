@@ -19,11 +19,11 @@ struct VRMAnimationTests {
         #expect(animation.lookAt?.node == 6)
         #expect(animation.lookAt?.offsetFromHeadBone == [0, 0.06, 0])
         // The animation itself is plain glTF, parsed as such.
-        #expect(animation.document.gltf.animations?.count == 1)
+        #expect(animation.document.gltf.animations.count == 1)
     }
 
-    /// The MIT-licensed three-vrm sample: a real-world `.vrma` in its usual
-    /// GLB container, with a full 51-bone humanoid map.
+    /// The MIT-licensed three-vrm sample: a real-world `.vrma` in its usual GLB
+    /// container, with a full 51-bone humanoid map.
     @Test
     func testParsesTheThreeVRMSample() throws {
         let animation = try VRMAnimation(withURL: VRMASampleAsset.test.url)
@@ -33,11 +33,11 @@ struct VRMAnimationTests {
         #expect(animation.humanoid?.humanBones["hips"]?.node == 0)
         #expect(animation.expressions?.preset?["happy"]?.node == 51)
         #expect(animation.lookAt?.node == 52)
-        #expect(animation.document.gltf.animations?.count == 1)
+        #expect(animation.document.gltf.animations.count == 1)
     }
 
-    /// The bundled CC0 walk cycle, exported by VRM Add-on for Blender: a full
-    /// humanoid map with the hips translation locomotion needs.
+    /// The bundled CC0 walk cycle, exported by VRM Add-on for Blender: a full humanoid
+    /// map with the hips translation locomotion needs.
     @Test
     func testParsesTheWalkCycle() throws {
         let animation = try VRMAnimation(withURL: VRMASampleAsset.walk.url)
@@ -48,14 +48,14 @@ struct VRMAnimationTests {
         // The exporter writes the expressions object even with nothing in it.
         #expect(animation.expressions?.preset?.count == 0)
         #expect(animation.expressions?.custom?.count == 0)
-        #expect(animation.document.gltf.animations?.count == 1)
+        #expect(animation.document.gltf.animations.count == 1)
 
-        let channels = try #require(animation.document.gltf.animations?.first?.channels)
+        let channels = try #require(animation.document.gltf.animations.first?.channels)
         #expect(channels.count == 53)
     }
 
-    /// 1.0 is the only released `VRMC_vrm_animation` version; the reference
-    /// implementation reads the pre-release 1.0-draft as well, so this does too.
+    /// 1.0 is the only released `VRMC_vrm_animation` version; the reference implementation
+    /// reads the pre-release 1.0-draft as well, so this does too.
     @Test
     func testSupportedSpecVersions() {
         #expect(VRMAnimation.supports(specVersion: "1.0"))
@@ -76,9 +76,8 @@ struct VRMAnimationTests {
         #expect(throws: (any Error).self) { try VRMAnimation(data: VRMASampleFixture.standard(specVersion: "2.0")) }
     }
 
-    /// The spec requires specVersion, but exporters ship `.vrma` without one.
-    /// Such a file reads as 1.0 instead of failing to load, as the reference
-    /// implementation does; a malformed one still throws.
+    /// The spec requires specVersion, but exporters ship `.vrma` without one. Such a file
+    /// reads as 1.0 rather than failing to load; a malformed one still throws.
     @Test
     func testMissingSpecVersionFallsBackToSupportedVersion() throws {
         let animation = try VRMAnimation(data: VRMASampleFixture.standard(specVersion: nil))
@@ -88,8 +87,8 @@ struct VRMAnimationTests {
         #expect(throws: (any Error).self) { try VRMAnimation(data: try fixtureWithSpecVersion(1.0)) }
     }
 
-    /// The JSON fixture with its `specVersion` replaced by an arbitrary value,
-    /// for the malformed cases the fixture's `String?` cannot express.
+    /// The JSON fixture with its `specVersion` replaced by an arbitrary value, for the
+    /// malformed cases the fixture's `String?` cannot express.
     private func fixtureWithSpecVersion(_ value: JSONValue) throws -> Data {
         var json = try #require(try JSONValue(parsing: VRMASampleFixture.standard()).objectValue)
         var extensions = try #require(json.object("extensions"))

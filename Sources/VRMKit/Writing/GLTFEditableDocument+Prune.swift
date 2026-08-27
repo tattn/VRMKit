@@ -4,14 +4,13 @@ extension GLTFEditableDocument {
     /// Takes out everything the document has stopped drawing, and says how many
     /// BIN bytes that reclaimed and where the entries it kept ended up.
     ///
-    /// ``detachNode(at:)`` leaves the meshes and textures a subtree drew where they
-    /// were, and this takes those bytes back. ``GLTFReachability`` decides what
-    /// stays: a node something still names keeps its transform without the mesh it
-    /// drew, but a pruned detached subtree can no longer be drawn again with
-    /// ``moveNode(at:to:)``.
+    /// ``detachNode(at:)`` leaves the meshes and textures a subtree drew where they were,
+    /// and this takes those bytes back. ``GLTFReachability`` decides what stays: a node
+    /// something still names keeps its transform without the mesh it drew, but a pruned
+    /// detached subtree can no longer be drawn again with ``moveNode(at:to:)``.
     ///
-    /// A document declaring an extension this package cannot follow the references
-    /// of is refused rather than pruned.
+    /// A document declaring an extension whose references this package cannot follow is
+    /// refused rather than pruned.
     @discardableResult
     public mutating func prune() throws -> GLTFPruneResult {
         try validatePrunable()

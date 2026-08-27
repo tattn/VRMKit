@@ -1,17 +1,16 @@
 import VRMKit
 
-/// How each mesh of a model is drawn by a first-person camera, and which joints
-/// of each skin the head draws through.
+/// How each mesh of a model is drawn by a first-person camera, and which joints of
+/// each skin the head draws through.
 ///
-/// Both VRM versions leave a mesh nothing says otherwise about `auto`.
-/// ``FirstPersonAutoMask`` is the cut; this decides where it applies.
+/// Both VRM versions leave an unannotated mesh at `auto`. ``FirstPersonAutoMask`` is
+/// the cut; this decides where it applies.
 package struct VRMFirstPersonPlan: Sendable {
-    /// The node the camera sits on, whose bones an `auto` mesh loses. Nil for a
-    /// model that rigs no head.
+    /// The node the camera sits on, whose bones an `auto` mesh loses. Nil for a model
+    /// that rigs no head.
     package let headNode: Int?
-    /// What the model annotates, under the index it annotates it by. glTF lets
-    /// two nodes draw one mesh, and VRM 1.0 annotates the node, so the two
-    /// versions cannot share a key.
+    /// What the model annotates, under the index it annotates it by. glTF lets two nodes
+    /// draw one mesh and VRM 1.0 annotates the node, so the versions cannot share a key.
     private enum Annotations: Sendable {
         /// VRM 0.x, keyed by mesh index.
         case byMesh([Int: FirstPersonAnnotationType])
@@ -24,14 +23,14 @@ package struct VRMFirstPersonPlan: Sendable {
     private let headJointsBySkin: [Int: Set<UInt32>]
 
     package init(vrm: VRM, gltf: GLTF, hierarchy: GLTFNodeHierarchy) {
-        let nodes = gltf.nodes ?? []
+        let nodes = gltf.nodes
         switch vrm {
         case .v0(let vrm0):
-            // VRM 0.x names the bone itself, and writes -1 to leave it to the humanoid.
-            let bone = vrm0.firstPerson.firstPersonBone
-            headNode = nodes.indices.contains(bone) ? bone : vrm.nodeIndex(of: .head)
+            // VRM 0.x names the bone itself, falling back to the humanoid when it names none.
+            let bone = vrm0.firstPerson?.firstPersonBone
+            headNode = bone.flatMap { nodes.indices.contains($0) ? $0 : nil } ?? vrm.nodeIndex(of: .head)
             var byMesh: [Int: FirstPersonAnnotationType?] = [:]
-            for annotation in vrm0.firstPerson.meshAnnotations {
+            for annotation in vrm0.firstPerson?.meshAnnotations ?? [] {
                 // A flag VRM 0.x does not name leaves the mesh at `auto`.
                 byMesh[annotation.mesh] = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag)
             }
@@ -47,7 +46,7 @@ package struct VRMFirstPersonPlan: Sendable {
 
         var headJoints: [Int: Set<UInt32>] = [:]
         if let headNode {
-            for (index, skin) in (gltf.skins ?? []).enumerated() {
+            for (index, skin) in (gltf.skins).enumerated() {
                 let joints = FirstPersonAutoMask.headJoints(skinJoints: skin.joints,
                                                             headNode: headNode,
                                                             hierarchy: hierarchy)
@@ -57,8 +56,7 @@ package struct VRMFirstPersonPlan: Sendable {
         headJointsBySkin = headJoints
     }
 
-    /// How the node at `nodeIndex` draws the mesh at `meshIndex`, `auto` for one
-    /// nothing annotates.
+    /// How the node at `nodeIndex` draws the mesh at `meshIndex`, `auto` when unannotated.
     package func annotation(ofNodeAt nodeIndex: Int, meshIndex: Int) -> FirstPersonAnnotationType {
         switch annotations {
         case .byMesh(let byMesh): byMesh[meshIndex] ?? .auto

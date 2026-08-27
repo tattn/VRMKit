@@ -215,6 +215,7 @@ enum TestSupport {
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    @MainActor
     static func triangleIndexCount(of mesh: MeshResource) -> Int {
         mesh.contents.models.reduce(0) { count, model in
             count + model.parts.reduce(0) { $0 + ($1.triangleIndices?.count ?? 0) }

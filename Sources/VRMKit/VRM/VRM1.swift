@@ -6,8 +6,7 @@ public struct VRM1: Sendable {
         specVersion == "1.0" || specVersion == "1.0-beta"
     }
 
-    /// The underlying glTF document, which carries the model's glTF and the
-    /// binary resources it is drawn from.
+    /// The underlying glTF document, carrying the model's glTF and binary resources.
     public let document: GLTFDocument
     public let specVersion: String
     public let meta: Meta
@@ -19,14 +18,13 @@ public struct VRM1: Sendable {
     public let extensions: JSONValue?
     public let extras: JSONValue?
 
-    /// Initialize from VRM 1.0 data. `rootDirectory` is the base directory for
-    /// external resources.
+    /// Initialize from VRM 1.0 data, resolving external resources against `rootDirectory`.
     public init(data: Data, rootDirectory: URL? = nil) throws {
         try self.init(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
     }
 
-    /// Initialize from an already-loaded document, so that deciding which
-    /// version a file is does not mean parsing it twice.
+    /// Initialize from an already-loaded document, so deciding a file's version does
+    /// not mean parsing it twice.
     public init(document: GLTFDocument) throws {
         self.document = document
 
@@ -43,10 +41,9 @@ public struct VRM1: Sendable {
         firstPerson = try vrm.decodeJSONIfPresent(FirstPerson.self, forKey: "firstPerson")
         lookAt = try vrm.decodeJSONIfPresent(LookAt.self, forKey: "lookAt")
         expressions = try vrm.decodeJSONIfPresent(Expressions.self, forKey: "expressions")
+        // An unsupported spring bone version costs the physics, not the model: the rig
+        // checks the version and leaves such a spring out.
         springBone = try extensions["VRMC_springBone"]?.decode(SpringBone.self)
-        if let springBone, !SpringBone.supports(specVersion: springBone.specVersion) {
-            throw VRMError._notSupported("VRMC_springBone specVersion \(springBone.specVersion)")
-        }
         self.extensions = try vrm.decodeJSONIfPresent(JSONValue.self, forKey: "extensions")
         extras = try vrm.decodeJSONIfPresent(JSONValue.self, forKey: "extras")
     }
@@ -108,9 +105,8 @@ public extension VRM1 {
 
         /// The nodes the rig maps its bones to.
         ///
-        /// VRM 1.0 gives every bone its own JSON property, decoded into one
-        /// dictionary so that both VRM versions read as the same shape. A property
-        /// VRM does not define is ignored rather than failing the parse.
+        /// VRM 1.0 gives every bone its own JSON property, decoded into one dictionary so
+        /// both versions read as the same shape. An undefined property is ignored.
         public struct HumanBones: Codable, Sendable {
             public let bones: [HumanoidBone: HumanBone]
 
@@ -188,15 +184,27 @@ public extension VRM1 {
     }
 
     struct LookAt: Codable, Sendable {
-        public let offsetFromHeadBone:[Double]
-        public let type: LookAtType
-        public let rangeMapHorizontalInner: LookAtRangeMap
-        public let rangeMapHorizontalOuter: LookAtRangeMap
-        public let rangeMapVerticalDown: LookAtRangeMap
-        public let rangeMapVerticalUp: LookAtRangeMap
+        public let offsetFromHeadBone: SIMD3<Float>
+        public let type: LookAtType?
+        public let rangeMapHorizontalInner: LookAtRangeMap?
+        public let rangeMapHorizontalOuter: LookAtRangeMap?
+        public let rangeMapVerticalDown: LookAtRangeMap?
+        public let rangeMapVerticalUp: LookAtRangeMap?
         public let extensions: JSONValue?
         public let extras: JSONValue?
-        
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            offsetFromHeadBone = try container.simd3(forKey: .offsetFromHeadBone, default: .zero)
+            type = try container.decodeIfPresent(LookAtType.self, forKey: .type)
+            rangeMapHorizontalInner = try container.decodeIfPresent(LookAtRangeMap.self, forKey: .rangeMapHorizontalInner)
+            rangeMapHorizontalOuter = try container.decodeIfPresent(LookAtRangeMap.self, forKey: .rangeMapHorizontalOuter)
+            rangeMapVerticalDown = try container.decodeIfPresent(LookAtRangeMap.self, forKey: .rangeMapVerticalDown)
+            rangeMapVerticalUp = try container.decodeIfPresent(LookAtRangeMap.self, forKey: .rangeMapVerticalUp)
+            extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+            extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+        }
+
         public enum LookAtType: String, Codable, Sendable {
             case bone
             case expression
@@ -260,9 +268,18 @@ public extension VRM1 {
             public struct MaterialColorBind: Codable, Sendable {
                 public let material: Int
                 public let type: MaterialColorType
-                public let targetValue: [Double]
+                public let targetValue: SIMD4<Float>
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
+
+                public init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    material = try container.decode(Int.self, forKey: .material)
+                    type = try container.decode(MaterialColorType.self, forKey: .type)
+                    targetValue = try container.simd4(forKey: .targetValue, default: SIMD4<Float>(repeating: 1))
+                    extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+                    extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+                }
 
                 public enum MaterialColorType: String, Codable, Sendable {
                     case color
@@ -276,10 +293,19 @@ public extension VRM1 {
 
             public struct TextureTransformBind: Codable, Sendable {
                 public let material: Int
-                public let scale: [Double]?
-                public let offset: [Double]?
+                public let scale: SIMD2<Float>
+                public let offset: SIMD2<Float>
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
+
+                public init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    material = try container.decode(Int.self, forKey: .material)
+                    scale = try container.simd2(forKey: .scale, default: 1)
+                    offset = try container.simd2(forKey: .offset, default: 0)
+                    extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+                    extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+                }
             }
 
             public enum ExpressionOverrideType: String, Codable, Sendable {
@@ -294,13 +320,13 @@ public extension VRM1 {
 // VRMC_springBone
 extension VRM1 {
     public struct SpringBone: Codable, Sendable {
-        /// The `VRMC_springBone` spec versions this type models. The extension
-        /// carries its own version rather than the model's.
-        public static func supports(specVersion: String) -> Bool {
+        /// The `VRMC_springBone` spec versions this type models, which the extension
+        /// carries rather than the model.
+        public static func supports(specVersion: String?) -> Bool {
             specVersion == "1.0" || specVersion == "1.0-beta"
         }
 
-        public let specVersion: String
+        public let specVersion: String?
         public let colliders: [Collider]?
         public let colliderGroups: [ColliderGroup]?
         public let springs: [Spring]?
@@ -313,8 +339,8 @@ extension VRM1 {
             public let extensions: JSONValue?
             public let extras: JSONValue?
 
-            /// What a collider collides as. One stating neither shape would
-            /// still collide, at whatever hit radius a joint brings.
+            /// What a collider collides as. One stating neither shape would still collide,
+            /// at whatever hit radius a joint brings.
             public enum Shape: Codable, Sendable {
                 case sphere(ColliderShapeSphere)
                 case capsule(ColliderShapeCapsule)
@@ -347,14 +373,27 @@ extension VRM1 {
                 }
 
                 public struct ColliderShapeSphere: Codable, Sendable {
-                    public let offset: [Double]
+                    public let offset: SIMD3<Float>
                     public let radius: Double
+
+                    public init(from decoder: Decoder) throws {
+                        let container = try decoder.container(keyedBy: CodingKeys.self)
+                        offset = try container.simd3(forKey: .offset, default: .zero)
+                        radius = try container.decodeIfPresent(Double.self, forKey: .radius) ?? 0
+                    }
                 }
 
                 public struct ColliderShapeCapsule: Codable, Sendable {
-                    public let offset: [Double]
+                    public let offset: SIMD3<Float>
                     public let radius: Double
-                    public let tail: [Double]
+                    public let tail: SIMD3<Float>
+
+                    public init(from decoder: Decoder) throws {
+                        let container = try decoder.container(keyedBy: CodingKeys.self)
+                        offset = try container.simd3(forKey: .offset, default: .zero)
+                        radius = try container.decodeIfPresent(Double.self, forKey: .radius) ?? 0
+                        tail = try container.simd3(forKey: .tail, default: .zero)
+                    }
                 }
             }
         }
@@ -378,10 +417,23 @@ extension VRM1 {
                 public let hitRadius: Double?
                 public let stiffness: Double?
                 public let gravityPower: Double?
-                public let gravityDir: [Double]?
+                public let gravityDir: SIMD3<Float>
                 public let dragForce: Double?
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
+
+                public init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    node = try container.decode(Int.self, forKey: .node)
+                    hitRadius = try container.decodeIfPresent(Double.self, forKey: .hitRadius)
+                    stiffness = try container.decodeIfPresent(Double.self, forKey: .stiffness)
+                    gravityPower = try container.decodeIfPresent(Double.self, forKey: .gravityPower)
+                    gravityDir = try container.simd3(forKey: .gravityDir,
+                                                     default: VRMSpringBoneDefaults.gravityDirection)
+                    dragForce = try container.decodeIfPresent(Double.self, forKey: .dragForce)
+                    extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+                    extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+                }
             }
         }
     }

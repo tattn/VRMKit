@@ -269,14 +269,14 @@ struct MaterialShaderChainTests {
         }
     }
 
-    /// A VRM keeps rendering whatever this renderer can build, so the material
-    /// MToon could not build falls through to the Unlit approximation.
+    /// A VRM honors `extensionsRequired` too, so the material MToon could not build renders
+    /// as the default material rather than an approximation.
     @Test
-    func testUnbuildableRequiredMToonMaterialStillRendersInAVRM() async throws {
+    func testUnbuildableRequiredMToonMaterialFallsBackToTheDefaultMaterialInAVRM() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: Self.brokenMToonSeedSanData(isRequired: true))
         let entity = try await loader.loadEntity()
-        #expect(try loader.material(withMaterialIndex: 0) is UnlitMaterial)
+        #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
         // The rest of the model still renders as MToon.
         #expect(TestSupport.hasCustomMaterial(in: entity))
     }
@@ -308,9 +308,9 @@ struct MaterialShaderChainTests {
         await #expect(throws: (any Error).self) {
             try await GLTFEntityLoader(withData: modified).loadEntity()
         }
-        // The same document renders as a VRM, through the single-transform
-        // approximation MToon logs.
-        #expect(try VRMEntityLoader(withData: modified).material(withMaterialIndex: 0) is CustomMaterial)
+        // A VRM is held to the same requirement.
+        #expect(try VRMEntityLoader(withData: modified).material(withMaterialIndex: 0)
+            is PhysicallyBasedMaterial)
     }
 
     /// Seed-san with material 0's MToon shade texture pointing past the end of
@@ -436,11 +436,10 @@ struct MaterialShaderChainTests {
         await #expect(throws: (any Error).self) {
             try await GLTFEntityLoader(withData: required).loadEntity()
         }
-        // A VRM renders with whatever this renderer can build, so the same
-        // document still loads through the Unlit approximation.
+        // A VRM is held to the same requirement.
         let vrmLoader = try VRMEntityLoader(withData: required)
         _ = try await vrmLoader.loadEntity()
-        #expect(try vrmLoader.material(withMaterialIndex: 0) is UnlitMaterial)
+        #expect(try vrmLoader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
     }
 
     /// Seed-san with material 0's MToon `specVersion` replaced, so its authored

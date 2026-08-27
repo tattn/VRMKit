@@ -16,6 +16,9 @@ public struct VRMError: Error, Hashable, Sendable {
         /// A document that contradicts itself or the spec, such as an index out
         /// of range or a length that overruns its buffer.
         case dataInconsistent
+        /// A value the caller handed an API that no document may hold, such as a NaN
+        /// position. The document itself is fine, unlike ``dataInconsistent``.
+        case invalidArgument
         /// A model naming no thumbnail, or one it does not carry.
         case thumbnailNotFound
     }
@@ -25,8 +28,8 @@ public struct VRMError: Error, Hashable, Sendable {
     /// What went wrong, in a sentence a person can read.
     public let message: String
 
-    /// Where in VRMKit the error was raised, for a bug report. It names this
-    /// package's own source, not the caller's, so it stays out of ``message``.
+    /// Where in VRMKit the error was raised, for a bug report. It names this package's
+    /// own source, not the caller's, so it stays out of ``message``.
     public let origin: String?
 
     public init(kind: Kind, message: String, origin: String? = nil) {
@@ -57,6 +60,10 @@ public extension VRMError {
 
     static func dataInconsistent(_ message: String) -> VRMError {
         VRMError(kind: .dataInconsistent, message: message)
+    }
+
+    static func invalidArgument(_ message: String) -> VRMError {
+        VRMError(kind: .invalidArgument, message: message)
     }
 
     static let thumbnailNotFound = VRMError(kind: .thumbnailNotFound,
@@ -92,6 +99,13 @@ package extension VRMError {
                                   function: StaticString = #function,
                                   line: UInt = #line) -> VRMError {
         VRMError(kind: .dataInconsistent, message: message(), origin: _origin(file, function, line))
+    }
+
+    static func _invalidArgument(_ message: @autoclosure () -> String,
+                                 file: StaticString = #fileID,
+                                 function: StaticString = #function,
+                                 line: UInt = #line) -> VRMError {
+        VRMError(kind: .invalidArgument, message: message(), origin: _origin(file, function, line))
     }
 
     private static func _origin(_ file: StaticString, _ function: StaticString, _ line: UInt) -> String {

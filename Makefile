@@ -3,7 +3,7 @@ PLATFORM_MATRIX ?= \
 	"watchOS,watchOS Simulator,Watch" \
 	"xrOS,visionOS Simulator,Apple Vision Pro"
 
-.PHONY: test test-package-platform build-examples build-example-ios build-example-vision build-example-macos build-example-watch
+.PHONY: test test-macos test-package-platform build-examples build-example-ios build-example-vision build-example-macos build-example-watch
 
 EXAMPLE_PROJECT ?= Example/Example.xcodeproj
 IOS_SIM_DEST ?= generic/platform=iOS Simulator
@@ -33,7 +33,13 @@ build-example-watch:
 	echo "==> Building WatchExample (watchOS Simulator)"; \
 	xcodebuild -project "$(EXAMPLE_PROJECT)" -scheme "WatchExample Watch App" -destination "$(WATCHOS_SIM_DEST)" build
 
-test:
+# macOS has no simulator, so it runs through SwiftPM rather than the matrix below.
+test-macos:
+	@set -e; \
+	echo "==> Testing macOS"; \
+	swift test
+
+test: test-macos
 	@set -e; \
 	for entry in $(PLATFORM_MATRIX); do \
 		old_ifs="$$IFS"; IFS=,; set -- $$entry; IFS="$$old_ifs"; \

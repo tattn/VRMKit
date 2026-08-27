@@ -3,9 +3,9 @@ import Foundation
 import RealityKit
 import VRMKit
 
-/// Which primitive of which mesh, drawn with which skin. A mesh drawn by two
-/// nodes with different skins reads the same accessors into different joint
-/// influences, so the skin is part of the key.
+/// Which primitive of which mesh, drawn with which skin. A mesh drawn by two nodes with
+/// different skins reads the same accessors into different joint influences, so the
+/// skin is part of the key.
 struct PrimitiveGeometryKey: Hashable, Sendable {
     let meshIndex: Int
     let primitiveIndex: Int
@@ -14,12 +14,11 @@ struct PrimitiveGeometryKey: Hashable, Sendable {
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension GLTFEntityLoader {
-    /// Resolved once, so that decoding a primitive needs no material or skin
-    /// state of its own.
+    /// Resolved once, so decoding a primitive needs no material or skin state of its own.
     func makeGeometryDecoder() throws -> GLTFGeometryDecoder {
         var texcoordSelections: [Int: GLTFGeometryDecoder.TexcoordSelection] = [:]
         var samplingNormalTexture: Set<Int> = []
-        for index in (gltf.materials ?? []).indices {
+        for index in (gltf.materials).indices {
             let resolved = resolvedTexCoord(withMaterialIndex: index)
             texcoordSelections[index] = .init(selected: resolved.selected, isMixed: resolved.isMixed)
             if materialSamplesNormalTexture(withMaterialIndex: index) {
@@ -27,7 +26,7 @@ extension GLTFEntityLoader {
             }
         }
         var remaps: [Int: [Int]] = [:]
-        for index in (gltf.skins ?? []).indices {
+        for index in (gltf.skins).indices {
             remaps[index] = try skin(withSkinIndex: index).jointIndexRemap
         }
         return GLTFGeometryDecoder(accessors: accessors,
@@ -36,10 +35,9 @@ extension GLTFEntityLoader {
                                    jointIndexRemaps: remaps)
     }
 
-    /// The geometry of one primitive: what the prepare pass decoded, or a decode
-    /// on the spot for a primitive it did not reach. What the prepare pass left
-    /// is taken rather than read, since the build turns it into a `MeshResource`
-    /// and holding it past that is a second copy of the model.
+    /// The geometry of one primitive: what the prepare pass decoded, or a decode on the
+    /// spot for one it did not reach. Taken rather than read, since the build turns it
+    /// into a `MeshResource` and holding it past that is a second copy of the model.
     func decodedGeometry(forKey key: PrimitiveGeometryKey,
                          primitive: GLTF.Mesh.Primitive) throws -> GLTFPrimitiveGeometry? {
         if let prepared = entityData.primitiveGeometries.removeValue(forKey: key) { return prepared }
@@ -53,13 +51,12 @@ extension GLTFEntityLoader {
         return decoder
     }
 
-    /// Decodes every primitive of the scene at `index` at once, so the build pass
-    /// finds the vertex data already conditioned.
+    /// Decodes every primitive of the scene at `index` at once, so the build pass finds
+    /// the vertex data already conditioned.
     ///
     /// Reading the accessors, triangulating, expanding a flat-shaded primitive and
-    /// generating a tangent basis are the bulk of a load and touch neither
-    /// RealityKit nor the scene graph, so they run off this actor. A primitive this
-    /// renderer cannot decode fails the load here.
+    /// generating a tangent basis are the bulk of a load and touch neither RealityKit nor
+    /// the scene graph, so they run off this actor.
     func prepareGeometry(forSceneIndex index: Int) async throws {
         let work = try geometryWork(forSceneIndex: index)
         guard !work.isEmpty else { return }
@@ -86,15 +83,47 @@ extension GLTFEntityLoader {
         }
     }
 
-    /// Every primitive the scene has still to build, paired with the skin it is
-    /// drawn with. A mesh whose template this loader already holds is left out:
-    /// the build clones the template rather than reading a vertex of it.
+    /// Every primitive the scene has still to build, paired with the skin it is drawn
+    /// with. A mesh whose template this loader already holds is left out, since the build
+    /// clones the template rather than reading a vertex of it.
     private func geometryWork(
         forSceneIndex index: Int
     ) throws -> [(key: PrimitiveGeometryKey, primitive: GLTF.Mesh.Primitive)] {
-        let scene = try gltf.load(\.scenes, at: index)
         var work: [(key: PrimitiveGeometryKey, primitive: GLTF.Mesh.Primitive)] = []
         var seen: Set<PrimitiveGeometryKey> = []
+        for drawn in try drawnMeshes(forSceneIndex: index) {
+            let headJoints = firstPersonHeadJoints(ofNodeAt: drawn.nodeIndex,
+                                                   meshIndex: drawn.meshIndex,
+                                                   skinIndex: drawn.skinIndex)
+            let templateKey = EntityData.MeshTemplateKey(meshIndex: drawn.meshIndex,
+                                                         skinIndex: drawn.skinIndex,
+                                                         cutsHead: !headJoints.isEmpty)
+            guard entityData.meshTemplates[templateKey] == nil else { continue }
+            for (primitiveIndex, primitive) in resolvedPrimitives(of: drawn.mesh).enumerated() {
+                let key = PrimitiveGeometryKey(meshIndex: drawn.meshIndex,
+                                               primitiveIndex: primitiveIndex,
+                                               skinIndex: drawn.skinIndex)
+                guard seen.insert(key).inserted else { continue }
+                work.append((key, primitive))
+            }
+        }
+        return work
+    }
+
+    /// One mesh the scene draws, at the node drawing it: a mesh drawn by two nodes with
+    /// different skins is two.
+    struct DrawnMesh {
+        let nodeIndex: Int
+        let meshIndex: Int
+        let skinIndex: Int?
+        let mesh: GLTF.Mesh
+    }
+
+    /// Every mesh the scene at `index` draws, which is all a prepare pass has to
+    /// condition.
+    func drawnMeshes(forSceneIndex index: Int) throws -> [DrawnMesh] {
+        let scene = try gltf.load(\.scenes, at: index)
+        var meshes: [DrawnMesh] = []
         var stack = scene.nodes ?? []
         var visited: Set<Int> = []
 
@@ -104,27 +133,17 @@ extension GLTFEntityLoader {
             stack.append(contentsOf: gltfNode.children ?? [])
             guard let meshIndex = gltfNode.mesh,
                   let mesh = try? gltf.load(\.meshes, at: meshIndex) else { continue }
-            // Building a skinned mesh builds its skin's joints, so whatever
-            // hangs off one is drawn whether or not the scene names it.
+            // Building a skinned mesh builds its skin's joints, so whatever hangs off one
+            // is drawn whether or not the scene names it.
             if let skinIndex = gltfNode.skin, let skin = try? gltf.load(\.skins, at: skinIndex) {
                 stack.append(contentsOf: skin.joints)
             }
-            let headJoints = firstPersonHeadJoints(ofNodeAt: nodeIndex,
-                                                   meshIndex: meshIndex,
-                                                   skinIndex: gltfNode.skin)
-            let templateKey = EntityData.MeshTemplateKey(meshIndex: meshIndex,
-                                                         skinIndex: gltfNode.skin,
-                                                         cutsHead: !headJoints.isEmpty)
-            guard entityData.meshTemplates[templateKey] == nil else { continue }
-            for (primitiveIndex, primitive) in resolvedPrimitives(of: mesh).enumerated() {
-                let key = PrimitiveGeometryKey(meshIndex: meshIndex,
-                                               primitiveIndex: primitiveIndex,
-                                               skinIndex: gltfNode.skin)
-                guard seen.insert(key).inserted else { continue }
-                work.append((key, primitive))
-            }
+            meshes.append(DrawnMesh(nodeIndex: nodeIndex,
+                                    meshIndex: meshIndex,
+                                    skinIndex: gltfNode.skin,
+                                    mesh: mesh))
         }
-        return work
+        return meshes
     }
 }
 #endif

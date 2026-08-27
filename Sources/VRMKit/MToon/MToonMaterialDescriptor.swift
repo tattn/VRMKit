@@ -1,15 +1,12 @@
 import Foundation
 import simd
 
-/// Canonical `VRMC_materials_mtoon` 1.0 material model, and the one every MToon
-/// value in this package passes through.
+/// Canonical `VRMC_materials_mtoon` 1.0 material model, which every MToon value in this
+/// package passes through: the extension, the VRM 0.x material property and a converted
+/// standard material all become one of these, and writing takes the same routes back out.
 ///
-/// Declares no initializer of its own, so that the memberwise one stays
-/// available to ``VRM0MToonProperty``.
-///
-/// The extension, the VRM 0.x material property and a converted standard material
-/// all become one of these, and writing takes the same routes back out. It knows
-/// only MToon 1.0 semantics: VRM 0.x is converted by ``VRM0MToonProperty`` first.
+/// Declares no initializer of its own, so the memberwise one stays available to
+/// ``VRM0MToonProperty``.
 package struct MToonMaterialDescriptor: Equatable, Sendable {
     package enum CullMode {
         case none
@@ -19,8 +16,7 @@ package struct MToonMaterialDescriptor: Equatable, Sendable {
 
     package typealias OutlineWidthMode = MToonOutlineWidthMode
 
-    /// Shared with the standard material paths; the aliases keep the
-    /// descriptor's vocabulary local.
+    /// Shared with the standard material paths; the aliases keep the vocabulary local.
     package typealias UVTransform = GLTFUVTransform
     package typealias Texture = GLTFSampledTexture
 
@@ -62,15 +58,14 @@ package struct MToonMaterialDescriptor: Equatable, Sendable {
 
 package extension MToonMaterialDescriptor {
     /// What MToon data a glTF material carries. A material authored against an
-    /// unimplemented spec version is still MToon, so renderers must tell it from
-    /// one carrying no MToon data at all.
+    /// unimplemented spec version is still MToon, so it is told apart from one
+    /// carrying no MToon data at all.
     enum Resolution {
         /// The material carries no MToon data.
         case none
         /// The material's MToon data, decoded.
         case supported(MToonMaterialDescriptor)
-        /// The material declares `VRMC_materials_mtoon` with the given
-        /// `specVersion`, which ``supports(specVersion:)`` does not implement.
+        /// The material declares a `specVersion` ``supports(specVersion:)`` does not implement.
         case unsupportedVersion(String)
 
         /// Whether the material is MToon at all, readable or not.
@@ -86,20 +81,19 @@ package extension MToonMaterialDescriptor {
         }
     }
 
-    /// The `VRMC_materials_mtoon` spec versions this descriptor implements.
-    /// Anything else falls back to Unlit / PBR rather than being read with 1.0
-    /// semantics.
-    static func supports(specVersion: String) -> Bool {
+    /// The `VRMC_materials_mtoon` spec versions this descriptor implements. Anything
+    /// else falls back to Unlit / PBR rather than being read with 1.0 semantics.
+    static func supports(specVersion: String?) -> Bool {
         specVersion == "1.0" || specVersion == "1.0-beta"
     }
 
-    /// The MToon data `material` carries, from the `VRMC_materials_mtoon`
-    /// extension or, for VRM 0.x, the Unity material property describing it.
+    /// The MToon data `material` carries: the `VRMC_materials_mtoon` extension, or
+    /// for VRM 0.x the Unity material property describing it.
     static func resolve(material: GLTF.Material,
                         materialProperty: VRM0.MaterialProperty?) -> Resolution {
         if let mtoon = material.extensions?.materialsMToon {
             guard supports(specVersion: mtoon.specVersion) else {
-                return .unsupportedVersion(mtoon.specVersion)
+                return .unsupportedVersion(mtoon.specVersion ?? "unspecified")
             }
             return .supported(MToonMaterialDescriptor(vrm1: mtoon, material: material))
         }
@@ -111,8 +105,7 @@ package extension MToonMaterialDescriptor {
         return .supported(VRM0MToonProperty.descriptor(property: materialProperty, material: material))
     }
 
-    /// The decoded MToon data, or nil when there is none this descriptor can
-    /// read. ``resolve(material:materialProperty:)`` tells those two apart.
+    /// The decoded MToon data, or nil when there is none this descriptor can read.
     init?(material: GLTF.Material, materialProperty: VRM0.MaterialProperty?) {
         guard let descriptor = Self.resolve(material: material,
                                             materialProperty: materialProperty).descriptor else {
@@ -123,8 +116,7 @@ package extension MToonMaterialDescriptor {
 }
 
 package extension MToonMaterialDescriptor {
-    /// MToon 1.0 spec defaults, used as fallbacks for omitted authored values
-    /// and synthesized standard materials.
+    /// MToon 1.0 spec defaults, for omitted authored values and synthesized materials.
     enum SpecDefault {
         static let shadeColorFactor = SIMD4<Float>(1, 1, 1, 1)
         package static let shadingShiftFactor: Float = 0
@@ -144,8 +136,7 @@ package extension MToonMaterialDescriptor {
         static let renderQueueOffsetNumber = 0
     }
 
-    /// The fields every descriptor derives the same way from the standard glTF
-    /// material, whether the toon values are authored or synthesized.
+    /// The fields every descriptor derives the same way from the standard glTF material.
     struct StandardMaterialProperties {
         let baseColorFactor: SIMD4<Float>
         let emissiveFactor: SIMD3<Float>
@@ -173,8 +164,7 @@ package extension MToonMaterialDescriptor {
 }
 
 package extension MToonMaterialDescriptor {
-    /// UV-accessed textures in the order renderers should consider them when
-    /// they can only honor a single material-level UV transform.
+    /// UV-accessed textures, ordered for a renderer that can honor only one UV transform.
     var uvAccessedTextures: [Texture] {
         [baseColorTexture, shadeMultiplyTexture, shadingShiftTexture, normalTexture,
          emissiveTexture, rimMultiplyTexture, outlineWidthMultiplyTexture, uvAnimationMaskTexture]
@@ -243,9 +233,9 @@ private extension MToonMaterialDescriptor {
 // MARK: - Writing
 
 package extension MToonMaterialDescriptor {
-    /// The `VRMC_materials_mtoon` extension object, the inverse of
-    /// ``init(vrm1:material:)``. Only the MToon fields: the base color, emission,
-    /// alpha mode and normal map belong to the glTF material it sits on.
+    /// The `VRMC_materials_mtoon` extension object, the inverse of ``init(vrm1:material:)``.
+    /// Only the MToon fields: the base color, emission, alpha mode and normal map belong to
+    /// the glTF material it sits on.
     func mtoonExtension() -> JSONObject {
         var mtoon: JSONObject = [
             "specVersion": .string(Self.writtenSpecVersion),
@@ -281,9 +271,9 @@ package extension MToonMaterialDescriptor {
         return mtoon
     }
 
-    /// Every texture the material samples, which tells a writer whether the
-    /// document has to declare `KHR_texture_transform`. The matcap is sampled by
-    /// view direction, so it is the one slot ``uvAccessedTextures`` leaves out.
+    /// Every texture the material samples, so a writer knows whether the document has to
+    /// declare `KHR_texture_transform`. The matcap is sampled by view direction, which is
+    /// why ``uvAccessedTextures`` leaves it out.
     var textures: [Texture] {
         uvAccessedTextures + [matcapTexture].compactMap { $0 }
     }
@@ -291,8 +281,7 @@ package extension MToonMaterialDescriptor {
     /// The newest version ``supports(specVersion:)`` reads.
     static let writtenSpecVersion = "1.0"
 
-    /// MToon bounds the factors it defines, while a descriptor may have been
-    /// assembled by a renderer override that does not.
+    /// MToon bounds the factors it defines; a renderer override assembling one may not.
     private static func clamped(_ value: Float, to range: ClosedRange<Float> = 0...1) -> JSONValue {
         .number(value.clamped(to: range))
     }

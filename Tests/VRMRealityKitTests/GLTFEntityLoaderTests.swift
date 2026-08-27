@@ -7,8 +7,8 @@ import VRMKit
 import VRMTestSupport
 @testable import VRMRealityKit
 
-/// Loads the VRM fixtures through the generic glTF loader: a VRM file is a GLB
-/// with extensions, so it doubles as a plain glTF fixture.
+/// Loads the VRM fixtures through the generic glTF loader: a VRM file is a GLB with
+/// extensions, so it doubles as a plain glTF fixture.
 @Suite
 @MainActor
 struct GLTFEntityLoaderTests {
@@ -20,10 +20,10 @@ struct GLTFEntityLoaderTests {
 
         #expect(!(entity is VRMEntity))
         #expect(entity.sceneIndex == entity.gltf.scene)
-        #expect(entity.document.gltf.nodes?.isEmpty == false)
+        #expect(entity.document.gltf.nodes.isEmpty == false)
 
         // Every scene node resolves through the index mapping.
-        let nodeCount = entity.gltf.nodes?.count ?? 0
+        let nodeCount = entity.gltf.nodes.count
         var mappedCount = 0
         for index in 0..<nodeCount {
             guard let node = entity.entity(forNodeAt: index) else { continue }
@@ -35,8 +35,8 @@ struct GLTFEntityLoaderTests {
         #expect(entity.entity(forNodeAt: -1) == nil)
     }
 
-    /// Authoring names the scene it makes as the document's default, which is
-    /// the one `loadEntity()` asks a glTF for.
+    /// Authoring names the scene it makes as the document's default, which is the one
+    /// `loadEntity()` asks a glTF for.
     @Test
     func testAnAuthoredDocumentLoadsThroughItsDefaultScene() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -63,8 +63,8 @@ struct GLTFEntityLoaderTests {
         }
     }
 
-    /// A second scene off the same loader reuses the `MeshResource` while binding
-    /// its own joint entities.
+    /// A second scene off the same loader reuses the `MeshResource` while binding its
+    /// own joint entities.
     @Test
     func testReloadingASceneReusesItsMeshesAndBindsItsOwnJoints() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -103,16 +103,16 @@ struct GLTFEntityLoaderTests {
     @Test
     func testInitialMorphWeightsComeFromNodeThenMesh() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Find a node whose mesh has morph targets, then give that node
-        // explicit starting weights.
+        // Find a node whose mesh has morph targets, then give it starting weights.
         let document = try GLTFDocument(data: TestSupport.seedSanData)
         let gltf = document.gltf
-        let (nodeIndex, targetCount) = try #require(gltf.nodes?.enumerated().compactMap { index, node -> (Int, Int)? in
+        let morphed = gltf.nodes.enumerated().compactMap { index, node -> (Int, Int)? in
             guard let meshIndex = node.mesh,
-                  let targets = gltf.meshes?[meshIndex].primitives.first?.targets,
+                  let targets = gltf.meshes[meshIndex].primitives.first?.targets,
                   !targets.isEmpty else { return nil }
             return (index, targets.count)
-        }.first)
+        }
+        let (nodeIndex, targetCount) = try #require(morphed.first)
 
         var weights = [Double](repeating: 0, count: targetCount)
         weights[0] = 0.5
@@ -136,19 +136,19 @@ struct GLTFEntityLoaderTests {
         #expect(applied)
     }
 
-    /// glTF sizes `node.weights` and `mesh.weights` by the mesh's morph target
-    /// count; a different length is not a partial pose to apply as far as it goes.
+    /// glTF sizes `node.weights` and `mesh.weights` by the mesh's morph target count;
+    /// a different length is not a partial pose to apply as far as it goes.
     @Test
     func testMorphWeightsOfTheWrongLengthFailTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let gltf = try GLTFDocument(data: TestSupport.seedSanData).gltf
-        let (nodeIndex, meshIndex, targetCount) = try #require(
-            gltf.nodes?.enumerated().compactMap { index, node -> (Int, Int, Int)? in
-                guard let meshIndex = node.mesh,
-                      let targets = gltf.meshes?[meshIndex].primitives.first?.targets,
-                      !targets.isEmpty else { return nil }
-                return (index, meshIndex, targets.count)
-            }.first)
+        let morphed = gltf.nodes.enumerated().compactMap { index, node -> (Int, Int, Int)? in
+            guard let meshIndex = node.mesh,
+                  let targets = gltf.meshes[meshIndex].primitives.first?.targets,
+                  !targets.isEmpty else { return nil }
+            return (index, meshIndex, targets.count)
+        }
+        let (nodeIndex, meshIndex, targetCount) = try #require(morphed.first)
 
         func weighted(_ count: Int, key: String, of collection: String, at index: Int) throws -> Data {
             try TestSupport.modifiedSeedSanData(name: "\(collection) \(count) weights") { json in
@@ -176,16 +176,17 @@ struct GLTFEntityLoaderTests {
     func testGenericLoadRendersMToonFromGLTFExtension() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
 #if !os(visionOS)
-        // Seed-san's materials carry VRMC_materials_mtoon as a plain glTF
-        // material extension, so the generic loader renders them as MToon too.
+        // Seed-san's materials carry VRMC_materials_mtoon as a plain glTF material
+        // extension, so the generic loader renders them as MToon too.
         let loader = try GLTFEntityLoader(withData: TestSupport.seedSanData)
         let material = try loader.material(withMaterialIndex: 0)
         #expect(material is CustomMaterial, TestSupport.expectedCustomMaterialMessage)
 #endif
     }
 
+    /// A VRM is held to `extensionsRequired` as any other glTF is.
     @Test
-    func testUnsupportedRequiredExtensionFailsGenericLoadButNotVRM() async throws {
+    func testUnsupportedRequiredExtensionFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanData(name: "unsupported required extension") { json in
             json["extensionsRequired"] = ["FAKE_required_extension"]
@@ -194,17 +195,18 @@ struct GLTFEntityLoaderTests {
         await #expect(throws: VRMError.self) {
             _ = try await GLTFEntityLoader(withData: modified).loadEntity()
         }
-        // The VRM path only warns about an unimplemented required extension.
-        _ = try await VRMEntityLoader(withData: modified).loadEntity()
+        await #expect(throws: VRMError.self) {
+            _ = try await VRMEntityLoader(withData: modified).loadEntity()
+        }
     }
 
-    /// Hand-written because every glTF-Sample-Assets model with a sparse accessor
-    /// is CC-BY-4.0, which the test assets avoid.
+    /// Hand-written: every glTF-Sample-Assets model with a sparse accessor is CC-BY-4.0,
+    /// which the test assets avoid.
     @Test
     func testSparseAccessorSubstitutesPositions() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // A triangle whose third vertex is (0, 1, 0) in the base buffer and is
-        // replaced by (0, 5, 0) through the accessor's sparse substitution.
+        // A triangle whose third vertex is (0, 1, 0) in the base buffer and is replaced
+        // by (0, 5, 0) through the accessor's sparse substitution.
         var buffer = Data()
         let indicesOffset = buffer.count
         buffer.appendLittleEndian([0, 1, 2])
@@ -256,8 +258,8 @@ struct GLTFEntityLoaderTests {
         #expect(positions[1].isApproximatelyEqual(to: SIMD3<Float>(1, 0, 0)))
     }
 
-    /// A material whose textures sample UV set 1 gets TEXCOORD_1 as the mesh's
-    /// single RealityKit UV channel. Hand-written: MultiUVTest is CC-BY-4.0.
+    /// A material whose textures sample UV set 1 gets TEXCOORD_1 as the mesh's single
+    /// RealityKit UV channel. Hand-written: MultiUVTest is CC-BY-4.0.
     @Test
     func testMaterialSamplingUVSet1SelectsTEXCOORD1() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -300,15 +302,15 @@ struct GLTFEntityLoaderTests {
         let uvs = try #require(model.mesh.contents.models.first?.parts.first?.textureCoordinates?.elements)
 
         #expect(uvs.count == 3)
-        // The loader flips V (RealityKit's UV origin is bottom-left), so the
-        // TEXCOORD_1 values arrive as (u, 1 - v).
+        // The loader flips V (RealityKit's UV origin is bottom-left), so the TEXCOORD_1
+        // values arrive as (u, 1 - v).
         #expect(uvs[0].isApproximatelyEqual(to: SIMD2<Float>(0.25, 0.25)))
         #expect(uvs[1].isApproximatelyEqual(to: SIMD2<Float>(0.5, 0.25)))
         #expect(uvs[2].isApproximatelyEqual(to: SIMD2<Float>(0.25, 0.5)))
     }
 
-    /// glTF's final metallic / roughness is the sampled texture channel times the
-    /// factor, so a texture must not drop the factors on the floor.
+    /// glTF's final metallic / roughness is the sampled texture channel times the factor,
+    /// so a texture must not drop the factors.
     @Test
     func testMetallicRoughnessTextureKeepsItsFactors() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -332,8 +334,8 @@ struct GLTFEntityLoaderTests {
         #expect(material.roughness.scale.isApproximatelyEqual(to: 0.75))
     }
 
-    /// A primitive without a material renders with glTF's default material: a lit
-    /// white PBR one, not an unlit fill.
+    /// A primitive without a material renders with glTF's default material: a lit white
+    /// PBR one, not an unlit fill.
     @Test
     func testPrimitiveWithoutAMaterialRendersAsLitPBR() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -345,8 +347,8 @@ struct GLTFEntityLoaderTests {
         #expect(material.roughness.scale.isApproximatelyEqual(to: 1))
     }
 
-    /// RealityKit meshes render triangles only, so a POINTS or LINES primitive is
-    /// skipped: the node it hangs on still loads, it just draws nothing.
+    /// RealityKit meshes render triangles only, so a POINTS or LINES primitive is skipped:
+    /// the node it hangs on still loads, it just draws nothing.
     @Test
     func testNonTriangledPrimitivesAreSkippedWithoutFailingTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -370,8 +372,8 @@ struct GLTFEntityLoaderTests {
         await #expect(try !TestSupport.loadEntity(.triangle).modelEntitiesInHierarchy.isEmpty)
     }
 
-    /// A glTF texture is an image plus a sampler, and only the image decides the
-    /// decoded resource, so two textures over one image share one.
+    /// A glTF texture is an image plus a sampler, and only the image decides the decoded
+    /// resource, so two textures over one image share one.
     @Test
     func testTexturesOverOneImageShareTheDecodedResource() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -383,13 +385,13 @@ struct GLTFEntityLoaderTests {
         }
 
         let loader = try GLTFEntityLoader(withData: data)
-        let duplicate = (loader.document.gltf.textures?.count ?? 0) - 1
+        let duplicate = (loader.document.gltf.textures.count) - 1
         #expect(try loader.texture(withTextureIndex: 0) === loader.texture(withTextureIndex: duplicate))
         #expect(try loader.sampler(withTextureIndex: 0) != loader.sampler(withTextureIndex: duplicate))
     }
 
-    /// An asset of one scene has no default to name, but one holding several and
-    /// naming none says nothing about which to draw.
+    /// An asset of one scene has no default to name, but one holding several and naming
+    /// none says nothing about which to draw.
     @Test
     func testLoadingAnAssetWithoutADefaultSceneNeedsAnExplicitIndex() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -419,8 +421,8 @@ struct GLTFEntityLoaderTests {
         #expect(entity.sceneIndex == 0)
     }
 
-    /// A node states its transform as TRS or as a 16-value column-major
-    /// `matrix`, and one carrying the matrix places its mesh from it.
+    /// A node states its transform as TRS or as a 16-value column-major `matrix`, and one
+    /// carrying the matrix places its mesh from it.
     @Test
     func testNodeMatrixIsReadAsItsLocalTransform() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -440,8 +442,8 @@ struct GLTFEntityLoaderTests {
         }
     }
 
-    /// glTF node hierarchies are forests. A cyclic one would recurse forever, so
-    /// it has to fail the load instead.
+    /// glTF node hierarchies are forests. A cyclic one would recurse forever, so it fails
+    /// the load instead.
     @Test
     func testCyclicNodeHierarchyFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -453,8 +455,7 @@ struct GLTFEntityLoaderTests {
         await #expect(throws: VRMError.self) { try await loader.loadEntity() }
     }
 
-    /// A node reached from two parents is neither renderable as a tree nor valid
-    /// glTF.
+    /// A node reached from two parents is neither renderable as a tree nor valid glTF.
     @Test
     func testNodeWithTwoParentsFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -466,9 +467,8 @@ struct GLTFEntityLoaderTests {
         await #expect(throws: VRMError.self) { try await loader.loadEntity() }
     }
 
-    /// `scene.nodes` names root nodes. Attaching one that already has a parent
-    /// would reparent it, so the resulting hierarchy would depend on the order
-    /// `scene.nodes` happens to list them in.
+    /// `scene.nodes` names root nodes. Attaching one that already has a parent would
+    /// reparent it, making the hierarchy depend on the order `scene.nodes` lists them in.
     @Test
     func testSceneRootThatIsAlreadyAChildFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -481,8 +481,8 @@ struct GLTFEntityLoaderTests {
     }
 
     /// RealityKit gives a material one UV transform, so an asset requiring
-    /// `KHR_texture_transform` with differing per-texture transforms asks for a
-    /// render this loader cannot produce.
+    /// `KHR_texture_transform` with differing per-texture transforms asks for a render
+    /// this loader cannot produce.
     @Test
     func testRequiredTextureTransformBeyondOnePerMaterialFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -504,9 +504,9 @@ struct GLTFEntityLoaderTests {
         await #expect(throws: VRMError.self) { try await loader(emissiveScale: [3.0, 3.0]).loadEntity() }
     }
 
-    /// A mesh carries one UV channel, so an asset requiring
-    /// `KHR_texture_transform` while pointing a material's textures at different
-    /// UV sets asks for a render this loader cannot produce.
+    /// A mesh carries one UV channel, so an asset requiring `KHR_texture_transform` while
+    /// pointing a material's textures at different UV sets asks for a render this loader
+    /// cannot produce.
     @Test
     func testRequiredTextureTransformBeyondOneUVSetPerMaterialFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -529,7 +529,7 @@ struct GLTFEntityLoaderTests {
     }
 
     /// Skin joints index the joint arrays positionally, so a repeated, missing or
-    /// out-of-range joint has to throw rather than trap.
+    /// out-of-range joint throws rather than trapping.
     @Test
     func testMalformedSkinJointsFailTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -547,8 +547,8 @@ struct GLTFEntityLoaderTests {
         }
     }
 
-    /// A clone carries no animation bindings, so playback has to report that
-    /// instead of silently doing nothing.
+    /// A clone carries no animation bindings, so playback reports that instead of
+    /// silently doing nothing.
     @Test
     func testAnimatingACloneIsRejected() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -562,8 +562,8 @@ struct GLTFEntityLoaderTests {
         #expect(throws: VRMError.self) { try clone.playAnimation(at: 0) }
     }
 
-    /// An animation sampler that reads a shared accessor as the wrong type must
-    /// fail even when the accessor is already in the decoder's cache.
+    /// An animation sampler reading a shared accessor as the wrong type fails even when
+    /// the accessor is already in the decoder's cache.
     @Test
     func testAnimationSamplerReadingAnAccessorAsTheWrongTypeFails() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -581,8 +581,8 @@ struct GLTFEntityLoaderTests {
         #expect(throws: VRMError.self) { try entity.playAnimation(at: 0) }
     }
 
-    /// VRM meshes put the morph targets on a single primitive and the VRM loader
-    /// shares them across the rest, which the plain glTF loader must not do.
+    /// VRM meshes put the morph targets on a single primitive and the VRM loader shares
+    /// them across the rest, which the plain glTF loader must not do.
     @Test
     func testVRMSharesMorphTargetsAcrossPrimitivesButPlainGLTFDoesNot() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -596,13 +596,13 @@ struct GLTFEntityLoaderTests {
         #expect(morphableModelCount(vrm) > morphableModelCount(plain))
     }
 
-    /// A degenerate triangle keeps the zero normal `flatNormals()` leaves it, and
-    /// the tangent basis a normal map asks for must not turn that into NaN.
+    /// A degenerate triangle keeps the zero normal `flatNormals()` leaves it, and the
+    /// tangent basis a normal map asks for must not turn that into NaN.
     @Test
     func testDegenerateTriangleUnderANormalMapKeepsTheTangentBasisFinite() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // The fixture's index buffer lives in its .bin, so the degenerate
-        // triangle arrives through a buffer of its own.
+        // The fixture's index buffer lives in its .bin, so the degenerate triangle
+        // arrives through a buffer of its own.
         var degenerateIndices = Data()
         degenerateIndices.appendLittleEndian([0, 0, 1, 0, 1, 2])
         let loader = try TestSupport.loader(.simpleTexture) { json in
@@ -641,13 +641,13 @@ struct GLTFEntityLoaderTests {
         #expect(bitangents.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
     }
 
-    /// glTF flat shades a primitive that ships no NORMAL, so the shared vertices
-    /// of two folded triangles must not average into one smooth normal.
+    /// glTF flat shades a primitive that ships no NORMAL, so the shared vertices of two
+    /// folded triangles must not average into one smooth normal.
     @Test
     func testPrimitiveWithoutNORMALIsFlatShaded() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Two triangles sharing the edge (0,0,0)-(1,0,0): one in the z = 0 plane
-        // facing +z, one in the y = 0 plane facing +y.
+        // Two triangles sharing the edge (0,0,0)-(1,0,0): one in the z = 0 plane facing
+        // +z, one in the y = 0 plane facing +y.
         var buffer = Data()
         let indicesOffset = buffer.count
         buffer.appendLittleEndian([0, 1, 2, 0, 3, 1])
@@ -695,22 +695,20 @@ struct GLTFEntityLoaderTests {
     @Test
     func testNormalTextureScaleIsBakedIntoTheMap() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withData: GLTFSampleAsset.triangle.data,
-                                          rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
         // (0, 0, 1) straight up, and a normal tilted 45° toward +x.
         let source = try Self.image(rgb: [[128, 128, 255], [218, 128, 218]])
 
-        let unchanged = try Self.pixels(of: loader.scaledNormalImage(source, scale: 1))
+        let unchanged = try Self.pixels(of: GLTFEntityLoader.scaledNormalImage(source, scale: 1))
         #expect(unchanged[0] == [128, 128, 255])
         #expect(unchanged[1] == [218, 128, 218])
 
-        let flattened = try Self.pixels(of: loader.scaledNormalImage(source, scale: 0))
+        let flattened = try Self.pixels(of: GLTFEntityLoader.scaledNormalImage(source, scale: 0))
         // With nothing left of x and y, every texel is the neutral normal.
         #expect(flattened[0] == [128, 128, 255])
         #expect(flattened[1] == [128, 128, 255])
 
         // Half the tilt: x drops from 0.71 to 0.45 once renormalized.
-        let halved = try Self.pixels(of: loader.scaledNormalImage(source, scale: 0.5))
+        let halved = try Self.pixels(of: GLTFEntityLoader.scaledNormalImage(source, scale: 0.5))
         #expect(halved[0] == [128, 128, 255])
         #expect(halved[1] == [185, 128, 242])
     }
@@ -721,18 +719,16 @@ struct GLTFEntityLoaderTests {
     @Test
     func testOcclusionTextureStrengthIsBakedIntoTheMap() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withData: GLTFSampleAsset.triangle.data,
-                                          rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
         // Fully occluded, half occluded and unoccluded texels.
         let source = try Self.image(rgb: [[0, 0, 0], [128, 0, 0], [255, 0, 0]])
 
-        let unchanged = try Self.pixels(of: loader.weakenedOcclusionImage(source, strength: 1))
+        let unchanged = try Self.pixels(of: GLTFEntityLoader.weakenedOcclusionImage(source, strength: 1))
         #expect(unchanged.map(\.first) == [0, 128, 255])
 
-        let halved = try Self.pixels(of: loader.weakenedOcclusionImage(source, strength: 0.5))
+        let halved = try Self.pixels(of: GLTFEntityLoader.weakenedOcclusionImage(source, strength: 0.5))
         #expect(halved.map(\.first) == [128, 192, 255])
 
-        let disabled = try Self.pixels(of: loader.weakenedOcclusionImage(source, strength: 0))
+        let disabled = try Self.pixels(of: GLTFEntityLoader.weakenedOcclusionImage(source, strength: 0))
         #expect(disabled.map(\.first) == [255, 255, 255])
     }
 

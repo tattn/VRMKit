@@ -27,6 +27,7 @@ enum MToonParameterRow: Int, CaseIterable {
     case uvTransform
     case uvTransformRotation
     case normalParameters
+    case lightDirection
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -99,11 +100,10 @@ struct MToonMaterialParameters {
         normalParameters = SIMD4<Float>(mtoon.normalScale, 0, 0, 0)
     }
 
-    /// What does not belong in the packed texture: the light direction, which
-    /// moves too often to rebake rows for, and the outline budget, which belongs
-    /// to the mesh a pass draws rather than to the material.
+    /// What does not belong in the packed texture: the outline budget, which
+    /// belongs to the mesh a pass draws rather than to the material.
     func customValue(outlineBudget: Float) -> SIMD4<Float> {
-        SIMD4<Float>(lightDirection, outlineBudget)
+        SIMD4<Float>(0, 0, 0, outlineBudget)
     }
 
     mutating func setColor(_ color: SIMD4<Float>,
@@ -188,6 +188,7 @@ struct MToonMaterialParameters {
         case .uvTransform: return uvTransform
         case .uvTransformRotation: return uvTransformRotation
         case .normalParameters: return normalParameters
+        case .lightDirection: return SIMD4<Float>(lightDirection, 0)
         }
     }
 
@@ -214,12 +215,10 @@ struct MToonMaterialParameters {
     }
 }
 
-/// One material's packed parameter rows as a texture the rows are written into
-/// in place.
+/// One material's packed parameter rows as a texture written into in place.
 ///
-/// The rows move on per-frame paths, so the resource is allocated once and every
-/// later write is a blit into it: the materials keep sampling the same
-/// ``resource``.
+/// The rows move on per-frame paths, so the resource is allocated once and every later
+/// write is a blit into it: the materials keep sampling the same ``resource``.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 final class MToonParameterTexture {
@@ -236,6 +235,16 @@ final class MToonParameterTexture {
     /// How many times the rows have been written, which pins the flush path to
     /// one write per actual change.
     private(set) var writeCount = 0
+
+    /// The last write's command buffer, kept so a caller about to render on
+    /// another queue can wait for the rows to reach the GPU.
+    private var lastWrite: MTLCommandBuffer?
+
+    /// Blocks until every committed write has executed.
+    func waitForWrites() {
+        lastWrite?.waitUntilCompleted()
+        lastWrite = nil
+    }
 
     /// One queue carries every parameter texture's blits, since the writes are
     /// all main-actor.
@@ -288,6 +297,7 @@ final class MToonParameterTexture {
                   destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
         blit.endEncoding()
         commandBuffer.commit()
+        lastWrite = commandBuffer
         writeCount += 1
     }
 
@@ -305,10 +315,10 @@ final class MToonParameterTexture {
 
 /// The filter half of a sampler parameter row.
 ///
-/// glTF's `magFilter` and `minFilter` are independent, and `minFilter` itself
-/// encodes both the minification texel filter and the mip filter. `MToon.metal`
-/// reads ``index`` and applies all three itself, the 16 constant samplers a Metal
-/// entry point allows being already spent on addressing modes.
+/// glTF's `magFilter` and `minFilter` are independent, and `minFilter` itself encodes
+/// both the minification texel filter and the mip filter. `MToon.metal` reads ``index``
+/// and applies all three itself: the 16 constant samplers a Metal entry point allows are
+/// already spent on addressing modes.
 struct MToonSamplerFilter {
     enum TexelFilter: Int, CaseIterable {
         case linear

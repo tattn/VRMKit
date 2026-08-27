@@ -79,14 +79,23 @@ import VRMRealityKit
 struct ContentView: View {
     var body: some View {
         RealityView { content in
-            guard let entity = try? await VRMEntityLoader(named: "model.vrm").loadEntity() else { return }
-            content.add(entity)
+            guard let model = try? await VRMEntityLoader(named: "model.vrm").loadEntity() else { return }
+            content.add(model)
         }
     }
 }
 ```
 
-`VRMEntity` is an `Entity`, so it drops into any RealityKit scene. Skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself.
+`loadEntity()` returns a `VRMEntity`: add it to the scene, and drive everything else on it, expressions, humanoid bones, spring bones and animation alike.
+
+Skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself.
+
+The spring bones step at a fixed rate, so the swing is the same at every display refresh rate.
+
+```swift
+model.springBoneConfiguration.externalForce = SIMD3<Float>(1, 0, 0) // wind
+model.resetSpringBones() // after teleporting the model
+```
 
 > VRMSceneKit, the SceneKit renderer, is deprecated. Use VRMRealityKit instead.
 
@@ -95,11 +104,12 @@ struct ContentView: View {
 <img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
 
 ```swift
-vrmEntity.setExpression(value: 1.0, for: .preset(.happy))
-vrmEntity.setExpression(value: 1.0, for: .custom("><"))
+model.setExpression(value: 1.0, for: .preset(.happy))
+model.setExpressions([.preset(.blink): 1.0, .custom("><"): 0.5])
+model.availableExpressions // every expression the model offers
 ```
 
-VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`.
+VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`. `setExpressions` applies several weights at once, which suits per-frame face tracking.
 
 ## Bone animation
 
@@ -107,8 +117,8 @@ VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the exp
 
 ```swift
 let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-vrmEntity.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
-vrmEntity.invalidateSkinPose()
+model.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
+model.invalidateSkinPose()
 ```
 
 `invalidateSkinPose()` tells the runtime that a bone moved. Animation, constraints and spring bones do this themselves.
@@ -119,7 +129,7 @@ A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike: humanoid 
 
 ```swift
 let animation = try VRMAnimation(named: "walk.vrma")
-let controller = try vrmEntity.playAnimation(animation, loops: true)
+let controller = try model.playAnimation(animation, loops: true)
 controller.speed = 2        // a negative speed plays backwards
 controller.isPaused = true  // holds the pose
 controller.seek(to: 0.5)
@@ -134,9 +144,9 @@ controller.stop()
 MToon materials render by default on iOS and macOS. visionOS falls back to Unlit / PBR materials, because RealityKit's `CustomMaterial` is unavailable there.
 
 ```swift
-vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -1))
-vrmEntity.setMToonLightColor(SIMD3<Float>(1, 1, 1))
-vrmEntity.setMToonAmbientColor(SIMD3<Float>(0.1, 0.1, 0.1))
+model.setMToonLightDirection(SIMD3<Float>(0, 0, -1))
+model.setMToonLightColor(SIMD3<Float>(1, 1, 1))
+model.setMToonAmbientColor(SIMD3<Float>(0.1, 0.1, 0.1))
 ```
 
 Both loaders take a material shader chain. Each shader is asked in order, and materials no shader claims render through the built-in Unlit / PBR path.

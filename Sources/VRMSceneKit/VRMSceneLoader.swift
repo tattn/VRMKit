@@ -28,8 +28,8 @@ open class VRMSceneLoader {
         try loadScene(withSceneIndex: gltf.defaultSceneIndex())
     }
 
-    /// Builds the scene at `index`. Every call returns a graph of its own, since
-    /// a node has one parent and expressions pose the materials.
+    /// Builds the scene at `index`. Every call returns a graph of its own, since a node
+    /// has one parent and expressions pose the materials.
     public func loadScene(withSceneIndex index: Int) throws -> VRMScene {
         let hierarchy = try validateStructure()
         let gltfScene = try gltf.load(\.scenes, at: index)
@@ -41,12 +41,12 @@ open class VRMSceneLoader {
             vrmNode.addChildNode(try self.node(withNodeIndex: node))
         }
         vrmNode.setUpHumanoid(nodes: sceneData.nodes)
-        try vrmNode.setUpBlendShapes(nodes: sceneData.nodes, meshes: sceneData.meshes, loader: self)
+        vrmNode.setUpBlendShapes(nodes: sceneData.nodes, meshes: sceneData.meshes, loader: self)
         vrmNode.setUpFirstPerson(plan: firstPerson(),
                                  nodes: sceneData.nodes,
                                  meshes: sceneData.meshes,
                                  primitives: sceneData.firstPersonPrimitives)
-        try vrmNode.setUpNodeConstraints(gltfNodes: try gltf.load(\.nodes),
+        try vrmNode.setUpNodeConstraints(gltfNodes: gltf.nodes,
                                          hierarchy: hierarchy,
                                          loader: self)
         try vrmNode.setUpSpringBones(loader: self)
@@ -55,14 +55,13 @@ open class VRMSceneLoader {
     }
 
     public func loadThumbnail() throws -> VRMImage {
-        let imageIndex = try vrm.thumbnailImageIndex
+        let imageIndex = try vrm.thumbnailImageIndex.rawValue
         if let cache = try sceneData.load(\.images, index: imageIndex) { return cache }
         return try image(withImageIndex: imageIndex)
     }
 
-    /// Validates the node graph and skins, once per document. Building a node
-    /// reparents whatever it is handed, so a cyclic or multiply-parented hierarchy
-    /// has to be rejected before the first node is built.
+    /// Validates the node graph and skins, once per document: building a node reparents
+    /// whatever it is handed, so a cyclic or multiply-parented hierarchy has to go first.
     private func validateStructure() throws -> GLTFNodeHierarchy {
         if let nodeHierarchy { return nodeHierarchy }
         let hierarchy = try GLTFNodeHierarchy.validatingStructure(of: gltf)
@@ -77,8 +76,8 @@ open class VRMSceneLoader {
         return plan
     }
 
-    /// The vertices of `primitive` the head is skinned into, or nil for a
-    /// primitive no first-person camera cuts.
+    /// The vertices of `primitive` the head is skinned into, nil for one no first-person
+    /// camera cuts.
     func firstPersonHeadVertices(of primitive: GLTF.Mesh.Primitive,
                                  ofNodeAt nodeIndex: Int,
                                  meshIndex: Int,
@@ -110,9 +109,8 @@ open class VRMSceneLoader {
         return camera
     }
 
-    /// A node for the mesh at `index`. Every reference gets its own, an `SCNNode`
-    /// belonging to one parent, while the geometry sources, materials and textures
-    /// underneath stay shared.
+    /// A node for the mesh at `index`. Every reference gets its own, an `SCNNode` having
+    /// one parent, while the geometry sources, materials and textures stay shared.
     func mesh(withMeshIndex index: Int, skinIndex: Int?, nodeIndex: Int) throws -> SCNNode {
         let gltfMesh = try gltf.load(\.meshes, at: index)
         let mesh = try SCNNode(mesh: gltfMesh,
@@ -124,9 +122,9 @@ open class VRMSceneLoader {
         return mesh
     }
 
-    /// The sources arrive in ``GLTF/Mesh/Primitive/AttributeKey`` order rather than
-    /// the dictionary's: SceneKit resolves a material's `mappingChannel` by which
-    /// `.texcoord` source comes first.
+    /// The sources arrive in ``GLTF/Mesh/Primitive/AttributeKey`` order rather than the
+    /// dictionary's: SceneKit resolves a material's `mappingChannel` by which `.texcoord`
+    /// source comes first.
     func attributes(_ attributes: [GLTF.Mesh.Primitive.AttributeKey: Int]) throws -> [SCNGeometrySource] {
         return try attributes.sortedByKey.compactMap { attribute, index in
             guard let semantic = semantic(of: attribute) else { return nil }
@@ -138,8 +136,8 @@ open class VRMSceneLoader {
         }
     }
 
-    /// Not cached: an element carries the primitive mode as well as the
-    /// accessor, and building one off an accessor already expanded is cheap.
+    /// Not cached: an element carries the primitive mode as well as the accessor, and
+    /// building one off an already expanded accessor is cheap.
     func indexAccessor(withAccessorIndex index: Int, mode: GLTF.Mesh.Primitive.Mode) throws -> SCNGeometryElement {
         try SCNGeometryElement(accessor: try accessors.accessor(at: index), mode: mode)
     }
@@ -156,8 +154,8 @@ open class VRMSceneLoader {
         try gltf.load(\.skins, at: index)
     }
 
-    /// An `SCNSkinner` binds one geometry, so every primitive gets its own even
-    /// where they share a glTF skin.
+    /// An `SCNSkinner` binds one geometry, so every primitive gets its own even where
+    /// they share a glTF skin.
     func skin(primitiveGeometry: SCNGeometry,
               bones: [SCNNode],
               boneInverseBindTransform ibm: [InverseBindMatrix]?) throws -> SCNSkinner {
@@ -176,16 +174,16 @@ open class VRMSceneLoader {
         vrm.vrm0MaterialProperty(at: index)
     }
 
-    /// The Unity render queue the material at `index` is drawn in, which is
-    /// what a `renderingOrder` is derived from.
+    /// The Unity render queue the material at `index` is drawn in, which `renderingOrder`
+    /// is derived from.
     func renderQueue(forMaterialAt index: Int?) throws -> Int? {
         guard let index else { return nil }
-        // A `VRM_USE_GLTFSHADER` material is the glTF material as it is, so its
-        // queue follows from the alpha mode as any other document's would.
+        // A `VRM_USE_GLTFSHADER` material is the glTF material as it is, so its queue
+        // follows from the alpha mode as any other document's would.
         if let property = vrm0MaterialProperty(at: index), property.vrmShader != .gltfShader {
             return property.renderQueue
         }
-        guard let material = try gltf.load(\.materials)[safe: index] else { return nil }
+        guard let material = gltf.materials[safe: index] else { return nil }
         let mtoon = material.extensions?.materialsMToon
         return material.alphaMode.vrm0RenderQueue(transparentWithZWrite: mtoon?.transparentWithZWrite == true)
             + (mtoon?.renderQueueOffsetNumber ?? 0)
@@ -194,7 +192,8 @@ open class VRMSceneLoader {
     func texture(withTextureIndex index: Int) throws -> SCNMaterialProperty {
         if let cache = try sceneData.load(\.textures, index: index) { return cache }
         let gltfTexture = try gltf.load(\.textures, at: index)
-        let texture = SCNMaterialProperty(contents: try image(withImageIndex: gltfTexture.source))
+        let image = try image(withImageIndex: gltf.imageIndex(ofTextureAt: index))
+        let texture = SCNMaterialProperty(contents: image)
         if let sampler = gltfTexture.sampler {
             texture.setSampler(try gltf.load(\.samplers, at: sampler))
         } else {
@@ -205,8 +204,8 @@ open class VRMSceneLoader {
         return texture
     }
 
-    /// SceneKit reads a texture's contents as a platform image, so what the
-    /// document decodes is wrapped once here and cached wrapped.
+    /// SceneKit reads a texture's contents as a platform image, so what the document
+    /// decodes is wrapped once here and cached wrapped.
     func image(withImageIndex index: Int) throws -> VRMImage {
         if let cache = try sceneData.load(\.images, index: index) { return cache }
         let image = VRMImage(cgImage: try document.image(at: index))

@@ -28,7 +28,7 @@ struct MToonOutlineRenderingTests {
         let style = MToonConversionStyle(outlineWidthMode: mode ?? .worldCoordinates,
                                          outlineWidthFactor: mode == nil ? 0 : width,
                                          outlineColorFactor: SIMD4<Float>(1, 0, 0, 1))
-        let entity = try await await GLTFEntityLoader(withURL: GLTFSampleAsset.animatedMorphCube.url,
+        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.animatedMorphCube.url,
                                                       shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
         let root = Entity()
         root.addChild(entity)

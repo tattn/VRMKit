@@ -8,24 +8,23 @@ import VRMKitRuntime
 /// One VRM animation (`VRMC_vrm_animation`) decoded and retargeted onto the
 /// humanoid bones and expressions of a ``VRMEntity``.
 ///
-/// The spec rests both skeletons in T-pose, so a bone's animated local rotation
-/// carries over after re-expressing it between the two rest orientations, and
-/// the hips translation scales by the rest hips-height ratio. A VRM 0.x model
-/// faces the other way than a `.vrma` is authored in, so its whole animation is
-/// turned 180° around Y as well.
+/// The spec rests both skeletons in T-pose, so a bone's animated local rotation carries
+/// over after re-expressing it between the two rest orientations, and the hips translation
+/// scales by the rest hips-height ratio. A VRM 0.x model faces the other way than a
+/// `.vrma` is authored in, so its whole animation is turned 180° around Y as well.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 final class VRMAnimationRuntime {
-    /// Every retargeted channel of one animation node, so a bone animated on
-    /// rotation and translation takes a single `Transform` write per frame.
+    /// Every retargeted channel of one animation node, so a bone animated on rotation
+    /// and translation takes a single `Transform` write per frame.
     private struct BoneBinding {
         let target: Entity
         var rotation: RotationChannel?
         var translation: TranslationChannel?
     }
 
-    /// One source rotation channel re-expressed as the world-space rotation its
-    /// bone adds to its parent's, which is identity while the animation rests.
+    /// One source rotation channel re-expressed as the world-space rotation its bone
+    /// adds to its parent's, identity while the animation rests.
     private struct RotationDelta {
         let track: GLTFKeyframeTrack<simd_quatf>
         /// (animation parent rest world), with the VRM 0.x facing flip folded in.
@@ -39,9 +38,9 @@ final class VRMAnimationRuntime {
     }
 
     private struct RotationChannel {
-        /// The deltas of the source bones between this one and the nearest
-        /// ancestor the target model also has, root first, with this bone's own
-        /// last, so a bone the model lacks still passes its rotation down.
+        /// The deltas of the source bones between this one and the nearest ancestor the
+        /// target model also has, root first and this bone's own last, so a bone the
+        /// model lacks still passes its rotation down.
         let deltas: [RotationDelta]
         /// inverse(target parent rest world).
         let pre: simd_quatf
@@ -55,9 +54,9 @@ final class VRMAnimationRuntime {
 
     private struct TranslationChannel {
         let track: GLTFKeyframeTrack<SIMD3<Float>>
-        /// Takes the animation-local translation through its parent's rest
-        /// transform into model space, turns and scales it there, then down into
-        /// the target parent's: a bone's parents need not rest untransformed.
+        /// Takes the animation-local translation through its parent's rest transform into
+        /// model space, turns and scales it there, then down into the target parent's:
+        /// a bone's parents need not rest untransformed.
         let transform: simd_float4x4
 
         func value(at time: Float) -> SIMD3<Float> {
@@ -86,14 +85,14 @@ final class VRMAnimationRuntime {
         let animation = try gltf.load(\.animations, at: animationIndex)
         let decoder = GLTFAnimationDecoder(document: vrmAnimation.document)
 
-        // A 0.x model faces the other way than the `.vrma`, so its world turns
-        // half a circle about Y. Identity leaves rotations and translations alone.
+        // A 0.x model faces the other way than the `.vrma`, so its world turns half a
+        // circle about Y. Identity leaves rotations and translations alone.
         let flip = entity.vrm.forwardDirection.z < 0
             ? simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
             : quat_identity_float
 
         // The animation's document has nowhere to cache one; the model's does.
-        let animationRest = try GLTFRestPose(nodes: gltf.nodes ?? [])
+        let animationRest = try GLTFRestPose(nodes: gltf.nodes)
         let targetRest = try entity.restPose()
 
         var boneByNode: [Int: HumanoidBone] = [:]
@@ -101,8 +100,8 @@ final class VRMAnimationRuntime {
             guard let bone = Self.targetBone(named: name) else { continue }
             boneByNode[humanBone.node] = bone
         }
-        // Node → the expressions its weight drives. Nothing keeps two of them
-        // off one node, and dropping either of the two would be arbitrary.
+        // Node → the expressions its weight drives. Nothing keeps two off one node, and
+        // dropping either would be arbitrary.
         var expressionKeysByNode: [Int: [ExpressionKey]] = [:]
         if let expressions = vrmAnimation.expressions {
             for (name, expression) in expressions.preset ?? [:] {
@@ -115,8 +114,8 @@ final class VRMAnimationRuntime {
             }
         }
 
-        /// Resolved through the entity, so the rest lookups and the transform
-        /// writes address the same node.
+        /// Resolved through the entity, so the rest lookups and transform writes address
+        /// the same node.
         func targetNode(for bone: HumanoidBone) -> (entity: Entity, nodeIndex: Int)? {
             guard let target = entity.humanoid.node(for: bone),
                   let nodeIndex = target.components[GLTFNodeComponent.self]?.nodeIndex else { return nil }
@@ -132,12 +131,12 @@ final class VRMAnimationRuntime {
                 hipsScale = targetHeight / animationHeight
             }
         }
-        // What the hips motion takes in model space, between the two skeletons:
-        // the VRM 0.x facing flip, and the rest hips-height ratio.
+        // What the hips motion takes in model space between the two skeletons: the
+        // VRM 0.x facing flip, and the rest hips-height ratio.
         let modelTransform = simd_float4x4(flip) * simd_float4x4(diagonal: SIMD4(hipsScale, hipsScale, hipsScale, 1))
 
-        // Decoded first and bound afterwards: a bone the target model lacks hands
-        // its rotation to descendants whose channels may come in any order.
+        // Decoded first and bound afterwards: a bone the target model lacks hands its
+        // rotation to descendants whose channels may come in any order.
         var rotationTracks: [Int: GLTFKeyframeTrack<simd_quatf>] = [:]
         var translationTracks: [Int: GLTFKeyframeTrack<SIMD3<Float>>] = [:]
         var expressions: [ExpressionBinding] = []
@@ -155,8 +154,8 @@ final class VRMAnimationRuntime {
                 continue
             }
 
-            // Channels of nodes mapped to nothing retarget to nothing and are
-            // skipped: look-at, and bones outside the VRM humanoid.
+            // Channels of nodes mapped to nothing are skipped: look-at, and bones
+            // outside the VRM humanoid.
             guard animationRest.contains(channel.nodeIndex),
                   boneByNode[channel.nodeIndex] != nil else { continue }
 
@@ -172,8 +171,8 @@ final class VRMAnimationRuntime {
                                                                  interpolation: channel.sampler.interpolation,
                                                                  values: decoder.vector3s(at: channel.sampler.output))
             case .scale, .weights:
-                // The spec forbids scaling humanoid bones, and their meshes'
-                // morph weights are the expressions' to drive.
+                // The spec forbids scaling humanoid bones, and their meshes' morph weights
+                // are the expressions' to drive.
                 continue
             }
         }
@@ -187,9 +186,9 @@ final class VRMAnimationRuntime {
             }
         }
 
-        /// The source humanoid bones between `nodeIndex` and its nearest ancestor
-        /// bone the target model also has, root first, so a target lacking an
-        /// optional bone still takes its rotation through the descendants.
+        /// The source humanoid bones between `nodeIndex` and the nearest ancestor bone the
+        /// target model also has, root first, so a target lacking an optional bone still
+        /// takes its rotation through the descendants.
         func skippedAncestorDeltas(above nodeIndex: Int) -> [RotationDelta] {
             var deltas: [RotationDelta] = []
             var ancestor = animationRest.parent(at: nodeIndex)
@@ -217,8 +216,8 @@ final class VRMAnimationRuntime {
                 deltas: deltas,
                 pre: targetRest.parentWorldRotation(at: target.nodeIndex).inverse,
                 post: targetRest.worldRotation(at: target.nodeIndex))
-            // The spec keeps every humanoid translation but the hips' out of a
-            // `.vrma`; one that carries them anyway is not retargeted.
+            // The spec keeps every humanoid translation but the hips' out of a `.vrma`;
+            // one that carries them anyway is not retargeted.
             let translation = (bone == .hips ? translationTracks[nodeIndex] : nil).map {
                 TranslationChannel(track: $0,
                                    transform: targetRest.parentWorldMatrix(at: target.nodeIndex).inverse
@@ -238,9 +237,9 @@ final class VRMAnimationRuntime {
     /// The presets a `.vrma` may not carry: look-at aims the gaze instead.
     private static let lookAtPresets: Set<ExpressionPreset> = [.lookUp, .lookDown, .lookLeft, .lookRight]
 
-    /// The target model's bone for a `.vrma` humanoid bone name, or nil for a
-    /// name no bone of the model is to take. A `.vrma` is VRM 1.0, which is how
-    /// ``HumanoidBone`` names its bones, so the two spellings already agree.
+    /// The target model's bone for a `.vrma` humanoid bone name, or nil for one no bone
+    /// of the model is to take. A `.vrma` is VRM 1.0, as ``HumanoidBone`` names its
+    /// bones, so the spellings already agree.
     private static func targetBone(named name: String) -> HumanoidBone? {
         switch HumanoidBone(rawValue: name) {
         // Gaze is look-at's to aim, so the eyes take no bone animation.
@@ -260,8 +259,8 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
     func apply(at time: Float) -> Bool {
         var movedTransforms = false
         for binding in boneBindings {
-            // The current transform is the base, so paths this animation does
-            // not drive keep whatever else wrote them.
+            // The current transform is the base, so paths this animation does not drive
+            // keep whatever else wrote them.
             let current = binding.target.transform
             var transform = current
             if let channel = binding.rotation {
@@ -281,9 +280,9 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
         return movedTransforms
     }
 
-    /// Sampled weights go to the entity in full every frame, so an animation
-    /// started later can take an expression over.
-    /// ``VRMEntity/setExpressions(_:)`` drops the ones that did not move.
+    /// Sampled weights go to the entity in full every frame, so an animation started
+    /// later can take an expression over. ``VRMEntity/setExpressions(_:)`` drops the
+    /// ones that did not move.
     private func applyExpressions(at time: Float) {
         guard let entity, !expressionBindings.isEmpty else { return }
         var weights: [ExpressionKey: CGFloat] = [:]

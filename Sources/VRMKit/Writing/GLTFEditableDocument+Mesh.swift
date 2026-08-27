@@ -4,14 +4,13 @@ import simd
 extension GLTFEditableDocument {
     /// Adds a node drawing `mesh`, and returns its index.
     ///
-    /// The placement is ``addNode(name:parent:transform:)``'s, so
-    /// `GLTFEditableDocument()` followed by one `addMesh` is a whole asset. The
-    /// vertex data is packed tightly into the BIN buffer and written as one
-    /// triangle primitive over it, and a VRM 0.x model gets the
-    /// `materialProperties` entry that keeps that array parallel to its materials.
+    /// The placement is ``addNode(name:parent:transform:)``'s, so `GLTFEditableDocument()`
+    /// followed by one `addMesh` is a whole asset. The vertex data is packed tightly into
+    /// the BIN buffer and written as one triangle primitive over it, and a VRM 0.x model
+    /// gets the `materialProperties` entry keeping that array parallel to its materials.
     ///
-    /// A mesh glTF cannot describe is refused and the document left as it was.
-    /// See ``GLTFTriangleMesh`` for what that rules out.
+    /// A mesh glTF cannot describe is refused and the document left as it was; see
+    /// ``GLTFTriangleMesh``.
     @discardableResult
     public mutating func addMesh(_ mesh: GLTFTriangleMesh,
                         under parentNode: GLTFNodeIndex? = nil,

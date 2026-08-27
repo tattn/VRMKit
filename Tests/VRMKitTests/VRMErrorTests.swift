@@ -14,25 +14,23 @@ struct VRMErrorTests {
         let error = try #require(throws: VRMError.self) { try VRM(data: Data(truncated)) }
 
         #expect(error.kind == .dataInconsistent)
-        #expect(error.message.contains("overruns"))
+        #expect(error.message.contains("GLB header length"))
     }
 
-    /// The message is what a person reads, so where in VRMKit the error was
-    /// raised stays out of it and rides on the error for a bug report instead.
+    /// The message is what a person reads, so where in VRMKit the error was raised stays
+    /// out of it and rides on the error for a bug report instead.
     @Test
     func testWhereAnErrorWasRaisedStaysOutOfItsMessage() {
         let error = VRMError._dataInconsistent("the buffer view overruns its buffer")
 
         #expect(error.message == "the buffer view overruns its buffer")
         #expect(error.localizedDescription == "the buffer view overruns its buffer")
-        let origin = try? #require(error.origin)
-        #expect(origin?.contains("VRMErrorTests.swift") == true)
+        #expect(error.origin?.contains("VRMErrorTests.swift") == true)
         #expect(error.debugDescription.contains("the buffer view overruns its buffer"))
         #expect(error.debugDescription.contains("VRMErrorTests.swift"))
     }
 
-    /// A model naming no thumbnail says so as itself, not as a mangled load
-    /// failure.
+    /// A model naming no thumbnail says so as itself, not as a mangled load failure.
     @Test
     func testAModelWithNoThumbnailSaysSo() throws {
         let stripped = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in

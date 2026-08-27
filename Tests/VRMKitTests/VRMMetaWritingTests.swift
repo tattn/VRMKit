@@ -5,15 +5,15 @@ import Testing
 import VRMTestSupport
 @testable import VRMKit
 
-/// Rewriting what a model calls itself. The two VRM versions spell all three
-/// fields differently, so every test runs over one model of each and asks the
-/// reading side what the document now says.
+/// Rewriting what a model calls itself. The two VRM versions spell all three fields
+/// differently, so every test runs over one model of each and asks the reading side
+/// what the document now says.
 @Suite
 struct VRMMetaWritingTests {
     // MARK: - Thumbnail
 
-    /// The image written is the image read back, and it is still an image the
-    /// platform decodes rather than bytes filed under the right key.
+    /// The image written is the image read back, and it is still an image the platform
+    /// decodes rather than bytes filed under the right key.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testTheThumbnailWrittenIsTheOneReadBack(asset: VRMSampleAsset) throws {
         let image = try thumbnailBytes(of: asset.replacement)
@@ -48,11 +48,10 @@ struct VRMMetaWritingTests {
         #expect(saved.name == before.name)
         #expect(saved.specVersion == before.specVersion)
         #expect(saved.humanoidBoneNodeIndices() == before.humanoidBoneNodeIndices())
-        #expect(try saved.document.gltf.load(\.meshes).count == before.document.gltf.load(\.meshes).count)
+        #expect(saved.document.gltf.meshes.count == before.document.gltf.meshes.count)
     }
 
-    /// The replaced thumbnail's bytes stay in the file until pruning works out
-    /// that nothing reads them.
+    /// The replaced thumbnail's bytes stay in the file until pruning finds nothing reads them.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testPruningReclaimsTheReplacedThumbnail(asset: VRMSampleAsset) throws {
         let replaced = try thumbnailBytes(of: asset)
@@ -68,8 +67,8 @@ struct VRMMetaWritingTests {
         #expect(try thumbnailBytes(of: try VRM(data: saved)) == image)
     }
 
-    /// A thumbnail a material samples as well is a texture of the model, so
-    /// replacing it takes nothing away from what the model draws.
+    /// A thumbnail a material samples as well is a texture of the model, so replacing it
+    /// takes nothing away from what the model draws.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testPruningKeepsAReplacedThumbnailAMaterialStillSamples(asset: VRMSampleAsset) throws {
         let shared = try thumbnailBytes(of: asset)
@@ -81,8 +80,7 @@ struct VRMMetaWritingTests {
         #expect(try document.serialize().range(of: shared) != nil)
     }
 
-    /// glTF holds PNG and JPEG and nothing else, and transcoding is the
-    /// caller's to do.
+    /// glTF holds PNG and JPEG and nothing else; transcoding is the caller's to do.
     @Test
     func testAThumbnailThatIsNeitherPNGNorJPEGIsRefusedWithoutChangingTheDocument() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
@@ -93,8 +91,8 @@ struct VRMMetaWritingTests {
         #expect(try document.serialize() == before)
     }
 
-    /// VRM 1.0 asks for a square thumbnail, so one that is not is refused.
-    /// VRM 0.x asks for no shape, and takes it.
+    /// VRM 1.0 asks for a square thumbnail, so one that is not is refused. VRM 0.x asks
+    /// for no shape, and takes it.
     @Test
     func testANonSquareThumbnailIsRefusedByVRM1AndTakenByVRM0() throws {
         let wide = try pngData(width: 2, height: 1)
@@ -109,8 +107,8 @@ struct VRMMetaWritingTests {
         #expect(try thumbnailBytes(of: try VRM(data: try vrm0.serialize())) == wide)
     }
 
-    /// A thumbnail is a picture, so bytes that only open like one are refused
-    /// rather than filed away as an image nothing can draw.
+    /// A thumbnail is a picture, so bytes that only open like one are refused rather than
+    /// filed away as an image nothing can draw.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testAThumbnailThatDoesNotDecodeIsRefused(asset: VRMSampleAsset) throws {
         var document = try GLTFEditableDocument(data: asset.data)
@@ -133,8 +131,8 @@ struct VRMMetaWritingTests {
         #expect(try VRM(data: try document.serialize()).name == "Composed Avatar")
     }
 
-    /// VRM 1.0 keeps the list as a list. VRM 0.x has one line to say it in, so
-    /// the names are joined into it.
+    /// VRM 1.0 keeps the list as a list; VRM 0.x has one line to say it in, so the names
+    /// are joined into it.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testTheAuthorsWrittenAreTheOnesReadBack(asset: VRMSampleAsset) throws {
         var document = try GLTFEditableDocument(data: asset.data)
@@ -160,8 +158,8 @@ struct VRMMetaWritingTests {
         #expect(try licence(of: try VRM(data: try document.serialize())) == before)
     }
 
-    /// VRM 1.0 puts a minimum length on the name and the author list, so the
-    /// writer refuses what would fail it. VRM 0.x has no such minimum.
+    /// VRM 1.0 puts a minimum length on the name and the author list, so the writer
+    /// refuses what would fail it. VRM 0.x has no such minimum.
     @Test
     func testAnEmptyNameOrAuthorListIsRefusedByVRM1AndTakenByVRM0() throws {
         var vrm1 = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
@@ -185,8 +183,8 @@ struct VRMMetaWritingTests {
 
     // MARK: - Documents this cannot write
 
-    /// Reading takes `1.0-beta`, but a beta model does not hold the fields 1.0
-    /// writes, so an edit is refused rather than mixing the two.
+    /// Reading takes `1.0-beta`, but a beta model does not hold the fields 1.0 writes, so
+    /// an edit is refused rather than mixing the two.
     @Test
     func testWritingTheMetaOfABetaVRM1IsRefused() throws {
         let beta = try VRMSampleAsset.seedSan.withVRMCSpecVersion("1.0-beta")
@@ -198,8 +196,8 @@ struct VRMMetaWritingTests {
         #expect(try document.serialize() == before)
     }
 
-    /// A meta that is not an object is one this cannot write through, so it is
-    /// refused rather than replaced with a fresh one holding only the new field.
+    /// A meta that is not an object cannot be written through, so it is refused rather
+    /// than replaced with a fresh one holding only the new field.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testWritingThroughAMetaThatIsNotAnObjectIsRefused(asset: VRMSampleAsset) throws {
         let broken = try asset.rewritingJSON { json in
@@ -219,8 +217,8 @@ struct VRMMetaWritingTests {
         #expect(try document.serialize() == before)
     }
 
-    /// A document saying it is both versions is not one to guess about, and one
-    /// whose VRM extension is not an object is not one to write over.
+    /// A document saying it is both versions is not one to guess about, and one whose VRM
+    /// extension is not an object is not one to write over.
     @Test
     func testWritingTheMetaOfADocumentThatIsNotOneVRMIsRefused() throws {
         let both = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
@@ -244,8 +242,7 @@ struct VRMMetaWritingTests {
 
     // MARK: - Documents that are not VRM
 
-    /// A plain glTF is refused rather than given a VRM extension it never
-    /// claimed.
+    /// A plain glTF is refused rather than given a VRM extension it never claimed.
     @Test
     func testWritingTheMetaOfAGLTFThatIsNotAVRMIsRefused() throws {
         var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
@@ -263,10 +260,10 @@ struct VRMMetaWritingTests {
 
 // MARK: - Reading back
 
-/// The bytes the model's thumbnail is stored as, so a write can be compared
-/// without decoding an image on either side.
+/// The bytes the model's thumbnail is stored as, so a write can be compared without
+/// decoding an image on either side.
 private func thumbnailBytes(of vrm: VRM) throws -> Data {
-    let image = try vrm.document.gltf.load(\.images, at: try vrm.thumbnailImageIndex)
+    let image = try vrm.document.gltf.load(\.images, at: try vrm.thumbnailImageIndex.rawValue)
     return try vrm.document.bufferViewData(at: try #require(image.bufferView)).data
 }
 
@@ -285,8 +282,8 @@ private func licence(of vrm: VRM) throws -> [String] {
 }
 
 private extension VRM {
-    /// The nodes the humanoid is built out of, which stand for every index the
-    /// VRM extensions hold.
+    /// The nodes the humanoid is built out of, standing for every index the VRM
+    /// extensions hold.
     func humanoidBoneNodeIndices() -> [Int] {
         HumanoidBone.allCases.compactMap { nodeIndex(of: $0) }.sorted()
     }
@@ -314,14 +311,14 @@ private func pngData(width: Int, height: Int) throws -> Data {
 }
 
 private extension VRMSampleAsset {
-    /// The model whose thumbnail stands in for a freshly rendered one: a real
-    /// image, so the round trip can be decoded rather than only compared.
+    /// The model whose thumbnail stands in for a freshly rendered one: a real image, so
+    /// the round trip can be decoded rather than only compared.
     var replacement: VRMSampleAsset {
         self == .seedSan ? .aliciaSolid : .seedSan
     }
 
-    /// The fixture with the thumbnail taken out of its meta, which is how a
-    /// model that never had one reads.
+    /// The fixture with the thumbnail taken out of its meta, as a model that never had
+    /// one reads.
     func withoutAThumbnail() throws -> Data {
         try rewritingJSON { json in
             var extensions = json.object("extensions") ?? [:]
@@ -337,10 +334,10 @@ private extension VRMSampleAsset {
         }
     }
 
-    /// The fixture with its thumbnail image sampled by a texture the model
-    /// draws with, which is what makes a replaced thumbnail worth keeping.
+    /// The fixture with its thumbnail image sampled by a texture the model draws with,
+    /// which is what makes a replaced thumbnail worth keeping.
     func sharingItsThumbnailWithADrawnTexture() throws -> Data {
-        let thumbnail = try VRM(data: data).thumbnailImageIndex
+        let thumbnail = try VRM(data: data).thumbnailImageIndex.rawValue
         return try rewritingJSON { json in
             var textures = json.objects("textures")
             textures[0]["source"] = .int(thumbnail)

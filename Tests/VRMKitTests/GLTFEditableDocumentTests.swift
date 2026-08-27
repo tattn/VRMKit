@@ -8,8 +8,8 @@ import VRMTestSupport
 struct GLTFEditableDocumentTests {
     // MARK: - Round trip
 
-    /// A GLB that is loaded and written back out unchanged has to come back as
-    /// the same document, down to the extensions VRMKit does not model.
+    /// A GLB loaded and written back out unchanged has to come back as the same
+    /// document, down to the extensions VRMKit does not model.
     @Test(arguments: VRMSampleAsset.allCases)
     func testGLBRoundTripKeepsEveryJSONField(asset: VRMSampleAsset) throws {
         let original = try GLTFDocument(data: asset.data)
@@ -22,9 +22,8 @@ struct GLTFEditableDocumentTests {
         try expectSameBufferViews(original, reloaded)
     }
 
-    /// A `.gltf` with external resources becomes a self-contained GLB: its
-    /// buffers and its images move into the one buffer a GLB carries, and
-    /// nothing else about the document changes.
+    /// A `.gltf` with external resources becomes a self-contained GLB: its buffers and
+    /// images move into the one buffer a GLB carries, and nothing else changes.
     @Test(arguments: GLTFSampleAsset.allCases)
     func testGLTFRoundTripEmbedsItsResourcesAndKeepsEverythingElse(asset: GLTFSampleAsset) throws {
         let original = try GLTFDocument(withURL: asset.url)
@@ -35,7 +34,7 @@ struct GLTFEditableDocumentTests {
         let right = try reloaded.rawJSON().removing("buffers", "bufferViews", "images")
         #expect(jsonDifference(left, right) == nil)
         // One view per image read in, appended after the ones the file had.
-        let embedded = (original.gltf.images ?? []).filter { $0.uri != nil }.count
+        let embedded = (original.gltf.images).filter { $0.uri != nil }.count
         try expectSameBufferViews(original, reloaded, added: embedded)
         try expectSameAccessors(original, reloaded)
         try expectSelfContainedImages(original, reloaded)
@@ -61,17 +60,17 @@ struct GLTFEditableDocumentTests {
         #expect(try GLTFDocument(data: glb).bufferViewData(at: 0).data == Data([0, 1, 2, 3, 4]))
     }
 
-    /// The typed view is what node indices are resolved through, so it has to
-    /// show the edits rather than the state the document was loaded in.
+    /// The typed view is what node indices are resolved through, so it has to show the
+    /// edits rather than the state the document was loaded in.
     @Test
     func testTypedSnapshotFollowsEdits() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let before = try document.typed().nodes?.count ?? 0
+        let before = try document.typed().nodes.count
 
         let index = try document.addNode(name: "added")
 
-        #expect(try document.typed().nodes?.count == before + 1)
-        #expect(try document.typed().nodes?[index.rawValue].name == "added")
+        #expect(try document.typed().nodes.count == before + 1)
+        #expect(try document.typed().nodes[index.rawValue].name == "added")
     }
 
     // MARK: - Node editing
@@ -79,14 +78,14 @@ struct GLTFEditableDocumentTests {
     @Test
     func testAddNodeAttachesToItsParentAndKeepsExistingIndices() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let nodesBefore = try document.typed().nodes ?? []
+        let nodesBefore = try document.typed().nodes
 
         let transform = GLTFNodeTransform(translation: SIMD3(1, 2, 3),
                                           rotation: simd_quatf(angle: .pi / 2, axis: SIMD3(0, 1, 0)),
                                           scale: SIMD3(2, 2, 2))
         let index = try document.addNode(name: "hand item", parent: 0, transform: transform)
 
-        let nodes = try #require(try document.typed().nodes)
+        let nodes = try document.typed().nodes
         #expect(index.rawValue == nodesBefore.count)
         #expect(nodes[0].children?.contains(index.rawValue) == true)
         #expect(nodes[index.rawValue].name == "hand item")
@@ -103,12 +102,11 @@ struct GLTFEditableDocumentTests {
         let index = try document.addNode(name: "root item")
 
         let gltf = try document.typed()
-        let scene = try #require(gltf.scenes?[gltf.scene ?? 0])
+        let scene = try #require(gltf.scenes[safe: gltf.scene ?? 0])
         #expect(scene.nodes?.contains(index.rawValue) == true)
     }
 
-    /// A document holding one scene has nothing to name, which is how UniVRM
-    /// 0.x writes its models.
+    /// A document holding one scene has nothing to name, as UniVRM 0.x writes its models.
     @Test
     func testAddNodeWithoutParentUsesTheOnlySceneOfADocumentNamingNone() throws {
         let json = """
@@ -118,11 +116,11 @@ struct GLTFEditableDocumentTests {
 
         let index = try document.addNode(name: "root item")
 
-        #expect(try document.typed().scenes?[0].nodes?.contains(index.rawValue) == true)
+        #expect(try document.typed().scenes[0].nodes?.contains(index.rawValue) == true)
     }
 
-    /// Several scenes and none named is the document saying nothing about
-    /// which to draw, and picking one for it is not this to do.
+    /// Several scenes and none named says nothing about which to draw, and picking one
+    /// is not this API's to do.
     @Test
     func testAddNodeWithoutParentNeedsToKnowWhichSceneToAddTo() throws {
         let json = """
@@ -135,8 +133,7 @@ struct GLTFEditableDocumentTests {
         #expect(try document.serialize() == before)
     }
 
-    /// An edit that throws leaves the document as it was, rather than one
-    /// orphaned node larger.
+    /// An edit that throws leaves the document as it was, not one orphaned node larger.
     @Test
     func testAddNodeUnderAMissingParentChangesNothing() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
@@ -156,7 +153,7 @@ struct GLTFEditableDocumentTests {
 
         let node = try document.node(at: index.rawValue)
         #expect(node["matrix"] == nil)
-        #expect(try document.typed().nodes?[index.rawValue].translation.y == 1)
+        #expect(try document.typed().nodes[index.rawValue].translation.y == 1)
         #expect(try document.transform(nodeAt: index).translation == SIMD3(0, 1, 0))
     }
 
@@ -193,8 +190,8 @@ struct GLTFEditableDocumentTests {
         #expect(abs(abs(simd_dot(decomposed.rotation.vector, transform.rotation.vector)) - 1) < 1e-5)
     }
 
-    /// A flattened axis leaves no rotation to recover, and a mirroring one a
-    /// negative scale rather than a rotation. Neither yields NaNs.
+    /// A flattened axis leaves no rotation to recover, and a mirroring one a negative
+    /// scale rather than a rotation. Neither yields NaNs.
     @Test
     func testDegenerateAndMirroringMatricesDecomposeWithoutNaNs() throws {
         let cases: [SIMD3<Float>] = [
@@ -227,15 +224,15 @@ struct GLTFEditableDocumentTests {
 
         try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: turn.vector * 4)), nodeAt: index)
 
-        let written = try #require(try document.typed().nodes?[index.rawValue].rotation)
+        let written = try document.typed().nodes[index.rawValue].rotation
         let vector = SIMD4<Float>(Float(written.x), Float(written.y), Float(written.z), Float(written.w))
         #expect(abs(simd_length(vector) - 1) < 1e-5)
         #expect(abs(abs(simd_dot(vector, turn.vector)) - 1) < 1e-5)
     }
 
-    /// A quaternion far from unit length still names an orientation. Squaring
-    /// its components would lose a tiny one to underflow and a huge one to
-    /// overflow, and either would be written out as no rotation at all.
+    /// A quaternion far from unit length still names an orientation. Squaring its
+    /// components would lose a tiny one to underflow and a huge one to overflow, and
+    /// either would be written out as no rotation at all.
     @Test(arguments: [Float(1e-4), 1e-20, 1e20, 1e30])
     func testARotationFarFromUnitLengthKeepsItsOrientation(magnitude: Float) throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
@@ -245,7 +242,7 @@ struct GLTFEditableDocumentTests {
         try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: turn.vector * magnitude)),
                                   nodeAt: index)
 
-        let written = try #require(try document.typed().nodes?[index.rawValue].rotation)
+        let written = try document.typed().nodes[index.rawValue].rotation
         let vector = SIMD4<Float>(Float(written.x), Float(written.y), Float(written.z), Float(written.w))
         #expect(abs(simd_length(vector) - 1) < 1e-5)
         #expect(abs(abs(simd_dot(vector, turn.vector)) - 1) < 1e-5)
@@ -267,39 +264,39 @@ struct GLTFEditableDocumentTests {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
 
         try document.setName("renamed", nodeAt: 0)
-        #expect(try document.typed().nodes?[0].name == "renamed")
+        #expect(try document.typed().nodes[0].name == "renamed")
 
         try document.setName(nil, nodeAt: 0)
-        #expect(try document.typed().nodes?[0].name == nil)
+        #expect(try document.typed().nodes[0].name == nil)
     }
 
-    /// Detaching cuts the links and nothing else, so the subtree survives whole
-    /// and unreachable, ready to be attached again.
+    /// Detaching cuts the links and nothing else, so the subtree survives whole and
+    /// unreachable, ready to be attached again.
     @Test
     func testDetachNodeUnlinksTheSubtreeWithoutMovingOrErasingAnything() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let parent = try document.addNode(name: "container")
         let child = try document.addNode(name: "child", parent: parent)
-        let nodesBefore = try #require(try document.typed().nodes).count
+        let nodesBefore = try document.typed().nodes.count
 
         try document.detachNode(at: parent)
 
         let gltf = try document.typed()
-        let nodes = try #require(gltf.nodes)
+        let nodes = gltf.nodes
         #expect(nodes.count == nodesBefore)
         #expect(nodes[parent.rawValue].name == "container")
         #expect(nodes[parent.rawValue].children == [child.rawValue])
         #expect(nodes[child.rawValue].name == "child")
-        #expect(gltf.scenes?[gltf.scene ?? 0].nodes?.contains(parent.rawValue) == false)
+        #expect(gltf.scenes[gltf.scene ?? 0].nodes?.contains(parent.rawValue) == false)
         #expect(nodes.allSatisfy { $0.children?.contains(parent.rawValue) != true })
 
         // Nothing was lost, so it goes back where it was.
         try document.moveNode(at: parent, to: 0)
-        #expect(try document.typed().nodes?[0].children?.contains(parent.rawValue) == true)
+        #expect(try document.typed().nodes[0].children?.contains(parent.rawValue) == true)
     }
 
-    /// A move is a detach and an attach in one, so the subtree leaves every
-    /// parent it was under.
+    /// A move is a detach and an attach in one, so the subtree leaves every parent it
+    /// was under.
     @Test
     func testMoveNodeLeavesItsOldParentAndKeepsItsIndex() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
@@ -309,7 +306,7 @@ struct GLTFEditableDocumentTests {
 
         try document.moveNode(at: moved, to: second)
 
-        let nodes = try #require(try document.typed().nodes)
+        let nodes = try document.typed().nodes
         #expect(nodes[moved.rawValue].name == "moved")
         #expect(nodes[second.rawValue].children == [moved.rawValue])
         #expect(nodes[first.rawValue].children == nil)
@@ -324,12 +321,11 @@ struct GLTFEditableDocumentTests {
         try document.moveNode(at: child, to: nil)
 
         let gltf = try document.typed()
-        #expect(gltf.nodes?[parent.rawValue].children == nil)
-        #expect(gltf.scenes?[gltf.scene ?? 0].nodes?.contains(child.rawValue) == true)
+        #expect(gltf.nodes[parent.rawValue].children == nil)
+        #expect(gltf.scenes[gltf.scene ?? 0].nodes?.contains(child.rawValue) == true)
     }
 
-    /// A cycle would be walked forever, so the move is refused before any link
-    /// is cut.
+    /// A cycle would be walked forever, so the move is refused before any link is cut.
     @Test
     func testMoveNodeUnderItsOwnDescendantIsRefusedAndChangesNothing() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
@@ -346,8 +342,8 @@ struct GLTFEditableDocumentTests {
 
     // MARK: - Resource layout
 
-    /// A rebase that only clamped would point the view at the first buffer, and
-    /// it would come out loadable but reading someone else's bytes.
+    /// A rebase that only clamped would point the view at the first buffer, coming out
+    /// loadable but reading someone else's bytes.
     @Test
     func testBufferViewNamingAMissingBufferIsRefused() throws {
         let json = """
@@ -361,8 +357,8 @@ struct GLTFEditableDocumentTests {
         #expect(throws: VRMError.self) { try GLTFEditableDocument(data: Data(json.utf8)) }
     }
 
-    /// Merging several buffers into the one a GLB holds moves byte offsets, and
-    /// an extension VRMKit cannot read may be naming them itself.
+    /// Merging several buffers into the one a GLB holds moves byte offsets, and an
+    /// extension VRMKit cannot read may be naming them itself.
     @Test
     func testSeveralBuffersUnderAnUnknownExtensionAreRefused() throws {
         func json(extensionsUsed: String) -> Data {
@@ -384,15 +380,14 @@ struct GLTFEditableDocumentTests {
 
         // Nothing unknown declared, so the two buffers are merged as ever.
         let merged = try GLTFEditableDocument(data: json(extensionsUsed: ""))
-        #expect(try merged.typed().bufferViews?[1].byteOffset == 8)
+        #expect(try merged.typed().bufferViews[1].byteOffset == 8)
 
         #expect(throws: VRMError.self) {
             try GLTFEditableDocument(data: json(extensionsUsed: #""extensionsUsed": ["ACME_buffer_thing"],"#))
         }
     }
 
-    /// A single-buffer document keeps every offset it had, whatever it
-    /// declares.
+    /// A single-buffer document keeps every offset it had, whatever it declares.
     @Test
     func testSingleBufferDocumentIsEditedWhateverItDeclares() throws {
         let json = """
@@ -405,7 +400,7 @@ struct GLTFEditableDocumentTests {
         """
         let document = try GLTFEditableDocument(data: Data(json.utf8))
 
-        #expect(try document.typed().bufferViews?[0].byteOffset == 1)
+        #expect(try document.typed().bufferViews[0].byteOffset == 1)
         #expect(try GLTFDocument(data: try document.serialize()).bufferViewData(at: 0).data == Data([1, 2, 3, 4]))
     }
 
@@ -420,8 +415,8 @@ struct GLTFEditableDocumentTests {
         #expect(throws: VRMError.self) { try document.detachNode(at: 0) }
     }
 
-    /// A document holding no scene has nowhere to draw a root, so adding one
-    /// gives it the scene to draw it in rather than leaving it unreachable.
+    /// A document holding no scene has nowhere to draw a root, so adding one gives it
+    /// the scene to draw it in rather than leaving it unreachable.
     @Test
     func testAddingARootToADocumentWithoutScenesGivesItOne() throws {
         let json = """
@@ -432,21 +427,21 @@ struct GLTFEditableDocumentTests {
         let index = try document.addNode(name: "first")
 
         let gltf = try document.typed()
-        #expect(gltf.scenes?.count == 1)
-        #expect(gltf.scenes?[gltf.scene ?? 0].nodes == [index.rawValue])
+        #expect(gltf.scenes.count == 1)
+        #expect(gltf.scenes[gltf.scene ?? 0].nodes == [index.rawValue])
     }
 
     // MARK: - Helpers
 
-    /// Every image comes back in the GLB's own buffer, holding the bytes of
-    /// the file or data URI it was read from.
+    /// Every image comes back in the GLB's own buffer, holding the bytes of the file
+    /// or data URI it was read from.
     private func expectSelfContainedImages(_ lhs: GLTFDocument,
                                            _ rhs: GLTFDocument,
                                            sourceLocation: SourceLocation = #_sourceLocation) throws {
-        let images = lhs.gltf.images ?? []
-        #expect(images.count == rhs.gltf.images?.count ?? 0, sourceLocation: sourceLocation)
+        let images = lhs.gltf.images
+        #expect(images.count == rhs.gltf.images.count, sourceLocation: sourceLocation)
         for index in images.indices {
-            let embedded = try #require(rhs.gltf.images?[index], sourceLocation: sourceLocation)
+            let embedded = try #require(rhs.gltf.images[safe: index], sourceLocation: sourceLocation)
             #expect(embedded.uri == nil, "image \(index)", sourceLocation: sourceLocation)
             #expect(embedded.mimeType != nil, "image \(index)", sourceLocation: sourceLocation)
             let view = try #require(embedded.bufferView, "image \(index)", sourceLocation: sourceLocation)
@@ -458,16 +453,16 @@ struct GLTFEditableDocumentTests {
         }
     }
 
-    /// Compares the bytes every buffer view names, which is the whole of a glTF's
-    /// binary side. Sliced out of the buffers directly rather than read through
-    /// ``GLTFDocument``, which bounds a view by the `byteLength` its buffer
-    /// declares, and AliciaSolid declares one shorter than its views.
+    /// Compares the bytes every buffer view names, the whole of a glTF's binary side.
+    /// Sliced out of the buffers directly rather than read through ``GLTFDocument``,
+    /// which bounds a view by its buffer's `byteLength`, and AliciaSolid declares one
+    /// shorter than its views.
     private func expectSameBufferViews(_ lhs: GLTFDocument,
                                        _ rhs: GLTFDocument,
                                        added: Int = 0,
                                        sourceLocation: SourceLocation = #_sourceLocation) throws {
-        let views = lhs.gltf.bufferViews ?? []
-        #expect(views.count + added == rhs.gltf.bufferViews?.count ?? 0, sourceLocation: sourceLocation)
+        let views = lhs.gltf.bufferViews
+        #expect(views.count + added == rhs.gltf.bufferViews.count, sourceLocation: sourceLocation)
         for index in views.indices {
             #expect(try bufferViewBytes(of: lhs, at: index) == (try bufferViewBytes(of: rhs, at: index)),
                     "buffer view \(index)", sourceLocation: sourceLocation)
@@ -490,7 +485,7 @@ extension float4x4 {
 }
 
 extension SIMD where Scalar: FloatingPoint {
-    /// Whether every lane is a real number, which a decomposition that divided
-    /// by a zero axis would not be.
+    /// Whether every lane is a real number, which a decomposition dividing by a zero
+    /// axis would not be.
     var allFinite: Bool { indices.allSatisfy { self[$0].isFinite } }
 }

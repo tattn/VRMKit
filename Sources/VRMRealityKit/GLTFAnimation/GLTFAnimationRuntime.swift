@@ -4,8 +4,8 @@ import RealityKit
 import simd
 import VRMKit
 
-/// Decodes animation accessors into typed keyframe values, off a cache because
-/// exporters routinely share one input accessor across many samplers.
+/// Decodes animation accessors into typed keyframe values, off a cache: exporters
+/// routinely share one input accessor across many samplers.
 final class GLTFAnimationDecoder {
     private let accessors: PackedAccessorCache
     private let nodes: [GLTF.Node]
@@ -13,12 +13,11 @@ final class GLTFAnimationDecoder {
 
     init(document: GLTFDocument) {
         accessors = PackedAccessorCache(document: document)
-        nodes = document.gltf.nodes ?? []
+        nodes = document.gltf.nodes
     }
 
-    /// A sampler input. The spec fixes it to FLOAT scalars that start at or after
-    /// zero and increase strictly, and ``GLTFKeyframeTrack`` reads that ordering
-    /// as given.
+    /// A sampler input. The spec fixes it to FLOAT scalars that start at or after zero
+    /// and increase strictly, and ``GLTFKeyframeTrack`` reads that ordering as given.
     func times(at accessorIndex: Int) throws -> [Float] {
         if let cached = inputTimes[accessorIndex] { return cached }
         let accessor = try accessors.accessor(at: accessorIndex)
@@ -35,8 +34,8 @@ final class GLTFAnimationDecoder {
         return times
     }
 
-    /// Morph target weights. Like rotations they are unit quantities, so the spec
-    /// also allows them in normalized integer storage.
+    /// Morph target weights. Like rotations they are unit quantities, so the spec also
+    /// allows normalized integer storage.
     func weights(at accessorIndex: Int) throws -> [Float] {
         try output(at: accessorIndex, type: .SCALAR, allowsNormalizedIntegers: true)
     }
@@ -48,8 +47,8 @@ final class GLTFAnimationDecoder {
         }
     }
 
-    /// Rotation output as quaternions. Only the keyframe *values* are unit
-    /// quaternions: a CUBICSPLINE output's tangents carry their slope in the length.
+    /// Rotation output as quaternions. Only the keyframe values are unit quaternions:
+    /// a CUBICSPLINE output's tangents carry their slope in the length.
     func quaternions(at accessorIndex: Int,
                      interpolation: GLTF.Animation.Sampler.Interpolation) throws -> [simd_quatf] {
         let floats = try output(at: accessorIndex, type: .VEC4, allowsNormalizedIntegers: true)
@@ -63,9 +62,8 @@ final class GLTFAnimationDecoder {
         }
     }
 
-    /// A sampler output. Translations and scales are FLOAT-only; rotations and
-    /// weights may also arrive as the normalized bytes and shorts the spec permits.
-    /// UNSIGNED_INT is never one of them.
+    /// A sampler output. Translations and scales are FLOAT-only; rotations and weights
+    /// may also arrive as normalized bytes and shorts, never UNSIGNED_INT.
     private func output(at accessorIndex: Int,
                         type: GLTF.Accessor.`Type`,
                         allowsNormalizedIntegers: Bool) throws -> [Float] {
@@ -93,9 +91,8 @@ final class GLTFAnimationDecoder {
         let sampler: GLTF.Animation.Sampler
     }
 
-    /// The animation's channels, checked against the rules the spec puts on
-    /// them. Channels without a node target or with an unknown (extension) path
-    /// are dropped rather than rejected, as the spec prescribes.
+    /// The animation's channels, checked against the spec's rules. Channels without a node
+    /// target or with an unknown path are dropped rather than rejected, as the spec says.
     func validatedChannels(of animation: GLTF.Animation) throws -> [Channel] {
         struct TargetKey: Hashable {
             let node: Int
@@ -111,15 +108,14 @@ final class GLTFAnimationDecoder {
                     "an animation channel targets node \(nodeIndex) of \(nodes.count) nodes"
                 )
             }
-            // The spec keeps `matrix` off an animated node, whose channels
-            // state the TRS they drive.
+            // The spec keeps `matrix` off an animated node, whose channels state the TRS.
             guard nodes[nodeIndex].matrix == nil else {
                 throw VRMError._dataInconsistent(
                     "animated node \(nodeIndex) must use translation / rotation / scale instead of matrix"
                 )
             }
-            // At most one channel of an animation may drive a (node, path):
-            // which of two wins would be arbitrary, so reject rather than pick.
+            // At most one channel of an animation may drive a (node, path): which of two
+            // wins would be arbitrary, so reject rather than pick.
             guard drivenTargets.insert(TargetKey(node: nodeIndex, path: path)).inserted else {
                 throw VRMError._dataInconsistent(
                     "two channels of this animation drive the \(path.rawValue) of node \(nodeIndex)"
@@ -134,22 +130,21 @@ final class GLTFAnimationDecoder {
         }
     }
 
-    /// The animation's length: the input accessors' spec-required `max` when
-    /// present, decoded input times otherwise.
+    /// The animation's length: the last keyframe time any of its samplers holds. Read
+    /// from the times themselves rather than the accessor's `max`, which a file may
+    /// disagree with.
     func duration(of animation: GLTF.Animation) -> TimeInterval {
         var duration: Float = 0
         for sampler in animation.samplers {
-            if let max = (try? accessors.accessor(at: sampler.input))?.accessor.max?.first {
-                duration = Swift.max(duration, max)
-            } else if let last = try? times(at: sampler.input).last {
+            if let last = try? times(at: sampler.input).last {
                 duration = Swift.max(duration, last)
             }
         }
         return TimeInterval(duration)
     }
 
-    /// Groups a weights output into one `[Float]` per keyframe element, which the
-    /// spec sizes by the morph target count of the mesh the channel drives.
+    /// Groups a weights output into one `[Float]` per keyframe element, sized by the
+    /// morph target count of the mesh the channel drives.
     static func weightGroups(scalars: [Float], groupCount: Int, targetCount: Int) throws -> [[Float]] {
         guard targetCount > 0, scalars.count == groupCount * targetCount else {
             throw VRMError._dataInconsistent(
@@ -163,8 +158,8 @@ final class GLTFAnimationDecoder {
 /// One glTF animation decoded and bound to the entities it drives.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 final class GLTFAnimationRuntime: GLTFAnimationApplying {
-    /// Every transform channel of one node, so a node animated on more than one
-    /// path takes a single `Transform` write per frame.
+    /// Every transform channel of one node, so a node animated on more than one path
+    /// takes a single `Transform` write per frame.
     private struct TransformBinding {
         let target: Entity
         var translation: GLTFKeyframeTrack<SIMD3<Float>>?
@@ -239,8 +234,8 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
     func apply(at time: Float) -> Bool {
         var movedTransforms = false
         for binding in transformBindings {
-            // The current transform is the base, so paths this animation does not
-            // drive keep whatever else wrote them.
+            // The current transform is the base, so paths this animation does not drive
+            // keep whatever else wrote them.
             let current = binding.target.transform
             var transform = current
             if let value = binding.translation?.value(at: time) { transform.translation = value }

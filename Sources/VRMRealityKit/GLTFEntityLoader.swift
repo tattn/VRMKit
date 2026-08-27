@@ -16,8 +16,8 @@ public class GLTFEntityLoader {
     public let document: GLTFDocument
     var gltf: GLTF { document.gltf }
     let entityData: EntityData
-    /// Accessors expanded for this loader's meshes and skins, shared by the
-    /// primitives that reference the same one.
+    /// Accessors expanded for this loader's meshes and skins, shared by the primitives
+    /// referencing the same one.
     let accessors: PackedAccessorCache
 
     /// Name given to the loaded root entity. Subclasses set it from model metadata.
@@ -37,10 +37,8 @@ public class GLTFEntityLoader {
         Self.gltfLogger.warning("\(text, privacy: .public)")
     }
 
-    /// One glTF image decoded for one semantic: RealityKit bakes the semantic
-    /// into the resource, so an image read as color and as a normal map is two.
-    /// Keying on the image, not the texture, shares the decode between textures
-    /// that differ only in their sampler.
+    /// One glTF image decoded for one semantic: RealityKit bakes the semantic into the
+    /// resource, so an image read as color and as a normal map is two.
     private struct ImageTextureKey: Hashable {
         let imageIndex: Int
         let semantic: TextureResource.Semantic
@@ -57,17 +55,20 @@ public class GLTFEntityLoader {
     }
 
     private var bakedTextureCache: [BakedTextureKey: TextureResource] = [:]
+    /// What the texture prepare pass decoded and baked off-actor, consumed as the build
+    /// turns it into `TextureResource`s and dropped with the other intermediates.
+    private var preparedBakedImages: [BakedTextureKey: CGImage] = [:]
+    private var preparedMetallicRoughnessImages: [Int: (metal: CGImage, rough: CGImage)] = [:]
     /// Keyed by glTF sampler index; nil is the texture that names no sampler.
     private var samplerCache: [Int?: MaterialParameters.Texture.Sampler] = [:]
     private var mtoonResolutionCache: [Int: MToonMaterialDescriptor.Resolution] = [:]
 
-    /// The material shaders this loader consults, in order. Materials no shader
-    /// claims render through the built-in Unlit / PBR path, so pass `[]` to
-    /// render everything that way.
+    /// The material shaders this loader consults, in order. Materials no shader claims
+    /// render through the built-in Unlit / PBR path, so pass `[]` for that everywhere.
     public let shaders: [any GLTFMaterialShader]
 
-    /// The default shader chain: MToon for materials that carry MToon data.
-    /// Computed so every loader gets its own shader instances.
+    /// MToon for materials that carry MToon data. Computed so every loader gets its own
+    /// shader instances.
     public static var defaultShaders: [any GLTFMaterialShader] { [MToonShader()] }
 
     public init(document: GLTFDocument,
@@ -78,8 +79,7 @@ public class GLTFEntityLoader {
         self.shaders = shaders
     }
 
-    /// Loads a `.glb` / `.gltf` file. External resources resolve relative to
-    /// the file's directory.
+    /// Loads a `.glb` / `.gltf` file. External resources resolve relative to its directory.
     public convenience init(withURL url: URL,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
         self.init(document: try GLTFDocument(withURL: url), shaders: shaders)
@@ -91,8 +91,7 @@ public class GLTFEntityLoader {
         self.init(document: try GLTFDocument(named: named), shaders: shaders)
     }
 
-    /// Loads in-memory glTF data. `rootDirectory` is the base directory for
-    /// external resources.
+    /// Loads in-memory glTF data, resolving external resources against `rootDirectory`.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
@@ -100,8 +99,8 @@ public class GLTFEntityLoader {
                   shaders: shaders)
     }
 
-    /// Loads the document's default scene, decoding its primitives concurrently
-    /// off the actor the entity graph is built on.
+    /// Loads the document's default scene, decoding its primitives concurrently off the
+    /// actor the entity graph is built on.
     ///
     /// - Throws: when the glTF holds several scenes and names no default one.
     ///   Pick one with ``loadEntity(withSceneIndex:)``.
@@ -109,14 +108,27 @@ public class GLTFEntityLoader {
         try await loadEntity(withSceneIndex: gltf.defaultSceneIndex())
     }
 
-    /// Loads one scene of the glTF as its own entity graph. The document is
-    /// validated before any vertex data is read, and every call builds a new
-    /// graph, even for the same scene, while resources are reused.
+    /// Loads one scene of the glTF as its own entity graph. Every call builds a new graph
+    /// while reusing resources.
     public func loadEntity(withSceneIndex index: Int) async throws -> GLTFEntity {
         try validateDocument()
+        // The mesh and texture resources carry the prepared data on, so holding it past
+        // the load is a second copy of the model. A cancelled load drops it too.
+        defer { discardPreparedResources() }
         try await prepareGeometry(forSceneIndex: index)
         try Task.checkCancellation()
+        try await prepareTextures(forSceneIndex: index)
+        try Task.checkCancellation()
         return try buildScene(withSceneIndex: index)
+    }
+
+    /// Drops the vertex data and images the prepare passes decoded off-actor.
+    private func discardPreparedResources() {
+        entityData.primitiveGeometries.removeAll()
+        accessors.removeAll()
+        entityData.clearDecodedImages()
+        preparedBakedImages.removeAll()
+        preparedMetallicRoughnessImages.removeAll()
     }
 
     /// Checks the required extensions, node graph and skins before any vertex is read.
@@ -125,17 +137,9 @@ public class GLTFEntityLoader {
         try validateStructure()
     }
 
-    /// Builds the entity graph of one scene from an already validated document.
     private func buildScene(withSceneIndex index: Int) throws -> GLTFEntity {
         let gltfScene = try gltf.load(\.scenes, at: index)
         entityData.beginScene()
-        // Vertex data lives on in the mesh resources the build makes of it, so
-        // holding the intermediates past it is a second copy of the model.
-        defer {
-            entityData.primitiveGeometries.removeAll()
-            accessors.removeAll()
-        }
-
         let entity = makeRootEntity(sceneIndex: index)
         if let entityName {
             entity.name = entityName
@@ -148,8 +152,8 @@ public class GLTFEntityLoader {
         }
         entity.setNodeEntities(entityData.nodes)
         try didBuildScene(entity)
-        // Skin bindings are registered mid-build, so the rest pose is only
-        // solvable once the graph is complete.
+        // Skin bindings are registered mid-build, so the rest pose is only solvable once
+        // the graph is complete.
         entity.updateSkinning()
 
         return entity
@@ -174,10 +178,11 @@ public class GLTFEntityLoader {
         return extensions
     }
 
-    /// Fails the load when the file requires an extension this renderer does not
-    /// implement, or leans on one past what is implemented of it.
-    func validateRequiredExtensions() throws {
-        if let unsupported = unsupportedRequiredExtensions().first {
+    /// Fails the load when the file requires an extension this renderer does not implement,
+    /// or leans on one past what is implemented of it.
+    private func validateRequiredExtensions() throws {
+        let supported = supportedRequiredExtensions
+        if let unsupported = gltf.extensionsRequired.first(where: { !supported.contains($0) }) {
             throw VRMError._notSupported("this glTF requires the \(unsupported) extension")
         }
         if enforcesRequiredExtension(GLTFExtension.textureTransform.rawValue) {
@@ -185,13 +190,11 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// RealityKit gives a material one UV transform and its mesh one UV set, so
-    /// `KHR_texture_transform` is only fully implemented while a material's
-    /// textures agree on both. An asset that merely uses the extension renders
-    /// through the first UV-accessed texture's set and transform and logs the
-    /// approximation; one that requires it is rejected instead.
+    /// RealityKit gives a material one UV transform and its mesh one UV set, so an asset
+    /// merely using `KHR_texture_transform` renders through the first UV-accessed texture's
+    /// set and transform, while one that requires it is rejected.
     private func validateTextureTransformsAreRenderable() throws {
-        for (index, gltfMaterial) in (gltf.materials ?? []).enumerated() {
+        for (index, gltfMaterial) in (gltf.materials).enumerated() {
             let textures = sampledTextures(of: gltfMaterial)
             let selectedTexCoord = selectedTexCoord(withMaterialIndex: index)
             guard textures.allSatisfy({ $0.texCoord == selectedTexCoord }) else {
@@ -208,18 +211,10 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// Whether the document declares itself undrawable without `name` and this
-    /// load honors that, which tells a shader to fail a material rather than
-    /// approximate it. ``VRMEntityLoader`` renders whatever it can build, so it
-    /// answers false even for a listed extension.
+    /// Whether the document declares itself undrawable without `name`, which tells a shader
+    /// to fail a material rather than approximate it.
     func enforcesRequiredExtension(_ name: String) -> Bool {
-        gltf.extensionsRequired?.contains(name) == true
-    }
-
-    /// `extensionsRequired` entries outside ``supportedRequiredExtensions``.
-    func unsupportedRequiredExtensions() -> [String] {
-        let supported = supportedRequiredExtensions
-        return (gltf.extensionsRequired ?? []).filter { !supported.contains($0) }
+        gltf.extensionsRequired.contains(name)
     }
 
     /// Validates the node graph and skins, once per document.
@@ -232,8 +227,8 @@ public class GLTFEntityLoader {
         if let cache = try entityData.load(\.nodes, index: index) { return cache }
 
         let entity = Entity()
-        // A skinned mesh may sit below one of its own joints, so publishing the
-        // entity before its subtree exists ends that recursion.
+        // A skinned mesh may sit below one of its own joints, so publish the entity before
+        // its subtree exists to end that recursion.
         entityData.nodes[index] = entity
         do {
             try build(entity, forNodeAt: index)
@@ -273,9 +268,8 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// The number of morph targets the mesh at `index` renders with, which every
-    /// weights array driving it holds one weight for. A primitive declaring no
-    /// target of its own does not take part.
+    /// The number of morph targets the mesh at `index` renders with, one per weight in
+    /// any array driving it. A primitive declaring no target of its own does not take part.
     func morphTargetCount(ofMeshAt index: Int) throws -> Int {
         if let cached = morphTargetCounts[index] { return cached }
         var targetCount = 0
@@ -294,7 +288,7 @@ public class GLTFEntityLoader {
     }
 
     /// Applies the spec's starting morph state, `node.weights` falling back to
-    /// `mesh.weights`. Both have to be sized by the mesh's morph target count.
+    /// `mesh.weights`. Both must be sized by the mesh's morph target count.
     private func applyInitialMorphWeights(of gltfNode: GLTF.Node,
                                           meshIndex: Int,
                                           targetCount: Int,
@@ -352,8 +346,8 @@ public class GLTFEntityLoader {
     /// The entity one node renders a glTF mesh through, one per call.
     func mesh(withMeshIndex index: Int, skinIndex: Int?, nodeIndex: Int) throws -> Entity {
         let headJoints = firstPersonHeadJoints(ofNodeAt: nodeIndex, meshIndex: index, skinIndex: skinIndex)
-        // Built once per template and cloned per node: the clones share the
-        // `MeshResource` and carry their own pose and weights.
+        // Built once per template and cloned per node: the clones share the `MeshResource`
+        // and carry their own pose and weights.
         let meshEntity = try meshTemplate(withMeshIndex: index,
                                           skinIndex: skinIndex,
                                           headJoints: headJoints).clone(recursive: true)
@@ -363,8 +357,7 @@ public class GLTFEntityLoader {
         return meshEntity
     }
 
-    /// The clone source for one mesh as one node draws it, which never joins a
-    /// scene itself.
+    /// The clone source for one mesh as one node draws it, which never joins a scene.
     private func meshTemplate(withMeshIndex index: Int,
                               skinIndex: Int?,
                               headJoints: Set<UInt32>) throws -> Entity {
@@ -403,9 +396,8 @@ public class GLTFEntityLoader {
         mesh.primitives
     }
 
-    /// The joints of `skinIndex` whose triangles a first-person camera drops
-    /// from the mesh the node at `nodeIndex` draws. Empty for a plain glTF,
-    /// which has no such camera; ``VRMEntityLoader`` overrides it.
+    /// The joints of `skinIndex` whose triangles a first-person camera drops from the mesh
+    /// the node at `nodeIndex` draws. Empty for a plain glTF; ``VRMEntityLoader`` overrides it.
     func firstPersonHeadJoints(ofNodeAt nodeIndex: Int, meshIndex: Int, skinIndex: Int?) -> Set<UInt32> { [] }
 
     private func modelEntity(withPrimitive primitive: GLTF.Mesh.Primitive,
@@ -428,8 +420,7 @@ public class GLTFEntityLoader {
         let shaded = try primitive.material.map { try shadedMaterial(withMaterialIndex: $0) }
             ?? GLTFShadedMaterial(material: defaultMaterial())
 
-        // A skinned primitive binds its vertex influences to the skin's skeleton;
-        // an unskinned one has neither.
+        // A skinned primitive binds its vertex influences to the skin's skeleton.
         var skinSkeleton: MeshResource.Skeleton?
         var jointInfluences: MeshResource.JointInfluences?
         if let skinIndex, geometry.isSkinned {
@@ -462,8 +453,7 @@ public class GLTFEntityLoader {
                 entity.components.set(BlendShapeWeightsComponent(weightsMapping: blendShapeMapping))
             }
             if let skinIndex, skinSkeleton != nil {
-                // The binding itself is registered per clone, once the entity is
-                // part of a scene and its joints exist.
+                // The binding is registered per clone, once its joints exist.
                 entity.components.set(GLTFSkinIndexComponent(skinIndex: skinIndex))
             }
             return entity
@@ -493,8 +483,8 @@ public class GLTFEntityLoader {
         return modelEntity
     }
 
-    /// The same primitive with the head's triangles taken out, which is what a
-    /// first-person camera draws of an `auto` mesh. Nil for one it does not cut.
+    /// The same primitive with the head's triangles taken out, which is what a first-person
+    /// camera draws of an `auto` mesh. Nil for one it does not cut.
     private func firstPersonMesh(of geometry: GLTFPrimitiveGeometry,
                                  drawnAs mesh: MeshResource,
                                  headJoints: Set<UInt32>,
@@ -518,11 +508,9 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// Widens the bounding box RealityKit culls `passEntity` by, so a geometry
-    /// modifier pushing vertices outward is not culled while still on screen,
-    /// and tells the modifier how much room it got. The mesh's own radius stands
-    /// in for a budget, since mesh-space travel is unknown before the entity is
-    /// in a scene.
+    /// Widens the bounding box RealityKit culls `passEntity` by, so a geometry modifier
+    /// pushing vertices outward is not culled while on screen, and tells the modifier how
+    /// much room it got.
     private func grantBoundsBudget(to passEntity: ModelEntity,
                                    mesh: MeshResource,
                                    applying applyBudget: (any Material, Float) -> any Material) {
@@ -533,9 +521,9 @@ public class GLTFEntityLoader {
         passEntity.components.set(component)
     }
 
-    /// The UV set the meshes rendering `index` carry, and whether the material's
-    /// textures disagree about it. Custom meshes carry a single UV channel, so
-    /// the core material's first UV-accessed texture decides it.
+    /// The UV set the meshes rendering `index` carry, and whether the material's textures
+    /// disagree about it. Custom meshes carry a single UV channel, so the core material's
+    /// first UV-accessed texture decides it.
     func resolvedTexCoord(withMaterialIndex index: Int) -> (selected: Int, isMixed: Bool) {
         if let cached = materialTexCoordCache[index] { return cached }
         guard let gltfMaterial = try? gltf.load(\.materials, at: index) else { return (0, false) }
@@ -551,10 +539,9 @@ public class GLTFEntityLoader {
         resolvedTexCoord(withMaterialIndex: index).selected
     }
 
-    /// Whether the material samples a normal map, which is what decides whether
-    /// a primitive without `TANGENT` needs a tangent basis generating. The MToon
-    /// descriptor is asked first because VRM 0.x carries its normal map in
-    /// Unity's `_BumpMap`.
+    /// Whether the material samples a normal map, which decides whether a primitive without
+    /// `TANGENT` needs a tangent basis generating. The MToon descriptor is asked first
+    /// because VRM 0.x carries its normal map in Unity's `_BumpMap`.
     func materialSamplesNormalTexture(withMaterialIndex index: Int) -> Bool {
         if let descriptor = try? mtoonDescriptor(withMaterialIndex: index), descriptor.normalTexture != nil {
             return true
@@ -568,13 +555,12 @@ public class GLTFEntityLoader {
         try shadedMaterial(withMaterialIndex: index).material
     }
 
-    /// Builds, or returns the cached, materials for one glTF material. The
-    /// single place "what does this material render as" is decided.
+    /// The single place what a material renders as is decided.
     func shadedMaterial(withMaterialIndex index: Int) throws -> GLTFShadedMaterial {
         if let cached = try entityData.load(\.materials, index: index) { return cached }
         defer { standardMaterialCache.removeValue(forKey: index) }
-        // Resolving the material is not shading it: an index the document does not
-        // hold fails the load rather than reaching a fallback.
+        // Resolving is not shading: an index the document does not hold fails the load
+        // rather than reaching a fallback.
         let context = try makeMaterialShaderContext(withMaterialIndex: index)
         let shaded: GLTFShadedMaterial
         do {
@@ -589,8 +575,8 @@ public class GLTFEntityLoader {
         return shaded
     }
 
-    /// What the shader chain makes of an already resolved material, falling back
-    /// to the built-in Unlit / PBR path when no shader claims it.
+    /// What the shader chain makes of an already resolved material, falling back to the
+    /// built-in Unlit / PBR path when no shader claims it.
     private func shadeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial {
         for shader in shaders {
             if let shaded = try shader.makeMaterial(for: context) { return shaded }
@@ -598,8 +584,8 @@ public class GLTFEntityLoader {
         return GLTFShadedMaterial(material: try standardMaterial(for: context))
     }
 
-    /// What to render a material the shader chain could not build as, or nil to
-    /// fail the load with the shader's error. ``VRMEntityLoader`` overrides it.
+    /// What to render a material the shader chain could not build as, or nil to fail the
+    /// load with the shader's error. ``VRMEntityLoader`` overrides it.
     func shadedMaterialFallback(for context: GLTFMaterialShaderContext,
                                 error: any Error) -> GLTFShadedMaterial? { nil }
 
@@ -611,10 +597,9 @@ public class GLTFEntityLoader {
                                          vrm0MaterialProperty: materialProperty)
     }
 
-    /// The built-in Unlit / PBR path of the glTF core specification, rendering
-    /// every material the shader chain leaves unclaimed. Shaders reach it through
+    /// The built-in Unlit / PBR path of the glTF core specification, rendering every
+    /// material the shader chain leaves unclaimed. Shaders reach it through
     /// ``GLTFMaterialShaderContext/standardMaterial()`` to decorate its result.
-    /// Memoized, so inspecting it costs nothing.
     func standardMaterial(for context: GLTFMaterialShaderContext) throws -> Material {
         if let cached = standardMaterialCache[context.materialIndex] { return cached }
         let material = try makeStandardMaterial(for: context)
@@ -629,8 +614,7 @@ public class GLTFEntityLoader {
         let gltfMaterial = context.material
         let materialProperty = context.vrm0MaterialProperty
         let shaderName = materialProperty?.shader.lowercased()
-        // Unreadable MToon (an unimplemented spec version) is still MToon, so it
-        // takes the same Unlit approximation as a readable one.
+        // Unreadable MToon is still MToon, so it takes the same Unlit approximation.
         let isMToon = try mtoonResolution(withMaterialIndex: index).isMToon
         let isUnlit = shaderName?.contains("unlit") == true || gltfMaterial.extensions?.materialsUnlit != nil
         // MToon and Unlit variants are not PBR, so both render through UnlitMaterial.
@@ -668,8 +652,8 @@ public class GLTFEntityLoader {
             }
 
             if let metallicTexture = pbr.metallicRoughnessTexture {
-                // glTF multiplies the sampled channel by its factor, which is
-                // what RealityKit's texture-plus-scale pair does.
+                // glTF multiplies the sampled channel by its factor, as RealityKit's
+                // texture-plus-scale pair does.
                 let textures = try metallicRoughnessTextures(withTextureIndex: metallicTexture.index)
                 material.metallic = .init(scale: pbr.metallicFactor, texture: textures.metal)
                 material.roughness = .init(scale: pbr.roughnessFactor, texture: textures.rough)
@@ -714,8 +698,8 @@ public class GLTFEntityLoader {
         return material
     }
 
-    /// The textures a standard (non-MToon) material samples through mesh UVs, in
-    /// the order the glTF material declares them.
+    /// The textures a standard (non-MToon) material samples through mesh UVs, in the
+    /// order the glTF material declares them.
     private func sampledTextures(of gltfMaterial: GLTF.Material) -> [GLTFSampledTexture] {
         var textures: [GLTFSampledTexture] = []
         if let pbr = gltfMaterial.pbrMetallicRoughness {
@@ -728,8 +712,8 @@ public class GLTFEntityLoader {
         return textures
     }
 
-    /// The `KHR_texture_transform` a material renders with. RealityKit gives a
-    /// material one UV transform, so the first UV-accessed texture's wins.
+    /// The `KHR_texture_transform` a material renders with. RealityKit gives a material
+    /// one UV transform, so the first UV-accessed texture's wins.
     func selectedUVTransform(withMaterialIndex index: Int,
                              textures: [GLTFSampledTexture]) -> GLTFUVTransform {
         let selected = textures.first?.transform ?? GLTFUVTransform()
@@ -743,8 +727,8 @@ public class GLTFEntityLoader {
     }
 
     /// Converts `KHR_texture_transform` into RealityKit's `textureCoordinateTransform`.
-    /// Only the rotation direction mirrors: offset and scale already act from the
-    /// corner the extension measures from.
+    /// Only the rotation direction mirrors: offset and scale already act from the corner
+    /// the extension measures from.
     private func standardTextureTransform(withMaterialIndex index: Int,
                                           of gltfMaterial: GLTF.Material) -> MaterialParameterTypes.TextureCoordinateTransform {
         let transform = selectedUVTransform(withMaterialIndex: index,
@@ -754,9 +738,9 @@ public class GLTFEntityLoader {
                                                                  rotation: -transform.rotation)
     }
 
-    /// What MToon data the material at `index` carries, decoded from the
-    /// `VRMC_materials_mtoon` extension or the VRM 0.x material property. The
-    /// built-in fallback and tangent generation both read it.
+    /// What MToon data the material at `index` carries, from the `VRMC_materials_mtoon`
+    /// extension or the VRM 0.x material property. The built-in fallback and tangent
+    /// generation both read it.
     func mtoonResolution(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor.Resolution {
         if let cached = mtoonResolutionCache[index] {
             return cached
@@ -774,14 +758,14 @@ public class GLTFEntityLoader {
         return resolution
     }
 
-    /// The MToon material model describing the material at `index`, or nil when
-    /// it carries none this renderer can read.
+    /// The MToon material model describing the material at `index`, or nil when it
+    /// carries none this renderer can read.
     func mtoonDescriptor(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor? {
         try mtoonResolution(withMaterialIndex: index).descriptor
     }
 
-    /// The glTF material and, for VRM 0.x, the Unity material property
-    /// describing it. Both are array lookups, so neither is cached.
+    /// The glTF material and, for VRM 0.x, the Unity material property describing it.
+    /// Both are array lookups, so neither is cached.
     private func materialSource(withMaterialIndex index: Int) throws -> (GLTF.Material, VRM0.MaterialProperty?) {
         (try gltf.load(\.materials, at: index), vrm0MaterialProperty(atMaterialIndex: index))
     }
@@ -791,14 +775,139 @@ public class GLTFEntityLoader {
         nil
     }
 
-    /// A fresh mutable runtime state for the material, made by the material on
-    /// screen, so the state always describes what is actually drawn.
+    /// A fresh mutable runtime state for the material, made by the material on screen,
+    /// so it always describes what is actually drawn.
     func makeAnimatableMaterialState(forMaterialIndex index: Int) -> (any VRMAnimatableMaterialState)? {
         (try? shadedMaterial(withMaterialIndex: index))?.makeAnimatableState?()
     }
 
+    /// The materials the scene at `index` draws with.
+    private func drawnMaterialIndices(forSceneIndex index: Int) throws -> Set<Int> {
+        var indices: Set<Int> = []
+        for drawn in try drawnMeshes(forSceneIndex: index) {
+            for primitive in resolvedPrimitives(of: drawn.mesh) {
+                if let material = primitive.material { indices.insert(material) }
+            }
+        }
+        return indices
+    }
+
+    /// The textures the material at `index` samples: the glTF slots, and whatever its
+    /// extensions name, read as written so an unmodeled extension counts too.
+    func textureIndices(ofMaterialAt index: Int) -> Set<Int> {
+        guard let material = gltf.materials[safe: index] else { return [] }
+        var indices = Set([material.normalTexture?.index,
+                           material.occlusionTexture?.index,
+                           material.emissiveTexture?.index,
+                           material.pbrMetallicRoughness?.baseColorTexture?.index,
+                           material.pbrMetallicRoughness?.metallicRoughnessTexture?.index].compactMap { $0 })
+        for (_, extensionValue) in material.extensions?.raw ?? [:] {
+            for (key, slot) in extensionValue.dictionaryValue where key.hasSuffix("Texture") {
+                if let texture = slot.dictionaryValue["index"]?.indexValue { indices.insert(texture) }
+            }
+        }
+        return indices
+    }
+
+    /// One image's share of the texture prepare pass: the decode, and whatever per-pixel
+    /// bakes the materials sampling it ask for.
+    private struct TextureWork: Sendable {
+        let imageIndex: Int
+        var normalScales: Set<Float> = []
+        var occlusionStrengths: Set<Float> = []
+        var splitsMetallicRoughness = false
+    }
+
+    private struct PreparedTexture: @unchecked Sendable {
+        let imageIndex: Int
+        let image: CGImage
+        let normalBakes: [(scale: Float, image: CGImage)]
+        let occlusionBakes: [(strength: Float, image: CGImage)]
+        let metallicRoughness: (metal: CGImage, rough: CGImage)?
+    }
+
+    /// Decodes the texture images and runs their per-pixel bakes off the actor the entity
+    /// graph is built on, as ``prepareGeometry(forSceneIndex:)`` does for vertex data.
+    ///
+    /// Only what the scene at `index` draws with is prepared; a texture it misses is
+    /// decoded during the build instead.
+    func prepareTextures(forSceneIndex index: Int) async throws {
+        var work: [Int: TextureWork] = [:]
+        func item(forTextureIndex textureIndex: Int) -> Int? {
+            guard let source = gltf.textures[safe: textureIndex]?.source else { return nil }
+            if work[source] == nil, entityData.images[safe: source] ?? nil == nil {
+                work[source] = TextureWork(imageIndex: source)
+            }
+            return source
+        }
+        for materialIndex in try drawnMaterialIndices(forSceneIndex: index) {
+            guard let material = gltf.materials[safe: materialIndex] else { continue }
+            for texture in textureIndices(ofMaterialAt: materialIndex) {
+                _ = item(forTextureIndex: texture)
+            }
+            if let normal = material.normalTexture, normal.scale != 1,
+               let image = item(forTextureIndex: normal.index) {
+                work[image]?.normalScales.insert(normal.scale)
+            }
+            if let occlusion = material.occlusionTexture, occlusion.strength != 1,
+               let image = item(forTextureIndex: occlusion.index) {
+                work[image]?.occlusionStrengths.insert(occlusion.strength)
+            }
+            if let metallic = material.pbrMetallicRoughness?.metallicRoughnessTexture,
+               let image = item(forTextureIndex: metallic.index) {
+                work[image]?.splitsMetallicRoughness = true
+            }
+        }
+        guard !work.isEmpty else { return }
+
+        let document = self.document
+        let prepared = try await withThrowingTaskGroup(of: PreparedTexture.self) { group in
+            for item in work.values {
+                group.addTask {
+                    try Task.checkCancellation()
+                    let image = try document.image(at: item.imageIndex)
+                    return PreparedTexture(
+                        imageIndex: item.imageIndex,
+                        image: image,
+                        normalBakes: try item.normalScales.map {
+                            ($0, try Self.scaledNormalImage(image, scale: $0))
+                        },
+                        occlusionBakes: try item.occlusionStrengths.map {
+                            ($0, try Self.weakenedOcclusionImage(image, strength: $0))
+                        },
+                        metallicRoughness: item.splitsMetallicRoughness
+                            ? try metallicRoughnessImages(from: image)
+                            : nil
+                    )
+                }
+            }
+            var results: [PreparedTexture] = []
+            results.reserveCapacity(work.count)
+            for try await result in group {
+                results.append(result)
+            }
+            return results
+        }
+        for result in prepared {
+            entityData.images[result.imageIndex] = result.image
+            for bake in result.normalBakes {
+                preparedBakedImages[BakedTextureKey(imageIndex: result.imageIndex,
+                                                    factor: bake.scale,
+                                                    semantic: .normal)] = bake.image
+            }
+            for bake in result.occlusionBakes {
+                preparedBakedImages[BakedTextureKey(imageIndex: result.imageIndex,
+                                                    factor: bake.strength,
+                                                    semantic: .raw)] = bake.image
+            }
+            if let split = result.metallicRoughness {
+                preparedMetallicRoughnessImages[result.imageIndex] = split
+            }
+        }
+    }
+
     func texture(withTextureIndex index: Int, semantic: TextureResource.Semantic = .color) throws -> TextureResource {
-        let key = ImageTextureKey(imageIndex: try gltf.load(\.textures, at: index).source,
+        let key = ImageTextureKey(imageIndex: try gltf.imageIndex(ofTextureAt: index),
                                   semantic: semantic)
         if let cache = textureCache[key] { return cache }
         let cgImage = try image(withImageIndex: key.imageIndex)
@@ -856,12 +965,11 @@ public class GLTFEntityLoader {
         return try bakedTexture(withTextureIndex: info.index,
                                 factor: info.scale,
                                 semantic: .normal,
-                                bake: scaledNormalImage)
+                                bake: Self.scaledNormalImage)
     }
 
-    /// The occlusion map a material samples, with `occlusionTexture.strength`
-    /// applied. Occlusion is linear data, so `.raw`: `.color` would apply an
-    /// sRGB-to-linear conversion.
+    /// The occlusion map a material samples, with `occlusionTexture.strength` applied.
+    /// Occlusion is linear data, so `.raw`: `.color` would apply an sRGB conversion.
     private func occlusionTextureParameter(_ info: GLTF.Material.OcclusionTextureInfo) throws -> MaterialParameters.Texture {
         guard info.strength != 1 else {
             return try materialTexture(withTextureIndex: info.index, semantic: .raw)
@@ -869,34 +977,34 @@ public class GLTFEntityLoader {
         return try bakedTexture(withTextureIndex: info.index,
                                 factor: info.strength,
                                 semantic: .raw,
-                                bake: weakenedOcclusionImage)
+                                bake: Self.weakenedOcclusionImage)
     }
 
-    /// A texture with one of glTF's scalar factors baked into its pixels, built
-    /// once per texture and factor: RealityKit's normal and ambient-occlusion
-    /// parameters carry no scalar beside the texture.
+    /// A texture with one of glTF's scalar factors baked into its pixels: RealityKit's
+    /// normal and ambient-occlusion parameters carry no scalar beside the texture.
     private func bakedTexture(withTextureIndex index: Int,
                               factor: Float,
                               semantic: TextureResource.Semantic,
                               bake: (CGImage, Float) throws -> CGImage) throws -> MaterialParameters.Texture {
-        let key = BakedTextureKey(imageIndex: try gltf.load(\.textures, at: index).source,
+        let key = BakedTextureKey(imageIndex: try gltf.imageIndex(ofTextureAt: index),
                                   factor: factor,
                                   semantic: semantic)
         let resource: TextureResource
         if let cached = bakedTextureCache[key] {
             resource = cached
         } else {
-            let cgImage = try image(withImageIndex: key.imageIndex)
-            resource = try TextureResource(image: try bake(cgImage, factor),
-                                           options: .init(semantic: semantic))
+            // Baked by the prepare pass off-actor, or now for a texture it missed.
+            let baked = try preparedBakedImages[key]
+                ?? bake(try image(withImageIndex: key.imageIndex), factor)
+            resource = try TextureResource(image: baked, options: .init(semantic: semantic))
             bakedTextureCache[key] = resource
         }
         return MaterialParameters.Texture(resource, sampler: try sampler(withTextureIndex: index))
     }
 
-    /// glTF scales a sampled normal's x and y by `normalTexture.scale` and
-    /// renormalizes it, which the map can carry itself.
-    func scaledNormalImage(_ image: CGImage, scale: Float) throws -> CGImage {
+    /// glTF scales a sampled normal's x and y by `normalTexture.scale` and renormalizes
+    /// it, which the map can carry itself.
+    nonisolated static func scaledNormalImage(_ image: CGImage, scale: Float) throws -> CGImage {
         try rewritingPixels(of: image) { pixels, pixelCount in
             for pixel in 0..<pixelCount {
                 let offset = pixel * 4
@@ -915,15 +1023,14 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// glTF blends sampled occlusion toward "no occlusion" by
-    /// `occlusionTexture.strength`, so a strength of 0 lights the surface as if
-    /// the map were absent.
-    func weakenedOcclusionImage(_ image: CGImage, strength: Float) throws -> CGImage {
+    /// glTF blends sampled occlusion toward "no occlusion" by `occlusionTexture.strength`,
+    /// so a strength of 0 lights the surface as if the map were absent.
+    nonisolated static func weakenedOcclusionImage(_ image: CGImage, strength: Float) throws -> CGImage {
         try rewritingPixels(of: image) { pixels, pixelCount in
             for pixel in 0..<pixelCount {
                 let offset = pixel * 4
-                // glTF keeps occlusion in the red channel; the others follow it so
-                // the result reads the same whichever channel is sampled.
+                // glTF keeps occlusion in the red channel; the others follow it so the
+                // result reads the same whichever channel is sampled.
                 let occlusion = 1 + strength * (Float(pixels[offset]) / 255 - 1)
                 let value = UInt8(clamping: Int((occlusion * 255).rounded()))
                 pixels[offset] = value
@@ -933,18 +1040,17 @@ public class GLTFEntityLoader {
         }
     }
 
-    private func rewritingPixels(of image: CGImage,
-                                 _ rewrite: (UnsafeMutablePointer<UInt8>, Int) -> Void) throws -> CGImage {
+    private nonisolated static func rewritingPixels(of image: CGImage,
+                                                    _ rewrite: (UnsafeMutablePointer<UInt8>, Int) -> Void) throws -> CGImage {
         try withRGBA8Pixels(of: image) { context, pixels, pixelCount in
             rewrite(pixels, pixelCount)
             return try context.makeImage() ??? .dataInconsistent("failed to create CGImage")
         }
     }
 
-    /// Draws `image` into a freshly allocated 8-bit RGBA buffer and hands `body`
-    /// that buffer, its pixel count and the context behind it, all valid only
-    /// for the duration of the call.
-    private func withRGBA8Pixels<Result>(
+    /// Draws `image` into a freshly allocated 8-bit RGBA buffer and hands `body` that
+    /// buffer, its pixel count and the context behind it, valid only for the call.
+    private nonisolated static func withRGBA8Pixels<Result>(
         of image: CGImage,
         _ body: (CGContext, UnsafeMutablePointer<UInt8>, Int) throws -> Result
     ) throws -> Result {
@@ -970,30 +1076,23 @@ public class GLTFEntityLoader {
     }
 
     private func metallicRoughnessTextures(withTextureIndex index: Int) throws -> (metal: MaterialParameters.Texture, rough: MaterialParameters.Texture) {
-        let imageIndex = try gltf.load(\.textures, at: index).source
+        let imageIndex = try gltf.imageIndex(ofTextureAt: index)
         let resources: (metal: TextureResource, rough: TextureResource)
         if let cache = metallicRoughnessCache[imageIndex] {
             resources = cache
         } else {
-            let textures = try createMetallicRoughnessTextures(from: try image(withImageIndex: imageIndex))
+            // Split by the prepare pass off-actor, or now for an image it missed.
+            let images = try preparedMetallicRoughnessImages[imageIndex]
+                ?? metallicRoughnessImages(from: try image(withImageIndex: imageIndex))
+            // Metallic / roughness are linear data; .color would apply an sRGB conversion.
+            let textures = (try TextureResource(image: images.metal, options: .init(semantic: .raw)),
+                            try TextureResource(image: images.rough, options: .init(semantic: .raw)))
             metallicRoughnessCache[imageIndex] = textures
             resources = textures
         }
         let sampler = try sampler(withTextureIndex: index)
         return (MaterialParameters.Texture(resources.metal, sampler: sampler),
                 MaterialParameters.Texture(resources.rough, sampler: sampler))
-    }
-
-    /// glTF packs roughness in the green channel and metalness in the blue one of
-    /// a single texture; RealityKit samples a texture of its own for each.
-    private func createMetallicRoughnessTextures(
-        from image: CGImage
-    ) throws -> (metal: TextureResource, rough: TextureResource) {
-        let images = try metallicRoughnessImages(from: image)
-
-        // Metallic / roughness are linear data; .color would apply an sRGB conversion.
-        return (try TextureResource(image: images.metal, options: .init(semantic: .raw)),
-                try TextureResource(image: images.rough, options: .init(semantic: .raw)))
     }
 
     private func applyAlphaMode(_ mode: GLTF.Material.AlphaMode,
@@ -1056,16 +1155,16 @@ public class GLTFEntityLoader {
         return MeshResource.JointInfluences(influences: buffer, influencesPerVertex: 4)
     }
 
-    /// The skin at `index` resolved for RealityKit. Its skeleton and its joint
-    /// remap come out of the same ordering pass, so they are cached together.
+    /// The skin at `index` resolved for RealityKit. Its skeleton and joint remap come
+    /// out of the same ordering pass, so they are cached together.
     func skin(withSkinIndex index: Int) throws -> EntityData.Skin {
         if let cache = try entityData.load(\.skins, index: index) { return cache }
         let skin = try gltf.load(\.skins, at: index)
-        let nodes = try gltf.load(\.nodes)
+        let nodes = gltf.nodes
         let (parentIndices, order, remap) = computeSkinJointOrdering(skin: skin)
 
-        // glTF defines an absent inverseBindMatrices as identity per joint, but a
-        // present one has to cover every joint.
+        // glTF defines an absent inverseBindMatrices as identity per joint, but a present
+        // one has to cover every joint.
         let inverseBindMatrices: [simd_float4x4]
         if let accessorIndex = skin.inverseBindMatrices {
             inverseBindMatrices = try accessors.accessor(at: accessorIndex).float4x4Elements()
@@ -1134,8 +1233,7 @@ public class GLTFEntityLoader {
             }
         }
 
-        // The validated hierarchy is a forest, so visiting every root reaches
-        // every joint.
+        // The validated hierarchy is a forest, so visiting every root reaches every joint.
         let roots = parentIndices.enumerated().compactMap { $0.element == nil ? $0.offset : nil }
         for root in roots {
             visit(root)
@@ -1207,8 +1305,7 @@ public class GLTFEntityLoader {
             }
             let jointNodes = try gltf.load(\.skins, at: skinIndex).joints
             let jointsInSkinOrder = try jointNodes.map { try node(withNodeIndex: $0) }
-            // The skeleton reorders the joints parents-first, and the pose is
-            // written in the skeleton's order.
+            // The skeleton reorders the joints parents-first, and the pose follows it.
             let skin = try skin(withSkinIndex: skinIndex)
             var jointEntities = jointsInSkinOrder
             for (oldIndex, newIndex) in skin.jointIndexRemap.enumerated() {
@@ -1232,8 +1329,8 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// glTF's default material for a primitive that names none: lit, white, and
-    /// fully metallic and rough.
+    /// glTF's default material for a primitive that names none: lit, white, fully
+    /// metallic and rough.
     func defaultMaterial() -> Material {
         var material = PhysicallyBasedMaterial()
         material.baseColor = .init(tint: .white)

@@ -4,9 +4,8 @@ import simd
 import VRMKit
 @testable import VRMKitRuntime
 
-/// The rig that swings a whole model's springs. It reads a node's transform
-/// through ``VRMRuntimeNode``, so a plain node stands in for either
-/// renderer's and the orchestration is testable without one.
+/// The rig that swings a whole model's springs. It reads a node's transform through
+/// ``VRMRuntimeNode``, so a plain node stands in for either renderer's.
 @Suite
 struct SpringBoneRigTests {
     private static let setting = SpringBoneJointSetting(stiffnessForce: 0,
@@ -37,8 +36,7 @@ struct SpringBoneRigTests {
         return rig
     }
 
-    /// Gravity pulls a hanging chain down, and every bone keeps the length it
-    /// was authored with.
+    /// Gravity pulls a hanging chain down, and every bone keeps its authored length.
     @Test
     func testAChainSwingsUnderGravityWithoutStretching() throws {
         let (_, nodes) = Self.chain(length: 4)
@@ -53,9 +51,8 @@ struct SpringBoneRigTests {
         #expect(nodes.last!.worldPosition.y < -0.5)
     }
 
-    /// The rig composes a spring's transforms itself, so solving it asks the
-    /// renderer where a node is only for the one it cannot derive: the node the
-    /// spring hangs off, whose matrix and rotation it reads once each.
+    /// The rig composes a spring's transforms itself, so it asks the renderer where a node
+    /// is only for the one it cannot derive: the node the spring hangs off.
     @Test
     func testSolvingAChainReadsOneWorldTransformWhateverItsLength() throws {
         let (root, nodes) = Self.chain(length: 8)
@@ -68,8 +65,8 @@ struct SpringBoneRigTests {
         #expect(nodes.allSatisfy { $0.worldReads == 0 })
     }
 
-    /// A rig holds the joints it swings, and a model that holds the rig must
-    /// not be held by it in turn.
+    /// A rig holds the joints it swings, and a model holding the rig must not be held
+    /// by it in turn.
     @Test
     func testARigDoesNotHoldWhatHangsAboveTheFirstJoint() throws {
         weak var released: TestRuntimeNode?
@@ -78,8 +75,8 @@ struct SpringBoneRigTests {
             let (root, nodes) = Self.chain(length: 4)
             released = root
             rig = try Self.vrm1Rig(nodes)
-            // The chain's own nodes stay alive through the rig; the node it
-            // hangs off is the model's to release.
+            // The chain's own nodes stay alive through the rig; the node it hangs off is
+            // the model's to release.
             _ = nodes
         }
 
@@ -87,8 +84,8 @@ struct SpringBoneRigTests {
         #expect(released == nil)
     }
 
-    /// VRM 1.0 lets a node sit between two joints of a chain. It swings
-    /// nothing, but where it is decides where the joint below it hangs.
+    /// VRM 1.0 lets a node sit between two joints of a chain. It swings nothing, but
+    /// where it is decides where the joint below it hangs.
     @Test
     func testANodeBetweenTwoJointsIsComposedThroughWithoutSwinging() throws {
         let (_, nodes) = Self.chain(length: 4)
@@ -99,15 +96,13 @@ struct SpringBoneRigTests {
         for _ in 0..<30 { rig.update(deltaTime: 1.0 / 60.0) }
 
         #expect(skipped.localRotation == skippedRotation)
-        // The joints on either side of it still swing, and still reach as far
-        // as they were drawn.
+        // The joints on either side still swing, and still reach as far as they were drawn.
         #expect(nodes[3].worldPosition.y < -0.2)
         #expect(abs(simd_distance(nodes[2].worldPosition, nodes[3].worldPosition) - 1) < 1e-3)
     }
 
-    /// `VRMC_springBone` has each joint of a chain below the one before it. A
-    /// chain stated any other way says nothing about what it swings, so it is
-    /// refused rather than swung as whatever the hierarchy happens to say.
+    /// `VRMC_springBone` has each joint of a chain below the one before it. A chain stated
+    /// any other way says nothing about what it swings, so it is refused.
     @Test
     func testAChainWhoseJointsAreNotOneDescentIsRefused() {
         let root = TestRuntimeNode()
@@ -124,8 +119,8 @@ struct SpringBoneRigTests {
         }
     }
 
-    /// Not out of the collider outright: `VRMC_springBone` puts the tail back on
-    /// the bone after every hit without re-checking that last move.
+    /// Not out of the collider outright: `VRMC_springBone` puts the tail back on the bone
+    /// after every hit without re-checking that last move.
     @Test
     func testAColliderPushesATailAwayFromWhereItWouldOtherwiseHang() throws {
         let collider = try JSONDecoder().decode(
@@ -157,9 +152,8 @@ struct SpringBoneRigTests {
         #expect(abs(simd_distance(pushed, colliderPosition) - radius) < 0.05)
     }
 
-    /// The two versions disagree about the end of a chain: VRM 0.x swings a
-    /// leaf around the 7cm tail it gives it, while a VRM 1.0 chain's last joint
-    /// is only the tail the one above it swings towards.
+    /// The two versions disagree about the end of a chain: VRM 0.x swings a leaf around
+    /// the 7cm tail it gives it, while a VRM 1.0 chain's last joint is only a tail.
     @Test
     func testOnlyVRM0SwingsTheLeafAtTheEndOfAChain() throws {
         func leafRotation(vrm0: Bool) throws -> simd_quatf {
@@ -179,10 +173,154 @@ struct SpringBoneRigTests {
             return nodes[2].localRotation
         }
 
-        // A leaf swung by a 7cm tail settles almost where it started once the
-        // chain above it hangs straight down, so what separates the two is that
-        // one is solved at all and the other is never written.
+        // A leaf swung by a 7cm tail settles almost where it started once the chain above
+        // it hangs straight down, so what separates the two is that one is solved at all.
         #expect(try leafRotation(vrm0: true) != .identity)
         #expect(try leafRotation(vrm0: false) == .identity)
+    }
+
+    /// The simulation steps at its own fixed rate, so a chain drawn at 30 fps and one at
+    /// 120 fps swing to the same place after the same time.
+    @Test
+    func testTheSwingIsTheSameAtEveryFrameRate() throws {
+        func settled(frameTime: TimeInterval, frames: Int) throws -> SIMD3<Float> {
+            let (_, nodes) = Self.chain(length: 4)
+            let rig = try Self.vrm1Rig(nodes)
+            for _ in 0..<frames { rig.update(deltaTime: frameTime) }
+            return nodes.last!.worldPosition
+        }
+
+        let baseline = try settled(frameTime: 1.0 / 60.0, frames: 60)
+        #expect(simd_distance(try settled(frameTime: 1.0 / 30.0, frames: 30), baseline) < 1e-4)
+        #expect(simd_distance(try settled(frameTime: 1.0 / 120.0, frames: 120), baseline) < 1e-4)
+    }
+
+    /// A frame shorter than one step carries into the next update rather than swinging
+    /// a partial step of its own.
+    @Test
+    func testTimeShortOfAStepIsCarriedToTheNextUpdate() throws {
+        let (_, nodes) = Self.chain(length: 2)
+        let rig = try Self.vrm1Rig(nodes)
+        let rest = nodes[1].worldPosition
+
+        rig.update(deltaTime: 1.0 / 240.0)
+        #expect(nodes[1].worldPosition == rest)
+
+        for _ in 0..<3 { rig.update(deltaTime: 1.0 / 240.0) }
+        #expect(nodes[1].worldPosition != rest)
+    }
+
+    /// A hitch longer than the budgeted steps stalls the swing rather than replaying the
+    /// missing time as one violent frame.
+    @Test
+    func testAHitchSimulatesNoMoreThanTheBudgetedSteps() throws {
+        func settled(_ body: (SpringBoneRig<TestRuntimeNode>) -> Void) throws -> SIMD3<Float> {
+            let (_, nodes) = Self.chain(length: 4)
+            let rig = try Self.vrm1Rig(nodes)
+            body(rig)
+            return nodes.last!.worldPosition
+        }
+
+        let budgeted = try settled { rig in
+            for _ in 0..<SpringBoneSimulation.maximumStepsPerUpdate {
+                rig.update(deltaTime: 1.0 / 60.0)
+            }
+        }
+        #expect(try settled { $0.update(deltaTime: 10) } == budgeted)
+    }
+
+    /// A reset starts the next update from the rest pose, so teleporting a model does not
+    /// read as a swing.
+    @Test
+    func testAResetSettlesTheChainBackToRest() throws {
+        let (_, nodes) = Self.chain(length: 4)
+        let rig = try Self.vrm1Rig(nodes)
+        let rest = nodes.map(\.localRotation)
+
+        for _ in 0..<30 { rig.update(deltaTime: 1.0 / 60.0) }
+        #expect(nodes.map(\.localRotation) != rest)
+
+        rig.reset()
+        rig.update(deltaTime: 1.0 / 60.0)
+        #expect(nodes.map(\.localRotation) == rest)
+
+        // The next update swings again, from rest rather than the motion carried before it.
+        rig.update(deltaTime: 1.0 / 60.0)
+        #expect(abs(simd_distance(nodes[0].worldPosition, nodes[1].worldPosition) - 1) < 1e-3)
+    }
+
+    /// Wind pushes the chain the way it blows.
+    @Test
+    func testAnExternalForcePushesTheChainAlongItself() throws {
+        let (_, nodes) = Self.chain(length: 4)
+        let rig = try Self.vrm1Rig(nodes)
+        rig.configuration.externalForce = SIMD3(5, 0, 0)
+
+        for _ in 0..<60 { rig.update(deltaTime: 1.0 / 60.0) }
+
+        #expect(nodes.last!.worldPosition.x > 0.2)
+    }
+
+    /// A display drawing faster than the fixed step leaves frames where nothing swung, and
+    /// an update says so rather than having a renderer re-skin for nothing.
+    @Test
+    func testAnUpdateReportsWhetherItPosedAnything() throws {
+        let (_, nodes) = Self.chain(length: 4)
+        let rig = try Self.vrm1Rig(nodes)
+
+        #expect(rig.update(deltaTime: 1.0 / 120.0) == false)
+        #expect(rig.update(deltaTime: 1.0 / 120.0) == true)
+
+        // A reset poses the chain back to rest; a rig with nothing to swing never poses.
+        rig.reset()
+        #expect(rig.update(deltaTime: 0) == true)
+        #expect(SpringBoneRig<TestRuntimeNode>().update(deltaTime: 1) == false)
+    }
+
+    // MARK: - VRMC_springBone validation
+
+    /// `VRMC_springBone` gives each joint one spring, so a node two springs name would be
+    /// posed twice a frame.
+    @Test
+    func testAJointTwoSpringsBothSwingIsRefused() throws {
+        #expect(throws: VRMError.self) {
+            try Self.build(springs: [[1, 2], [2, 3]])
+        }
+        try Self.build(springs: [[1, 2], [3, 4]])
+    }
+
+    /// `VRMC_springBone` has a spring's centre be its first joint or a node above it.
+    @Test
+    func testACentreBelowTheSpringsFirstJointIsRefused() throws {
+        #expect(throws: VRMError.self) {
+            try Self.build(springs: [[2, 3]], centers: [4])
+        }
+        try Self.build(springs: [[2, 3]], centers: [2])
+        try Self.build(springs: [[2, 3]], centers: [0])
+    }
+
+    /// A centre another spring swings would move under the spring hanging in it.
+    @Test
+    func testACentreAnotherSpringSwingsIsRefused() throws {
+        #expect(throws: VRMError.self) {
+            try Self.build(springs: [[1, 2], [3, 4]], centers: [nil, 2])
+        }
+        try Self.build(springs: [[1, 2], [3, 4]], centers: [nil, 0])
+    }
+
+    /// Builds the springs a `VRMC_springBone` states, by node index into one chain
+    /// hanging off a root.
+    private static func build(springs: [[Int]], centers: [Int?] = []) throws {
+        let (root, nodes) = chain(length: 5)
+        let all = [root] + nodes
+        let stated = zip(springs, centers + Array(repeating: nil, count: springs.count)).map {
+            var spring: [String: JSONValue] = ["joints": .array($0.map { ["node": .int($0)] })]
+            spring["center"] = $1.map(JSONValue.int)
+            return JSONValue.object(spring)
+        }
+        let springBone = try JSONValue.object(["specVersion": "1.0", "springs": .array(stated)])
+            .decode(VRM1.SpringBone.self)
+
+        try SpringBoneRig<TestRuntimeNode>().addVRM1Springs(springBone) { all[$0] }
     }
 }

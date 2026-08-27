@@ -97,19 +97,32 @@ extension GLTF {
         }
         
         public struct MaterialExtensions: Codable, Sendable {
+            /// Every extension on the material as the document wrote it, the modeled
+            /// ones included, so an unmodeled one is still readable.
+            public let raw: [String: JSONValue]
             public let materialsMToon: MaterialsMToon?
             public let materialsUnlit: MaterialsUnlit?
 
-            private enum CodingKeys: String, CodingKey {
-                case materialsMToon = "VRMC_materials_mtoon"
-                case materialsUnlit = "KHR_materials_unlit"
+            /// The extension named `name`, as it was written.
+            public subscript(name: String) -> JSONValue? { raw[name] }
+
+            public init(from decoder: Decoder) throws {
+                raw = try JSONValue(from: decoder).objectValue ?? [:]
+                materialsMToon = try raw[GLTFExtension.materialsMToon.rawValue]?.decode(MaterialsMToon.self)
+                materialsUnlit = raw[GLTFExtension.materialsUnlit.rawValue].map { _ in MaterialsUnlit() }
             }
-            
-            /// KHR_materials_unlit extension marker (empty object in glTF)
+
+            public func encode(to encoder: Encoder) throws {
+                try JSONValue.object(raw).encode(to: encoder)
+            }
+
+            /// The `KHR_materials_unlit` marker, an empty object in glTF.
             public struct MaterialsUnlit: Codable, Sendable {}
 
             public struct MaterialsMToon: Codable, Sendable {
-                public let specVersion: String
+                /// Nil where the document leaves it out, treated as an unsupported
+                /// version rather than failing the load.
+                public let specVersion: String?
                 public let transparentWithZWrite: Bool?
                 public let renderQueueOffsetNumber: Int?
                 public let shadeColorFactor: [Double]?
@@ -152,8 +165,8 @@ extension GLTF {
                     public let extras: JSONValue?
                 }
                 
-                /// The outline mode is the one every layer of this package
-                /// speaks, so a decoded material and a written one cannot drift.
+                /// The one outline mode every layer of this package speaks, so a decoded
+                /// material and a written one cannot drift.
                 public typealias MaterialsMToonOutlineWidthMode = MToonOutlineWidthMode
             }
         }

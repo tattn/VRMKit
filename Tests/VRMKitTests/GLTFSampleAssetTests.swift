@@ -3,9 +3,8 @@ import Testing
 import VRMTestSupport
 @testable import VRMKit
 
-/// Parses the Khronos CC0 sample assets, covering what the VRM fixtures, all
-/// GLB with an embedded BIN chunk, never reach: JSON `.gltf` files with
-/// external resources and with data URI buffers.
+/// Parses the Khronos CC0 sample assets, covering what the VRM fixtures never reach:
+/// JSON `.gltf` files with external resources and with data URI buffers.
 @Suite
 struct GLTFSampleAssetTests {
     @Test(arguments: GLTFSampleAsset.allCases)
@@ -13,12 +12,12 @@ struct GLTFSampleAssetTests {
         let document = try GLTFDocument(withURL: asset.url)
 
         #expect(document.gltf.asset.version.hasPrefix("2."))
-        #expect(document.gltf.nodes?.isEmpty == false)
-        #expect(document.gltf.meshes?.isEmpty == false)
+        #expect(document.gltf.nodes.isEmpty == false)
+        #expect(document.gltf.meshes.isEmpty == false)
 
-        // Reading every buffer view proves the resource context is right: GLB
-        // chunk, sibling file or data URI, whichever this asset uses.
-        for index in (document.gltf.bufferViews ?? []).indices {
+        // Reading every buffer view proves the resource context is right: GLB chunk,
+        // sibling file or data URI, whichever this asset uses.
+        for index in (document.gltf.bufferViews).indices {
             #expect(try !document.bufferViewData(at: index).data.isEmpty)
         }
     }
@@ -49,7 +48,7 @@ struct GLTFSampleAssetTests {
 
         #expect(document.binaryBuffer == nil)
         #expect(try !document.bufferData(at: 0).isEmpty)
-        #expect(document.gltf.skins?.count == 1)
+        #expect(document.gltf.skins.count == 1)
     }
 
     @Test
@@ -57,14 +56,14 @@ struct GLTFSampleAssetTests {
         let document = try GLTFDocument(data: GLTFSampleAsset.boxVertexColors.data)
 
         #expect(document.binaryBuffer != nil)
-        let primitive = try #require(document.gltf.meshes?.first?.primitives.first)
+        let primitive = try #require(document.gltf.meshes.first?.primitives.first)
         #expect(primitive.attributes[.COLOR_0] != nil)
     }
 
     @Test
     func testAnimationModelDecodesChannelsAndSamplers() throws {
         let document = try GLTFDocument(data: GLTFSampleAsset.simpleMorph.data)
-        let animation = try #require(document.gltf.animations?.first)
+        let animation = try #require(document.gltf.animations.first)
         let channel = try #require(animation.channels.first)
 
         #expect(channel.target.node == 0)
@@ -75,7 +74,7 @@ struct GLTFSampleAssetTests {
     @Test
     func testInterpolationTestCoversEveryInterpolationMode() throws {
         let document = try GLTFDocument(data: GLTFSampleAsset.interpolationTest.data)
-        let animations = try #require(document.gltf.animations)
+        let animations = document.gltf.animations
         let interpolations = Set(animations.flatMap { $0.samplers.map(\.interpolation) })
 
         #expect(interpolations == [.LINEAR, .STEP, .CUBICSPLINE])

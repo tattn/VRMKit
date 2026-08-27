@@ -13,16 +13,25 @@ open class VRMNode: SCNNode {
     private var lastUpdateTime: TimeInterval?
     private var springBones = SpringBoneRig<SCNNode>()
 
-    var expressionClips: [ExpressionKey: ExpressionClip] = [:]
-    private var expressionWeights: [ExpressionKey: CGFloat] = [:]
-    private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
-    private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
-    // Every binding any expression holds, so a target no active expression
-    // touches goes back to what it was.
-    private var morphBindings: [MorphBindingKey: BlendShapeBinding] = [:]
-    private var colorBindings: [MaterialColorBindingKey: MaterialColorBinding] = [:]
-    private var transformBindings: [ObjectIdentifier: TextureTransformBinding] = [:]
+    /// The expression accumulation and dirty tracking VRM defines, shared with the
+    /// RealityKit renderer; this node only writes the results out.
+    private let expressions = ExpressionRuntime<SCNMorpher, SCNMaterial>()
+    var expressionClips: [ExpressionKey: ExpressionClip] { expressions.clips }
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
+
+    private lazy var expressionApplier = ExpressionApplier<SCNMorpher, SCNMaterial>(
+        setMorphWeight: { weight, targetIndex, morpher in
+            morpher.setWeight(CGFloat(weight), forTargetAt: targetIndex)
+        },
+        setMaterialColor: { color, type, material in
+            material.setColor(color, for: type)
+        },
+        setTextureTransform: { scale, offset, rotation, material in
+            material.diffuse.contentsTransform = SCNMatrix4(
+                uvTransform: GLTFUVTransform(scale: scale, offset: offset, rotation: rotation)
+            )
+        }
+    )
     private var firstPersonPrimitives: [ObjectIdentifier: FirstPersonPrimitive] = [:]
     private var nodeConstraints = NodeConstraintRig<SCNNode>()
 
@@ -41,107 +50,59 @@ open class VRMNode: SCNNode {
 
     func setUpBlendShapes(nodes: [SCNNode?],
                           meshes: [Int: [SceneData.SceneMesh]],
-                          loader: VRMSceneLoader) throws {
-        expressionClips = [:]
-        expressionWeights = [:]
-        materialColorClips = [:]
-        textureTransformClips = [:]
-        morphBindings = [:]
-        colorBindings = [:]
-        transformBindings = [:]
-        defer { indexBindings() }
-
-        switch vrm {
-        case .v0(let vrm0):
-            // A 0.x group is loaded as the expression it stands for, so the
-            // runtime below drives both versions through one set of clips.
-            for group in vrm0.blendShapeMaster.blendShapeGroups {
-                // A bind names a mesh index, so it drives every node the
-                // mesh is drawn under.
-                let morphBindings: [BlendShapeBinding] = group.binds?
-                    .flatMap { bind in
-                        (meshes[bind.mesh] ?? []).flatMap { sceneMesh in
-                            sceneMesh.node.allMorphers.map {
-                                BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
-                            }
-                        }
-                    } ?? []
-                let clip = ExpressionClip(name: group.name,
-                                          preset: group.expressionPreset,
-                                          values: morphBindings,
-                                          isBinary: group.isBinary,
-                                          binaryRounding: .nearest)
-                expressionClips[clip.key] = clip
-            }
-        case .v1(let vrm1):
-            guard let expressions = vrm1.expressions else { return }
-            for expressionClip in expressions.runtimeClips {
-                let morphBindings: [BlendShapeBinding] = expressionClip.expression.morphTargetBinds?
-                    .flatMap { bind -> [BlendShapeBinding] in
-                        guard nodes.indices.contains(bind.node), let node = nodes[bind.node] else {
-                            return []
-                        }
-                        return node.allMorphers.map {
-                            BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight * 100.0)
-                        }
-                    } ?? []
-                let runtimeClip = ExpressionClip(name: expressionClip.name,
-                                                 preset: expressionClip.preset,
-                                                 values: morphBindings,
-                                                 isBinary: expressionClip.expression.isBinary ?? false,
-                                                 overrideBlink: expressionClip.expression.overrideBlink ?? .none,
-                                                 overrideLookAt: expressionClip.expression.overrideLookAt ?? .none,
-                                                 overrideMouth: expressionClip.expression.overrideMouth ?? .none)
-                expressionClips[runtimeClip.key] = runtimeClip
-
-                let colorBindings: [MaterialColorBinding] = expressionClip.expression.materialColorBinds?
-                    .compactMap { bind in
-                        guard bind.targetValue.count >= 3 else { return nil }
-                        // A malformed bind only invalidates that bind, never the
-                        // whole model load, so it is reported rather than thrown.
-                        guard let material = try? loader.material(withMaterialIndex: bind.material) else {
-                            Self.logger.warning("""
-                            Skipping invalid MaterialColorBind. \
-                            expression=\(expressionClip.name, privacy: .public) \
-                            materialIndex=\(bind.material)
-                            """)
-                            return nil
-                        }
-                        return MaterialColorBinding(material: material,
-                                                    type: bind.type,
-                                                    targetValue: SIMD4<Float>(bind.targetValue, default: 1.0),
-                                                    baseValue: material.currentColor(for: bind.type))
-                    } ?? []
-                if !colorBindings.isEmpty {
-                    materialColorClips[runtimeClip.key] = colorBindings
+                          loader: VRMSceneLoader) {
+        expressions.setUp(
+            plan: VRMExpressionPlan(vrm: vrm),
+            morphBindings: { bind in
+                // A mesh or a node may be drawn by several morphers.
+                let bound: [SCNNode]
+                switch bind.target {
+                case .mesh(let index):
+                    bound = (meshes[index] ?? []).map(\.node)
+                case .node(let index):
+                    guard let node = nodes[safe: index] ?? nil else { return [] }
+                    bound = [node]
                 }
-
-                let transformBindings: [TextureTransformBinding] = expressionClip.expression.textureTransformBinds?
-                    .compactMap { bind in
-                        // As above, a malformed bind only invalidates itself.
-                        guard let material = try? loader.material(withMaterialIndex: bind.material) else {
-                            Self.logger.warning("""
-                            Skipping invalid TextureTransformBind. \
-                            expression=\(expressionClip.name, privacy: .public) \
-                            materialIndex=\(bind.material)
-                            """)
-                            return nil
-                        }
-                        let base = material.diffuse.uvTransform
-                        return TextureTransformBinding(material: material,
-                                                       base: base,
-                                                       targetScale: SIMD2<Float>(bind.scale, default: 1.0),
-                                                       targetOffset: SIMD2<Float>(bind.offset, default: 0.0))
-                    } ?? []
-                if !transformBindings.isEmpty {
-                    textureTransformClips[runtimeClip.key] = transformBindings
+                return bound.flatMap(\.allMorphers).map {
+                    BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
                 }
+            },
+            materialColorBinding: { expression, bind in
+                // A malformed bind only invalidates itself, never the whole load.
+                guard let material = try? loader.material(withMaterialIndex: bind.material) else {
+                    Self.logger.warning("""
+                    Skipping invalid MaterialColorBind. \
+                    expression=\(expression, privacy: .public) materialIndex=\(bind.material)
+                    """)
+                    return nil
+                }
+                return ExpressionMaterialColorBinding(material: material,
+                                                      type: bind.type,
+                                                      targetValue: bind.targetValue,
+                                                      baseValue: material.currentColor(for: bind.type))
+            },
+            textureTransformBinding: { expression, bind in
+                // As above, a malformed bind only invalidates itself.
+                guard let material = try? loader.material(withMaterialIndex: bind.material) else {
+                    Self.logger.warning("""
+                    Skipping invalid TextureTransformBind. \
+                    expression=\(expression, privacy: .public) materialIndex=\(bind.material)
+                    """)
+                    return nil
+                }
+                let base = material.diffuse.uvTransform
+                return ExpressionTextureTransformBinding(material: material,
+                                                         baseScale: base.scale,
+                                                         baseOffset: base.offset,
+                                                         baseRotation: base.rotation,
+                                                         targetScale: bind.scale,
+                                                         targetOffset: bind.offset)
             }
-        }
+        )
     }
 
-    /// What each camera draws of each mesh. The `auto` cut is made as the meshes
-    /// are built, so this only pairs it with the node drawing it.
+    /// What each camera draws of each mesh. The `auto` cut is made as the meshes are
+    /// built, so this only pairs it with the node drawing it.
     func setUpFirstPerson(plan: VRMFirstPersonPlan,
                           nodes: [SCNNode?],
                           meshes: [Int: [SceneData.SceneMesh]],
@@ -172,66 +133,24 @@ open class VRMNode: SCNNode {
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
-        guard let canonicalKey = canonicalExpressionKey(for: key),
-              let clip = expressionClips[canonicalKey] else { return }
-        expressionWeights[canonicalKey] = CGFloat(clip.normalizedWeight(Double(value)))
-        applyExpressions()
+        setExpressions([key: value])
     }
 
-    /// Writes every active expression at once rather than one as it is set: VRM
-    /// has overlapping expressions add up, and has an active one suppress the
-    /// blink, lookAt and mouth expressions.
-    private func applyExpressions() {
-        let weights = expressionClips.effectiveWeights(of: expressionWeights.mapValues(Float.init))
-
-        var morphWeights: [MorphBindingKey: Float] = [:]
-        var colors: [MaterialColorBindingKey: SIMD4<Float>] = [:]
-        var transforms: [ObjectIdentifier: (scale: SIMD2<Float>, offset: SIMD2<Float>)] = [:]
-        for (key, weight) in weights {
-            for binding in expressionClips[key]?.values ?? [] {
-                morphWeights[binding.key, default: 0] += Float(binding.weight / 100.0) * weight
-            }
-            for binding in materialColorClips[key] ?? [] {
-                colors[binding.key, default: binding.baseValue] +=
-                    (binding.targetValue - binding.baseValue) * weight
-            }
-            for binding in textureTransformClips[key] ?? [] {
-                let transform = transforms[binding.key] ?? (binding.base.scale, binding.base.offset)
-                transforms[binding.key] = (
-                    transform.scale + (binding.targetScale - binding.base.scale) * weight,
-                    transform.offset + (binding.targetOffset - binding.base.offset) * weight
-                )
-            }
-        }
-
-        for (key, binding) in morphBindings {
-            binding.mesh.setWeight(CGFloat(morphWeights[key] ?? 0), forTargetAt: binding.index)
-        }
-        for (key, binding) in colorBindings {
-            binding.material.setColor(colors[key] ?? binding.baseValue, for: binding.type)
-        }
-        for (key, binding) in transformBindings {
-            let transform = transforms[key] ?? (binding.base.scale, binding.base.offset)
-            binding.apply(scale: transform.scale, offset: transform.offset)
-        }
-    }
-
-    /// Collects the bindings of every clip, so that applying the active ones
-    /// can put the rest back where they started.
-    private func indexBindings() {
-        for binding in expressionClips.values.flatMap(\.values) {
-            morphBindings[binding.key] = binding
-        }
-        for binding in materialColorClips.values.flatMap({ $0 }) {
-            colorBindings[binding.key] = binding
-        }
-        for binding in textureTransformClips.values.flatMap({ $0 }) {
-            transformBindings[binding.key] = binding
-        }
+    /// Sets several expression weights and re-applies the result once. Applying
+    /// re-accumulates every active clip, so prefer this over repeated
+    /// ``setExpression(value:for:)`` calls in one frame.
+    public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
+        guard expressions.storeWeights(weights.mapValues(Double.init)) else { return }
+        expressions.apply(with: expressionApplier)
     }
 
     public func expression(for key: ExpressionKey) -> CGFloat {
-        canonicalExpressionKey(for: key).flatMap { expressionWeights[$0] } ?? 0
+        CGFloat(expressions.weight(for: key))
+    }
+
+    /// The expressions the model offers, for enumerating what may be set.
+    public var availableExpressions: [ExpressionKey] {
+        expressions.availableExpressions
     }
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
@@ -243,8 +162,8 @@ open class VRMNode: SCNNode {
         }
     }
 
-    /// Draws the primitives under `node` with the triangles `mode` asks for, and
-    /// says whether any of them was cut.
+    /// Draws the primitives under `node` with the triangles `mode` asks for, and reports
+    /// whether any of them was cut.
     private func applyFirstPersonCut(_ mode: FirstPersonRenderMode, to node: SCNNode) -> Bool {
         var cut = false
         node.enumerateHierarchy { primitiveNode, _ in
@@ -257,19 +176,24 @@ open class VRMNode: SCNNode {
         return cut
     }
 
-    /// The key a clip is actually stored under. An expression named after a
-    /// preset is that preset, which is how VRM 0.x models predating the presets
-    /// name theirs.
-    private func canonicalExpressionKey(for key: ExpressionKey) -> ExpressionKey? {
-        expressionClips.canonicalKey(for: key)
-    }
-
 }
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 extension VRMNode {
-    /// Advances the node constraints and spring bones to `time`, the timestamp a
-    /// renderer hands its per-frame callback.
+    /// How the spring bones swing: the wind pushing them, if any.
+    public var springBoneConfiguration: SpringBoneConfiguration {
+        get { springBones.configuration }
+        set { springBones.configuration = newValue }
+    }
+
+    /// Forgets the motion the spring bones carry between frames, so the next update
+    /// starts them at rest. Call it after teleporting the model.
+    public func resetSpringBones() {
+        springBones.reset()
+    }
+
+    /// Advances the node constraints and spring bones to `time`, the timestamp a renderer
+    /// hands its per-frame callback.
     public func update(at time: TimeInterval) {
         let seconds = lastUpdateTime.map { max(0, time - $0) } ?? 0
         lastUpdateTime = time
@@ -279,52 +203,6 @@ extension VRMNode {
 }
 
 
-/// Identifies one morph target of one morpher, so that expressions overlapping
-/// on a target accumulate into the same weight.
-private struct MorphBindingKey: Hashable {
-    let morpher: ObjectIdentifier
-    let index: Int
-}
-
-@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-private extension BlendShapeBinding {
-    var key: MorphBindingKey { MorphBindingKey(morpher: ObjectIdentifier(mesh), index: index) }
-}
-
-private struct MaterialColorBindingKey: Hashable {
-    let material: ObjectIdentifier
-    let type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType
-}
-
-private struct MaterialColorBinding {
-    let material: SCNMaterial
-    let type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType
-    let targetValue: SIMD4<Float>
-    let baseValue: SIMD4<Float>
-
-    var key: MaterialColorBindingKey {
-        MaterialColorBindingKey(material: ObjectIdentifier(material), type: type)
-    }
-}
-
-@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-private struct TextureTransformBinding {
-    let material: SCNMaterial
-    /// What the texture was loaded with, which the expression moves away from
-    /// and which the rotation of a `KHR_texture_transform` survives in.
-    let base: GLTFUVTransform
-    let targetScale: SIMD2<Float>
-    let targetOffset: SIMD2<Float>
-
-    var key: ObjectIdentifier { ObjectIdentifier(material) }
-
-    func apply(scale: SIMD2<Float>, offset: SIMD2<Float>) {
-        material.diffuse.contentsTransform = SCNMatrix4(
-            uvTransform: GLTFUVTransform(scale: scale, offset: offset, rotation: base.rotation)
-        )
-    }
-}
-
 private struct FirstPersonAnnotation {
     let node: SCNNode
     let type: FirstPersonAnnotationType
@@ -332,8 +210,8 @@ private struct FirstPersonAnnotation {
 }
 
 private extension SCNNode {
-    /// Every morpher below this node, each once: the primitives of a mesh sharing
-    /// a POSITION accessor share the morpher driving them.
+    /// Every morpher below this node, each once: the primitives of a mesh sharing a
+    /// POSITION accessor share the morpher driving them.
     var allMorphers: [SCNMorpher] {
         var seen: Set<ObjectIdentifier> = []
         var result: [SCNMorpher] = []
@@ -393,8 +271,8 @@ private extension SCNMaterialProperty {
         return color.simd
     }
 
-    /// The `KHR_texture_transform` the loader wrote, read back so that an
-    /// expression moving the scale and the offset leaves the rotation alone.
+    /// The `KHR_texture_transform` the loader wrote, read back so an expression moving
+    /// the scale and offset leaves the rotation alone.
     var uvTransform: GLTFUVTransform {
         let transform = contentsTransform
         let (m11, m12) = (Float(transform.m11), Float(transform.m12))

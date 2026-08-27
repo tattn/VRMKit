@@ -35,7 +35,7 @@ MTOON_SAMPLER(mtoonMirrorRepeat, mirrored_repeat, repeat)
 MTOON_SAMPLER(mtoonMirrorClamp, mirrored_repeat, clamp_to_edge)
 MTOON_SAMPLER(mtoonMirrorMirror, mirrored_repeat, mirrored_repeat)
 
-constant float mtoonParameterTextureWidth = 26.0;
+constant float mtoonParameterTextureWidth = 27.0;
 
 // Parameter rows, mirroring MToonParameterRow on the Swift side.
 constant float mtoonRowBaseColor = 0.0;
@@ -55,7 +55,8 @@ constant float mtoonRowAmbientColor = 13.0;
 constant float mtoonRowUvTransform = 14.0;
 constant float mtoonRowUvTransformRotation = 15.0;
 constant float mtoonRowNormalParameters = 16.0;
-constant float mtoonSamplerParameterStart = 17.0;
+constant float mtoonRowLightDirection = 17.0;
+constant float mtoonSamplerParameterStart = 18.0;
 
 // Sampler parameter slots, mirroring MToonTextureSlot on the Swift side.
 constant float mtoonSamplerSlotBase = 0.0;
@@ -255,14 +256,15 @@ float2 mtoonTransformedUV(float2 uv, half4 uvTransform, half4 uvTransformRotatio
     return transformed + float2(uvTransform.zw);
 }
 
-float3 mtoonLightDirection(float4 customValue)
+float3 mtoonLightDirection(realitykit::texture::textures textures)
 {
-    // VRMEntity always sends a normalized direction, so this only guards against
-    // an uninitialized custom value; renormalizing would cost every fragment.
-    if (all(customValue.xyz == 0.0)) {
+    // VRMEntity always writes a normalized direction, so this only guards against
+    // an unwritten row; renormalizing would cost every fragment.
+    float3 direction = float3(mtoonParameter(textures, mtoonRowLightDirection).xyz);
+    if (all(direction == 0.0)) {
         return float3(0.0, 0.0, 1.0);
     }
-    return customValue.xyz;
+    return direction;
 }
 
 float3 mtoonShadingNormal(realitykit::surface_parameters params,
@@ -433,7 +435,7 @@ void mtoonSurface(realitykit::surface_parameters params)
     }
 
     float3 normal = mtoonShadingNormal(params, uv, extraFlags, normalParameters.x, normalSampler);
-    float3 lightDirection = mtoonLightDirection(params.uniforms().custom_parameter());
+    float3 lightDirection = mtoonLightDirection(textures);
     float shadingToony = clamp(float(shadeParams.y), 0.0, 1.0);
     float shading = mtoonShading(normal, lightDirection, shift, shadingToony);
 

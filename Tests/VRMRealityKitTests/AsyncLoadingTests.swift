@@ -55,6 +55,26 @@ struct AsyncLoadingTests {
         load.cancel()
 
         await #expect(throws: CancellationError.self) { try await load.value }
+        // The loader stays usable, so a cancelled load leaves nothing it prepared behind.
+        #expect(loader.entityData.primitiveGeometries.isEmpty)
+        #expect(loader.entityData.images.allSatisfy { $0 == nil })
+    }
+
+    /// The texture prepare pass conditions what the scene draws with, as the
+    /// geometry one does.
+    @Test
+    func testPreparingDecodesOnlyTheImagesTheSceneDrawsWith() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        // A second scene drawing none of the document's nodes.
+        let loader = try TestSupport.loader(.simpleTexture) { json in
+            json["scenes"] = .objects(json.objects("scenes") + [["nodes": .array([])]])
+        }
+
+        try await loader.prepareTextures(forSceneIndex: 1)
+        #expect(loader.entityData.images.allSatisfy { $0 == nil })
+
+        try await loader.prepareTextures(forSceneIndex: 0)
+        #expect(loader.entityData.images.contains { $0 != nil })
     }
 
     /// The prepare pass reports what it cannot decode rather than leaving the

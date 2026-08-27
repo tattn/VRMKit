@@ -1,14 +1,12 @@
 import Foundation
 
 /// The parent of every node of a glTF document, validated as it is built: a child
-/// index in range, no node claimed by two parents, and no loop. Everything that
-/// walks the nodes upwards reads it, so loading, retargeting and editing all
-/// refuse the same broken hierarchies.
+/// index in range, no node claimed by two parents, and no loop. Loading, retargeting
+/// and editing all read it, so they refuse the same broken hierarchies.
 package struct GLTFNodeHierarchy {
     /// Node index → parent node index, nil for roots.
     private let parents: [Int?]
 
-    /// A hierarchy of no nodes.
     package static let none = GLTFNodeHierarchy(parents: [])
 
     private init(parents: [Int?]) {
@@ -19,8 +17,7 @@ package struct GLTFNodeHierarchy {
         try self.init(childIndices: nodes.map { $0.children ?? [] })
     }
 
-    /// From the children each node names, which is how an edit reads them out
-    /// of its JSON without decoding the whole document.
+    /// From the children each node names, which is how an edit reads them out of raw JSON.
     package init(childIndices: [[Int]]) throws {
         var parents = [Int?](repeating: nil, count: childIndices.count)
         for (index, children) in childIndices.enumerated() {
@@ -36,8 +33,7 @@ package struct GLTFNodeHierarchy {
                 parents[child] = index
             }
         }
-        // With at most one parent each, the hierarchy is a forest unless walking
-        // up from a node returns to a node already on the way up.
+        // With at most one parent each, the hierarchy is a forest unless walking up loops.
         var verified: Set<Int> = []
         for index in parents.indices where !verified.contains(index) {
             var chain: Set<Int> = []
@@ -79,15 +75,13 @@ package struct GLTFNodeHierarchy {
         return Array(lineage.prefix(through: end))
     }
 
-    /// Rejects the malformed node graphs and skins a loader takes for granted: the
-    /// spec guarantees the nodes form a forest and that a skin names at least one
-    /// joint, each of them once. Without it a cyclic hierarchy would recurse
-    /// forever and a bad joint index would trap.
+    /// Rejects the malformed node graphs and skins a loader takes for granted: a cyclic
+    /// hierarchy would recurse forever and a bad joint index would trap.
     package static func validatingStructure(of gltf: GLTF) throws -> GLTFNodeHierarchy {
-        let nodes = gltf.nodes ?? []
+        let nodes = gltf.nodes
         let hierarchy = try GLTFNodeHierarchy(nodes: nodes)
 
-        for (index, skin) in (gltf.skins ?? []).enumerated() {
+        for (index, skin) in gltf.skins.enumerated() {
             guard !skin.joints.isEmpty else {
                 throw VRMError._dataInconsistent("skin \(index) names no joint")
             }
@@ -105,9 +99,8 @@ package struct GLTFNodeHierarchy {
         return hierarchy
     }
 
-    /// Rejects a scene root that another node already claims as a child, since
-    /// attaching it would reparent it and make the graph depend on the order
-    /// `scene.nodes` happens to list.
+    /// Rejects a scene root another node already claims as a child: attaching it would
+    /// reparent it and make the graph depend on the order `scene.nodes` lists.
     package func validateSceneRoots(_ roots: [Int], sceneIndex: Int) throws {
         for root in roots {
             if let parent = parent(at: root) {

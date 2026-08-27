@@ -4,13 +4,10 @@ extension GLTFEditableDocument {
     /// Appends the default scene of `source` under `parentNode`, wrapped in one
     /// container node, and returns that container's index.
     ///
-    /// Only what the chosen scene draws is copied, and nothing already in the
-    /// target moves, so the extensions that make it a VRM keep pointing at what
-    /// they used to. The source's own VRM extensions are not copied: this composes
-    /// props and clothing onto an avatar, not avatars onto each other.
-    ///
-    /// A source of several scenes naming no default one has to be told which to
-    /// take, through ``append(_:sceneAt:under:name:transform:materials:)``.
+    /// Only what the chosen scene draws is copied, and nothing already in the target moves,
+    /// so the extensions that make it a VRM keep pointing at what they used to. The source's
+    /// own VRM extensions are not copied: this composes props and clothing onto an avatar,
+    /// not avatars onto each other.
     @discardableResult
     public mutating func append(_ source: GLTFDocument,
                        under parentNode: GLTFNodeIndex,
@@ -86,10 +83,9 @@ extension GLTFEditableDocument {
         return index
     }
 
-    /// The source cut down to the one scene being appended, with its resources
-    /// pulled into a single buffer the way the target's already are. What makes it
-    /// an avatar is dropped first, so pruning does not hold on to every node a
-    /// humanoid names.
+    /// The source cut down to the one scene being appended, with its resources pulled into
+    /// a single buffer the way the target's already are. What makes it an avatar is dropped
+    /// first, so pruning does not hold on to every node a humanoid names.
     private static func trimming(_ source: GLTFDocument, toSceneAt index: Int) throws -> GLTFEditableDocument {
         var trimmed = try GLTFEditableDocument(document: source)
         trimmed.json.setObjects([trimmed.json.objects(.scenes)[index]], for: .scenes)
@@ -138,10 +134,9 @@ extension GLTFEditableDocument {
     }
 }
 
-/// Copies one glTF document into another, rebasing every index it carries over
-/// onto the end of the target's arrays. The source arrives as a single buffer
-/// with every resource in it, so what is left to move is indices and one byte
-/// offset.
+/// Copies one glTF document into another, rebasing every index it carries over onto the
+/// end of the target's arrays. The source arrives as a single buffer with every resource
+/// in it, so what is left to move is indices and one byte offset.
 private struct GLTFMerger {
     let source: GLTFEditableDocument
 

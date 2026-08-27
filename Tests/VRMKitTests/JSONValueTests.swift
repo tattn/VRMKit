@@ -148,6 +148,83 @@ struct JSONValueTests {
         #expect(try JSONValue.double(1e100).decode(Double.self) == 1e100)
     }
 
+    /// ``JSONValue`` spells a whole number as an `Int`, so encoding one that does
+    /// not fit reports it rather than trapping on the conversion.
+    @Test
+    func testAWholeNumberTooLargeForTheTreeFailsEncoding() throws {
+        #expect(throws: EncodingError.self) { try JSONValue(encoding: UInt64.max) }
+        #expect(throws: EncodingError.self) { try JSONValue(encoding: ["a": UInt64.max]) }
+        #expect(throws: EncodingError.self) { try JSONValue(encoding: [UInt64.max]) }
+        #expect(try JSONValue(encoding: UInt64(7)) == .int(7))
+    }
+
+    /// An encoding error names where the value being written sits, not where the next would go.
+    @Test
+    func testAnEncodingErrorNamesTheElementItFailedOn() throws {
+        let error = try #require(throws: EncodingError.self) {
+            try JSONValue(encoding: [[7], [UInt64.max]])
+        }
+        guard case .invalidValue(_, let context) = error else {
+            Issue.record("expected an invalid value")
+            return
+        }
+
+        #expect(context.codingPath.map(\.intValue) == [1, 0])
+    }
+
+    /// Codable writes a superclass's values under `"super"`, which both halves of this
+    /// bridge have to agree on, and `JSONDecoder` with them.
+    @Test
+    func testAnInheritedValueRoundTripsThroughTheSuperKey() throws {
+        let value = try JSONValue(encoding: Derived(base: 1, extra: 2))
+        #expect(value == ["extra": 2, "super": ["base": 1]])
+
+        let walked = try value.decode(Derived.self)
+        #expect(walked.base == 1)
+        #expect(walked.extra == 2)
+        #expect(try JSONDecoder().decode(Derived.self, from: value.serialized()).extra == 2)
+    }
+
+    private class Base: Codable {
+        let base: Int
+
+        private enum CodingKeys: String, CodingKey { case base }
+
+        init(base: Int) { self.base = base }
+
+        required init(from decoder: Decoder) throws {
+            base = try decoder.container(keyedBy: CodingKeys.self).decode(Int.self, forKey: .base)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(base, forKey: .base)
+        }
+    }
+
+    private final class Derived: Base {
+        let extra: Int
+
+        private enum CodingKeys: String, CodingKey { case extra }
+
+        init(base: Int, extra: Int) {
+            self.extra = extra
+            super.init(base: base)
+        }
+
+        required init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            extra = try container.decode(Int.self, forKey: .extra)
+            try super.init(from: container.superDecoder())
+        }
+
+        override func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(extra, forKey: .extra)
+            try super.encode(to: container.superEncoder())
+        }
+    }
+
     /// A glTF this package can only partly read still has to save unchanged, so
     /// what it carries survives a parse and a rewrite whatever shape it is in.
     @Test

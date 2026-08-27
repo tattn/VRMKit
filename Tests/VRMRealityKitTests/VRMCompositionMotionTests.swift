@@ -7,14 +7,13 @@ import VRMKit
 import VRMTestSupport
 @testable import VRMRealityKit
 
-/// What composed content does once it is loaded: a merged animation plays, and
-/// a written spring bone chain swings. The writing side is checked in
-/// `VRMKitTests`; this is the end where the file has to actually move.
+/// What composed content does once it is loaded: a merged animation plays, and a written
+/// spring bone chain swings. The writing side is checked in `VRMKitTests`.
 @Suite
 @MainActor
 struct VRMCompositionMotionTests {
-    /// A merged prop brings its animation with it, and the avatar's entity
-    /// plays it through the API every glTF scene has.
+    /// A merged prop brings its animation with it, and the avatar's entity plays it
+    /// through the API every glTF scene has.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testAnAnimationMergedIntoAVRMPlaysOnIt(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -51,8 +50,8 @@ struct VRMCompositionMotionTests {
         #expect(abs(simd_dot(propeller.transform.rotation, animated)) > 0.999)
     }
 
-    /// A written chain is one the loader reads and the spring runtime drives:
-    /// moving what it hangs off swings it, in either version's spelling.
+    /// A written chain is one the loader reads and the spring runtime drives: moving what
+    /// it hangs off swings it, in either version's spelling.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testAnAddedSpringBoneChainSwingsTheNodesItNames(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -72,15 +71,14 @@ struct VRMCompositionMotionTests {
         }
 
         #expect(swung)
-        // The last node is the difference the one API cannot hide: 1.0 reads it
-        // as a tail and writes nothing to it, while 0.x swings every node below
-        // the root and gives the leaf a tail of its own.
+        // The last node is the difference the one API cannot hide: 1.0 reads it as a tail
+        // and writes nothing to it, while 0.x swings every node below the root.
         let tailSwings = try #require(ornament.last).transform.rotation.isApproximatelyIdentity == false
         #expect(tailSwings == composed.isVRM0)
     }
 
-    /// Without a chain the same nodes hang rigidly, which is what says the
-    /// swing above came from the chain.
+    /// Without a chain the same nodes hang rigidly, which says the swing above came
+    /// from the chain.
     @Test
     func testMergedNodesWithoutAChainDoNotSwing() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -100,9 +98,9 @@ struct VRMCompositionMotionTests {
 
 // MARK: - Fixtures
 
-/// An avatar with content composed onto it, as an application saving a merged
-/// model would write it: an animated prop under a hand, and a line of fresh
-/// nodes off the head, with or without the chain that swings them.
+/// An avatar with content composed onto it, as an application saving a merged model
+/// would write it: an animated prop under a hand, and a line of fresh nodes off the
+/// head, with or without the chain that swings them.
 @MainActor
 private struct ComposedModel {
     let data: Data
@@ -114,14 +112,13 @@ private struct ComposedModel {
     let isVRM0: Bool
 
     init(model: VRMSampleAsset, springBoneChain: Bool = false) throws {
-        // Parsed once and handed to both: the editable document copies the
-        // JSON it edits.
+        // Parsed once and handed to both: the editable document copies the JSON it edits.
         let vrm = try VRM(document: try GLTFDocument(data: model.data))
         var document = try GLTFEditableDocument(document: vrm.document)
         let head = GLTFNodeIndex(try #require(vrm.nodeIndex(of: .head)))
         isVRM0 = { if case .v0 = vrm { true } else { false } }()
 
-        animatedNode = vrm.document.gltf.nodes?.count ?? 0
+        animatedNode = vrm.document.gltf.nodes.count
         try document.append(try GLTFDocument(withURL: GLTFSampleAsset.animatedTriangle.url),
                             under: GLTFNodeIndex(try #require(vrm.nodeIndex(of: .leftHand))),
                             name: "prop")
@@ -130,12 +127,12 @@ private struct ComposedModel {
         self.ornament = ornament.map(\.rawValue)
         if springBoneChain {
             if isVRM0 {
-                try document.addVRM0SpringBone(VRM0SpringBoneGroup(rootBones: [ornament[0].rawValue],
+                try document.addVRM0SpringBone(VRM0SpringBoneGroup(rootBones: [ornament[0]],
                                                                    stiffness: 0.5,
                                                                    dragForce: 0.2,
                                                                    comment: "charm"))
             } else {
-                try document.addVRM1SpringBone(VRM1Spring(joints: ornament.map(\.rawValue),
+                try document.addVRM1SpringBone(VRM1Spring(joints: ornament,
                                                           stiffness: 0.5,
                                                           dragForce: 0.2,
                                                           name: "charm"))

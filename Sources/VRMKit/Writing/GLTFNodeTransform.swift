@@ -1,9 +1,8 @@
 import Foundation
 import simd
 
-/// The local transform of a glTF node, as the translation / rotation / scale
-/// triple glTF writes it in. A node carrying a 4x4 `matrix` instead is decomposed,
-/// since editing writes TRS back either way.
+/// The local transform of a glTF node, as a translation / rotation / scale triple.
+/// A node carrying a 4x4 `matrix` is decomposed, since editing writes TRS back either way.
 public struct GLTFNodeTransform: Equatable {
     public var translation: SIMD3<Float>
     public var rotation: simd_quatf
@@ -19,8 +18,8 @@ public struct GLTFNodeTransform: Equatable {
         self.scale = scale
     }
 
-    /// Decomposes a column-major 4x4 transform. A mirroring matrix has no rotation
-    /// of its own, so its negative determinant folds into the scale.
+    /// Decomposes a column-major 4x4 transform, folding a mirroring matrix's negative
+    /// determinant into the scale.
     public init(matrix: float4x4) {
         translation = matrix.translation
 
@@ -38,9 +37,8 @@ public struct GLTFNodeTransform: Equatable {
         for axis in 0..<3 where scale[axis] != 0 {
             basis[axis] /= scale[axis]
         }
-        // A flattened basis has no rotation to recover, and feeding one to
-        // `simd_quatf` yields NaNs. Tested axis by axis rather than by `min()`,
-        // which a mirroring matrix's negative axis would answer for.
+        // A flattened basis has no rotation to recover, and feeding one to `simd_quatf`
+        // yields NaNs. Tested axis by axis: `min()` would answer for a mirrored axis.
         let isFlattened = scale.x == 0 || scale.y == 0 || scale.z == 0
         rotation = isFlattened ? quat_identity_float : simd_quatf(basis)
     }
@@ -55,20 +53,20 @@ public struct GLTFNodeTransform: Equatable {
 }
 
 extension GLTFNodeTransform {
-    /// Rejects values JSON and glTF cannot represent. A finite zero-length
-    /// quaternion is normalized to the identity by ``safelyNormalized``.
+    /// Rejects values JSON and glTF cannot represent. ``safelyNormalized`` turns a finite
+    /// zero-length quaternion into the identity.
     func validate() throws {
         let quaternion = rotation.vector
         guard quaternion.x.isFinite, quaternion.y.isFinite,
               quaternion.z.isFinite, quaternion.w.isFinite,
               translation.x.isFinite, translation.y.isFinite, translation.z.isFinite,
               scale.x.isFinite, scale.y.isFinite, scale.z.isFinite else {
-            throw VRMError._dataInconsistent("a node transform cannot contain infinity or NaN")
+            throw VRMError._invalidArgument("a node transform cannot contain infinity or NaN")
         }
     }
 
-    /// The transform a node JSON object describes, whether it writes TRS or a
-    /// matrix. glTF forbids mixing the two, and the matrix wins if one does.
+    /// The transform a node JSON object describes, TRS or matrix. glTF forbids mixing
+    /// the two, and the matrix wins if one does.
     init(node: JSONObject) {
         if let components = node.floats("matrix"), components.count == 16 {
             self.init(matrix: float4x4(SIMD4(components[0], components[1], components[2], components[3]),
@@ -93,8 +91,8 @@ extension GLTFNodeTransform {
         return SIMD4(values[0], values[1], values[2], values[3])
     }
 
-    /// Writes the transform into a node object, dropping the `matrix` form and
-    /// every component at its default.
+    /// Writes the transform into a node object, dropping the `matrix` form and every
+    /// component at its default.
     func write(into node: inout JSONObject) {
         node.removeValue(forKey: "matrix")
         node.set("translation", translation == .zero ? nil : [translation.x, translation.y, translation.z])

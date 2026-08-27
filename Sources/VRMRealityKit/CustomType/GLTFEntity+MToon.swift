@@ -19,19 +19,17 @@ extension GLTFEntity {
 
     // MARK: - Lighting
 
-    /// The vector points from the surface toward the light, so a
-    /// `DirectionalLight` matching it sits at `direction` and aims at the model.
+    /// The vector points from the surface toward the light, so a `DirectionalLight`
+    /// matching it sits at `direction` and aims at the model. It rides in the parameter
+    /// texture, so tracking a light per frame is one small blit per material.
     public func setMToonLightDirection(_ direction: SIMD3<Float>) {
         let length = simd_length(direction)
         let normalized = length > 0.001 ? direction / length : MToonMaterialParameters.defaultLightDirection
         guard simd_distance(normalized, mtoonLightDirection) > 0.0001 else { return }
         mtoonLightDirection = normalized
-        // The direction rides in custom.value rather than in a parameter row, so
-        // it reaches the materials without rebuilding their packed texture.
-        for materialIndex in materialStates.keys {
-            guard let state = mtoonState(forMaterialIndex: materialIndex) else { continue }
+        mutateMToonStates { state in
             state.setLightDirection(normalized)
-            mapMaterials(ofMaterial: materialIndex) { state.applyLightDirection(to: $0) }
+            return true
         }
     }
 
@@ -49,6 +47,14 @@ extension GLTFEntity {
         updateMToonLightingRows()
     }
 
+    /// Blocks until every MToon parameter write has reached the GPU, for a
+    /// caller about to render on another queue: the snapshot.
+    func waitForMToonParameterWrites() {
+        for index in materialStates.keys {
+            mtoonState(forMaterialIndex: index)?.waitForParameterWrites()
+        }
+    }
+
     private func updateMToonLightingRows() {
         mutateMToonStates { state in
             state.setLighting(color: mtoonLightColor, ambient: mtoonAmbientColor)
@@ -58,17 +64,13 @@ extension GLTFEntity {
 
     // MARK: - Outline
 
-    /// Draws every outline with `override`, showing the passes that start hidden.
-    /// Which materials have a pass at all is fixed at load by
-    /// ``MToonShader/OutlinePass``. A zero ``MToonOutlineOverride/width`` outlines
-    /// nothing, so it hides the passes instead.
+    /// Draws every outline with `override`, showing the passes that start hidden. Which
+    /// materials have a pass at all is fixed at load by ``MToonShader/OutlinePass``, and a
+    /// zero ``MToonOutlineOverride/width`` hides the passes instead.
     ///
-    /// Passing nil puts the model back to its authored colors and widths and to
-    /// the pass visibility from before the override. Setting the same override
-    /// again re-asserts it, which is how a set whose rows could not be baked is
-    /// retried.
-    ///
-    /// This is ``setMToonOutlineOverride(_:forMaterials:)`` over every material,
+    /// Passing nil puts the model back to its authored colors, widths and pass visibility.
+    /// Setting the same override again re-asserts it, retrying a set whose rows could not
+    /// be baked. This is ``setMToonOutlineOverride(_:forMaterials:)`` over every material,
     /// so a nil here releases scoped overrides too.
     public func setMToonOutlineOverride(_ override: MToonOutlineOverride?) {
         setMToonOutlineOverride(override, forMaterials: Set(materialStates.keys))
@@ -77,9 +79,8 @@ extension GLTFEntity {
     /// ``setMToonOutlineOverride(_:)`` restricted to `materials`, which
     /// ``GLTFEntity/materialIndices(under:)`` supplies for a node's subtree.
     ///
-    /// The unit is the glTF material, so one shared beyond the selection is
-    /// outlined everywhere it draws. Materials outside the set keep whatever
-    /// override they hold, and within it the last set wins per material.
+    /// The unit is the glTF material, so one shared beyond the selection is outlined
+    /// everywhere it draws, and the last set wins per material.
     public func setMToonOutlineOverride(_ override: MToonOutlineOverride?,
                                         forMaterials materials: Set<Int>) {
         let isDrawn = mutateMToonStates(inPassNamed: MToonShader.outlinePassName,
@@ -102,14 +103,12 @@ extension GLTFEntity {
         }
     }
 
-    /// Edits every MToon material's parameter rows and pushes the result to the
-    /// GPU once per material. Naming a pass restricts the edit to materials that
-    /// draw it, and a material set restricts it further. `mutate` reports whether
-    /// it changed anything, so writing the values already in place rebakes nothing.
+    /// Edits every MToon material's parameter rows and pushes the result to the GPU once
+    /// per material. A pass name and a material set each narrow what is edited, and
+    /// `mutate` reports whether it changed anything, so rewriting values rebakes nothing.
     ///
-    /// Returns whether the materials it covers are drawn as their rows now stand:
-    /// false when there are none, and false while a parameter texture that failed
-    /// to bake keeps its material dirty for the next flush to retry.
+    /// Returns whether the materials it covers are drawn as their rows now stand: false
+    /// when there are none, and false while a texture that failed to bake stays dirty.
     @discardableResult
     private func mutateMToonStates(inPassNamed passName: String? = nil,
                                    forMaterials materials: Set<Int>? = nil,

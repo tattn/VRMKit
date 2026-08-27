@@ -16,8 +16,8 @@ struct VRMSceneKitTests {
         #expect(round(neckPosition.z * 1000) == 14)
     }
 
-    /// A VRM 0.x model's blend shape groups load as the expressions they stand
-    /// for, so its runtime is the same one a 1.0 model gets.
+    /// A VRM 0.x model's blend shape groups load as the expressions they stand for, so
+    /// its runtime is the same one a 1.0 model gets.
     @Test
     func testBlendShapeGroupsLoadAsExpressionClips() throws {
         let clips = try loadVRM().expressionClips
@@ -27,11 +27,12 @@ struct VRMSceneKitTests {
         #expect(clip.preset == nil)
         #expect(clip.key == .custom("><"))
         #expect(clip.isBinary == false)
-        // One binding per morpher rather than per bind, so that expressions
-        // overlapping on a target accumulate onto the same one.
+        // One binding per morpher rather than per bind, so expressions overlapping on a
+        // target accumulate onto the same one.
         #expect(clip.values.count == 3)
         #expect(clip.values[0].index == 31)
-        #expect(clip.values[0].weight == 100)
+        // The runtime speaks 0-1 weights, whichever unit the version wrote.
+        #expect(clip.values[0].weight == 1)
 
         #expect(clips.filter({ $0.key.isPreset }).count == 17)
         #expect(clips.filter({ !$0.key.isPreset }).count == 1)
@@ -49,7 +50,7 @@ struct VRMSceneKitTests {
     @Test
     func testVRM0MaterialsKeepConstantLighting() throws {
         let loader = try loadVRMLoader()
-        let materialCount = loader.vrm.document.gltf.materials?.count ?? 0
+        let materialCount = loader.vrm.document.gltf.materials.count
         #expect(materialCount > 0)
 
         for index in 0..<materialCount {
@@ -59,13 +60,12 @@ struct VRMSceneKitTests {
         }
     }
 
-    /// Primitives of a mesh sharing a POSITION accessor share the morph targets
-    /// of whichever carries them, because that is how VRM exporters write them.
-    /// One carrying its own keeps them, whatever the rest of the mesh says.
+    /// Primitives of a mesh sharing a POSITION accessor share the morph targets of
+    /// whichever carries them, as VRM exporters write them. One carrying its own keeps them.
     @Test
     func testAPrimitiveKeepsItsOwnMorphTargets() throws {
-        // The face mesh is three primitives over one POSITION accessor, of
-        // which only the first carries targets; the second gets one of its own.
+        // The face mesh is three primitives over one POSITION accessor, of which only the
+        // first carries targets; the second gets one of its own.
         let data = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
             var meshes = json.objects("meshes")
             var primitives = meshes[3].objects("primitives")
@@ -87,8 +87,8 @@ struct VRMSceneKitTests {
         #expect(morphers[2] === morphers[0])
     }
 
-    /// Two expressions over one morph target add up rather than the second
-    /// overwriting the first, and lowering one leaves the other's share behind.
+    /// Two expressions over one morph target add up rather than the second overwriting
+    /// the first, and lowering one leaves the other's share behind.
     @Test
     func testExpressionsOverlappingOnATargetAccumulate() throws {
         let vrmNode = try loadVRM()

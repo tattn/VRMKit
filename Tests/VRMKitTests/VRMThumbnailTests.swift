@@ -5,9 +5,8 @@ import VRMTestSupport
 
 @Suite
 struct VRMThumbnailTests {
-    /// VRM 0.x names its thumbnail through a texture and VRM 1.0 through an
-    /// image, and both resolve through the one image reader the document
-    /// carries.
+    /// VRM 0.x names its thumbnail through a texture and VRM 1.0 through an image, and
+    /// both resolve through the one image reader the document carries.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testThumbnailDecodes(asset: VRMSampleAsset) throws {
         let vrm = try VRM(data: asset.data)
@@ -18,14 +17,14 @@ struct VRMThumbnailTests {
         #expect(thumbnail.height > 0)
     }
 
-    /// An image kept beside the model resolves against the directory the model
-    /// was loaded from, as every other external resource does.
+    /// An image kept beside the model resolves against the directory it was loaded from,
+    /// as every other external resource does.
     @Test
     func testThumbnailKeptInAFileResolvesAgainstTheModelsDirectory() throws {
         let asset = VRMSampleAsset.seedSan
         let source = try VRM(data: asset.data)
-        let imageIndex = try source.thumbnailImageIndex
-        let bufferView = try #require(source.document.gltf.images?[imageIndex].bufferView)
+        let imageIndex = try source.thumbnailImageIndex.rawValue
+        let bufferView = try #require(source.document.gltf.images[imageIndex].bufferView)
 
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("VRMThumbnailTests-\(UUID().uuidString)", isDirectory: true)

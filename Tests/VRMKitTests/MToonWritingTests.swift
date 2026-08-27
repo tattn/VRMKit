@@ -4,8 +4,8 @@ import simd
 import VRMTestSupport
 @testable import VRMKit
 
-/// MToon is written by inverting the mapping that reads it, so these tests hold
-/// that a material model written out and read back is the model it started as.
+/// MToon is written by inverting the mapping that reads it, so these tests hold that a
+/// material model written out and read back is the model it started as.
 @Suite
 struct MToonWritingTests {
     private let style = MToonConversionStyle(shadeColorScale: 0.7,
@@ -17,8 +17,8 @@ struct MToonWritingTests {
 
     // MARK: - Through a document
 
-    /// What the writer saves has to be what the renderer would have shown: both
-    /// convert with `StandardMToonConverter`, and nothing may be lost after it.
+    /// What the writer saves has to be what the renderer would have shown: both convert
+    /// with `StandardMToonConverter`, and nothing may be lost after it.
     @Test
     func testWrittenMToonExtensionReadsBackAsTheConvertedMaterial() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
@@ -27,9 +27,9 @@ struct MToonWritingTests {
         try document.append(source, under: 0, materials: .mtoon(style))
 
         let material = try #require(try GLTFDocument(data: try document.serialize())
-            .gltf.materials?.last)
+            .gltf.materials.last)
         let written = try #require(MToonMaterialDescriptor(material: material, materialProperty: nil))
-        expectSameShading(written, as: converted(try #require(source.gltf.materials?.first)))
+        expectSameShading(written, as: converted(try #require(source.gltf.materials.first)))
     }
 
     @Test
@@ -40,14 +40,14 @@ struct MToonWritingTests {
         try document.append(source, under: 0, materials: .mtoon(style))
 
         let vrm0 = try VRM0(data: try document.serialize())
-        let material = try #require(vrm0.document.gltf.materials?.last)
+        let material = try #require(vrm0.document.gltf.materials.last)
         let written = try #require(MToonMaterialDescriptor(material: material,
                                                            materialProperty: vrm0.materialProperties.last))
-        expectSameShading(written, as: converted(try #require(source.gltf.materials?.first)))
+        expectSameShading(written, as: converted(try #require(source.gltf.materials.first)))
     }
 
-    /// The fixture material is white and opaque, so the colors, the alpha mode
-    /// and the normal scale only really move when the material has some.
+    /// The fixture material is white and opaque, so the colors, alpha mode and normal
+    /// scale only really move when the material has some.
     @Test
     func testAColoredCutoutMaterialReadsBackAsItWasConverted() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
@@ -56,10 +56,10 @@ struct MToonWritingTests {
         try document.append(source, under: 0, materials: .mtoon(style))
 
         let vrm0 = try VRM0(data: try document.serialize())
-        let material = try #require(vrm0.document.gltf.materials?.last)
+        let material = try #require(vrm0.document.gltf.materials.last)
         let written = try #require(MToonMaterialDescriptor(material: material,
                                                            materialProperty: vrm0.materialProperties.last))
-        expectSameShading(written, as: converted(try #require(source.gltf.materials?.first)))
+        expectSameShading(written, as: converted(try #require(source.gltf.materials.first)))
         // The values the fixture cannot show, spelled out.
         #expect(written.alphaMode == .MASK)
         #expect(written.alphaCutoff.isApproximatelyEqual(to: 0.25))
@@ -68,20 +68,19 @@ struct MToonWritingTests {
         #expect(written.baseColorFactor.isApproximatelyEqual(to: SIMD4<Float>(0.2, 0.4, 0.6, 1)))
     }
 
-    /// A material that already carries MToon keeps what it says: the style
-    /// describes what to invent for a material that carries none, not what to
-    /// overwrite.
+    /// A material that already carries MToon keeps what it says: the style describes what
+    /// to invent for a material carrying none, not what to overwrite.
     @Test
     func testAppendingWithMToonKeepsAuthoredMToonMaterials() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let source = try GLTFDocument(data: VRMSampleAsset.seedSan.data)
-        let authored = try #require(source.gltf.materials)
-        let materialsBefore = try document.typed().materials?.count ?? 0
+        let authored = source.gltf.materials
+        let materialsBefore = try document.typed().materials.count
 
         try document.append(source, under: 0, materials: .mtoon(style))
 
         let merged = try GLTFDocument(data: try document.serialize())
-        let appended = Array(try #require(merged.gltf.materials).dropFirst(materialsBefore))
+        let appended = Array(merged.gltf.materials.dropFirst(materialsBefore))
         #expect(appended.count == authored.count)
         var compared = 0
         for (written, original) in zip(appended, authored) {
@@ -93,36 +92,36 @@ struct MToonWritingTests {
         #expect(compared > 0)
     }
 
-    /// MToon authored in the other format is carried across rather than
-    /// synthesized, so a VRM 1.0 material merged into a VRM 0.x avatar keeps its
-    /// shading in the Unity property that avatar's runtime reads.
+    /// MToon authored in the other format is carried across rather than synthesized, so a
+    /// VRM 1.0 material merged into a VRM 0.x avatar keeps its shading in the Unity
+    /// property that avatar's runtime reads.
     @Test
     func testAppendingAVRM1MToonSourceIntoAVRM0WritesItsAuthoredShading() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: VRMSampleAsset.seedSan.data)
-        let materials = try #require(source.gltf.materials)
-        // A material the style would have shaded differently, so that keeping
-        // the authored values is what the expectation below can pass on.
+        let materials = source.gltf.materials
+        // A material the style would have shaded differently, so keeping the authored
+        // values is what the expectation below can pass on.
         let index = try #require(materials.indices.first { index in
             guard let authored = MToonMaterialDescriptor(material: materials[index],
                                                          materialProperty: nil) else { return false }
             return !authored.shadeColorFactor.isApproximatelyEqual(to: converted(materials[index]).shadeColorFactor)
         })
         let authored = try #require(MToonMaterialDescriptor(material: materials[index], materialProperty: nil))
-        let materialsBefore = try document.typed().materials?.count ?? 0
+        let materialsBefore = try document.typed().materials.count
 
         try document.append(source, under: 0, materials: .mtoon(style))
 
         let vrm0 = try VRM0(data: try document.serialize())
         let written = VRM0MToonProperty.descriptor(
             property: vrm0.materialProperties[materialsBefore + index],
-            material: try #require(vrm0.document.gltf.materials?[materialsBefore + index])
+            material: try #require(vrm0.document.gltf.materials[safe: materialsBefore + index])
         )
         #expect(written.shadeColorFactor.isApproximatelyEqual(to: authored.shadeColorFactor))
     }
 
-    /// A VRM 0.x material property carries one UV transform for every texture
-    /// of the material, and a material with no textures has none to carry.
+    /// A VRM 0.x material property carries one UV transform for every texture of the
+    /// material, and one with no textures has none to carry.
     @Test
     func testATextureLessMaterialConvertsIntoAVRM0() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
@@ -137,8 +136,7 @@ struct MToonWritingTests {
 
     // MARK: - Through one material model
 
-    /// Every MToon field, including the ones no conversion of a standard
-    /// material produces.
+    /// Every MToon field, including the ones no conversion of a standard material produces.
     @Test
     func testMToonExtensionRoundTripsEveryField() throws {
         let descriptor = Self.richDescriptor
@@ -157,9 +155,8 @@ struct MToonWritingTests {
         #expect(read.shadeMultiplyTexture?.texCoord == descriptor.shadeMultiplyTexture?.texCoord)
     }
 
-    /// The same for VRM 0.x, which carries less: one texture transform for the
-    /// whole material, no second UV set, and a rim lighting mix its migration
-    /// pins to 1. The descriptor here holds only what the format can say.
+    /// The same for VRM 0.x, which carries less: one texture transform for the whole
+    /// material, no second UV set, and a rim lighting mix its migration pins to 1.
     @Test
     func testVRM0PropertyRoundTripsEveryFieldItCanCarry() throws {
         let descriptor = Self.vrm0RepresentableDescriptor
@@ -180,8 +177,8 @@ struct MToonWritingTests {
         #expect(read.shadeMultiplyTexture?.transform == descriptor.baseColorTexture?.transform)
     }
 
-    /// MToon draws a depth-writing transparent material before the rest, and
-    /// VRM 0.x carries that ordering as an absolute Unity render queue.
+    /// MToon draws a depth-writing transparent material before the rest, and VRM 0.x
+    /// carries that ordering as an absolute Unity render queue.
     @Test
     func testTransparentWithZWriteIsWrittenAheadOfPlainTransparent() throws {
         func property(transparentWithZWrite: Bool) throws -> VRM0.MaterialProperty {
@@ -204,8 +201,8 @@ struct MToonWritingTests {
         #expect(plain.floatProperties["_BlendMode"] == 2)
     }
 
-    /// A screen-space outline is halved on the way out of VRM 0.x, so the
-    /// writer has to double it on the way in.
+    /// A screen-space outline is halved on the way out of VRM 0.x, so the writer doubles
+    /// it on the way in.
     @Test
     func testScreenSpaceOutlineWidthSurvivesVRM0() throws {
         let descriptor = Self.vrm0RepresentableDescriptor.with {
@@ -229,8 +226,8 @@ struct MToonWritingTests {
         StandardMToonConverter.convert(material: material, style: style)
     }
 
-    /// A material model using every MToon field, with a distinct value in each
-    /// so that a writer crossing two of them cannot pass.
+    /// A material model using every MToon field, with a distinct value in each so a
+    /// writer crossing two of them cannot pass.
     private static let richDescriptor = MToonMaterialDescriptor(
         baseColorFactor: SIMD4<Float>(0.1, 0.2, 0.3, 0.4),
         emissiveFactor: SIMD3<Float>(0.5, 0.6, 0.7),
@@ -255,8 +252,8 @@ struct MToonWritingTests {
         renderQueueOffsetNumber: 3,
         alphaMode: .BLEND,
         alphaCutoff: 0.4,
-        // glTF says which side is culled with `doubleSided` alone, so front
-        // culling is a thing only VRM 0.x's `_CullMode` can name.
+        // glTF says which side is culled with `doubleSided` alone, so front culling is
+        // something only VRM 0.x's `_CullMode` can name.
         cullMode: .back,
         normalScale: 0.9,
         baseColorTexture: .init(index: 1),
@@ -273,10 +270,10 @@ struct MToonWritingTests {
         uvAnimationMaskTexture: .init(index: 9)
     )
 
-    /// The same, less what VRM 0.x cannot carry: the rim lighting mix, a render
-    /// queue offset, a matcap factor, a shading shift texture, per-texture
-    /// transforms and a second UV set. It can say one thing MToon 1.0 cannot,
-    /// which is that the front faces are the culled ones.
+    /// The same, less what VRM 0.x cannot carry: the rim lighting mix, a render queue
+    /// offset, a matcap factor, a shading shift texture, per-texture transforms and a
+    /// second UV set. It can say one thing MToon 1.0 cannot: that the front faces are
+    /// the culled ones.
     private static let vrm0RepresentableDescriptor = richDescriptor
         .with {
             $0.matcapFactor = SIMD3<Float>(1, 1, 1)
@@ -290,8 +287,8 @@ struct MToonWritingTests {
                                        offset: SIMD2<Float>(0.25, 0.5),
                                        rotation: 0))
 
-    /// A glTF material carrying the standard values of `descriptor`, which is
-    /// where MToon leaves them, plus an MToon extension when there is one.
+    /// A glTF material carrying the standard values of `descriptor`, where MToon leaves
+    /// them, plus an MToon extension when there is one.
     private static func material(mtoon: JSONObject?, of descriptor: MToonMaterialDescriptor) throws -> GLTF.Material {
         var pbrMetallicRoughness: JSONObject = ["baseColorFactor": .simd(descriptor.baseColorFactor)]
         pbrMetallicRoughness.set("baseColorTexture", descriptor.baseColorTexture?.textureInfo())
@@ -312,8 +309,7 @@ struct MToonWritingTests {
         return try material.decode(GLTF.Material.self)
     }
 
-    /// A material with a color, a cutout and a normal map, and the one image a
-    /// normal map needs.
+    /// A material with a color, a cutout and a normal map, and the image it needs.
     private static let textureLessSource = """
     {
         "asset": {"version": "2.0"},
@@ -355,9 +351,9 @@ struct MToonWritingTests {
     }
     """
 
-    /// Compares every shading value, and which textures the material samples.
-    /// The indices themselves move with a merge, so they are only compared
-    /// where both models were built from the same document.
+    /// Compares every shading value, and which textures the material samples. The indices
+    /// move with a merge, so they are only compared where both models came from the same
+    /// document.
     private func expectSameShading(_ written: MToonMaterialDescriptor,
                                    as expected: MToonMaterialDescriptor,
                                    sourceLocation: SourceLocation = #_sourceLocation) {
@@ -423,16 +419,16 @@ struct MToonWritingTests {
 }
 
 private extension MToonMaterialDescriptor {
-    /// The same model with a few values replaced, for describing one fixture in
-    /// terms of another.
+    /// The same model with a few values replaced, for describing one fixture in terms
+    /// of another.
     func with(_ change: (inout MToonMaterialDescriptor) -> Void) -> MToonMaterialDescriptor {
         var copy = self
         change(&copy)
         return copy
     }
 
-    /// The same model with every texture it samples reading through one shared
-    /// transform, which is what a VRM 0.x material can express.
+    /// The same model with every texture reading through one shared transform, which is
+    /// what a VRM 0.x material can express.
     func sharingTextureTransform(_ transform: UVTransform) -> MToonMaterialDescriptor {
         let textureKeyPaths: [WritableKeyPath<MToonMaterialDescriptor, Texture?>] = [
             \.baseColorTexture, \.emissiveTexture, \.shadeMultiplyTexture, \.shadingShiftTexture, \.normalTexture,

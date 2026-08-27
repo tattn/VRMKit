@@ -6,9 +6,9 @@ import VRMKitRuntime
 
 /// Loads a VRM model into a ``VRMEntity``.
 ///
-/// The generic glTF rendering lives in ``GLTFEntityLoader``; this subclass adds
-/// the VRM layers on top: VRM 0.x material properties, humanoid, expressions,
-/// first person, node constraints and spring bones.
+/// The generic glTF rendering lives in ``GLTFEntityLoader``; this subclass adds the VRM
+/// layers on top: VRM 0.x material properties, humanoid, expressions, first person,
+/// node constraints and spring bones.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public class VRMEntityLoader: GLTFEntityLoader {
@@ -23,12 +23,7 @@ public class VRMEntityLoader: GLTFEntityLoader {
         entityName = vrm.name
     }
 
-    /// Loads a VRM from a file URL. External resources resolve relative to the
-    /// file's directory.
-    ///
-    /// - Parameters:
-    ///   - url: VRM file location.
-    ///   - shaders: The material shader chain; see ``GLTFMaterialShader``.
+    /// Loads a VRM from a file URL. External resources resolve relative to its directory.
     public convenience init(withURL url: URL,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
         self.init(vrm: try VRM(withURL: url), shaders: shaders)
@@ -40,16 +35,15 @@ public class VRMEntityLoader: GLTFEntityLoader {
         self.init(vrm: try VRM(named: named), shaders: shaders)
     }
 
-    /// Loads a VRM from in-memory data. `rootDirectory` is the base directory
-    /// for external glTF resources.
+    /// Loads a VRM from in-memory data, resolving external resources against `rootDirectory`.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
         self.init(vrm: try VRM(data: data, rootDirectory: rootDirectory), shaders: shaders)
     }
 
-    /// Overridden only to narrow the return type: a VRM is a single avatar, so
-    /// the default scene it leaves unnamed is the one scene it holds.
+    /// Overridden only to narrow the return type: a VRM is a single avatar, so an
+    /// unnamed default scene is the one scene it holds.
     override public func loadEntity() async throws -> VRMEntity {
         try await loadEntity(withSceneIndex: gltf.defaultSceneIndex())
     }
@@ -59,10 +53,9 @@ public class VRMEntityLoader: GLTFEntityLoader {
             ??? ._dataInconsistent("the loaded entity is not a VRMEntity")
     }
 
-    /// The image the model shows itself by, wrapped as the platform image a
-    /// caller puts in a view.
+    /// The image the model shows itself by, as a platform image.
     public func loadThumbnail() throws -> VRMImage {
-        VRMImage(cgImage: try image(withImageIndex: vrm.thumbnailImageIndex))
+        VRMImage(cgImage: try image(withImageIndex: vrm.thumbnailImageIndex.rawValue))
     }
 
     override func makeRootEntity(sceneIndex: Int) -> GLTFEntity {
@@ -72,9 +65,9 @@ public class VRMEntityLoader: GLTFEntityLoader {
     override func didBuildScene(_ entity: GLTFEntity) throws {
         guard let vrmEntity = entity as? VRMEntity else { return }
         vrmEntity.setUpHumanoid(nodes: entityData.nodes)
-        try vrmEntity.setUpBlendShapes(nodes: entityData.nodes, meshes: entityData.sceneMeshes, loader: self)
+        vrmEntity.setUpBlendShapes(nodes: entityData.nodes, meshes: entityData.sceneMeshes, loader: self)
         vrmEntity.setUpFirstPerson(plan: firstPerson(), nodes: entityData.nodes, meshes: entityData.sceneMeshes)
-        try vrmEntity.setUpNodeConstraints(gltfNodes: try gltf.load(\.nodes),
+        try vrmEntity.setUpNodeConstraints(gltfNodes: gltf.nodes,
                                            hierarchy: nodeHierarchy ?? .none,
                                            loader: self)
         try vrmEntity.setUpSpringBones(loader: self)
@@ -88,18 +81,6 @@ public class VRMEntityLoader: GLTFEntityLoader {
         ])
     }
 
-    /// Unlike the generic loader, the VRM path only reports an unimplemented
-    /// required extension and renders anyway.
-    override func validateRequiredExtensions() throws {
-        for name in unsupportedRequiredExtensions() {
-            Self.gltfLogger.warning("This VRM requires the \(name, privacy: .public) glTF extension, which this renderer does not implement; rendering anyway.")
-        }
-    }
-
-    /// A VRM renders with whatever this renderer can build, so a shader that would
-    /// refuse to approximate draws its approximation instead.
-    override func enforcesRequiredExtension(_ name: String) -> Bool { false }
-
     override func firstPersonHeadJoints(ofNodeAt nodeIndex: Int, meshIndex: Int, skinIndex: Int?) -> Set<UInt32> {
         firstPerson().headJoints(ofNodeAt: nodeIndex, meshIndex: meshIndex, skinIndex: skinIndex)
     }
@@ -112,8 +93,8 @@ public class VRMEntityLoader: GLTFEntityLoader {
         return plan
     }
 
-    /// A primitive carrying no morph targets of its own morphs with those of
-    /// whichever primitive of the mesh carries them for its POSITION accessor.
+    /// A primitive carrying no morph targets of its own morphs with those of whichever
+    /// primitive of the mesh carries them for its POSITION accessor.
     override func resolvedPrimitives(of mesh: GLTF.Mesh) -> [GLTF.Mesh.Primitive] {
         let shared = mesh.morphTargetsByPositionAccessor()
         guard !shared.isEmpty else { return mesh.primitives }
@@ -129,9 +110,9 @@ public class VRMEntityLoader: GLTFEntityLoader {
         }
     }
 
-    /// Unlike the generic loader, a VRM whose material this renderer cannot shade
-    /// still renders, with the default material in its place. What the document
-    /// itself gets wrong still fails the load: only the shading falls back.
+    /// Unlike the generic loader, a VRM whose material this renderer cannot shade still
+    /// renders, with the default material in its place. What the document itself gets
+    /// wrong still fails the load: only the shading falls back.
     override func shadedMaterialFallback(for context: GLTFMaterialShaderContext,
                                          error: any Error) -> GLTFShadedMaterial? {
         Self.gltfLogger.error("Failed to build the material \(context.materialIndex, privacy: .public); falling back to the default material: \(String(describing: error), privacy: .public)")
@@ -140,6 +121,16 @@ public class VRMEntityLoader: GLTFEntityLoader {
 
     override func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {
         vrm.vrm0MaterialProperty(at: index)
+    }
+
+    /// VRM 0.x writes a material's MToon textures in the root extension entry beside it
+    /// rather than on the material, so the glTF slots alone would miss them.
+    override func textureIndices(ofMaterialAt index: Int) -> Set<Int> {
+        var indices = super.textureIndices(ofMaterialAt: index)
+        for (_, texture) in vrm0MaterialProperty(atMaterialIndex: index)?.textureProperties ?? [:] {
+            indices.insert(texture)
+        }
+        return indices
     }
 }
 #endif

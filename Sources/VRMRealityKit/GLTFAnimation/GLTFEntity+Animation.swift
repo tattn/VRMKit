@@ -3,8 +3,8 @@ import Foundation
 import RealityKit
 import VRMKit
 
-/// Metadata of one glTF animation. `index` is its canonical identity; `name` is
-/// optional and may repeat.
+/// Metadata of one glTF animation, identified by `index`: `name` is optional and
+/// may repeat.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct GLTFAnimation: Sendable {
     public let index: Int
@@ -12,14 +12,13 @@ public struct GLTFAnimation: Sendable {
     public let duration: TimeInterval
 }
 
-/// What a playback controller drives: one decoded animation bound to what it
-/// poses. glTF animations bind entities by node index; VRM animations
-/// retarget onto humanoid bones.
+/// What a playback controller drives: one decoded animation bound to what it poses.
+/// glTF animations bind entities by node index; VRM animations retarget onto
+/// humanoid bones.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 protocol GLTFAnimationApplying: AnyObject {
-    /// Poses the bound targets for `time`, reporting whether any node
-    /// transform actually changed.
+    /// Poses the bound targets for `time`, reporting whether any node transform changed.
     @discardableResult
     func apply(at time: Float) -> Bool
 }
@@ -30,22 +29,23 @@ protocol GLTFAnimationApplying: AnyObject {
 @MainActor
 public final class GLTFAnimationPlaybackController {
     public let animation: GLTFAnimation
-    /// Playback rate multiplier. A negative rate plays backwards; starting a
-    /// playback with one begins at the animation's end rather than at 0.
-    public var speed: Float
-    /// While paused time does not advance, and the pose the playback reached
-    /// keeps being re-applied so that it holds.
+    /// Playback rate multiplier. A negative rate plays backwards, starting at the
+    /// animation's end rather than at 0. A non-finite rate is refused, since it would
+    /// put NaN through every pose it drives.
+    public var speed: Float {
+        didSet { if !speed.isFinite { speed = oldValue } }
+    }
+    /// While paused time does not advance, and the pose reached keeps being re-applied.
     public var isPaused = false
     public let loops: Bool
     public private(set) var time: TimeInterval
     /// Set when a non-looping animation reaches its end or ``stop()`` is called.
     public private(set) var isComplete = false
 
-    /// Weak, so a controller the caller keeps past its playback does not hold the
-    /// loaded scene alive.
+    /// Weak, so a controller kept past its playback does not hold the scene alive.
     private weak var entity: GLTFEntity?
-    /// A runtime built for this playback alone is owned here, so that it lives
-    /// exactly as long as the controller driving it; a cached one is borrowed.
+    /// A runtime built for this playback alone is owned here, living exactly as long as
+    /// the controller; a cached one is borrowed.
     private weak var runtime: (any GLTFAnimationApplying)?
     private let ownedRuntime: (any GLTFAnimationApplying)?
 
@@ -60,14 +60,15 @@ public final class GLTFAnimationPlaybackController {
         self.ownedRuntime = ownsRuntime ? runtime : nil
         self.entity = entity
         self.loops = loops
-        self.speed = speed
-        self.time = speed < 0 ? animation.duration : 0
+        self.speed = speed.isFinite ? speed : 1
+        self.time = self.speed < 0 ? animation.duration : 0
     }
 
-    /// Jumps to `time`, clamped into the animation, and applies that pose
-    /// immediately, without resuming a completed animation. Animations started
-    /// later still win over the seeked one.
+    /// Jumps to `time`, clamped into the animation, and applies that pose immediately
+    /// without resuming a completed animation. Animations started later still win.
+    /// A non-finite time is refused, as a non-finite ``speed`` is.
     public func seek(to newTime: TimeInterval) {
+        guard newTime.isFinite else { return }
         time = min(max(newTime, 0), animation.duration)
         entity?.applyPose(seekedBy: self)
     }
@@ -86,15 +87,15 @@ public final class GLTFAnimationPlaybackController {
     func advance(deltaTime: TimeInterval) -> Bool {
         guard !isComplete else { return false }
         let duration = animation.duration
-        // A zero-length animation holds a single pose, which looping cannot
-        // change: it completes rather than reapplying it for every frame to come.
+        // A zero-length animation holds a single pose, which looping cannot change: it
+        // completes rather than reapplying it every frame.
         guard duration > 0 else {
             let moved = apply()
             isComplete = true
             return moved
         }
-        // Pausing stops time, not the playback: the pose is re-applied every frame
-        // so an animation this one outranks cannot take its targets over.
+        // Pausing stops time, not the playback: the pose is re-applied every frame so an
+        // animation this one outranks cannot take its targets over.
         if !isPaused {
             time += deltaTime * TimeInterval(speed)
             if loops {
@@ -120,8 +121,7 @@ public final class GLTFAnimationPlaybackController {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct GLTFAnimationPlaybackComponent: Component {}
 
-/// Advances the running glTF animations of every ``GLTFEntity`` once per render
-/// frame.
+/// Advances the running glTF animations of every ``GLTFEntity`` once per render frame.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct GLTFAnimationSystem: System {
     private static let query = EntityQuery(where: .has(GLTFAnimationPlaybackComponent.self))
@@ -141,28 +141,25 @@ extension GLTFEntity {
     /// ``playAnimation(at:loops:speed:)``.
     public var animations: [GLTFAnimation] {
         if let cached = animationMetadata { return cached }
-        let metadata = (gltf.animations ?? []).enumerated().map { index, animation in
+        let metadata = (gltf.animations).enumerated().map { index, animation in
             GLTFAnimation(index: index, name: animation.name, duration: animationDecoder.duration(of: animation))
         }
         animationMetadata = metadata
         return metadata
     }
 
-    /// The animations carrying `name`. glTF names may repeat, so this can return
-    /// any number of them.
+    /// The animations carrying `name`. glTF names may repeat, so any number may match.
     public func animations(named name: String) -> [GLTFAnimation] {
         animations.filter { $0.name == name }
     }
 
     /// Starts playing the animation at `index` and returns its controller.
     ///
-    /// Multiple animations can run at once; channels targeting the same node or
-    /// morph target apply in playback-start order, so the one started last wins.
+    /// Multiple animations can run at once; channels targeting the same node or morph
+    /// target apply in playback-start order, so the one started last wins.
     ///
-    /// - Throws: when this entity is a clone and so carries no runtime bindings,
-    ///   when `index` is out of range, or when the animation's samplers violate
-    ///   the glTF spec (non-increasing keyframe times, an output whose length
-    ///   does not match its interpolation).
+    /// - Throws: when this entity is a clone and so carries no runtime bindings, when
+    ///   `index` is out of range, or when the animation's samplers violate the glTF spec.
     @discardableResult
     public func playAnimation(at index: Int, loops: Bool = false, speed: Float = 1) throws -> GLTFAnimationPlaybackController {
         guard hasRuntimeBindings else {
@@ -181,11 +178,11 @@ extension GLTFEntity {
                              speed: speed)
     }
 
-    /// Puts `runtime` on the render tick under a new controller, and poses the
-    /// model once so the first frame is already correct.
+    /// Puts `runtime` on the render tick under a new controller, and poses the model once
+    /// so the first frame is already correct.
     ///
-    /// - Parameter ownsRuntime: whether the controller is the runtime's only
-    ///   owner, for runtimes built per playback rather than cached on the entity.
+    /// - Parameter ownsRuntime: whether the controller is the runtime's only owner, for
+    ///   runtimes built per playback rather than cached on the entity.
     func startPlayback(_ animation: GLTFAnimation,
                        runtime: any GLTFAnimationApplying,
                        ownsRuntime: Bool,
@@ -226,8 +223,8 @@ extension GLTFEntity {
         // A paused or held pose leaves the skeleton where the last solve put it.
         if movedTransforms {
             invalidateSkinPose()
-            // A model driving its own per-frame update solves the pose at the end
-            // of it, after this frame's constraints and spring bones.
+            // A model driving its own per-frame update solves the pose at the end of it,
+            // after this frame's constraints and spring bones.
             if !refreshesSkinningPerFrame {
                 flushSkinPoseIfNeeded()
             }
@@ -235,8 +232,8 @@ extension GLTFEntity {
         pruneCompletedAnimations()
     }
 
-    /// Poses the model for a seek: the seeked animation first, then every
-    /// animation that outranks it, so a seek cannot break the playback order.
+    /// Poses the model for a seek: the seeked animation first, then every animation that
+    /// outranks it, so a seek cannot break the playback order.
     func applyPose(seekedBy controller: GLTFAnimationPlaybackController) {
         // A stopped controller has left the list, so everything running outranks it.
         let first = activeAnimationControllers.firstIndex { $0 === controller }.map { $0 + 1 } ?? 0

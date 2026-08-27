@@ -96,13 +96,12 @@ extension GLTFSnapshotOptions {
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension GLTFEntity {
-    /// Draws the entity offscreen and returns the image, so a model can be
-    /// pictured without a view on screen.
+    /// Draws the entity offscreen and returns the image, so a model can be pictured
+    /// without a view on screen.
     ///
-    /// A copy is drawn, since `RealityRenderer` takes an entity out of whatever it
-    /// is a child of, so this pictures the pose and materials the entity has now.
-    /// Only this entity is drawn, not the lights and props beside it in its scene,
-    /// which ``GLTFSnapshotOptions/lightIntensity`` stands in for.
+    /// A copy is drawn, since `RealityRenderer` takes an entity out of whatever it is a
+    /// child of. Only this entity is drawn, not the lights and props beside it in its
+    /// scene, which ``GLTFSnapshotOptions/lightIntensity`` stands in for.
     @MainActor
     public func snapshot(_ options: GLTFSnapshotOptions = .init()) async throws -> CGImage {
         try options.validate()
@@ -122,17 +121,24 @@ extension GLTFEntity {
         // materials, so it is aimed before copying.
         let towardCamera = simd_normalize(camera.position - bounds.center)
 
+        // The copy samples this entity's own parameter texture, so the light is
+        // aimed for the whole render and put back once the picture exists.
         let ownLightDirection = mtoonLightDirection
         if options.mtoonLitFromCamera {
             setMToonLightDirection(towardCamera)
+            // The render encodes on its own queue, so the rows must be on the
+            // GPU before it does.
+            waitForMToonParameterWrites()
+        }
+        defer {
+            if options.mtoonLitFromCamera {
+                setMToonLightDirection(ownLightDirection)
+            }
         }
         let subject = clone(recursive: true)
         // The bounds were measured in this entity's own space, so the copy goes there
         // too rather than wherever the entity stands in its scene.
         subject.transform = .identity
-        if options.mtoonLitFromCamera {
-            setMToonLightDirection(ownLightDirection)
-        }
 
         let renderer = try RealityRenderer()
         renderer.entities.append(subject)

@@ -18,13 +18,13 @@ extension GLTFEditableDocument {
     /// Makes the materials at `indices` MToon, leaving the ones that already are
     /// as they were authored.
     ///
-    /// A material carrying no MToon data is converted through
-    /// `StandardMToonConverter`, the same one a renderer toon-shades with, so
-    /// `style` describes what to invent where there is nothing.
+    /// A material carrying no MToon data is converted through `StandardMToonConverter`,
+    /// the same one a renderer toon-shades with, so `style` describes what to invent where
+    /// there is nothing.
     ///
-    /// The form follows the document: a VRM 0.x model gets the Unity material
-    /// property its runtime reads, and every other document gets the
-    /// `VRMC_materials_mtoon` extension with a `KHR_materials_unlit` fallback.
+    /// The form follows the document: a VRM 0.x model gets the Unity material property its
+    /// runtime reads, and every other document gets the `VRMC_materials_mtoon` extension
+    /// with a `KHR_materials_unlit` fallback.
     public mutating func convertMaterialsToMToon(at indices: some Sequence<GLTFMaterialIndex>,
                                         style: MToonConversionStyle = .init()) throws {
         let materialObjects = json.objects(.materials)
