@@ -7,8 +7,8 @@ import VRMKit
 ///
 /// Returns the path of the first difference, or nil when the two are the same
 /// document.
-func jsonDifference(_ lhs: Any, _ rhs: Any, path: String = "") -> String? {
-    if let lhs = lhs as? [String: Any], let rhs = rhs as? [String: Any] {
+func jsonDifference(_ lhs: JSONValue, _ rhs: JSONValue, path: String = "") -> String? {
+    if let lhs = lhs.objectValue, let rhs = rhs.objectValue {
         let keys = Set(lhs.keys).union(rhs.keys)
         for key in keys.sorted() {
             guard let left = lhs[key] else { return "\(path)/\(key): missing on the left" }
@@ -17,7 +17,7 @@ func jsonDifference(_ lhs: Any, _ rhs: Any, path: String = "") -> String? {
         }
         return nil
     }
-    if let lhs = lhs as? [Any], let rhs = rhs as? [Any] {
+    if let lhs = lhs.arrayValue, let rhs = rhs.arrayValue {
         guard lhs.count == rhs.count else {
             return "\(path): \(lhs.count) elements on the left, \(rhs.count) on the right"
         }
@@ -26,24 +26,27 @@ func jsonDifference(_ lhs: Any, _ rhs: Any, path: String = "") -> String? {
         }
         return nil
     }
-    if lhs is NSNull, rhs is NSNull { return nil }
-    if let lhs = lhs as? String, let rhs = rhs as? String {
-        return lhs == rhs ? nil : "\(path): \"\(lhs)\" vs \"\(rhs)\""
-    }
-    if let lhs = lhs as? NSNumber, let rhs = rhs as? NSNumber {
-        // `JSONSerialization` writes a double as 17 significant digits of a
-        // value that is itself a digit off, so a number survives a rewrite to
-        // within an ulp or two rather than exactly. That is far below the
-        // precision of the floats glTF reads them back as.
-        let (left, right) = (lhs.doubleValue, rhs.doubleValue)
+    if lhs.isNull, rhs.isNull { return nil }
+    if let left = lhs.doubleValue, let right = rhs.doubleValue {
+        // A number survives a rewrite to within an ulp or two rather than exactly,
+        // which is far below the precision of the floats glTF reads it back as.
         let tolerance = 1e-12 * Swift.max(abs(left), abs(right))
         guard abs(left - right) > tolerance else { return nil }
-        return "\(path): \(lhs) vs \(rhs)"
+        return "\(path): \(left) vs \(right)"
     }
+    if lhs == rhs { return nil }
     return "\(path): \(lhs) vs \(rhs)"
 }
 
-extension [String: Any] {
+func jsonDifference(_ lhs: JSONObject, _ rhs: JSONObject, path: String = "") -> String? {
+    jsonDifference(.object(lhs), .object(rhs), path: path)
+}
+
+func jsonDifference(_ lhs: [JSONObject], _ rhs: [JSONObject], path: String = "") -> String? {
+    jsonDifference(.objects(lhs), .objects(rhs), path: path)
+}
+
+extension JSONObject {
     /// The same JSON object without the given keys, for comparing the parts of
     /// two documents that are meant to be identical.
     func removing(_ keys: String...) -> Self {

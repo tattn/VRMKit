@@ -14,8 +14,8 @@ struct VRMThumbnailTests {
 
         let thumbnail = try vrm.thumbnail
 
-        #expect(thumbnail.size.width > 0)
-        #expect(thumbnail.size.height > 0)
+        #expect(thumbnail.width > 0)
+        #expect(thumbnail.height > 0)
     }
 
     /// An image kept beside the model resolves against the directory the model
@@ -35,13 +35,13 @@ struct VRMThumbnailTests {
             .write(to: directory.appendingPathComponent("thumbnail.png"))
 
         let external = try asset.rewritingJSON { json in
-            var images = json["images"] as? [[String: Any]] ?? []
+            var images = json.objects("images")
             images[imageIndex].removeValue(forKey: "bufferView")
             images[imageIndex]["uri"] = "thumbnail.png"
-            json["images"] = images
+            json["images"] = .objects(images)
         }
         let vrm = try VRM(data: external, rootDirectory: directory)
 
-        #expect(try vrm.thumbnail.size == source.thumbnail.size)
+        #expect(try (vrm.thumbnail.width, vrm.thumbnail.height) == (source.thumbnail.width, source.thumbnail.height))
     }
 }

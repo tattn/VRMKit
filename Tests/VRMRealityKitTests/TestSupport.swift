@@ -12,8 +12,8 @@ enum TestSupport {
     /// Reading it from its URL is what exercises external-resource resolution.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     @MainActor
-    static func loadEntity(_ asset: GLTFSampleAsset) throws -> GLTFEntity {
-        try GLTFEntityLoader(withURL: asset.url).loadEntity()
+    static func loadEntity(_ asset: GLTFSampleAsset) async throws -> GLTFEntity {
+        try await GLTFEntityLoader(withURL: asset.url).loadEntity()
     }
 
     /// Loads a bundled glTF sample asset with its JSON rewritten in memory, so a
@@ -22,7 +22,7 @@ enum TestSupport {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     @MainActor
     static func loader(_ asset: GLTFSampleAsset,
-                       rewritingJSON modify: (inout [String: Any]) throws -> Void) throws -> GLTFEntityLoader {
+                       rewritingJSON modify: (inout [String: JSONValue]) throws -> Void) throws -> GLTFEntityLoader {
         try GLTFEntityLoader(withData: asset.rewritingJSON(modify), rootDirectory: asset.rootDirectory)
     }
 
@@ -53,7 +53,7 @@ enum TestSupport {
     /// data directly, so no temporary files are written. `name` identifies the
     /// variant in failure messages.
     static func modifiedSeedSanData(name: String,
-                                    modify: (inout [String: Any]) throws -> Void) throws -> Data {
+                                    modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         do {
             return try VRMSampleAsset.seedSan.rewritingJSON(modify)
         } catch let error as GLBRewriter.Error {
@@ -63,7 +63,7 @@ enum TestSupport {
 
     /// Rewrites the VRM 0.x fixture's glTF JSON in memory.
     static func modifiedAliciaSolidData(name: String,
-                                        modify: (inout [String: Any]) throws -> Void) throws -> Data {
+                                        modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         do {
             return try VRMSampleAsset.aliciaSolid.rewritingJSON(modify)
         } catch let error as GLBRewriter.Error {
@@ -75,54 +75,54 @@ enum TestSupport {
     /// unwrap/mutate/write-back dance the material tests all need.
     static func modifiedSeedSanMaterial(name: String,
                                         index: Int = 0,
-                                        modify: (inout [String: Any]) throws -> Void) throws -> Data {
+                                        modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         try modifiedSeedSanData(name: name) { json in
-            guard var materials = json["materials"] as? [[String: Any]],
-                  materials.indices.contains(index) else {
+            var materials = json.objects("materials")
+            guard materials.indices.contains(index) else {
                 throw VRMError.dataInconsistent("Missing Seed-san material \(index) for fixture '\(name)'")
             }
             try modify(&materials[index])
-            json["materials"] = materials
+            json["materials"] = .objects(materials)
         }
     }
 
     /// Rewrites a material's `VRMC_materials_mtoon` extension.
     static func modifiedSeedSanMToonExtension(name: String,
                                               index: Int = 0,
-                                              modify: (inout [String: Any]) throws -> Void) throws -> Data {
+                                              modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         try modifiedSeedSanMaterial(name: name, index: index) { material in
-            guard var extensions = material["extensions"] as? [String: Any],
-                  var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any] else {
+            guard var extensions = material.object("extensions"),
+                  var mtoon = extensions.object("VRMC_materials_mtoon") else {
                 throw VRMError.dataInconsistent("Missing Seed-san MToon extension for fixture '\(name)'")
             }
             try modify(&mtoon)
-            extensions["VRMC_materials_mtoon"] = mtoon
-            material["extensions"] = extensions
+            extensions["VRMC_materials_mtoon"] = .object(mtoon)
+            material["extensions"] = .object(extensions)
         }
     }
 
     /// Rewrites the fixture's `VRMC_vrm` preset expressions.
     static func modifiedSeedSanExpressions(name: String,
-                                           modify: (inout [String: Any]) throws -> Void) throws -> Data {
+                                           modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         try modifiedSeedSanData(name: name) { json in
             try modifyExpressionPresets(in: &json, modify)
         }
     }
 
     /// The unwrap/mutate/write-back dance for `extensions.VRMC_vrm.expressions.preset`.
-    static func modifyExpressionPresets(in json: inout [String: Any],
-                                        _ modify: (inout [String: Any]) throws -> Void) throws {
-        guard var extensions = json["extensions"] as? [String: Any],
-              var vrm = extensions["VRMC_vrm"] as? [String: Any],
-              var expressions = vrm["expressions"] as? [String: Any],
-              var preset = expressions["preset"] as? [String: Any] else {
+    static func modifyExpressionPresets(in json: inout [String: JSONValue],
+                                        _ modify: (inout [String: JSONValue]) throws -> Void) throws {
+        guard var extensions = json.object("extensions"),
+              var vrm = extensions.object("VRMC_vrm"),
+              var expressions = vrm.object("expressions"),
+              var preset = expressions.object("preset") else {
             throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
         }
         try modify(&preset)
-        expressions["preset"] = preset
-        vrm["expressions"] = expressions
-        extensions["VRMC_vrm"] = vrm
-        json["extensions"] = extensions
+        expressions["preset"] = .object(preset)
+        vrm["expressions"] = .object(expressions)
+        extensions["VRMC_vrm"] = .object(vrm)
+        json["extensions"] = .object(extensions)
     }
 
     /// The MToon shader sources concatenated, read once per test process.
@@ -196,6 +196,39 @@ enum TestSupport {
     static func materialIndexes(in root: Entity) -> [Int] {
         Set(modelEntities(in: root).compactMap { $0.components[GLTFMaterialIndexComponent.self]?.materialIndex })
             .sorted()
+    }
+
+    /// Every primitive of the hierarchy a first-person camera cuts, with what it
+    /// draws in either mode.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func firstPersonCuts(in root: Entity) -> [(entity: Entity, component: FirstPersonMeshComponent)] {
+        var cuts: [(Entity, FirstPersonMeshComponent)] = []
+        var stack = [root]
+        while let entity = stack.popLast() {
+            stack.append(contentsOf: entity.children)
+            if let component = entity.components[FirstPersonMeshComponent.self] {
+                cuts.append((entity, component))
+            }
+        }
+        return cuts
+    }
+
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func triangleIndexCount(of mesh: MeshResource) -> Int {
+        mesh.contents.models.reduce(0) { count, model in
+            count + model.parts.reduce(0) { $0 + ($1.triangleIndices?.count ?? 0) }
+        }
+    }
+
+    /// What the primitive under `entity` is drawing now.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func drawnTriangleIndexCount(of entity: Entity) -> Int {
+        modelEntities(in: entity)
+            .compactMap { $0.components[ModelComponent.self]?.mesh }
+            .map(triangleIndexCount)
+            .max() ?? 0
     }
 
 #if !os(visionOS)

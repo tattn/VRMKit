@@ -10,10 +10,9 @@ import VRMTestSupport
 /// Plays the hand-written `.vrma` fixture onto the bundled VRM models, driving
 /// the tick directly instead of through a rendering scene.
 ///
-/// The fixture's skeleton (see ``VRMASampleFixture``) rests with its hips 1 m
-/// up, so on a normalized target every retargeted value is predictable: local
-/// rotations carry over 1:1 (turned 180° around Y for a VRM 0.x model), and
-/// hips translations scale by the target's rest hips height.
+/// The fixture's skeleton rests with its hips 1 m up, so every retargeted value
+/// is predictable: local rotations carry over 1:1, turned 180° around Y for a VRM
+/// 0.x model, and hips translations scale by the target's rest hips height.
 @Suite
 @MainActor
 struct VRMAnimationPlaybackTests {
@@ -32,9 +31,9 @@ struct VRMAnimationPlaybackTests {
     }
 
     @Test
-    func testHipsRotationRetargetsOntoAVRM1Model() throws {
+    func testHipsRotationRetargetsOntoAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
 
@@ -50,9 +49,9 @@ struct VRMAnimationPlaybackTests {
     }
 
     @Test
-    func testHipsTranslationScalesToTheTargetHipsHeight() throws {
+    func testHipsTranslationScalesToTheTargetHipsHeight() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         // The fixture's hips rest 1 m up, so the retarget scale is the target's
         // own rest hips height.
@@ -67,14 +66,13 @@ struct VRMAnimationPlaybackTests {
         #expect(worldPosition(of: hips, in: entity).isApproximatelyEqual(to: expected, tolerance: 0.002))
     }
 
-    /// The hips of a `.vrma` may sit under nodes that do not rest untransformed,
-    /// as the VRM Add-on for Blender's `Armature` node does. Their translation
-    /// travels through the parent's whole rest transform, not its rotation
-    /// alone, or it lands at the wrong height.
+    /// The hips of a `.vrma` may sit under nodes that do not rest untransformed, so
+    /// their translation has to travel through the parent's whole rest transform
+    /// rather than its rotation alone.
     @Test
-    func testHipsTranslationTravelsThroughTheParentRestTransform() throws {
+    func testHipsTranslationTravelsThroughTheParentRestTransform() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let restHeight = worldPosition(of: hips, in: entity).y
 
@@ -91,13 +89,12 @@ struct VRMAnimationPlaybackTests {
         #expect(worldPosition(of: hips, in: entity).isApproximatelyEqual(to: expected, tolerance: 0.002))
     }
 
-    /// A VRM 0.x model faces the other way than the VRM 1.0 convention `.vrma`
-    /// files are authored in, so the whole animation turns 180° around Y:
-    /// a rotation around +X becomes one around −X, and the hips move to −Z.
+    /// A VRM 0.x model faces the other way than a `.vrma` is authored in, so the
+    /// whole animation turns 180° around Y.
     @Test
-    func testRetargetingOntoAVRM0ModelTurnsTheAnimationAround() throws {
+    func testRetargetingOntoAVRM0ModelTurnsTheAnimationAround() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
         let scale = worldPosition(of: hips, in: entity).y
@@ -113,9 +110,9 @@ struct VRMAnimationPlaybackTests {
     }
 
     @Test
-    func testExpressionChannelsDriveVRM1Expressions() throws {
+    func testExpressionChannelsDriveVRM1Expressions() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
 
         let controller = try entity.playAnimation(fixture())
         entity.updateAnimations(deltaTime: 1.0)
@@ -131,9 +128,9 @@ struct VRMAnimationPlaybackTests {
     }
 
     @Test
-    func testExpressionChannelsDriveVRM0BlendShapes() throws {
+    func testExpressionChannelsDriveVRM0BlendShapes() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
 
         try entity.playAnimation(fixture())
         entity.updateAnimations(deltaTime: 1.0)
@@ -145,9 +142,9 @@ struct VRMAnimationPlaybackTests {
     /// Nothing stops two expressions of a `.vrma` from naming one node, and the
     /// weight on it belongs to both of them.
     @Test
-    func testOneNodeDrivesEveryExpressionNamingIt() throws {
+    func testOneNodeDrivesEveryExpressionNamingIt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
 
         try entity.playAnimation(try VRMAnimation(data: VRMASampleFixture.contestedExpressions()))
         entity.updateAnimations(deltaTime: 0.5)
@@ -159,9 +156,9 @@ struct VRMAnimationPlaybackTests {
     /// The four look presets stay out of a `.vrma` as the eye bones do, gaze
     /// being look-at's to aim. A file carrying one drives nothing.
     @Test
-    func testLookExpressionsAreLeftToLookAt() throws {
+    func testLookExpressionsAreLeftToLookAt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         // Seed-san carries the look presets, so a retargeted one would show.
         entity.setExpression(value: 1, for: .preset(.lookRight))
         #expect(abs(entity.expression(for: .preset(.lookRight)) - 1) < 0.001)
@@ -173,15 +170,14 @@ struct VRMAnimationPlaybackTests {
         #expect(entity.expression(for: .preset(.lookRight)) == 0)
     }
 
-    /// A VRM 0.x model spells the thumb chain proximal / intermediate / distal
-    /// where VRM 1.0, `.vrma` and ``HumanoidBone`` spell the same three joints
-    /// metacarpal / proximal / distal. One bone therefore means one joint
-    /// whichever version the model is, and a `.vrma` poses both alike.
+    /// VRM 0.x spells the thumb chain proximal / intermediate / distal where VRM
+    /// 1.0 spells the same three joints metacarpal / proximal / distal, so a
+    /// `.vrma` poses both alike.
     @Test
-    func testTheThumbChainMeansTheSameJointsInBothVersions() throws {
+    func testTheThumbChainMeansTheSameJointsInBothVersions() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         for data in [TestSupport.seedSanData, TestSupport.aliciaSolidData] {
-            let entity = try VRMEntityLoader(withData: data).loadEntity()
+            let entity = try await VRMEntityLoader(withData: data).loadEntity()
             let thumb = try #require(entity.humanoid.node(for: .leftThumbMetacarpal))
             let next = try #require(entity.humanoid.node(for: .leftThumbProximal))
             #expect(thumb !== next)
@@ -192,13 +188,12 @@ struct VRMAnimationPlaybackTests {
         }
     }
 
-    /// The eye bones stay out of a `.vrma` humanoid, gaze being look-at's to
-    /// aim. A file mapping them poses nothing. Alicia is the bundled model with
-    /// eye bones; Seed-san declares none.
+    /// The eye bones stay out of a `.vrma` humanoid, gaze being look-at's to aim,
+    /// so a file mapping them poses nothing. Alicia is the model with eye bones.
     @Test
-    func testEyeBonesAreLeftToLookAt() throws {
+    func testEyeBonesAreLeftToLookAt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
         let eyes = [HumanoidBone.leftEye, .rightEye].compactMap { entity.humanoid.node(for: $0) }
         #expect(eyes.count == 2)
         let rests = eyes.map(\.transform.rotation)
@@ -212,15 +207,14 @@ struct VRMAnimationPlaybackTests {
         }
     }
 
-    /// The three-vrm sample `.vrma`, a real-world GLB whose skeleton rests with
-    /// non-identity local rotations: its right-upper-arm channel rotates 90°
-    /// around the bone's local +X, which that rest chain carries to the model's
-    /// +Z, so the arm lifts sideways. At t = 1.5 `happy` reaches 1, and the
-    /// look-at channel plays through unapplied.
+    /// The three-vrm sample `.vrma`, whose skeleton rests with non-identity local
+    /// rotations: its right-upper-arm channel rotates 90° around the bone's local
+    /// +X, which the rest chain carries to the model's +Z, so the arm lifts
+    /// sideways.
     @Test
-    func testTheThreeVRMSamplePlaysOnAVRM1Model() throws {
+    func testTheThreeVRMSamplePlaysOnAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let arm = try #require(entity.humanoid.node(for: .rightUpperArm))
         let rest = worldRotation(of: arm, in: entity)
 
@@ -242,9 +236,9 @@ struct VRMAnimationPlaybackTests {
     /// The same sample on a VRM 0.x model: the arm swing turns around with the
     /// model, and the expression lands on the migrated `joy` blend shape.
     @Test
-    func testTheThreeVRMSamplePlaysOnAVRM0Model() throws {
+    func testTheThreeVRMSamplePlaysOnAVRM0Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
         let arm = try #require(entity.humanoid.node(for: .rightUpperArm))
         let rest = worldRotation(of: arm, in: entity)
 
@@ -257,13 +251,12 @@ struct VRMAnimationPlaybackTests {
         #expect(abs(entity.expression(for: .preset(.happy)) - 1.0) < 0.01)
     }
 
-    /// The bundled CC0 walk cycle: a real full-body motion authored on neither
-    /// bundled model's skeleton, so it exercises the retargeting broadly rather
-    /// than one channel at a time.
+    /// The bundled CC0 walk cycle, authored on neither model's skeleton, so it
+    /// exercises the retargeting broadly rather than one channel at a time.
     @Test(arguments: [VRMSampleAsset.seedSan, .aliciaSolid])
-    func testTheWalkCycleDrivesTheWholeBodyOfEitherModel(model: VRMSampleAsset) throws {
+    func testTheWalkCycleDrivesTheWholeBodyOfEitherModel(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: model.data).loadEntity()
+        let entity = try await VRMEntityLoader(withData: model.data).loadEntity()
         // Every humanoid bone the model has, so the count below is of bones
         // that actually moved rather than of bones the animation declares.
         let bones = Array(entity.humanoid.bones.values)
@@ -281,13 +274,13 @@ struct VRMAnimationPlaybackTests {
         #expect(moved.count >= 30, "only \(moved.count) of \(bones.count) bones moved")
     }
 
-    /// The walk cycle was authored with the hips 0.908 m up, and dips them to
-    /// 82–88% of that. Retargeted, the hips must land in the same band of the
-    /// target's own rest height rather than at the source's absolute metres.
+    /// The walk cycle was authored with the hips 0.908 m up and dips them to 82-88%
+    /// of that, which retargeting has to reproduce as a band of the target's own
+    /// rest height rather than as absolute metres.
     @Test
-    func testTheWalkCycleScalesItsHipsToTheTargetModel() throws {
+    func testTheWalkCycleScalesItsHipsToTheTargetModel() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let restHeight = worldPosition(of: hips, in: entity).y
 
@@ -305,12 +298,11 @@ struct VRMAnimationPlaybackTests {
         #expect(highest > 0.85 && highest < 0.91, "highest hips ratio \(highest)")
     }
 
-    /// Seeking a finished VRM animation still poses the model: the controller
-    /// owns its runtime, so both outlive the playback.
+    /// The controller owns its runtime, so both outlive the playback.
     @Test
-    func testSeekingAFinishedVRMAnimationStillPosesTheModel() throws {
+    func testSeekingAFinishedVRMAnimationStillPosesTheModel() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
 
@@ -328,12 +320,12 @@ struct VRMAnimationPlaybackTests {
     /// A controller outlives its playback whenever the caller keeps it, so it
     /// must hold neither the entity nor the runtime posing the entity graph.
     @Test
-    func testAKeptControllerDoesNotRetainTheAnimatedModel() throws {
+    func testAKeptControllerDoesNotRetainTheAnimatedModel() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         weak var loaded: VRMEntity?
         var controller: GLTFAnimationPlaybackController?
         do {
-            let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+            let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
             loaded = entity
             controller = try entity.playAnimation(fixture())
         }
@@ -345,9 +337,9 @@ struct VRMAnimationPlaybackTests {
     /// Two animations driving the same expression: the one started last owns it
     /// on every frame, not only on the frame it takes over.
     @Test
-    func testTheLastStartedAnimationKeepsOwningASharedExpression() throws {
+    func testTheLastStartedAnimationKeepsOwningASharedExpression() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
 
         // The standard fixture ramps `aa` 0 → 1 over its second...
         try entity.playAnimation(fixture(), loops: true)
@@ -370,9 +362,9 @@ struct VRMAnimationPlaybackTests {
     /// Pausing holds the pose against the animations the paused one outranks,
     /// rather than handing them its targets for as long as it is paused.
     @Test
-    func testAPausedAnimationKeepsHoldingItsTargets() throws {
+    func testAPausedAnimationKeepsHoldingItsTargets() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
 
@@ -393,13 +385,12 @@ struct VRMAnimationPlaybackTests {
         }
     }
 
-    /// `upperChest` is optional, and neither bundled model has one. Its rotation
-    /// must still reach the model, through the bones that inherited its
-    /// children, rather than be dropped with the bone.
+    /// `upperChest` is optional and neither bundled model has one, so its rotation
+    /// has to reach the model through the bones that inherited its children.
     @Test(arguments: [VRMSampleAsset.seedSan, .aliciaSolid])
-    func testAnOptionalBoneTheModelLacksRotatesItsChildrenInstead(model: VRMSampleAsset) throws {
+    func testAnOptionalBoneTheModelLacksRotatesItsChildrenInstead(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: model.data).loadEntity()
+        let entity = try await VRMEntityLoader(withData: model.data).loadEntity()
         #expect(entity.humanoid.node(for: .upperChest) == nil)
         let bones = try [HumanoidBone.neck, .leftShoulder, .rightShoulder].map {
             try #require(entity.humanoid.node(for: $0))
@@ -419,21 +410,20 @@ struct VRMAnimationPlaybackTests {
         }
     }
 
-    /// A `.vrma` is retargeted without ever being loaded as a scene, so a
-    /// document no model could be loaded from is rejected where its hierarchy
-    /// is built.
+    /// A `.vrma` is retargeted without ever being loaded as a scene, so a broken
+    /// hierarchy has to be rejected where that hierarchy is built.
     @Test
-    func testAnAnimationWithoutANodeHierarchyIsRejected() throws {
+    func testAnAnimationWithoutANodeHierarchyIsRejected() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let animation = try VRMAnimation(data: VRMASampleFixture.hipsWithTwoParents())
         #expect(throws: VRMError.self) { try entity.playAnimation(animation) }
     }
 
     @Test
-    func testACloneCannotPlayVRMAnimations() throws {
+    func testACloneCannotPlayVRMAnimations() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let clone = entity.clone(recursive: true)
         let animation = try fixture()
         #expect(throws: VRMError.self) { try clone.playAnimation(animation) }

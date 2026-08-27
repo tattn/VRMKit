@@ -1,4 +1,5 @@
 import Foundation
+import VRMKit
 
 /// The CC0-1.0 fixtures from KhronosGroup/glTF-Sample-Assets that ship with the
 /// test bundle. See `Tests/Assets/GLTF/README.md` for provenance.
@@ -35,15 +36,15 @@ public enum GLTFSampleAsset: String, CaseIterable, Sendable {
     /// The fixture with its glTF JSON rewritten, so tests can feed the loaders
     /// malformed or unusual files without shipping extra assets. The result has
     /// no directory of its own, so load it with ``rootDirectory``.
-    public func rewritingJSON(_ modify: (inout [String: Any]) throws -> Void) throws -> Data {
+    public func rewritingJSON(_ modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         let data = data
         guard !GLBRewriter.isGLB(data) else {
             return try GLBRewriter.rewritingJSON(of: data, modify)
         }
-        guard var json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard var json = try JSONValue(parsing: data).objectValue else {
             throw GLBRewriter.Error.invalidJSON
         }
         try modify(&json)
-        return try JSONSerialization.data(withJSONObject: json)
+        return try JSONValue.object(json).serialized()
     }
 }

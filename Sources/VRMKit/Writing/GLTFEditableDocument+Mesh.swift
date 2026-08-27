@@ -4,61 +4,56 @@ import simd
 extension GLTFEditableDocument {
     /// Adds a node drawing `mesh`, and returns its index.
     ///
-    /// The placement is ``addNode(name:parent:transform:)``'s, so with no
-    /// `parentNode` the node becomes a root of the default scene and a document
-    /// holding no scene is given one. `GLTFEditableDocument()` followed by one
-    /// `addMesh` is therefore a whole asset.
-    ///
-    /// The vertex data is packed tightly into the BIN buffer and written as one
-    /// triangle primitive over it. Nothing already in the document moves, and a
-    /// VRM 0.x model gets the `materialProperties` entry that keeps that array
-    /// parallel to its materials. `materials` writes the mesh's material as MToon
-    /// rather than as the PBR it describes, as it does for `append`.
+    /// The placement is ``addNode(name:parent:transform:)``'s, so
+    /// `GLTFEditableDocument()` followed by one `addMesh` is a whole asset. The
+    /// vertex data is packed tightly into the BIN buffer and written as one
+    /// triangle primitive over it, and a VRM 0.x model gets the
+    /// `materialProperties` entry that keeps that array parallel to its materials.
     ///
     /// A mesh glTF cannot describe is refused and the document left as it was.
     /// See ``GLTFTriangleMesh`` for what that rules out.
     @discardableResult
-    public func addMesh(_ mesh: GLTFTriangleMesh,
-                        under parentNode: Int? = nil,
+    public mutating func addMesh(_ mesh: GLTFTriangleMesh,
+                        under parentNode: GLTFNodeIndex? = nil,
                         name: String? = nil,
                         transform: GLTFNodeTransform = .identity,
-                        materials: GLTFMaterialConversion = .keep) throws -> Int {
+                        materials: GLTFMaterialConversion = .keep) throws -> GLTFNodeIndex {
         // Resolve everything that can fail before any resource is appended. The
         // MToon conversion can still fail once the mesh has been written.
         let validated = try mesh.validate()
         try transform.validate()
-        let placement = try resolveNodePlacement(under: parentNode)
+        let placement = try resolveNodePlacement(under: parentNode?.rawValue)
 
-        return try atomicallyAppendingBinary {
-            let material = try mesh.material.map { try appendMaterial($0, mediaType: validated.imageMediaType) }
-            let primitive = appendPrimitive(of: mesh, validated: validated, material: material)
+        return try atomically { document in
+            let material = try mesh.material.map { try document.appendMaterial($0, mediaType: validated.imageMediaType) }
+            let primitive = document.appendPrimitive(of: mesh, validated: validated, material: material)
 
             var meshObject = JSONObject()
             meshObject.set("name", name)
-            meshObject["primitives"] = [primitive]
-            let meshIndex = json.appendObject(meshObject, to: .meshes)
+            meshObject["primitives"] = .objects([primitive])
+            let meshIndex = document.json.appendObject(meshObject, to: .meshes)
 
             var node = JSONObject()
             node.set("name", name)
             transform.write(into: &node)
-            node["mesh"] = meshIndex
-            let index = appendNode(node, at: placement)
+            node["mesh"] = .int(meshIndex)
+            let index = document.appendNode(node, at: placement)
 
             if case .mtoon(let style) = materials, let material {
-                try convertMaterialsToMToon(at: [material], style: style)
+                try document.convertMaterialsToMToon(at: [GLTFMaterialIndex(material)], style: style)
             }
-            return index
+            return GLTFNodeIndex(index)
         }
     }
 
     // MARK: - Primitive
 
     /// `mode` is left out: 4, triangles, is what glTF defaults to.
-    private func appendPrimitive(of mesh: GLTFTriangleMesh,
+    private mutating func appendPrimitive(of mesh: GLTFTriangleMesh,
                                  validated: ValidatedTriangleMesh,
                                  material: Int?) -> JSONObject {
         var attributePayloads: [(name: String, payload: AccessorPayload)] = [
-            ("POSITION", AccessorPayload(data: packed(mesh.positions),
+            ("POSITION", AccessorPayload(data: Self.packed(mesh.positions),
                                          type: .VEC3,
                                          componentType: .float,
                                          count: mesh.positions.count,
@@ -66,14 +61,14 @@ extension GLTFEditableDocument {
                                          bounds: validated.positionBounds))
         ]
         if let normals = mesh.normals {
-            attributePayloads.append(("NORMAL", AccessorPayload(data: packed(normals),
+            attributePayloads.append(("NORMAL", AccessorPayload(data: Self.packed(normals),
                                                                  type: .VEC3,
                                                                  componentType: .float,
                                                                  count: normals.count,
                                                                  target: .arrayBuffer)))
         }
         if let textureCoordinates = mesh.textureCoordinates {
-            attributePayloads.append(("TEXCOORD_0", AccessorPayload(data: packed(textureCoordinates),
+            attributePayloads.append(("TEXCOORD_0", AccessorPayload(data: Self.packed(textureCoordinates),
                                                                      type: .VEC2,
                                                                      componentType: .float,
                                                                      count: textureCoordinates.count,
@@ -81,14 +76,14 @@ extension GLTFEditableDocument {
         }
 
         let payloads = attributePayloads.map(\.payload)
-            + [indexPayload(mesh.indices, maximum: validated.maximumIndex)]
+            + [Self.indexPayload(mesh.indices, maximum: validated.maximumIndex)]
         let accessorIndices = appendAccessors(payloads)
         var attributes = JSONObject()
         for (attribute, index) in zip(attributePayloads, accessorIndices) {
-            attributes[attribute.name] = index
+            attributes[attribute.name] = .int(index)
         }
-        var primitive: JSONObject = ["attributes": attributes,
-                                     "indices": accessorIndices[attributePayloads.count]]
+        var primitive: JSONObject = ["attributes": .object(attributes),
+                                     "indices": .int(accessorIndices[attributePayloads.count])]
         primitive.set("material", material)
         return primitive
     }
@@ -96,7 +91,7 @@ extension GLTFEditableDocument {
     /// `UInt16` where the indices fit in one, and `UInt32` where they do not.
     /// `UInt16.max` is glTF's primitive restart value, so a mesh reaching it is
     /// written wide.
-    private func indexPayload(_ indices: [UInt32], maximum: UInt32) -> AccessorPayload {
+    private static func indexPayload(_ indices: [UInt32], maximum: UInt32) -> AccessorPayload {
         guard maximum >= UInt32(UInt16.max) else {
             return AccessorPayload(data: packedIntegers(indices, as: UInt16.self),
                                    type: .SCALAR,
@@ -143,7 +138,7 @@ extension GLTFEditableDocument {
     /// Appends each payload to the BIN buffer as a buffer view of its own, with
     /// an accessor over the whole of it. Tightly packed, so no `byteStride`: glTF
     /// reads a missing one as the accessor's element size.
-    private func appendAccessors(_ payloads: [AccessorPayload]) -> [Int] {
+    private mutating func appendAccessors(_ payloads: [AccessorPayload]) -> [Int] {
         let viewBase = json.count(.bufferViews)
         let accessorBase = json.count(.accessors)
         var views: [JSONObject] = []
@@ -153,16 +148,16 @@ extension GLTFEditableDocument {
 
         for payload in payloads {
             views.append(["buffer": 0,
-                          "byteOffset": appendToBinary(payload.data),
-                          "byteLength": payload.data.count,
-                          "target": payload.target.rawValue])
-            var accessor: JSONObject = ["bufferView": viewBase + views.count - 1,
-                                        "componentType": payload.componentType.rawValue,
-                                        "count": payload.count,
-                                        "type": payload.type.rawValue]
+                          "byteOffset": .int(appendToBinary(payload.data)),
+                          "byteLength": .int(payload.data.count),
+                          "target": .int(payload.target.rawValue)])
+            var accessor: JSONObject = ["bufferView": .int(viewBase + views.count - 1),
+                                        "componentType": .int(payload.componentType.rawValue),
+                                        "count": .int(payload.count),
+                                        "type": .string(payload.type.rawValue)]
             if let bounds = payload.bounds {
-                accessor["min"] = bounds.min
-                accessor["max"] = bounds.max
+                accessor["min"] = .numbers(bounds.min)
+                accessor["max"] = .numbers(bounds.max)
             }
             accessors.append(accessor)
         }
@@ -171,7 +166,7 @@ extension GLTFEditableDocument {
         return payloads.indices.map { accessorBase + $0 }
     }
 
-    private func packed<Vector: SIMD>(_ values: [Vector]) -> Data where Vector.Scalar == Float {
+    private static func packed<Vector: SIMD>(_ values: [Vector]) -> Data where Vector.Scalar == Float {
         let byteCount = values.count * Vector.scalarCount * MemoryLayout<UInt32>.size
         var data = Data(count: byteCount)
         data.withUnsafeMutableBytes { buffer in
@@ -188,7 +183,7 @@ extension GLTFEditableDocument {
         return data
     }
 
-    private func packedIntegers<Integer: FixedWidthInteger>(_ values: [UInt32], as: Integer.Type) -> Data {
+    private static func packedIntegers<Integer: FixedWidthInteger>(_ values: [UInt32], as: Integer.Type) -> Data {
         let byteCount = values.count * MemoryLayout<Integer>.size
         var data = Data(count: byteCount)
         data.withUnsafeMutableBytes { buffer in
@@ -205,35 +200,35 @@ extension GLTFEditableDocument {
 
     /// Writes the material and whatever it needs: an image, a texture, an
     /// extension declaration, a VRM 0.x property.
-    private func appendMaterial(_ material: GLTFSimpleMaterial, mediaType: String?) throws -> Int {
+    private mutating func appendMaterial(_ material: GLTFSimpleMaterial, mediaType: String?) throws -> Int {
         // glTF defaults a material to fully metallic, which is a mirror rather
         // than the plate this builds.
         var pbr: JSONObject = ["metallicFactor": 0]
         let color = material.baseColorFactor
         if color != SIMD4(1, 1, 1, 1) {
-            pbr["baseColorFactor"] = [color.x, color.y, color.z, color.w]
+            pbr["baseColorFactor"] = .simd(color)
         }
         if let image = material.baseColorImage, let mediaType {
             let texture = appendTexture(image, mediaType: mediaType, sampler: material.baseColorSampler)
-            pbr["baseColorTexture"] = ["index": texture]
+            pbr["baseColorTexture"] = ["index": .int(texture)]
         }
 
-        var object: JSONObject = ["pbrMetallicRoughness": pbr]
+        var object: JSONObject = ["pbrMetallicRoughness": .object(pbr)]
         object.set("name", material.name)
         switch material.alphaMode {
         case .opaque:
             break  // OPAQUE is what glTF reads a material naming no mode as.
         case .mask(let cutoff):
-            object["alphaMode"] = GLTF.Material.AlphaMode.MASK.rawValue
-            object["alphaCutoff"] = cutoff
+            object["alphaMode"] = .string(GLTF.Material.AlphaMode.MASK.rawValue)
+            object["alphaCutoff"] = .number(cutoff)
         case .blend:
-            object["alphaMode"] = GLTF.Material.AlphaMode.BLEND.rawValue
+            object["alphaMode"] = .string(GLTF.Material.AlphaMode.BLEND.rawValue)
         }
         if material.isDoubleSided {
             object["doubleSided"] = true
         }
         if material.isUnlit {
-            object["extensions"] = [GLTFExtension.materialsUnlit.rawValue: JSONObject()]
+            object["extensions"] = [GLTFExtension.materialsUnlit.rawValue: .object([:])]
             declareExtensions(used: [GLTFExtension.materialsUnlit.rawValue])
         }
 

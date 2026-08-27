@@ -67,11 +67,11 @@ struct VRMSceneKitTests {
         // The face mesh is three primitives over one POSITION accessor, of
         // which only the first carries targets; the second gets one of its own.
         let data = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-            var meshes = json["meshes"] as! [[String: Any]]
-            var primitives = meshes[3]["primitives"] as! [[String: Any]]
+            var meshes = json.objects("meshes")
+            var primitives = meshes[3].objects("primitives")
             primitives[1]["targets"] = [["POSITION": 33]]
-            meshes[3]["primitives"] = primitives
-            json["meshes"] = meshes
+            meshes[3]["primitives"] = .objects(primitives)
+            json["meshes"] = .objects(meshes)
         }
 
         let scene = try VRMSceneLoader(withData: data).loadScene()

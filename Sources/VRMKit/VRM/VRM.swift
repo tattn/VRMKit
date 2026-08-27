@@ -1,8 +1,7 @@
 import Foundation
 import simd
 
-/// VRM data, supporting both VRM0 and VRM1 formats
-public enum VRM {
+public enum VRM: Sendable {
     case v0(VRM0)
     case v1(VRM1)
 
@@ -26,13 +25,9 @@ public enum VRM {
     /// Reads whichever version an already-loaded document holds. The document
     /// is handed on rather than parsed again.
     public init(document: GLTFDocument) throws {
-        switch VRMSpecVersion(rootExtensions: try document.gltf.rootExtensions()) {
-        case .v1:
-            self = .v1(try VRM1(document: document))
-        // A document that is no VRM at all is read as the 0.x it most looks
-        // like, and ``VRM0`` is what says it is not one.
-        case .v0, nil:
-            self = .v0(try VRM0(document: document))
+        switch try VRMSpecVersion(rootExtensions: try document.gltf.rootExtensions()) {
+        case .v0: self = .v0(try VRM0(document: document))
+        case .v1: self = .v1(try VRM1(document: document))
         }
     }
 
@@ -47,7 +42,6 @@ public enum VRM {
         }
     }
 
-    /// VRM spec version string
     public var specVersion: String {
         switch self {
         case .v0(let vrm): return vrm.version ?? "0.x"

@@ -6,7 +6,7 @@ import Foundation
 /// the fields VRMKit reads, so an edit changes nothing but what it was asked to.
 /// Loading pulls every resource into a single BIN buffer, so a `.gltf` with
 /// external files or data URIs saves as one self-contained GLB.
-public final class GLTFEditableDocument {
+public struct GLTFEditableDocument {
     var json: JSONObject
 
     /// The single buffer every buffer view indexes into. Its JSON `byteLength`
@@ -22,7 +22,7 @@ public final class GLTFEditableDocument {
 
     /// Loads GLB or JSON glTF data. External resources of a `.gltf` resolve
     /// against `rootDirectory`, as they do for ``GLTFDocument``.
-    public convenience init(data: Data, rootDirectory: URL? = nil) throws {
+    public init(data: Data, rootDirectory: URL? = nil) throws {
         try self.init(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
     }
 
@@ -39,8 +39,7 @@ public final class GLTFEditableDocument {
 
     /// Writes the document as a GLB: the JSON chunk, then the BIN chunk.
     public func serialize() throws -> Data {
-        var jsonChunk = try JSONSerialization.data(withJSONObject: jsonSnapshot(),
-                                                   options: [.sortedKeys, .withoutEscapingSlashes])
+        var jsonChunk = try JSONValue.object(jsonSnapshot()).serialized()
         jsonChunk.padToFourByteBoundary(with: 0x20)
         let binaryPadding = binary.isEmpty ? 0 : binary.fourByteBoundaryPadding
         let binaryLength = binary.count + binaryPadding
@@ -69,13 +68,13 @@ public final class GLTFEditableDocument {
 }
 
 extension GLTFEditableDocument {
-    func appendToBinary(_ data: Data) -> Int {
+    mutating func appendToBinary(_ data: Data) -> Int {
         binary.appendAligned(data)
     }
 
     /// Adds to the lists a document has to carry for every extension it names.
     /// `required` is the subset of `used` a renderer cannot do without.
-    func declareExtensions(used: Set<String>, required: Set<String> = []) {
+    mutating func declareExtensions(used: Set<String>, required: Set<String> = []) {
         declare(used.union(required), in: "extensionsUsed")
         declare(required, in: "extensionsRequired")
     }
@@ -93,22 +92,22 @@ extension GLTFEditableDocument {
     /// other field of it as it was. A document carrying no such extension is
     /// given one and declares it.
     @discardableResult
-    func updateRootExtension<T>(_ name: String, _ body: (inout JSONObject) throws -> T) throws -> T {
+    mutating func updateRootExtension<T>(_ name: String, _ body: (inout JSONObject) throws -> T) throws -> T {
         let existing = try rootExtensionObject(name)
         var extensionObject = existing ?? [:]
         let result = try body(&extensionObject)
         var extensions = rootExtensions
-        extensions[name] = extensionObject
-        json["extensions"] = extensions
+        extensions[name] = .object(extensionObject)
+        json["extensions"] = .object(extensions)
         if existing == nil {
             declareExtensions(used: [name])
         }
         return result
     }
 
-    private func declare(_ names: Set<String>, in key: String) {
+    mutating private func declare(_ names: Set<String>, in key: String) {
         guard !names.isEmpty else { return }
-        json[key] = Set(json.strings(key)).union(names).sorted()
+        json[key] = .strings(Set(json.strings(key)).union(names).sorted())
     }
 
     /// The editable JSON with its one derived buffer entry materialized.
@@ -120,28 +119,20 @@ extension GLTFEditableDocument {
         }
         var buffer = snapshot.objects(.buffers).first ?? [:]
         buffer.removeValue(forKey: "uri")
-        buffer["byteLength"] = binary.count
-        snapshot[.buffers] = [buffer]
+        buffer["byteLength"] = .int(binary.count)
+        snapshot.setObjects([buffer], for: .buffers)
         return snapshot
     }
 
-    /// Runs `body`, which may only append to the BIN buffer, so that it either
-    /// takes effect whole or not at all.
-    ///
-    /// The buffer is rolled back by its length rather than by a saved copy, whose
-    /// second reference would make the next append copy the whole of it. An edit
-    /// that relays the buffer out swaps in a new one instead, as ``prune()`` does.
-    func atomicallyAppendingBinary<T>(_ body: () throws -> T) throws -> T {
-        let savedJSON = json
-        let savedBinaryCount = binary.count
+    /// Runs `body` so that it either takes effect whole or not at all. A document
+    /// is a value, so the whole of it is the snapshot, and copy on write means
+    /// nothing is copied unless the failed edit had already written.
+    mutating func atomically<T>(_ body: (inout GLTFEditableDocument) throws -> T) throws -> T {
+        let saved = self
         do {
-            let result = try body()
-            assert(binary.count >= savedBinaryCount, "an atomic edit may only append to the BIN buffer")
-            return result
+            return try body(&self)
         } catch {
-            assert(binary.count >= savedBinaryCount, "an atomic edit may only append to the BIN buffer")
-            json = savedJSON
-            binary.removeLast(binary.count - savedBinaryCount)
+            self = saved
             throw error
         }
     }
@@ -173,15 +164,14 @@ extension GLTFEditableDocument {
         let images = try embeddingImages(json.objects(.images),
                                          relativeTo: document.rootDirectory,
                                          into: &views) { binary.appendAligned($0) }
-        if !images.isEmpty { json[.images] = images }
-        if !views.isEmpty { json[.bufferViews] = views }
+        if !images.isEmpty { json.setObjects(images, for: .images) }
+        if !views.isEmpty { json.setObjects(views, for: .bufferViews) }
         return binary
     }
 
     /// Merging several buffers into the one a GLB holds moves byte offsets, and an
-    /// unknown extension may name a buffer and an offset itself the way
-    /// `EXT_meshopt_compression` does, so such a document is refused. One already
-    /// on a single buffer keeps every offset it had.
+    /// unknown extension may name an offset itself the way
+    /// `EXT_meshopt_compression` does, so such a document is refused.
     private static func validateRelayout(of json: JSONObject) throws {
         let buffers = json.count(.buffers)
         guard buffers > 1 else { return }
@@ -195,21 +185,19 @@ extension GLTFEditableDocument {
     }
 
     /// Reads every image kept in a file or a data URI into the BIN buffer, adding
-    /// a buffer view for each. `viewOffset` is where `views` lands in the document
-    /// the images end up in, so loading and merging can share the one mapping.
-    static func embeddingImages(_ images: [JSONObject],
-                                relativeTo rootDirectory: URL?,
-                                into views: inout [JSONObject],
-                                viewOffset: Int = 0,
-                                appendingWith append: (Data) -> Int) throws -> [JSONObject] {
+    /// a buffer view for each.
+    private static func embeddingImages(_ images: [JSONObject],
+                                        relativeTo rootDirectory: URL?,
+                                        into views: inout [JSONObject],
+                                        appendingWith append: (Data) -> Int) throws -> [JSONObject] {
         try images.map { image in
             var image = image
             guard let uri = image.string("uri") else { return image }
             let data = try Data(gltfUrlString: uri, relativeTo: rootDirectory)
-            views.append(["buffer": 0, "byteOffset": append(data), "byteLength": data.count])
+            views.append(["buffer": 0, "byteOffset": .int(append(data)), "byteLength": .int(data.count)])
             image.removeValue(forKey: "uri")
-            image["bufferView"] = viewOffset + views.count - 1
-            image["mimeType"] = try image.string("mimeType") ?? mimeType(forURI: uri, data: data)
+            image["bufferView"] = .int(views.count - 1)
+            image["mimeType"] = .string(try image.string("mimeType") ?? mimeType(forURI: uri, data: data))
             return image
         }
     }

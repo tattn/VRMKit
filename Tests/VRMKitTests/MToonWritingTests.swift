@@ -21,7 +21,7 @@ struct MToonWritingTests {
     /// convert with `StandardMToonConverter`, and nothing may be lost after it.
     @Test
     func testWrittenMToonExtensionReadsBackAsTheConvertedMaterial() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
 
         try document.append(source, under: 0, materials: .mtoon(style))
@@ -34,7 +34,7 @@ struct MToonWritingTests {
 
     @Test
     func testWrittenVRM0PropertyReadsBackAsTheConvertedMaterial() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
 
         try document.append(source, under: 0, materials: .mtoon(style))
@@ -50,7 +50,7 @@ struct MToonWritingTests {
     /// and the normal scale only really move when the material has some.
     @Test
     func testAColoredCutoutMaterialReadsBackAsItWasConverted() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: Data(Self.coloredCutoutSource.utf8))
 
         try document.append(source, under: 0, materials: .mtoon(style))
@@ -73,7 +73,7 @@ struct MToonWritingTests {
     /// overwrite.
     @Test
     func testAppendingWithMToonKeepsAuthoredMToonMaterials() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let source = try GLTFDocument(data: VRMSampleAsset.seedSan.data)
         let authored = try #require(source.gltf.materials)
         let materialsBefore = try document.typed().materials?.count ?? 0
@@ -98,7 +98,7 @@ struct MToonWritingTests {
     /// shading in the Unity property that avatar's runtime reads.
     @Test
     func testAppendingAVRM1MToonSourceIntoAVRM0WritesItsAuthoredShading() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: VRMSampleAsset.seedSan.data)
         let materials = try #require(source.gltf.materials)
         // A material the style would have shaded differently, so that keeping
@@ -125,7 +125,7 @@ struct MToonWritingTests {
     /// of the material, and a material with no textures has none to carry.
     @Test
     func testATextureLessMaterialConvertsIntoAVRM0() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: Data(Self.textureLessSource.utf8))
 
         try document.append(source, under: 0, materials: .mtoon(style))
@@ -200,8 +200,8 @@ struct MToonWritingTests {
         // Both are `Transparent` to Unity; only the queue separates them.
         #expect(zWrite.tagMap["RenderType"] == "Transparent")
         #expect(plain.tagMap["RenderType"] == "Transparent")
-        #expect(zWrite.floatProperties.dictionaryValue.float("_BlendMode") == 3)
-        #expect(plain.floatProperties.dictionaryValue.float("_BlendMode") == 2)
+        #expect(zWrite.floatProperties["_BlendMode"] == 3)
+        #expect(plain.floatProperties["_BlendMode"] == 2)
     }
 
     /// A screen-space outline is halved on the way out of VRM 0.x, so the
@@ -273,11 +273,10 @@ struct MToonWritingTests {
         uvAnimationMaskTexture: .init(index: 9)
     )
 
-    /// The same, less what VRM 0.x cannot carry: the rim lighting mix its
-    /// migration pins to 1, a render queue offset a single material has no room
-    /// for, a matcap factor it has no property for, a shading shift texture,
-    /// per-texture transforms and a second UV set. It can say one thing MToon
-    /// 1.0 cannot, which is that the front faces are the culled ones.
+    /// The same, less what VRM 0.x cannot carry: the rim lighting mix, a render
+    /// queue offset, a matcap factor, a shading shift texture, per-texture
+    /// transforms and a second UV set. It can say one thing MToon 1.0 cannot,
+    /// which is that the front faces are the culled ones.
     private static let vrm0RepresentableDescriptor = richDescriptor
         .with {
             $0.matcapFactor = SIMD3<Float>(1, 1, 1)
@@ -294,24 +293,22 @@ struct MToonWritingTests {
     /// A glTF material carrying the standard values of `descriptor`, which is
     /// where MToon leaves them, plus an MToon extension when there is one.
     private static func material(mtoon: JSONObject?, of descriptor: MToonMaterialDescriptor) throws -> GLTF.Material {
+        var pbrMetallicRoughness: JSONObject = ["baseColorFactor": .simd(descriptor.baseColorFactor)]
+        pbrMetallicRoughness.set("baseColorTexture", descriptor.baseColorTexture?.textureInfo())
         var material: JSONObject = [
-            "pbrMetallicRoughness": [
-                "baseColorFactor": [descriptor.baseColorFactor.x, descriptor.baseColorFactor.y,
-                                    descriptor.baseColorFactor.z, descriptor.baseColorFactor.w],
-                "baseColorTexture": descriptor.baseColorTexture?.textureInfo() as Any,
-            ] as JSONObject,
-            "emissiveFactor": [descriptor.emissiveFactor.x, descriptor.emissiveFactor.y, descriptor.emissiveFactor.z],
-            "alphaMode": descriptor.alphaMode.rawValue,
-            "alphaCutoff": descriptor.alphaCutoff,
-            "doubleSided": descriptor.cullMode == .none,
+            "pbrMetallicRoughness": .object(pbrMetallicRoughness),
+            "emissiveFactor": .simd(descriptor.emissiveFactor),
+            "alphaMode": .string(descriptor.alphaMode.rawValue),
+            "alphaCutoff": .number(descriptor.alphaCutoff),
+            "doubleSided": .bool(descriptor.cullMode == .none),
         ]
         material.set("emissiveTexture", descriptor.emissiveTexture?.textureInfo())
         if let normalTexture = descriptor.normalTexture {
             var info = normalTexture.textureInfo()
-            info["scale"] = descriptor.normalScale
-            material["normalTexture"] = info
+            info["scale"] = .number(descriptor.normalScale)
+            material["normalTexture"] = .object(info)
         }
-        material.set("extensions", mtoon.map { [GLTFExtension.materialsMToon.rawValue: $0] as JSONObject })
+        material.set("extensions", mtoon.map { [GLTFExtension.materialsMToon.rawValue: JSONValue.object($0)] })
         return try material.decode(GLTF.Material.self)
     }
 
@@ -322,7 +319,12 @@ struct MToonWritingTests {
         "asset": {"version": "2.0"},
         "scene": 0,
         "scenes": [{"nodes": [0]}],
-        "nodes": [{"name": "plain"}],
+        "nodes": [{"name": "plain", "mesh": 0}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "material": 0}]}],
+        "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"}],
+        "bufferViews": [{"buffer": 0, "byteLength": 36}],
+        "buffers": [{"uri": "data:application/octet-stream;base64,\
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "byteLength": 36}],
         "materials": [{"name": "plain", "pbrMetallicRoughness": {"baseColorFactor": [0.2, 0.4, 0.6, 1]}}]
     }
     """
@@ -332,7 +334,12 @@ struct MToonWritingTests {
         "asset": {"version": "2.0"},
         "scene": 0,
         "scenes": [{"nodes": [0]}],
-        "nodes": [{"name": "colored"}],
+        "nodes": [{"name": "colored", "mesh": 0}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "material": 0}]}],
+        "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"}],
+        "bufferViews": [{"buffer": 0, "byteLength": 36}],
+        "buffers": [{"uri": "data:application/octet-stream;base64,\
+    AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "byteLength": 36}],
         "materials": [{
             "name": "colored",
             "pbrMetallicRoughness": {"baseColorFactor": [0.2, 0.4, 0.6, 1]},

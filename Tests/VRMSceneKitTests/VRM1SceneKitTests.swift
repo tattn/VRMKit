@@ -59,22 +59,22 @@ struct VRM1SceneLoaderTests {
     @Test
     func testExpressionReturnsInputWeightRatherThanScaledMorphWeight() throws {
         let data = try VRMSampleAsset.seedSan.rewritingJSON { json in
-            guard var extensions = json["extensions"] as? [String: Any],
-                  var vrm = extensions["VRMC_vrm"] as? [String: Any],
-                  var expressions = vrm["expressions"] as? [String: Any],
-                  var preset = expressions["preset"] as? [String: Any],
-                  var aa = preset["aa"] as? [String: Any],
-                  var binds = aa["morphTargetBinds"] as? [[String: Any]],
+            guard var extensions = json.object("extensions"),
+                  var vrm = extensions.object("VRMC_vrm"),
+                  var expressions = vrm.object("expressions"),
+                  var preset = expressions.object("preset"),
+                  var aa = preset.object("aa"),
+                  case var binds = aa.objects("morphTargetBinds"),
                   !binds.isEmpty else {
                 throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
             }
             binds[0]["weight"] = 0.25
-            aa["morphTargetBinds"] = binds
-            preset["aa"] = aa
-            expressions["preset"] = preset
-            vrm["expressions"] = expressions
-            extensions["VRMC_vrm"] = vrm
-            json["extensions"] = extensions
+            aa["morphTargetBinds"] = .objects(binds)
+            preset["aa"] = .object(aa)
+            expressions["preset"] = .object(preset)
+            vrm["expressions"] = .object(expressions)
+            extensions["VRMC_vrm"] = .object(vrm)
+            json["extensions"] = .object(extensions)
         }
         let loader = try VRMSceneLoader(withData: data)
         let vrmNode = try loader.loadScene().vrmNode
@@ -86,17 +86,21 @@ struct VRM1SceneLoaderTests {
         #expect(abs(binding.mesh.weight(forTargetAt: binding.index) - 0.2) < 0.001)
     }
 
+    /// A `thirdPersonOnly` mesh goes in first person. What goes is the mesh,
+    /// not the node drawing it, so the nodes hanging off that one keep drawing.
     @Test
-    func testVRM1FirstPersonAnnotationsUseNodes() throws {
+    func testVRM1ThirdPersonOnlyMeshIsHiddenInFirstPerson() throws {
         let vrmLoader = try vrmLoader()
         let scene = try vrmLoader.loadScene()
         let annotatedNode = try vrmLoader.node(withNodeIndex: 0)
+        let mesh = try #require(annotatedNode.childNodes.first)
 
-        #expect(annotatedNode.isHidden == false)
+        #expect(mesh.isHidden == false)
         scene.vrmNode.setFirstPersonRenderMode(.firstPerson)
-        #expect(annotatedNode.isHidden == true)
-        scene.vrmNode.setFirstPersonRenderMode(.thirdPerson)
+        #expect(mesh.isHidden == true)
         #expect(annotatedNode.isHidden == false)
+        scene.vrmNode.setFirstPersonRenderMode(.thirdPerson)
+        #expect(mesh.isHidden == false)
     }
 
     @Test

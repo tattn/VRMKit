@@ -59,11 +59,9 @@ package extension GLTFExtension {
     /// may hold references of any shape.
     static let known = names(of: allCases)
 
-    /// The extensions pruning can follow every reference of, spelled out
-    /// rather than derived from ``known`` so that a case added to this enum
-    /// does not quietly widen what pruning walks. `KHR_animation_pointer` names
-    /// its target in a string this cannot read, and `KHR_audio` hangs its
-    /// buffer views off a draft this package has never read.
+    /// The extensions pruning can follow every reference of, spelled out rather
+    /// than derived from ``known`` so that a new case does not quietly widen what
+    /// pruning walks.
     static let prunable = names(of: [
         .vrm0, .vrm1, .springBone, .vrmAnimation,
         .nodeConstraint, .materialsMToon,
@@ -99,29 +97,29 @@ package extension JSONObject {
         declaredExtensions().union(nestedExtensions())
     }
 
-    /// Every extension carried anywhere in this object: at its root, on a node,
-    /// a primitive, a buffer view, a material, or inside another extension.
-    /// glTF has a document declare all of them in `extensionsUsed`, so reading
-    /// the tree itself is what catches the one that does not, whose contents
-    /// are no more knowable for that.
+    /// Every extension carried anywhere in this object: at its root, on a node, a
+    /// primitive, a buffer view, a material, or inside another extension.
     func nestedExtensions() -> Set<String> {
         var names: Set<String> = []
-        collectExtensionNames(in: self, into: &names)
+        collectExtensionNames(in: .object(self), into: &names)
         return names
     }
 }
 
 /// `extras` is the document's own data, so a key named `extensions` in there is
 /// not one.
-private func collectExtensionNames(in value: Any, into names: inout Set<String>) {
-    if let object = value as? JSONObject {
+private func collectExtensionNames(in value: JSONValue, into names: inout Set<String>) {
+    switch value {
+    case .object(let object):
         names.formUnion((object.object("extensions") ?? [:]).keys)
         for (key, nested) in object where key != "extras" {
             collectExtensionNames(in: nested, into: &names)
         }
-    } else if let array = value as? [Any] {
-        for element in array {
+    case .array(let elements):
+        for element in elements {
             collectExtensionNames(in: element, into: &names)
         }
+    default:
+        break
     }
 }

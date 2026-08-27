@@ -1,7 +1,7 @@
 import Foundation
 
 extension GLTF {
-    public struct Matrix: Codable {
+    public struct Matrix: Codable, Sendable {
         /// The 16 values of a 4x4 matrix, in glTF's column-major order.
         public let values: [Float]
 

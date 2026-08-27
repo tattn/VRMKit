@@ -21,8 +21,8 @@ struct GLTFSnapshotTests {
     private static var options: GLTFSnapshotOptions { .init(width: size, height: size) }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private func entity(_ asset: VRMSampleAsset) throws -> VRMEntity {
-        try VRMEntityLoader(withURL: asset.url).loadEntity()
+    private func entity(_ asset: VRMSampleAsset) async throws -> VRMEntity {
+        try await VRMEntityLoader(withURL: asset.url).loadEntity()
     }
 
     /// The image as premultiplied RGBA, four bytes a pixel, row 0 at the top.
@@ -65,14 +65,12 @@ struct GLTFSnapshotTests {
         #expect(drawn.allSatisfy { !$0[0] && !$0[Self.size - 1] })
     }
 
-    /// The versions face opposite ways, so a camera placed the same way for
-    /// both would photograph one of them from behind. Pixels cannot name a
-    /// face, so the snapshot is asserted to match the view from the model's own
-    /// front and not the one from behind.
+    /// The versions face opposite ways, so the snapshot is asserted to match the
+    /// view from the model's own front and not the one from behind.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .vrm1ConstraintTwist])
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotLooksAtTheModelFromItsFront(asset: VRMSampleAsset) async throws {
-        let entity = try entity(asset)
+        let entity = try await entity(asset)
         let forward = entity.vrm.forwardDirection
         let front = try drawnPixels(try await entity.snapshot(Self.options))
         var fromForward = Self.options
@@ -89,7 +87,7 @@ struct GLTFSnapshotTests {
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotIgnoresTheEntitysOwnTransform() async throws {
-        let entity = try entity(.aliciaSolid)
+        let entity = try await entity(.aliciaSolid)
         let framed = try drawnPixels(try await entity.snapshot(Self.options))
 
         entity.position = SIMD3(10, -4, 7)
@@ -120,7 +118,7 @@ struct GLTFSnapshotTests {
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotDrawsAModelFartherAwayThanADefaultFarPlane() async throws {
-        let entity = try entity(.aliciaSolid)
+        let entity = try await entity(.aliciaSolid)
         // Kilometres tall, which puts the camera several kilometres back.
         entity.children.forEach { $0.scale *= 5000 }
 
@@ -133,7 +131,7 @@ struct GLTFSnapshotTests {
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotOptionsThatDescribeNoPictureAreRefused() async throws {
-        let entity = try entity(.aliciaSolid)
+        let entity = try await entity(.aliciaSolid)
         let refused = [
             GLTFSnapshotOptions(width: 0, height: 16),
             GLTFSnapshotOptions(width: 16, height: -1),
@@ -159,7 +157,7 @@ struct GLTFSnapshotTests {
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotLeavesTheEntityInItsScene() async throws {
-        let entity = try entity(.aliciaSolid)
+        let entity = try await entity(.aliciaSolid)
         let parent = Entity()
         parent.addChild(entity)
 
@@ -174,7 +172,7 @@ struct GLTFSnapshotTests {
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotDrawsNeitherSiblingsNorTheBackgroundByDefault() async throws {
-        let entity = try entity(.aliciaSolid)
+        let entity = try await entity(.aliciaSolid)
         let parent = Entity()
         parent.addChild(entity)
         let floor = ModelEntity(mesh: .generateBox(width: 10, height: 0.1, depth: 10),
@@ -194,7 +192,7 @@ struct GLTFSnapshotTests {
         let entity = GLTFEntity()
         let gray: CGFloat = 0.5
         var material = UnlitMaterial(applyPostProcessToneMap: false)
-        material.color = .init(tint: .init(srgbRed: gray, green: gray, blue: gray, alpha: 1))
+        material.color = .init(tint: .init(red: gray, green: gray, blue: gray, alpha: 1))
         entity.addChild(ModelEntity(mesh: .generateBox(size: 1), materials: [material]))
 
         let bytes = try rgbaBytes(try await entity.snapshot(Self.options))
@@ -226,7 +224,7 @@ struct GLTFSnapshotTests {
     func mtoonIsLitFromTheCameraRatherThanFromWhereTheEntityPoints() async throws {
         // A model whose shade color differs from its base color, so that where
         // the light comes from is something the pixels can show.
-        let entity = try entity(.vrm1ConstraintTwist)
+        let entity = try await entity(.vrm1ConstraintTwist)
         // Photographed from behind, where the entity's own light does not reach.
         var lit = Self.options
         lit.direction = -entity.vrm.forwardDirection
@@ -241,7 +239,7 @@ struct GLTFSnapshotTests {
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotLeavesTheEntitysOwnLightWhereItWas() async throws {
-        let entity = try entity(.aliciaSolid)
+        let entity = try await entity(.aliciaSolid)
         let direction = SIMD3<Float>(1, 0, 0)
         entity.setMToonLightDirection(direction)
 
@@ -263,7 +261,7 @@ struct GLTFSnapshotTests {
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotOfAnEmptyEntityIsRefused() async throws {
-        let entity = try GLTFEntityLoader(withURL: GLTFSampleAsset.triangle.url).loadEntity()
+        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.triangle.url).loadEntity()
         entity.children.forEach { $0.removeFromParent() }
         await #expect(throws: GLTFSnapshotError.self) {
             _ = try await entity.snapshot(Self.options)

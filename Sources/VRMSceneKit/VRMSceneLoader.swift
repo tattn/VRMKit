@@ -12,9 +12,10 @@ open class VRMSceneLoader {
     private let sceneData: SceneData
     /// Accessors expanded once and shared, and where they are validated.
     private let accessors: PackedAccessorCache
-    /// The document's node parents, built and validated once by
-    /// ``validateStructure()``.
+    /// Node parents, built and validated once by ``validateStructure()``.
     private var nodeHierarchy: GLTFNodeHierarchy?
+    /// Which meshes a first-person camera cuts, read as the meshes are built.
+    private var firstPersonPlan: VRMFirstPersonPlan?
 
     public init(vrm: VRM) {
         self.vrm = vrm
@@ -24,13 +25,15 @@ open class VRMSceneLoader {
     }
 
     public func loadScene() throws -> VRMScene {
-        return try loadScene(withSceneIndex: gltf.scene ?? 0)
+        try loadScene(withSceneIndex: gltf.defaultSceneIndex())
     }
 
+    /// Builds the scene at `index`. Every call returns a graph of its own, since
+    /// a node has one parent and expressions pose the materials.
     public func loadScene(withSceneIndex index: Int) throws -> VRMScene {
-        if let cache = try sceneData.load(\.scenes, index: index) { return cache }
         let hierarchy = try validateStructure()
         let gltfScene = try gltf.load(\.scenes, at: index)
+        sceneData.beginScene()
 
         let vrmNode = VRMNode(vrm: vrm)
         try hierarchy.validateSceneRoots(gltfScene.nodes ?? [], sceneIndex: index)
@@ -39,13 +42,16 @@ open class VRMSceneLoader {
         }
         vrmNode.setUpHumanoid(nodes: sceneData.nodes)
         try vrmNode.setUpBlendShapes(nodes: sceneData.nodes, meshes: sceneData.meshes, loader: self)
-        vrmNode.setUpFirstPerson(nodes: sceneData.nodes, meshes: sceneData.meshes)
-        try vrmNode.setUpNodeConstraints(gltfNodes: try gltf.load(\.nodes), loader: self)
+        vrmNode.setUpFirstPerson(plan: firstPerson(),
+                                 nodes: sceneData.nodes,
+                                 meshes: sceneData.meshes,
+                                 primitives: sceneData.firstPersonPrimitives)
+        try vrmNode.setUpNodeConstraints(gltfNodes: try gltf.load(\.nodes),
+                                         hierarchy: hierarchy,
+                                         loader: self)
         try vrmNode.setUpSpringBones(loader: self)
 
-        let scnScene = VRMScene(node: vrmNode)
-        sceneData.scenes[index] = scnScene
-        return scnScene
+        return VRMScene(node: vrmNode)
     }
 
     public func loadThumbnail() throws -> VRMImage {
@@ -54,10 +60,9 @@ open class VRMSceneLoader {
         return try image(withImageIndex: imageIndex)
     }
 
-    /// Validates, once per document, the node graph and skins the rest of the
-    /// loader takes for granted. Building a node recurses into its children and
-    /// reparents whatever it is handed, so a cyclic or multiply-parented
-    /// hierarchy has to be rejected before the first node is built.
+    /// Validates the node graph and skins, once per document. Building a node
+    /// reparents whatever it is handed, so a cyclic or multiply-parented hierarchy
+    /// has to be rejected before the first node is built.
     private func validateStructure() throws -> GLTFNodeHierarchy {
         if let nodeHierarchy { return nodeHierarchy }
         let hierarchy = try GLTFNodeHierarchy.validatingStructure(of: gltf)
@@ -65,10 +70,34 @@ open class VRMSceneLoader {
         return hierarchy
     }
 
+    func firstPerson() -> VRMFirstPersonPlan {
+        if let firstPersonPlan { return firstPersonPlan }
+        let plan = VRMFirstPersonPlan(vrm: vrm, gltf: gltf, hierarchy: nodeHierarchy ?? .none)
+        firstPersonPlan = plan
+        return plan
+    }
+
+    /// The vertices of `primitive` the head is skinned into, or nil for a
+    /// primitive no first-person camera cuts.
+    func firstPersonHeadVertices(of primitive: GLTF.Mesh.Primitive,
+                                 ofNodeAt nodeIndex: Int,
+                                 meshIndex: Int,
+                                 skinIndex: Int?) throws -> Set<Int>? {
+        let headJoints = firstPerson().headJoints(ofNodeAt: nodeIndex,
+                                                  meshIndex: meshIndex,
+                                                  skinIndex: skinIndex)
+        guard !headJoints.isEmpty,
+              let jointsAccessor = primitive.attributes[.JOINTS_0],
+              let weightsAccessor = primitive.attributes[.WEIGHTS_0] else { return nil }
+        let joints = try accessors.accessor(at: jointsAccessor).jointIndices()
+        let weights = try accessors.accessor(at: weightsAccessor).jointWeights()
+        return FirstPersonAutoMask.headVertices(joints: joints, weights: weights, headJoints: headJoints)
+    }
+
     func node(withNodeIndex index: Int) throws -> SCNNode {
         if let cache = try sceneData.load(\.nodes, index: index) { return cache }
         let gltfNode = try gltf.load(\.nodes, at: index)
-        let scnNode = try SCNNode(node: gltfNode, loader: self)
+        let scnNode = try SCNNode(node: gltfNode, at: index, loader: self)
         sceneData.nodes[index] = scnNode
         return scnNode
     }
@@ -81,20 +110,27 @@ open class VRMSceneLoader {
         return camera
     }
 
-    /// A node for the mesh at `index`. Every reference gets its own, an
-    /// `SCNNode` belonging to one parent; the geometry sources, materials and
-    /// textures underneath are still shared, which is where the weight is.
-    func mesh(withMeshIndex index: Int) throws -> SCNNode {
+    /// A node for the mesh at `index`. Every reference gets its own, an `SCNNode`
+    /// belonging to one parent, while the geometry sources, materials and textures
+    /// underneath stay shared.
+    func mesh(withMeshIndex index: Int, skinIndex: Int?, nodeIndex: Int) throws -> SCNNode {
         let gltfMesh = try gltf.load(\.meshes, at: index)
-        let mesh = try SCNNode(mesh: gltfMesh, loader: self)
-        sceneData.meshes[index, default: []].append(mesh)
+        let mesh = try SCNNode(mesh: gltfMesh,
+                               at: index,
+                               skinIndex: skinIndex,
+                               nodeIndex: nodeIndex,
+                               loader: self)
+        sceneData.meshes[index, default: []].append(.init(nodeIndex: nodeIndex, node: mesh))
         return mesh
     }
 
+    /// The sources arrive in ``GLTF/Mesh/Primitive/AttributeKey`` order rather than
+    /// the dictionary's: SceneKit resolves a material's `mappingChannel` by which
+    /// `.texcoord` source comes first.
     func attributes(_ attributes: [GLTF.Mesh.Primitive.AttributeKey: Int]) throws -> [SCNGeometrySource] {
-        return try attributes.compactMap { attribute, index in
-            guard attribute != .COLOR_0 else { return nil } // FIXME
-            let key = SceneData.GeometrySourceKey(accessor: index, semantic: semantic(of: attribute))
+        return try attributes.sortedByKey.compactMap { attribute, index in
+            guard let semantic = semantic(of: attribute) else { return nil }
+            let key = SceneData.GeometrySourceKey(accessor: index, semantic: semantic)
             if let cache = sceneData.geometrySources[key] { return cache }
             let source = SCNGeometrySource(accessor: try accessors.accessor(at: index), semantic: key.semantic)
             sceneData.geometrySources[key] = source
@@ -110,6 +146,10 @@ open class VRMSceneLoader {
 
     func inverseBindMatrix(withAccessorIndex index: Int) throws -> [InverseBindMatrix] {
         try [InverseBindMatrix](accessor: try accessors.accessor(at: index))
+    }
+
+    func recordFirstPersonPrimitive(_ primitive: FirstPersonPrimitive) {
+        sceneData.firstPersonPrimitives[ObjectIdentifier(primitive.thirdPerson)] = primitive
     }
 
     func skin(withSkinIndex index: Int) throws -> GLTF.Skin {
@@ -165,9 +205,11 @@ open class VRMSceneLoader {
         return texture
     }
 
+    /// SceneKit reads a texture's contents as a platform image, so what the
+    /// document decodes is wrapped once here and cached wrapped.
     func image(withImageIndex index: Int) throws -> VRMImage {
         if let cache = try sceneData.load(\.images, index: index) { return cache }
-        let image = try document.image(at: index)
+        let image = VRMImage(cgImage: try document.image(at: index))
         sceneData.images[index] = image
         return image
     }

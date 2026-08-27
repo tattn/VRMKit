@@ -1,3 +1,4 @@
+import OSLog
 import SceneKit
 import simd
 import VRMKit
@@ -5,23 +6,25 @@ import VRMKitRuntime
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 open class VRMNode: SCNNode {
+    private static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "VRMSceneKit")
+
     public let vrm: VRM
     public let humanoid = Humanoid()
     private var lastUpdateTime: TimeInterval?
-    private var springBones: [VRMSpringBone] = []
+    private var springBones = SpringBoneRig<SCNNode>()
 
     var expressionClips: [ExpressionKey: ExpressionClip] = [:]
     private var expressionWeights: [ExpressionKey: CGFloat] = [:]
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
-    // Every binding any expression holds, so that a target no active
-    // expression touches goes back to what it was rather than staying where
-    // the last expression to drive it left it.
+    // Every binding any expression holds, so a target no active expression
+    // touches goes back to what it was.
     private var morphBindings: [MorphBindingKey: BlendShapeBinding] = [:]
     private var colorBindings: [MaterialColorBindingKey: MaterialColorBinding] = [:]
     private var transformBindings: [ObjectIdentifier: TextureTransformBinding] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
-    private var nodeConstraints: [NodeConstraintBinding] = []
+    private var firstPersonPrimitives: [ObjectIdentifier: FirstPersonPrimitive] = [:]
+    private var nodeConstraints = NodeConstraintRig<SCNNode>()
 
     public init(vrm: VRM) {
         self.vrm = vrm
@@ -36,7 +39,9 @@ open class VRMNode: SCNNode {
         humanoid.setUp(boneNodes: vrm.boneNodes, nodes: nodes)
     }
 
-    func setUpBlendShapes(nodes: [SCNNode?], meshes: [Int: [SCNNode]], loader: VRMSceneLoader) throws {
+    func setUpBlendShapes(nodes: [SCNNode?],
+                          meshes: [Int: [SceneData.SceneMesh]],
+                          loader: VRMSceneLoader) throws {
         expressionClips = [:]
         expressionWeights = [:]
         materialColorClips = [:]
@@ -55,8 +60,8 @@ open class VRMNode: SCNNode {
                 // mesh is drawn under.
                 let morphBindings: [BlendShapeBinding] = group.binds?
                     .flatMap { bind in
-                        (meshes[bind.mesh] ?? []).flatMap { node in
-                            node.allMorphers.map {
+                        (meshes[bind.mesh] ?? []).flatMap { sceneMesh in
+                            sceneMesh.node.allMorphers.map {
                                 BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
                             }
                         }
@@ -92,7 +97,16 @@ open class VRMNode: SCNNode {
                 let colorBindings: [MaterialColorBinding] = expressionClip.expression.materialColorBinds?
                     .compactMap { bind in
                         guard bind.targetValue.count >= 3 else { return nil }
-                        guard let material = try? loader.material(withMaterialIndex: bind.material) else { return nil }
+                        // A malformed bind only invalidates that bind, never the
+                        // whole model load, so it is reported rather than thrown.
+                        guard let material = try? loader.material(withMaterialIndex: bind.material) else {
+                            Self.logger.warning("""
+                            Skipping invalid MaterialColorBind. \
+                            expression=\(expressionClip.name, privacy: .public) \
+                            materialIndex=\(bind.material)
+                            """)
+                            return nil
+                        }
                         return MaterialColorBinding(material: material,
                                                     type: bind.type,
                                                     targetValue: SIMD4<Float>(bind.targetValue, default: 1.0),
@@ -104,7 +118,15 @@ open class VRMNode: SCNNode {
 
                 let transformBindings: [TextureTransformBinding] = expressionClip.expression.textureTransformBinds?
                     .compactMap { bind in
-                        guard let material = try? loader.material(withMaterialIndex: bind.material) else { return nil }
+                        // As above, a malformed bind only invalidates itself.
+                        guard let material = try? loader.material(withMaterialIndex: bind.material) else {
+                            Self.logger.warning("""
+                            Skipping invalid TextureTransformBind. \
+                            expression=\(expressionClip.name, privacy: .public) \
+                            materialIndex=\(bind.material)
+                            """)
+                            return nil
+                        }
                         let base = material.diffuse.uvTransform
                         return TextureTransformBinding(material: material,
                                                        base: base,
@@ -118,110 +140,35 @@ open class VRMNode: SCNNode {
         }
     }
 
-    func setUpFirstPerson(nodes: [SCNNode?], meshes: [Int: [SCNNode]]) {
-        switch vrm {
-        case .v0(let vrm0):
-            firstPersonAnnotations = vrm0.firstPerson.meshAnnotations.flatMap { annotation in
-                guard let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
-                    return [FirstPersonAnnotation]()
-                }
-                return (meshes[annotation.mesh] ?? []).map {
-                    FirstPersonAnnotation(node: $0,
-                                          type: type,
-                                          hidesAutoInFirstPerson: false)
-                }
+    /// What each camera draws of each mesh. The `auto` cut is made as the meshes
+    /// are built, so this only pairs it with the node drawing it.
+    func setUpFirstPerson(plan: VRMFirstPersonPlan,
+                          nodes: [SCNNode?],
+                          meshes: [Int: [SceneData.SceneMesh]],
+                          primitives: [ObjectIdentifier: FirstPersonPrimitive]) {
+        firstPersonPrimitives = primitives
+        let head = plan.headNode.flatMap { nodes[safe: $0] ?? nil }
+        firstPersonAnnotations = meshes.sorted { $0.key < $1.key }.flatMap { meshIndex, sceneMeshes in
+            sceneMeshes.map { sceneMesh in
+                FirstPersonAnnotation(node: sceneMesh.node,
+                                      type: plan.annotation(ofNodeAt: sceneMesh.nodeIndex, meshIndex: meshIndex),
+                                      // An unskinned mesh cannot be cut, so the head takes it whole.
+                                      hidesAutoInFirstPerson: sceneMesh.node.isSameOrDescendant(of: head))
             }
-        case .v1(let vrm1):
-            let head = humanoid.node(for: .head)
-            firstPersonAnnotations = vrm1.firstPerson?.meshAnnotations.compactMap { annotation in
-                guard nodes.indices.contains(annotation.node),
-                      let node = nodes[annotation.node] else {
-                    return nil
-                }
-                let type = FirstPersonAnnotationType(vrm1Type: annotation.type)
-                return FirstPersonAnnotation(node: node,
-                                             type: type,
-                                             hidesAutoInFirstPerson: type == .auto && node.isSameOrDescendant(of: head))
-            } ?? []
         }
         setFirstPersonRenderMode(.thirdPerson)
     }
 
-    func setUpNodeConstraints(gltfNodes: [GLTF.Node], loader: VRMSceneLoader) throws {
-        guard case .v1 = vrm else {
-            nodeConstraints = []
-            return
+    func setUpNodeConstraints(gltfNodes: [GLTF.Node],
+                              hierarchy: GLTFNodeHierarchy,
+                              loader: VRMSceneLoader) throws {
+        nodeConstraints = try NodeConstraintRig.make(vrm: vrm, gltfNodes: gltfNodes, hierarchy: hierarchy) {
+            try loader.node(withNodeIndex: $0)
         }
-
-        var bindings: [NodeConstraintBinding] = []
-        for (targetIndex, gltfNode) in gltfNodes.enumerated() {
-            guard let constraint = gltfNode.extensions?.nodeConstraint?.constraint,
-                  let descriptor = VRMNodeConstraintDescriptor(constraint) else {
-                continue
-            }
-            let sourceIndex = descriptor.source
-            guard sourceIndex != targetIndex else {
-                throw VRMError._dataInconsistent("VRMC_node_constraint source must not be destination: \(targetIndex)")
-            }
-            guard gltfNodes.indices.contains(sourceIndex) else {
-                throw VRMError._dataInconsistent("VRMC_node_constraint source index is out of range: \(sourceIndex)")
-            }
-
-            let target = try loader.node(withNodeIndex: targetIndex)
-            let source = try loader.node(withNodeIndex: sourceIndex)
-            bindings.append(NodeConstraintBinding(targetIndex: targetIndex,
-                                                  sourceIndex: sourceIndex,
-                                                  descriptor: descriptor,
-                                                  target: target,
-                                                  source: source))
-        }
-        nodeConstraints = try orderNodeConstraints(
-            bindings,
-            targetIndex: { $0.targetIndex },
-            sourceIndex: { $0.sourceIndex }
-        )
     }
 
     func setUpSpringBones(loader: VRMSceneLoader) throws {
-        var springBones: [VRMSpringBone] = []
-        switch vrm {
-        case .v0(let vrm0):
-            let secondaryAnimation = vrm0.secondaryAnimation
-            let allColliderGroups = try secondaryAnimation.colliderGroups.map {
-                try VRMSpringBoneColliderGroup(colliderGroup: $0, loader: loader)
-            }
-            for boneGroup in secondaryAnimation.boneGroups {
-                guard !boneGroup.bones.isEmpty else { continue }
-                let rootBones: [SCNNode] = try boneGroup.bones.compactMap { try loader.node(withNodeIndex: $0) }
-                let centerNode = try? loader.node(withNodeIndex: boneGroup.center)
-                let colliderGroups = boneGroup.colliderGroups.compactMap { allColliderGroups[safe: $0] }
-                let springBone = VRMSpringBone(center: centerNode,
-                                               rootBones: rootBones,
-                                               setting: SpringBoneJointSetting(vrm0BoneGroup: boneGroup),
-                                               colliderGroups: colliderGroups)
-                springBones.append(springBone)
-            }
-        case .v1(let vrm1):
-            guard let springBone = vrm1.springBone else { break }
-            let allColliderGroups = try (springBone.colliderGroups ?? []).map {
-                try VRMSpringBoneColliderGroup(colliderGroup: $0, springBone: springBone, loader: loader)
-            }
-            for spring in springBone.springs ?? [] {
-                let jointNodes = try spring.joints.map { try loader.node(withNodeIndex: $0.node) }
-                // A chain of one joint is only a tail, so it swings nothing.
-                guard jointNodes.count > 1 else { continue }
-                let centerNode = try spring.center.map { try loader.node(withNodeIndex: $0) }
-                let colliderGroups = (spring.colliderGroups ?? []).compactMap { allColliderGroups[safe: $0] }
-                let chain = zip(jointNodes, spring.joints).map { node, joint in
-                    (node: node, setting: SpringBoneJointSetting(vrm1Joint: joint))
-                }
-                let springBone = VRMSpringBone(center: centerNode,
-                                               chain: chain,
-                                               colliderGroups: colliderGroups)
-                springBones.append(springBone)
-            }
-        }
-        self.springBones = springBones
+        springBones = try SpringBoneRig.make(vrm: vrm) { try loader.node(withNodeIndex: $0) }
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
@@ -231,10 +178,9 @@ open class VRMNode: SCNNode {
         applyExpressions()
     }
 
-    /// Writes every active expression at once rather than one as it is set:
-    /// VRM has expressions overlapping on a morph target, a material colour or
-    /// a UV transform add up, and has an active expression suppress the blink,
-    /// lookAt and mouth ones, neither of which one expression can answer alone.
+    /// Writes every active expression at once rather than one as it is set: VRM
+    /// has overlapping expressions add up, and has an active one suppress the
+    /// blink, lookAt and mouth expressions.
     private func applyExpressions() {
         let weights = expressionClips.effectiveWeights(of: expressionWeights.mapValues(Float.init))
 
@@ -290,9 +236,25 @@ open class VRMNode: SCNNode {
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
         for annotation in firstPersonAnnotations {
+            // An `auto` mesh is cut rather than hidden, so the body below it stays.
+            if annotation.type == .auto, applyFirstPersonCut(mode, to: annotation.node) { continue }
             annotation.node.isHidden = annotation.type.isHidden(in: mode,
                                                                 hidesAutoInFirstPerson: annotation.hidesAutoInFirstPerson)
         }
+    }
+
+    /// Draws the primitives under `node` with the triangles `mode` asks for, and
+    /// says whether any of them was cut.
+    private func applyFirstPersonCut(_ mode: FirstPersonRenderMode, to node: SCNNode) -> Bool {
+        var cut = false
+        node.enumerateHierarchy { primitiveNode, _ in
+            guard let primitive = firstPersonPrimitives[ObjectIdentifier(primitiveNode)] else { return }
+            cut = true
+            // A primitive with nothing standing in for it just goes.
+            primitive.thirdPerson.isHidden = mode == .firstPerson
+            primitive.firstPerson?.isHidden = mode == .thirdPerson
+        }
+        return cut
     }
 
     /// The key a clip is actually stored under. An expression named after a
@@ -311,51 +273,11 @@ extension VRMNode {
     public func update(at time: TimeInterval) {
         let seconds = lastUpdateTime.map { max(0, time - $0) } ?? 0
         lastUpdateTime = time
-        nodeConstraints.forEach { $0.apply() }
-        springBones.forEach({ $0.update(deltaTime: seconds) })
+        _ = nodeConstraints.apply()
+        springBones.update(deltaTime: seconds)
     }
 }
 
-@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
-private struct NodeConstraintBinding {
-    let targetIndex: Int
-    let sourceIndex: Int
-    let descriptor: VRMNodeConstraintDescriptor
-    let target: SCNNode
-    let source: SCNNode
-    let targetRestRotation: simd_quatf
-    let sourceRestRotation: simd_quatf
-
-    init(targetIndex: Int,
-         sourceIndex: Int,
-         descriptor: VRMNodeConstraintDescriptor,
-         target: SCNNode,
-         source: SCNNode) {
-        self.targetIndex = targetIndex
-        self.sourceIndex = sourceIndex
-        self.descriptor = descriptor
-        self.target = target
-        self.source = source
-        self.targetRestRotation = target.utx.localRotation
-        self.sourceRestRotation = source.utx.localRotation
-    }
-
-    func apply() {
-        let rotation = VRMNodeConstraintRuntime.evaluate(
-            descriptor,
-            sourceRestRotation: sourceRestRotation,
-            sourceLocalRotation: source.utx.localRotation,
-            sourceWorldPosition: source.utx.position,
-            destinationRestRotation: targetRestRotation,
-            destinationParentWorldRotation: target.parent?.utx.rotation ?? quat_identity_float,
-            destinationWorldPosition: target.utx.position
-        )
-        let current = target.utx.localRotation.vector
-        guard current != rotation.vector, current != -rotation.vector else { return }
-        target.utx.setLocalRotation(rotation)
-    }
-
-}
 
 /// Identifies one morph target of one morpher, so that expressions overlapping
 /// on a target accumulate into the same weight.
@@ -410,9 +332,8 @@ private struct FirstPersonAnnotation {
 }
 
 private extension SCNNode {
-    /// Every morpher below this node, each once: the primitives of a mesh
-    /// sharing a POSITION accessor share the morpher driving them, and a
-    /// weight written to it twice would count twice.
+    /// Every morpher below this node, each once: the primitives of a mesh sharing
+    /// a POSITION accessor share the morpher driving them.
     var allMorphers: [SCNMorpher] {
         var seen: Set<ObjectIdentifier> = []
         var result: [SCNMorpher] = []

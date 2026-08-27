@@ -34,8 +34,8 @@ package struct GLTFSampledTexture: Equatable, Sendable {
 
     /// Builds a texture reference from a glTF texture info, decoding
     /// `KHR_texture_transform` and its optional `texCoord` override.
-    package init(index: Int, texCoord: Int, extensions: CodableAny?) {
-        guard let transform = extensions?.dictionaryValue[GLTFExtension.textureTransform.rawValue] as? [String: Any] else {
+    package init(index: Int, texCoord: Int, extensions: JSONValue?) {
+        guard let transform = extensions?.dictionaryValue[GLTFExtension.textureTransform.rawValue]?.objectValue else {
             self.init(index: index, texCoord: texCoord)
             return
         }
@@ -72,16 +72,16 @@ package extension GLTFSampledTexture {
     /// ``init(index:texCoord:extensions:)``. An identity transform is left out
     /// so that reading it back gives no transform rather than a no-op one.
     func textureInfo() -> JSONObject {
-        var info: JSONObject = ["index": index]
+        var info: JSONObject = ["index": .int(index)]
         info.setNonZero("texCoord", texCoord)
         guard needsTextureTransform, let transform else { return info }
         var textureTransform = JSONObject()
-        textureTransform["scale"] = [transform.scale.x, transform.scale.y]
-        textureTransform["offset"] = [transform.offset.x, transform.offset.y]
+        textureTransform["scale"] = .numbers([transform.scale.x, transform.scale.y])
+        textureTransform["offset"] = .numbers([transform.offset.x, transform.offset.y])
         if transform.rotation != 0 {
-            textureTransform["rotation"] = transform.rotation
+            textureTransform["rotation"] = .number(transform.rotation)
         }
-        info["extensions"] = [GLTFExtension.textureTransform.rawValue: textureTransform] as JSONObject
+        info["extensions"] = [GLTFExtension.textureTransform.rawValue: .object(textureTransform)]
         return info
     }
 

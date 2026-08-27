@@ -11,8 +11,8 @@ import VRMKitRuntime
 /// The spec rests both skeletons in T-pose, so a bone's animated local rotation
 /// carries over after re-expressing it between the two rest orientations, and
 /// the hips translation scales by the rest hips-height ratio. A VRM 0.x model
-/// faces the other way than the VRM 1.0 convention `.vrma` files are authored
-/// in, so for one the whole animation is turned 180° around Y as well.
+/// faces the other way than a `.vrma` is authored in, so its whole animation is
+/// turned 180° around Y as well.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 final class VRMAnimationRuntime {
@@ -86,9 +86,8 @@ final class VRMAnimationRuntime {
         let animation = try gltf.load(\.animations, at: animationIndex)
         let decoder = GLTFAnimationDecoder(document: vrmAnimation.document)
 
-        // A `.vrma` is authored against VRM 1.0, and a 0.x model faces the other
-        // way, so its world turns half a circle about Y. That conjugates
-        // rotations and rotates translations; identity leaves both untouched.
+        // A 0.x model faces the other way than the `.vrma`, so its world turns
+        // half a circle about Y. Identity leaves rotations and translations alone.
         let flip = entity.vrm.forwardDirection.z < 0
             ? simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
             : quat_identity_float
@@ -137,9 +136,8 @@ final class VRMAnimationRuntime {
         // the VRM 0.x facing flip, and the rest hips-height ratio.
         let modelTransform = simd_float4x4(flip) * simd_float4x4(diagonal: SIMD4(hipsScale, hipsScale, hipsScale, 1))
 
-        // Decoded first and bound afterwards: a bone the target model lacks
-        // hands its rotation to descendants whose channels may come in any
-        // order, so every track has to be in hand before the bindings are built.
+        // Decoded first and bound afterwards: a bone the target model lacks hands
+        // its rotation to descendants whose channels may come in any order.
         var rotationTracks: [Int: GLTFKeyframeTrack<simd_quatf>] = [:]
         var translationTracks: [Int: GLTFKeyframeTrack<SIMD3<Float>>] = [:]
         var expressions: [ExpressionBinding] = []
@@ -189,11 +187,9 @@ final class VRMAnimationRuntime {
             }
         }
 
-        /// The source humanoid bones between `nodeIndex` and its nearest
-        /// ancestor bone the target model also has, root first. The pose
-        /// conversion guide has a target lacking an optional bone take its
-        /// rotation through the descendants that replaced it: a source
-        /// `upperChest` bend still reaches its neck and shoulders.
+        /// The source humanoid bones between `nodeIndex` and its nearest ancestor
+        /// bone the target model also has, root first, so a target lacking an
+        /// optional bone still takes its rotation through the descendants.
         func skippedAncestorDeltas(above nodeIndex: Int) -> [RotationDelta] {
             var deltas: [RotationDelta] = []
             var ancestor = animationRest.parent(at: nodeIndex)
@@ -285,11 +281,9 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
         return movedTransforms
     }
 
-    /// Sampled weights go to the entity in full every frame, without a cache of
-    /// what this runtime last wrote: an animation started later must be able to
-    /// take an expression over, and re-asserting a weight the entity already
-    /// holds costs nothing there, as ``VRMEntity/setExpressions(_:)`` drops the
-    /// ones that did not move.
+    /// Sampled weights go to the entity in full every frame, so an animation
+    /// started later can take an expression over.
+    /// ``VRMEntity/setExpressions(_:)`` drops the ones that did not move.
     private func applyExpressions(at time: Float) {
         guard let entity, !expressionBindings.isEmpty else { return }
         var weights: [ExpressionKey: CGFloat] = [:]

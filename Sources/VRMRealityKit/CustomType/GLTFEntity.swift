@@ -33,6 +33,15 @@ public struct GLTFMaterialPassComponent: Component {
     let isInitiallyEnabled: Bool
 }
 
+/// What a first-person camera draws of a primitive whose mesh VRM annotates
+/// `auto`: the same mesh with the head's triangles taken out.
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+struct FirstPersonMeshComponent: Component {
+    let thirdPersonMesh: MeshResource
+    /// Nil when the head draws every triangle, so nothing is left to draw.
+    let firstPersonMesh: MeshResource?
+}
+
 /// The glTF skin a model entity is skinned by. It survives `clone(recursive:)`,
 /// so a mesh built once and cloned per node still binds its own joints.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -44,8 +53,7 @@ struct GLTFSkinIndexComponent: Component {
 ///
 /// Besides the entity graph it keeps what the animation runtime binds against:
 /// the document, the node index to `Entity` mapping, the skin and morph
-/// bindings, and the render state of each glTF material, which the MToon and
-/// VRM expression runtimes drive.
+/// bindings, and the render state of each glTF material.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public class GLTFEntity: Entity {
     /// The glTF document this entity was loaded from.
@@ -75,10 +83,8 @@ public class GLTFEntity: Entity {
     private var nodeEntities: [Entity?]?
 
     /// Whether this entity carries the bindings the animation runtime drives.
-    ///
-    /// `clone(recursive:)` copies the entity graph and the document, but the
-    /// bindings point at the entities of the original, so a copy is not
-    /// animatable. Load the scene again to get one that is.
+    /// A `clone(recursive:)` copy carries none, since its bindings would point
+    /// at the entities of the original. Load the scene again to get one.
     public var hasRuntimeBindings: Bool { nodeEntities != nil }
 
     /// The entity built for the glTF node at `index`, or nil when the index is out
@@ -206,12 +212,8 @@ public class GLTFEntity: Entity {
     }
 
     /// The glTF material indices any model entity under `root` renders with,
-    /// additional render passes included, for scoping the runtime material
-    /// APIs to part of a model.
-    ///
-    /// Only this entity's own runtime is counted, so an entity loaded from
-    /// another document and parented under `root` is skipped, and a
-    /// `clone(recursive:)` copy, which carries no material runtime, is empty.
+    /// additional render passes included, for scoping the runtime material APIs
+    /// to part of a model. Only this entity's own runtime is counted.
     public func materialIndices(under root: Entity) -> Set<Int> {
         var indices: Set<Int> = []
         for modelEntity in root.modelEntitiesInHierarchy {
@@ -226,11 +228,8 @@ public class GLTFEntity: Entity {
 
     /// Shows or hides every entity drawing the additional render pass called
     /// `name`, such as MToon's outline. A hidden pass draws nothing, though it
-    /// keeps its place in the skinning and morph solvers.
-    ///
-    /// A pass a shader declared with `isInitiallyEnabled: false` is shown for
-    /// the first time this way. Read from the entity graph rather than the
-    /// material runtime state, so it works on a `clone(recursive:)` copy too.
+    /// keeps its place in the skinning and morph solvers. Read from the entity
+    /// graph, so it works on a `clone(recursive:)` copy too.
     public func setPassEnabled(_ isEnabled: Bool, named name: String) {
         forEachPass(named: name) { $0.isEnabled = isEnabled }
     }
@@ -241,16 +240,14 @@ public class GLTFEntity: Entity {
         forEachPass(named: name) { $0.isEnabled = isInitiallyEnabled($0) }
     }
 
-    /// Pass visibility a runtime override replaced, keyed by pass name, by the
-    /// glTF material overridden, and by the entity drawing it. Recording it per
-    /// material is what lets overrides scoped to different material sets
-    /// compose: each releases only the visibility it replaced.
+    /// Pass visibility a runtime override replaced, keyed by pass name, glTF
+    /// material and entity. Recording it per material lets overrides scoped to
+    /// different material sets compose.
     private var passVisibilityBeforeOverride: [String: [Int: [Entity.ID: Bool]]] = [:]
 
     /// Shows or hides the `name` passes of `materials` for as long as an
     /// override lasts, remembering the visibility they replace. Only the first
-    /// call to cover a material records it, so an override adjusting itself
-    /// still releases back to where it started.
+    /// call to cover a material records it.
     func overridePassEnabled(_ isEnabled: Bool, named name: String, forMaterials materials: Set<Int>) {
         for materialIndex in materials {
             let needsRecord = passVisibilityBeforeOverride[name]?[materialIndex] == nil
@@ -305,14 +302,13 @@ public class GLTFEntity: Entity {
 
     // MARK: - Animatable material runtime state
     //
-    // Shader parameters describe a *material*, not an entity, so they are stored
-    // once per material index and pushed to every entity that renders with it.
-    // visionOS has no `CustomMaterial`, so no material has them and these all
-    // no-op there without platform conditionals of their own.
+    // Shader parameters describe a material, not an entity, so they are stored
+    // once per material index and pushed to every entity rendering with it.
+    // visionOS has no `CustomMaterial`, so these all no-op there.
 
     /// Edits a material's animatable shader state, marking it for flush. Returns
-    /// false when no such state renders the material, or when it does not animate
-    /// the value `mutate` writes: the caller's cue to fall back to the RealityKit
+    /// false when the material has no such state or does not animate the value
+    /// `mutate` writes, which is the cue to fall back to the RealityKit
     /// material properties.
     func mutateAnimatableState(ofMaterial materialIndex: Int,
                                _ mutate: (any VRMAnimatableMaterialState) -> Bool) -> Bool {
@@ -323,8 +319,7 @@ public class GLTFEntity: Entity {
     }
 
     /// Pushes each dirty material's pending parameter writes to the GPU once per
-    /// material, instead of once per binding that touched it, and answers
-    /// whether every one of them landed.
+    /// material, and answers whether every one of them landed.
     @discardableResult
     func flushDirtyMaterialStates() -> Bool {
         var didFlushAll = true
@@ -335,7 +330,12 @@ public class GLTFEntity: Entity {
                 didFlushAll = false
                 continue
             }
-            mapMaterials(ofMaterial: materialIndex) { animatable.apply(to: $0) }
+            // A state pushing its values through a resource the materials already
+            // hold has nothing to apply, and rewriting them would copy a
+            // ModelComponent per pass entity for nothing.
+            if animatable.updatesMaterialsOnFlush {
+                mapMaterials(ofMaterial: materialIndex) { animatable.apply(to: $0) }
+            }
             materialStates[materialIndex]?.needsFlush = false
         }
         return didFlushAll
@@ -359,12 +359,9 @@ public class GLTFEntity: Entity {
     /// kind of model that knows better overrides this.
     public var frontDirection: SIMD3<Float> { SIMD3(0, 0, 1) }
 
-    /// Tells the runtime that a joint entity was posed from outside it, so that
-    /// the skinned meshes catch up on the next update.
-    ///
-    /// Animation playback, node constraints and spring bones do this for what
-    /// they move. Only code that poses a joint entity itself, a humanoid bone
-    /// driven by head tracking say, has to call it.
+    /// Tells the runtime that a joint entity was posed from outside it, so the
+    /// skinned meshes catch up on the next update. Animation playback, node
+    /// constraints and spring bones already do this for what they move.
     public func invalidateSkinPose() {
         isSkinPoseDirty = true
     }
@@ -418,6 +415,10 @@ public class GLTFEntity: Entity {
         binding.modelEntity.components.set(component)
     }
 
+    /// A skeleton pose is each joint read in the space of the joint above it,
+    /// which a joint's own transform already is whenever the skeleton and the
+    /// scene graph agree about its parent. glTF skins are authored that way, so
+    /// the common case costs no matrix work at all.
     private func jointTransforms(for binding: SkinBinding,
                                  modelWorld: simd_float4x4) -> JointTransforms {
         let jointEntities = binding.jointEntities
@@ -425,19 +426,20 @@ public class GLTFEntity: Entity {
         var transforms: [Transform] = []
         transforms.reserveCapacity(jointEntities.count)
 
-        let modelWorldInverse = simd_inverse(modelWorld)
-        // Each joint's world matrix is also its children's parent matrix.
-        let jointWorlds = jointEntities.map { $0.transformMatrix(relativeTo: nil) }
-
         for index in 0..<jointEntities.count {
-            let jointWorld = jointWorlds[index]
-            let localMatrix: simd_float4x4
+            let joint = jointEntities[index]
+            // A joint the skeleton gives no parent is read in the model's space.
+            let base: Entity
             if index < joints.count, let parentIndex = joints[index].parentIndex, parentIndex < jointEntities.count {
-                localMatrix = simd_mul(simd_inverse(jointWorlds[parentIndex]), jointWorld)
+                base = jointEntities[parentIndex]
             } else {
-                localMatrix = simd_mul(modelWorldInverse, jointWorld)
+                base = binding.modelEntity
             }
-            transforms.append(Transform(matrix: localMatrix))
+            if joint.parent === base {
+                transforms.append(joint.transform)
+            } else {
+                transforms.append(Transform(matrix: joint.transformMatrix(relativeTo: base)))
+            }
         }
 
         return JointTransforms(transforms)
@@ -451,9 +453,8 @@ extension ModelEntity {
     func applyMorphWeights(_ weights: [Float]) {
         let current = blendWeights
         guard !current.isEmpty else { return }
-        // Compared before any copy: a held pose, from a STEP segment or a
-        // paused animation, is the common case, and writing the sets would copy
-        // them and re-upload the weights for nothing.
+        // Compared before any copy: a held pose is the common case, and writing
+        // the sets would re-upload the weights for nothing.
         func differs(_ set: [Float]) -> Bool {
             weights.enumerated().contains { targetIndex, weight in
                 targetIndex < set.count && set[targetIndex] != weight

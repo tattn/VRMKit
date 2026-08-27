@@ -3,7 +3,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#accessor
 
 extension GLTF {
-    public struct Accessor: Codable {
+    public struct Accessor: Codable, Sendable {
         public let bufferView: Int?
         let _byteOffset: Int?
         public var byteOffset: Int { return _byteOffset ?? 0 }
@@ -16,8 +16,8 @@ extension GLTF {
         public let min: [Float]?
         public let sparse: Sparse?
         public let name: String?
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
 
         private enum CodingKeys: String, CodingKey {
             case bufferView
@@ -37,7 +37,7 @@ extension GLTF {
 }
 
 extension GLTF.Accessor {
-    public enum ComponentType: Int, Codable {
+    public enum ComponentType: Int, Codable, Sendable {
         case byte = 5120
         case unsignedByte = 5121
         case short = 5122
@@ -46,7 +46,7 @@ extension GLTF.Accessor {
         case float = 5126
     }
 
-    public enum `Type`: String, Codable {
+    public enum `Type`: String, Codable, Sendable {
         case SCALAR
         case VEC2
         case VEC3
@@ -56,20 +56,20 @@ extension GLTF.Accessor {
         case MAT4
     }
 
-    public struct Sparse: Codable {
+    public struct Sparse: Codable, Sendable {
         public let count: Int
         public let indices: Indices
         public let values: Values
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
 
-        public struct Indices: Codable {
+        public struct Indices: Codable, Sendable {
             public let bufferView: Int
             let _byteOffset: Int?
             public var byteOffset: Int { return _byteOffset ?? 0 }
             public let componentType: ComponentType
-            public let extensions: CodableAny?
-            public let extras: CodableAny?
+            public let extensions: JSONValue?
+            public let extras: JSONValue?
             private enum CodingKeys: String, CodingKey {
                 case bufferView
                 case _byteOffset = "byteOffset"
@@ -79,12 +79,12 @@ extension GLTF.Accessor {
             }
         }
 
-        public struct Values: Codable {
+        public struct Values: Codable, Sendable {
             public let bufferView: Int
             let _byteOffset: Int?
             public var byteOffset: Int { return _byteOffset ?? 0 }
-            public let extensions: CodableAny?
-            public let extras: CodableAny?
+            public let extensions: JSONValue?
+            public let extras: JSONValue?
             private enum CodingKeys: String, CodingKey {
                 case bufferView
                 case _byteOffset = "byteOffset"

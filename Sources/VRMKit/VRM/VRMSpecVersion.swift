@@ -6,15 +6,19 @@ enum VRMSpecVersion {
     case v0
     case v1
 
-    /// Nil for a glTF that is no VRM. A document carrying both extensions is
-    /// read as 1.0, so reading and writing agree on which describes it.
-    init?(rootExtensions: [String: Any]) {
-        if rootExtensions[GLTFExtension.vrm1.rawValue] != nil {
-            self = .v1
-        } else if rootExtensions[GLTFExtension.vrm0.rawValue] != nil {
-            self = .v0
-        } else {
-            return nil
+    /// Which version the root extensions say the document is. One carrying both,
+    /// or neither, is refused rather than read as whichever comes first.
+    init(rootExtensions: [String: some Any]) throws {
+        switch (rootExtensions[GLTFExtension.vrm0.rawValue], rootExtensions[GLTFExtension.vrm1.rawValue]) {
+        case (_?, nil): self = .v0
+        case (nil, _?): self = .v1
+        case (_?, _?):
+            throw VRMError._dataInconsistent(
+                "the document carries both \(GLTFExtension.vrm0.rawValue) and \(GLTFExtension.vrm1.rawValue), "
+                + "so which version describes it is not for this to guess"
+            )
+        case (nil, nil):
+            throw VRMError._notSupported("the document carries no VRM extension")
         }
     }
 

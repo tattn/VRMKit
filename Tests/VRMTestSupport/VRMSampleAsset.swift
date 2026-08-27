@@ -1,4 +1,5 @@
 import Foundation
+import VRMKit
 
 /// The `.vrm` fixtures that ship with the test bundle.
 public enum VRMSampleAsset: String, CaseIterable, Sendable {
@@ -19,7 +20,7 @@ public enum VRMSampleAsset: String, CaseIterable, Sendable {
 
     /// The fixture with its glTF JSON rewritten, so tests can feed the loaders
     /// malformed or unusual files without shipping extra assets.
-    public func rewritingJSON(_ modify: (inout [String: Any]) throws -> Void) throws -> Data {
+    public func rewritingJSON(_ modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         try GLBRewriter.rewritingJSON(of: data, modify)
     }
 }

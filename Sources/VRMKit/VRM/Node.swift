@@ -4,7 +4,7 @@ import simd
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#node
 
 extension GLTF {
-    public struct Node: Codable {
+    public struct Node: Codable, Sendable {
         public let camera: Int?
         public let children: [Int]?
         public let skin: Int?
@@ -25,7 +25,7 @@ extension GLTF {
         public let weights: [Float]?
         public let name: String?
         public let extensions: NodeExtensions?
-        public let extras: CodableAny?
+        public let extras: JSONValue?
 
         private enum CodingKeys: String, CodingKey {
             case camera
@@ -42,48 +42,112 @@ extension GLTF {
             case extras
         }
 
-        public struct NodeExtensions: Codable {
+        public struct NodeExtensions: Codable, Sendable {
             public let nodeConstraint: NodeConstraint?
 
             private enum CodingKeys: String, CodingKey {
                 case nodeConstraint = "VRMC_node_constraint"
             }
 
-            public struct NodeConstraint: Codable {
+            public struct NodeConstraint: Codable, Sendable {
+                /// The `VRMC_node_constraint` spec versions this type models.
+                public static func supports(specVersion: String) -> Bool {
+                    specVersion == "1.0" || specVersion == "1.0-beta"
+                }
+
                 public let specVersion: String
                 public let constraint: Constraint
-                public let extensions: CodableAny?
-                public let extras: CodableAny?
+                public let extensions: JSONValue?
+                public let extras: JSONValue?
 
-                public struct Constraint: Codable {
-                    public let roll: RollConstraint?
-                    public let aim: AimConstraint?
-                    public let rotation: RotationConstraint?
-                    public let extensions: CodableAny?
-                    public let extras: CodableAny?
+                public init(from decoder: Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    specVersion = try container.decode(String.self, forKey: .specVersion)
+                    guard Self.supports(specVersion: specVersion) else {
+                        throw VRMError._notSupported("VRMC_node_constraint specVersion \(specVersion)")
+                    }
+                    constraint = try container.decode(Constraint.self, forKey: .constraint)
+                    extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+                    extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+                }
 
-                    public struct RollConstraint: Codable {
+                /// How a node is driven by another's transform. The extension
+                /// defines exactly one per constraint, so one naming none or
+                /// several is refused rather than resolved by reading order.
+                public enum Constraint: Codable, Sendable {
+                    case roll(RollConstraint)
+                    case aim(AimConstraint)
+                    case rotation(RotationConstraint)
+
+                    private enum CodingKeys: String, CodingKey {
+                        case roll, aim, rotation
+                    }
+
+                    public init(from decoder: Decoder) throws {
+                        let container = try decoder.container(keyedBy: CodingKeys.self)
+                        let constraints: [Constraint] = [
+                            try container.decodeIfPresent(RollConstraint.self, forKey: .roll).map(Constraint.roll),
+                            try container.decodeIfPresent(AimConstraint.self, forKey: .aim).map(Constraint.aim),
+                            try container.decodeIfPresent(RotationConstraint.self, forKey: .rotation).map(Constraint.rotation),
+                        ].compactMap { $0 }
+                        guard constraints.count == 1, let constraint = constraints.first else {
+                            throw VRMError._dataInconsistent(
+                                "a VRMC_node_constraint defines one of roll, aim and rotation, "
+                                + "and this one holds \(constraints.count)"
+                            )
+                        }
+                        self = constraint
+                    }
+
+                    public func encode(to encoder: Encoder) throws {
+                        var container = encoder.container(keyedBy: CodingKeys.self)
+                        switch self {
+                        case .roll(let constraint): try container.encode(constraint, forKey: .roll)
+                        case .aim(let constraint): try container.encode(constraint, forKey: .aim)
+                        case .rotation(let constraint): try container.encode(constraint, forKey: .rotation)
+                        }
+                    }
+
+                    /// The node this one is driven by.
+                    public var source: Int {
+                        switch self {
+                        case .roll(let constraint): constraint.source
+                        case .aim(let constraint): constraint.source
+                        case .rotation(let constraint): constraint.source
+                        }
+                    }
+
+                    /// How much of the source's motion is passed on, `1` by default.
+                    public var weight: Double {
+                        switch self {
+                        case .roll(let constraint): constraint.weight ?? 1
+                        case .aim(let constraint): constraint.weight ?? 1
+                        case .rotation(let constraint): constraint.weight ?? 1
+                        }
+                    }
+
+                    public struct RollConstraint: Codable, Sendable {
                         public let source: Int
                         public let rollAxis: RollAxis
                         public let weight: Double?
-                        public let extensions: CodableAny?
-                        public let extras: CodableAny?
+                        public let extensions: JSONValue?
+                        public let extras: JSONValue?
 
-                        public enum RollAxis: String, Codable {
+                        public enum RollAxis: String, Codable, Sendable {
                             case x = "X"
                             case y = "Y"
                             case z = "Z"
                         }
                     }
 
-                    public struct AimConstraint: Codable {
+                    public struct AimConstraint: Codable, Sendable {
                         public let source: Int
                         public let aimAxis: AimAxis
                         public let weight: Double?
-                        public let extensions: CodableAny?
-                        public let extras: CodableAny?
+                        public let extensions: JSONValue?
+                        public let extras: JSONValue?
 
-                        public enum AimAxis: String, Codable {
+                        public enum AimAxis: String, Codable, Sendable {
                             case positiveX = "PositiveX"
                             case negativeX = "NegativeX"
                             case positiveY = "PositiveY"
@@ -93,11 +157,11 @@ extension GLTF {
                         }
                     }
 
-                    public struct RotationConstraint: Codable {
+                    public struct RotationConstraint: Codable, Sendable {
                         public let source: Int
                         public let weight: Double?
-                        public let extensions: CodableAny?
-                        public let extras: CodableAny?
+                        public let extensions: JSONValue?
+                        public let extras: JSONValue?
                     }
                 }
             }

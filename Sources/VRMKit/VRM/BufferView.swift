@@ -3,7 +3,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#bufferview
 
 extension GLTF {
-    public struct BufferView: Codable {
+    public struct BufferView: Codable, Sendable {
         public let buffer: Int
         let _byteOffset: Int?
         public var byteOffset: Int { return _byteOffset ?? 0 }
@@ -11,8 +11,8 @@ extension GLTF {
         public let byteStride: Int?
         public let target: Int?
         public let name: String?
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
         private enum CodingKeys: String, CodingKey {
             case buffer
             case _byteOffset = "byteOffset"

@@ -17,20 +17,19 @@ struct VRMMetaWritingTests {
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testTheThumbnailWrittenIsTheOneReadBack(asset: VRMSampleAsset) throws {
         let image = try thumbnailBytes(of: asset.replacement)
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
 
         try document.setVRMThumbnail(image)
 
         let saved = try VRM(data: try document.serialize())
         #expect(try thumbnailBytes(of: saved) == image)
-        #expect(try saved.thumbnail.size.width > 0)
+        #expect(try saved.thumbnail.width > 0)
     }
 
-    /// A model listing no thumbnail is given one.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testAModelWithNoThumbnailIsGivenOne(asset: VRMSampleAsset) throws {
         let image = try thumbnailBytes(of: asset.replacement)
-        let document = try GLTFEditableDocument(data: try asset.withoutAThumbnail())
+        var document = try GLTFEditableDocument(data: try asset.withoutAThumbnail())
         #expect(throws: VRMError.self) { try VRM(data: try document.serialize()).thumbnail }
 
         try document.setVRMThumbnail(image)
@@ -38,11 +37,10 @@ struct VRMMetaWritingTests {
         #expect(try thumbnailBytes(of: try VRM(data: try document.serialize())) == image)
     }
 
-    /// Everything else the model says about itself is left alone.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testReplacingTheThumbnailLeavesTheRestOfTheModelWhereItWas(asset: VRMSampleAsset) throws {
         let before = try VRM(data: asset.data)
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
 
         try document.setVRMThumbnail(try thumbnailBytes(of: asset.replacement))
 
@@ -59,7 +57,7 @@ struct VRMMetaWritingTests {
     func testPruningReclaimsTheReplacedThumbnail(asset: VRMSampleAsset) throws {
         let replaced = try thumbnailBytes(of: asset)
         let image = try thumbnailBytes(of: asset.replacement)
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
 
         try document.setVRMThumbnail(image)
         #expect(try document.serialize().range(of: replaced) != nil)
@@ -75,7 +73,7 @@ struct VRMMetaWritingTests {
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testPruningKeepsAReplacedThumbnailAMaterialStillSamples(asset: VRMSampleAsset) throws {
         let shared = try thumbnailBytes(of: asset)
-        let document = try GLTFEditableDocument(data: try asset.sharingItsThumbnailWithADrawnTexture())
+        var document = try GLTFEditableDocument(data: try asset.sharingItsThumbnailWithADrawnTexture())
 
         try document.setVRMThumbnail(try thumbnailBytes(of: asset.replacement))
         try document.prune()
@@ -87,7 +85,7 @@ struct VRMMetaWritingTests {
     /// caller's to do.
     @Test
     func testAThumbnailThatIsNeitherPNGNorJPEGIsRefusedWithoutChangingTheDocument() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.setVRMThumbnail(Data("RIFF____WEBPVP8 ".utf8)) }
@@ -101,12 +99,12 @@ struct VRMMetaWritingTests {
     func testANonSquareThumbnailIsRefusedByVRM1AndTakenByVRM0() throws {
         let wide = try pngData(width: 2, height: 1)
 
-        let vrm1 = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var vrm1 = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let before = try vrm1.serialize()
         #expect(throws: VRMError.self) { try vrm1.setVRMThumbnail(wide) }
         #expect(try vrm1.serialize() == before)
 
-        let vrm0 = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var vrm0 = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         try vrm0.setVRMThumbnail(wide)
         #expect(try thumbnailBytes(of: try VRM(data: try vrm0.serialize())) == wide)
     }
@@ -115,7 +113,7 @@ struct VRMMetaWritingTests {
     /// rather than filed away as an image nothing can draw.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testAThumbnailThatDoesNotDecodeIsRefused(asset: VRMSampleAsset) throws {
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
         let before = try document.serialize()
         let signatureOnly = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] + [UInt8](repeating: 0, count: 32))
 
@@ -128,7 +126,7 @@ struct VRMMetaWritingTests {
 
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testTheNameWrittenIsTheOneReadBack(asset: VRMSampleAsset) throws {
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
 
         try document.setVRMName("Composed Avatar")
 
@@ -139,7 +137,7 @@ struct VRMMetaWritingTests {
     /// the names are joined into it.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testTheAuthorsWrittenAreTheOnesReadBack(asset: VRMSampleAsset) throws {
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
 
         try document.setVRMAuthors(["Ada", "Grace"])
 
@@ -153,7 +151,7 @@ struct VRMMetaWritingTests {
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testWritingTheMetaLeavesTheLicenceAsItWasAuthored(asset: VRMSampleAsset) throws {
         let before = try licence(of: try VRM(data: asset.data))
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
 
         try document.setVRMName("Composed Avatar")
         try document.setVRMAuthors(["Ada"])
@@ -166,7 +164,7 @@ struct VRMMetaWritingTests {
     /// writer refuses what would fail it. VRM 0.x has no such minimum.
     @Test
     func testAnEmptyNameOrAuthorListIsRefusedByVRM1AndTakenByVRM0() throws {
-        let vrm1 = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var vrm1 = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let before = try vrm1.serialize()
         #expect(throws: VRMError.self) { try vrm1.setVRMName("") }
         #expect(throws: VRMError.self) { try vrm1.setVRMAuthors([]) }
@@ -174,7 +172,7 @@ struct VRMMetaWritingTests {
         #expect(throws: VRMError.self) { try vrm1.setVRMAuthors(["Ada", ""]) }
         #expect(try vrm1.serialize() == before)
 
-        let vrm0 = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var vrm0 = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         try vrm0.setVRMName("")
         try vrm0.setVRMAuthors([])
         switch try VRM(data: try vrm0.serialize()) {
@@ -192,7 +190,7 @@ struct VRMMetaWritingTests {
     @Test
     func testWritingTheMetaOfABetaVRM1IsRefused() throws {
         let beta = try VRMSampleAsset.seedSan.withVRMCSpecVersion("1.0-beta")
-        let document = try GLTFEditableDocument(data: beta)
+        var document = try GLTFEditableDocument(data: beta)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.setVRMName("Composed Avatar") }
@@ -205,14 +203,14 @@ struct VRMMetaWritingTests {
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testWritingThroughAMetaThatIsNotAnObjectIsRefused(asset: VRMSampleAsset) throws {
         let broken = try asset.rewritingJSON { json in
-            var extensions = try #require(json["extensions"] as? [String: Any])
+            var extensions = try #require(json.object("extensions"))
             let name = extensions["VRMC_vrm"] != nil ? "VRMC_vrm" : "VRM"
-            var vrm = try #require(extensions[name] as? [String: Any])
+            var vrm = try #require(extensions.object(name))
             vrm["meta"] = "broken"
-            extensions[name] = vrm
-            json["extensions"] = extensions
+            extensions[name] = .object(vrm)
+            json["extensions"] = .object(extensions)
         }
-        let document = try GLTFEditableDocument(data: broken)
+        var document = try GLTFEditableDocument(data: broken)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.setVRMName("Composed Avatar") }
@@ -226,18 +224,18 @@ struct VRMMetaWritingTests {
     @Test
     func testWritingTheMetaOfADocumentThatIsNotOneVRMIsRefused() throws {
         let both = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-            var extensions = json["extensions"] as? [String: Any] ?? [:]
+            var extensions = json.object("extensions") ?? [:]
             extensions["VRMC_vrm"] = ["specVersion": "1.0"]
-            json["extensions"] = extensions
+            json["extensions"] = .object(extensions)
         }
         let malformed = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-            var extensions = json["extensions"] as? [String: Any] ?? [:]
+            var extensions = json.object("extensions") ?? [:]
             extensions["VRM"] = "invalid"
-            json["extensions"] = extensions
+            json["extensions"] = .object(extensions)
         }
 
         for data in [both, malformed] {
-            let document = try GLTFEditableDocument(data: data)
+            var document = try GLTFEditableDocument(data: data)
             let before = try document.serialize()
             #expect(throws: VRMError.self) { try document.setVRMName("Composed Avatar") }
             #expect(try document.serialize() == before)
@@ -250,7 +248,7 @@ struct VRMMetaWritingTests {
     /// claimed.
     @Test
     func testWritingTheMetaOfAGLTFThatIsNotAVRMIsRefused() throws {
-        let document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.setVRMName("Not an avatar") }
@@ -326,16 +324,16 @@ private extension VRMSampleAsset {
     /// model that never had one reads.
     func withoutAThumbnail() throws -> Data {
         try rewritingJSON { json in
-            var extensions = json["extensions"] as? [String: Any] ?? [:]
+            var extensions = json.object("extensions") ?? [:]
             for (name, key) in [(GLTFExtension.vrm0.rawValue, "texture"),
                                 (GLTFExtension.vrm1.rawValue, "thumbnailImage")] {
-                guard var vrm = extensions[name] as? [String: Any],
-                      var meta = vrm["meta"] as? [String: Any] else { continue }
+                guard var vrm = extensions.object(name),
+                      var meta = vrm.object("meta") else { continue }
                 meta.removeValue(forKey: key)
-                vrm["meta"] = meta
-                extensions[name] = vrm
+                vrm["meta"] = .object(meta)
+                extensions[name] = .object(vrm)
             }
-            json["extensions"] = extensions
+            json["extensions"] = .object(extensions)
         }
     }
 
@@ -344,9 +342,9 @@ private extension VRMSampleAsset {
     func sharingItsThumbnailWithADrawnTexture() throws -> Data {
         let thumbnail = try VRM(data: data).thumbnailImageIndex
         return try rewritingJSON { json in
-            var textures = json["textures"] as? [[String: Any]] ?? []
-            textures[0]["source"] = thumbnail
-            json["textures"] = textures
+            var textures = json.objects("textures")
+            textures[0]["source"] = .int(thumbnail)
+            json["textures"] = .objects(textures)
         }
     }
 }

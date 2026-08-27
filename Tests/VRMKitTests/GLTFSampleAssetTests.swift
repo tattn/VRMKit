@@ -58,7 +58,7 @@ struct GLTFSampleAssetTests {
 
         #expect(document.binaryBuffer != nil)
         let primitive = try #require(document.gltf.meshes?.first?.primitives.first)
-        #expect(primitive.attributes.rawValue[.COLOR_0] != nil)
+        #expect(primitive.attributes[.COLOR_0] != nil)
     }
 
     @Test

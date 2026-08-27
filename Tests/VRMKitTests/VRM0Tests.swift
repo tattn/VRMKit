@@ -36,11 +36,11 @@ struct VRM0Tests {
         #expect(target.name == "Alicia_face")
         #expect(target.shader == "VRM/UnlitTexture")
         #expect(target.renderQueue == 2000)
-        #expect(target.floatProperties.dictionaryValue.isEmpty)
+        #expect(target.floatProperties.isEmpty)
         #expect(target.keywordMap == ["_ALPHAPREMULTIPLY_ON": true])
         #expect(target.tagMap == ["RenderType": "Opaque"])
         #expect(target.textureProperties == ["_MainTex": 3])
-        #expect(target.vectorProperties.dictionaryValue.isEmpty)
+        #expect(target.vectorProperties.isEmpty)
     }
 
     @Test

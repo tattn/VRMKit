@@ -41,7 +41,6 @@ struct HumanoidBoneTests {
         }
     }
 
-    /// Both versions read as one mapping.
     @Test
     func testBothVersionsReadAsTheSameKindOfRig() throws {
         for asset in [VRMSampleAsset.aliciaSolid, .seedSan] {

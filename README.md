@@ -39,7 +39,9 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 
 ## Swift Package Manager
 
-You can install this package with Swift Package Manager.
+```swift
+.package(url: "https://github.com/tattn/VRMKit.git", from: "0.9.0")
+```
 
 # Usage
 
@@ -77,7 +79,7 @@ import VRMRealityKit
 struct ContentView: View {
     var body: some View {
         RealityView { content in
-            guard let entity = try? VRMEntityLoader(named: "model.vrm").loadEntity() else { return }
+            guard let entity = try? await VRMEntityLoader(named: "model.vrm").loadEntity() else { return }
             content.add(entity)
         }
     }
@@ -137,7 +139,7 @@ vrmEntity.setMToonLightColor(SIMD3<Float>(1, 1, 1))
 vrmEntity.setMToonAmbientColor(SIMD3<Float>(0.1, 0.1, 0.1))
 ```
 
-Both loaders take a material shader chain: each shader is asked in order, and materials no shader claims render through the built-in Unlit / PBR path.
+Both loaders take a material shader chain. Each shader is asked in order, and materials no shader claims render through the built-in Unlit / PBR path.
 
 ```swift
 // The default chain is [MToonShader()]: MToon with authored outlines. Use
@@ -197,13 +199,15 @@ entity.setMToonOutlineOverride(nil, forMaterials: selection) // release just tho
 VRMRealityKit also renders plain glTF assets: `.glb` and JSON `.gltf`, external resources and data URIs included.
 
 ```swift
-let entity: GLTFEntity = try GLTFEntityLoader(withURL: url).loadEntity()
+let entity: GLTFEntity = try await GLTFEntityLoader(withURL: url).loadEntity()
 
 entity.animations  // [GLTFAnimation]: index, name, duration
 let controller = try entity.playAnimation(at: 0, loops: true)  // same controller as above
 ```
 
-`loadEntity()` renders the asset's default scene and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance.
+`loadEntity()` renders the asset's default scene and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. It reads the model's vertex data off the main thread, a primitive at a time in parallel.
+
+A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance.
 
 <details>
 <summary>Renderer limitations</summary>
@@ -229,17 +233,19 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 <details>
 <summary>Details</summary>
 
-`GLTFEditableDocument` edits an asset's glTF JSON and writes it back out as a GLB. Fields VRMKit does not model are carried over untouched, and nothing already in the document changes index. A VRM edit is refused on a document that does not say it is VRM 1.0 or VRM 0.x outright.
+`GLTFEditableDocument` edits an asset's glTF JSON and writes it back out as a GLB. Fields VRMKit does not model are carried over untouched, and nothing already in the document changes index. It is a value, so a copy taken before an edit is the document as it was. A VRM edit is refused on a document that does not say it is VRM 1.0 or VRM 0.x outright.
 
 ```swift
 let vrm = try VRM(data: data)
-let document = try GLTFEditableDocument(data: data)
+var document = try GLTFEditableDocument(data: data)
 if let hand = vrm.nodeIndex(of: .leftHand) {
     let item = try GLTFDocument(withURL: itemURL)
-    try document.append(item, under: hand, name: "item", materials: .mtoon)
+    try document.append(item, under: GLTFNodeIndex(hand), name: "item", materials: .mtoon)
 }
 try document.serialize().write(to: outputURL)
 ```
+
+Indices are typed. `GLTFNodeIndex`, `GLTFMeshIndex`, `GLTFMaterialIndex` and `GLTFSceneIndex` are all plain integers in the file, and the type is what stops one reaching an edit that wanted another.
 
 `append` copies a whole source document to the end of the arrays it belongs in and embeds its external resources into the GLB buffer. The source's default scene decides which of the copied nodes are drawn, or the one `append(_:sceneAt:under:)` names. A source it cannot rebase, such as one declaring an unknown extension or a VRM 0.x model, is refused rather than written out broken.
 
@@ -247,7 +253,13 @@ try document.serialize().write(to: outputURL)
 
 `addNode`, `setName` and `setTransform` edit the node graph by appending, never by renumbering, so the VRM extensions keep pointing at what they used to. `detachNode` cuts a subtree's links to its parent and scenes, and `moveNode(at:to:)` hangs it under another node instead, or under the default scene's roots when given none.
 
-`prune()` drops what a detached subtree left behind, remaps the remaining indices and returns how many BIN bytes it reclaimed. A node something still references keeps its transform but loses what it drew, so a humanoid bone or a spring joint stays where it was. It runs only when called.
+`prune()` drops what a detached subtree left behind and remaps the remaining indices. It runs only when called. A node something still references keeps its transform but loses what it drew, so a humanoid bone or a spring joint stays where it was. It answers with the BIN bytes it reclaimed and with where every entry it kept ended up:
+
+```swift
+let node = try document.addNode(name: "item")
+let result = try document.prune()
+let stillThere = result.newIndex(of: node)   // nil for a node the prune dropped
+```
 
 `setVRMThumbnail`, `setVRMName` and `setVRMAuthors` rewrite the model's own metadata in whichever form the document keeps, leaving every other field alone, and refuse what that version would not validate: VRM 1.0 asks for a square thumbnail, a name and at least one author. The license fields are not writable: they are the distributor's to set.
 
@@ -255,10 +267,10 @@ try document.serialize().write(to: outputURL)
 
 A merged animation needs no writing: `append` rebases the source's animations, and `VRMEntity` plays them through the same `animations` and `playAnimation(at:)` any glTF scene has.
 
-`GLTFEditableDocument()` starts an empty document and `addMesh` fills it from vertex data, so a plate, a prop or a test fixture can be built without laying out accessors, buffer views and the GLB container by hand. A mesh given no normals is flat-shaded.
+`GLTFEditableDocument()` starts an empty document and `addMesh` fills it from vertex data, so a plate, a prop or a test fixture can be built without laying out accessors, buffer views and the GLB container by hand. A mesh given no normals is flat shaded.
 
 ```swift
-let document = GLTFEditableDocument()
+var document = GLTFEditableDocument()
 let plate = GLTFTriangleMesh(positions: positions,
                              textureCoordinates: uvs,
                              indices: [0, 1, 2, 0, 2, 3],

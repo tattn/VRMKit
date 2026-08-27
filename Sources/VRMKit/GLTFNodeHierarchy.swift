@@ -1,14 +1,19 @@
 import Foundation
 
-/// The parent of every node of a glTF document, validated as it is built: a
-/// child index in range, no node claimed by two parents, and no loop.
-///
-/// Everything that walks the nodes upwards reads it, so loading a model,
-/// retargeting an animation and editing a document all read one hierarchy and
-/// refuse the same broken ones.
+/// The parent of every node of a glTF document, validated as it is built: a child
+/// index in range, no node claimed by two parents, and no loop. Everything that
+/// walks the nodes upwards reads it, so loading, retargeting and editing all
+/// refuse the same broken hierarchies.
 package struct GLTFNodeHierarchy {
     /// Node index → parent node index, nil for roots.
     private let parents: [Int?]
+
+    /// A hierarchy of no nodes.
+    package static let none = GLTFNodeHierarchy(parents: [])
+
+    private init(parents: [Int?]) {
+        self.parents = parents
+    }
 
     package init(nodes: [GLTF.Node]) throws {
         try self.init(childIndices: nodes.map { $0.children ?? [] })
@@ -74,12 +79,10 @@ package struct GLTFNodeHierarchy {
         return Array(lineage.prefix(through: end))
     }
 
-    /// Rejects the malformed node graphs and skins a loader takes for granted:
-    /// the spec guarantees the nodes form a forest and that a skin names at
-    /// least one joint, each of them once.
-    ///
-    /// Without this, a cyclic hierarchy would recurse forever and a repeated or
-    /// out-of-range joint would trap instead of throwing.
+    /// Rejects the malformed node graphs and skins a loader takes for granted: the
+    /// spec guarantees the nodes form a forest and that a skin names at least one
+    /// joint, each of them once. Without it a cyclic hierarchy would recurse
+    /// forever and a bad joint index would trap.
     package static func validatingStructure(of gltf: GLTF) throws -> GLTFNodeHierarchy {
         let nodes = gltf.nodes ?? []
         let hierarchy = try GLTFNodeHierarchy(nodes: nodes)
@@ -102,10 +105,9 @@ package struct GLTFNodeHierarchy {
         return hierarchy
     }
 
-    /// Rejects a scene root that another node already claims as a child.
-    ///
-    /// Attaching such a node reparents it away from that parent, which would
-    /// make the graph depend on the order `scene.nodes` happens to list.
+    /// Rejects a scene root that another node already claims as a child, since
+    /// attaching it would reparent it and make the graph depend on the order
+    /// `scene.nodes` happens to list.
     package func validateSceneRoots(_ roots: [Int], sceneIndex: Int) throws {
         for root in roots {
             if let parent = parent(at: root) {

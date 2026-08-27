@@ -25,7 +25,7 @@ struct MaterialShaderChainTests {
     /// The first shader returning a material wins; later shaders and the
     /// built-in path never see the material.
     @Test
-    func testCustomShaderTakesOverMaterialBuilding() throws {
+    func testCustomShaderTakesOverMaterialBuilding() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         final class SolidColorShader: GLTFMaterialShader {
             private(set) var seenMaterialIndices: [Int] = []
@@ -40,7 +40,7 @@ struct MaterialShaderChainTests {
 
         let shader = SolidColorShader()
         let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url, shaders: [shader])
-        let entity = try loader.loadEntity()
+        let entity = try await loader.loadEntity()
 
         #expect(shader.seenMaterialIndices == [0])
         for modelEntity in entity.modelEntitiesInHierarchy {
@@ -49,7 +49,6 @@ struct MaterialShaderChainTests {
         }
     }
 
-    /// A shader that passes (returns nil) falls through to the built-in path.
     @Test
     func testDecliningShaderFallsThroughToTheStandardPath() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -64,10 +63,9 @@ struct MaterialShaderChainTests {
         #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
     }
 
-    /// A custom shader's extra passes become sibling model entities, the way
-    /// MToon outlines do.
+    /// The mechanism MToon's outline pass is drawn through.
     @Test
-    func testAdditionalPassesBecomeSiblingModelEntities() throws {
+    func testAdditionalPassesBecomeSiblingModelEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         final class TwoPassShader: GLTFMaterialShader {
             func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
@@ -76,8 +74,8 @@ struct MaterialShaderChainTests {
             }
         }
 
-        let entity = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                          shaders: [TwoPassShader()]).loadEntity()
+        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
+                                                shaders: [TwoPassShader()]).loadEntity()
         let modelEntities = entity.modelEntitiesInHierarchy
         #expect(modelEntities.count == 2)
         #expect(modelEntities.contains { $0.name.hasSuffix("_halo") })
@@ -87,17 +85,15 @@ struct MaterialShaderChainTests {
         })
     }
 
-    /// A custom shader whose material makes an animatable state gets that
-    /// per-entity state driven end to end by VRM expression material binds, the
-    /// way MToon does: baseline reads at load, `setColor` accumulation, one
-    /// `prepareFlush()` per change, and `apply(to:)` for every material
-    /// instance rendering the bound glTF material.
+    /// A custom shader's animatable state is driven end to end by VRM expression
+    /// material binds the way MToon's is: baselines at load, `setColor`
+    /// accumulation, one `prepareFlush()` per change, then `apply(to:)`.
     @Test
-    func testCustomAnimatingShaderIsDrivenByExpressionBinds() throws {
+    func testCustomAnimatingShaderIsDrivenByExpressionBinds() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let target = SIMD4<Float>(0, 1, 0, 1)
         let modified = try TestSupport.modifiedSeedSanExpressions(name: "custom-shader-color-bind") { preset in
-            guard var happy = preset["happy"] as? [String: Any] else {
+            guard var happy = preset.object("happy") else {
                 throw VRMError.dataInconsistent("Missing Seed-san happy expression")
             }
             happy["materialColorBinds"] = [[
@@ -105,7 +101,7 @@ struct MaterialShaderChainTests {
                 "type": "color",
                 "targetValue": [0.0, 1.0, 0.0, 1.0]
             ]]
-            preset["happy"] = happy
+            preset["happy"] = .object(happy)
         }
 
         final class TintState: VRMAnimatableMaterialState {
@@ -150,10 +146,9 @@ struct MaterialShaderChainTests {
         }
 
         let shader = TintShader()
-        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: [shader]).loadEntity()
-        // Material bindings register while meshes build, before the expression
-        // setup reads its baselines, so the first state per index is the one
-        // the entity holds.
+        let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: [shader]).loadEntity()
+        // Material bindings register while meshes build, so the first state per
+        // index is the one the entity holds.
         let state = try #require(shader.createdStates.first { $0.materialIndex == 0 }?.state)
         #expect(state.flushCount == 0)
 
@@ -172,7 +167,7 @@ struct MaterialShaderChainTests {
     /// swallow the binds it does not animate: Seed-san's `happy`
     /// textureTransformBind still reaches material 11.
     @Test
-    func testUnclaimedBindsFallBackToTheRealityKitMaterial() throws {
+    func testUnclaimedBindsFallBackToTheRealityKitMaterial() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         final class ColorOnlyState: VRMAnimatableMaterialState {
             var currentColor = SIMD4<Float>(1, 1, 1, 1)
@@ -197,8 +192,8 @@ struct MaterialShaderChainTests {
             }
         }
 
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
-                                            shaders: [ColorOnlyShader()]).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
+                                                  shaders: [ColorOnlyShader()]).loadEntity()
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
 
         let transforms = vrmEntity.modelEntitiesInHierarchy
@@ -209,12 +204,11 @@ struct MaterialShaderChainTests {
         #expect(transforms.allSatisfy { $0.offset.isApproximatelyEqual(to: SIMD2<Float>(0.25, 0)) })
     }
 
-    /// A VRM material the chain fails to build renders with the default
-    /// material, and that fallback is what the rest of the load sees: the chain
-    /// is not asked a second time, so the runtime state can never come from a
-    /// material that is not on screen.
+    /// A VRM material the chain fails to build renders with the default material,
+    /// and the chain is not asked a second time, so the runtime state can never
+    /// come from a material that is not on screen.
     @Test
-    func testFailedVRMMaterialFallsBackOnceAndCarriesNoAnimatableState() throws {
+    func testFailedVRMMaterialFallsBackOnceAndCarriesNoAnimatableState() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         /// Animates nothing, so every bindable value keeps falling back to the
         /// RealityKit material.
@@ -239,7 +233,7 @@ struct MaterialShaderChainTests {
 
         let shader = FailOnceShader()
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: [shader])
-        let entity = try loader.loadEntity()
+        let entity = try await loader.loadEntity()
 
         #expect(shader.callCounts[0] == 1)
         // The default material, not the UnlitMaterial the retry would build.
@@ -257,65 +251,62 @@ struct MaterialShaderChainTests {
     /// MToon cannot build through the rest of the chain, here the built-in
     /// Unlit path, since the material is authored as MToon.
     @Test
-    func testUnbuildableMToonMaterialFallsThroughWhenTheExtensionIsOptional() throws {
+    func testUnbuildableMToonMaterialFallsThroughWhenTheExtensionIsOptional() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: Self.brokenMToonSeedSanData(isRequired: false))
-        _ = try loader.loadEntity()
+        _ = try await loader.loadEntity()
         #expect(try loader.material(withMaterialIndex: 0) is UnlitMaterial)
     }
 
-    /// A generic glTF load honors `extensionsRequired`: a document that cannot be
-    /// drawn without `VRMC_materials_mtoon` fails the whole load rather than
-    /// rendering an Unlit approximation of the material MToon could not build.
+    /// A generic glTF load honors `extensionsRequired`, so a document that cannot
+    /// be drawn without `VRMC_materials_mtoon` fails rather than approximating.
     @Test
-    func testUnbuildableMToonMaterialFailsTheGLTFLoadWhenTheExtensionIsRequired() throws {
+    func testUnbuildableMToonMaterialFailsTheGLTFLoadWhenTheExtensionIsRequired() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try GLTFEntityLoader(withData: Self.brokenMToonSeedSanData(isRequired: true))
-        #expect(throws: (any Error).self) {
-            try loader.loadEntity()
+        await #expect(throws: (any Error).self) {
+            try await loader.loadEntity()
         }
     }
 
-    /// A VRM keeps rendering whatever this renderer can build, so the same
-    /// document loads: the material MToon could not build falls through to the
-    /// Unlit approximation rather than dropping to the default material.
+    /// A VRM keeps rendering whatever this renderer can build, so the material
+    /// MToon could not build falls through to the Unlit approximation.
     @Test
-    func testUnbuildableRequiredMToonMaterialStillRendersInAVRM() throws {
+    func testUnbuildableRequiredMToonMaterialStillRendersInAVRM() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: Self.brokenMToonSeedSanData(isRequired: true))
-        let entity = try loader.loadEntity()
+        let entity = try await loader.loadEntity()
         #expect(try loader.material(withMaterialIndex: 0) is UnlitMaterial)
         // The rest of the model still renders as MToon.
         #expect(TestSupport.hasCustomMaterial(in: entity))
     }
 
-    /// A document requiring `KHR_texture_transform` while giving *MToon's own*
-    /// textures different transforms asks for a result no path of this renderer
-    /// draws. The loader's check only sees the core glTF material's textures,
-    /// so MToon rejects this one itself.
+    /// The loader's check only sees the core glTF material's textures, so MToon
+    /// itself rejects a document requiring `KHR_texture_transform` while giving its
+    /// own textures different transforms.
     @Test
-    func testRequiredTextureTransformFailsWhenMToonTexturesDisagree() throws {
+    func testRequiredTextureTransformFailsWhenMToonTexturesDisagree() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanData(name: "mixed-mtoon-texture-transform") { json in
-            json["extensionsRequired"] = (json["extensionsRequired"] as? [String] ?? [])
-                + ["KHR_texture_transform"]
-            guard var materials = json["materials"] as? [[String: Any]],
-                  var extensions = materials.first?["extensions"] as? [String: Any],
-                  var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any],
-                  var shade = mtoon["shadeMultiplyTexture"] as? [String: Any] else {
+            json["extensionsRequired"] = .strings(json.strings("extensionsRequired")
+                + ["KHR_texture_transform"])
+            var materials = json.objects("materials")
+            guard var extensions = materials.first?.object("extensions"),
+                  var mtoon = extensions.object("VRMC_materials_mtoon"),
+                  var shade = mtoon.object("shadeMultiplyTexture") else {
                 throw VRMError.dataInconsistent("Missing Seed-san MToon shade texture")
             }
             // The core material's textures still agree, so only MToon's own
             // texture set makes the transforms disagree.
             shade["extensions"] = ["KHR_texture_transform": ["scale": [2.0, 2.0]]]
-            mtoon["shadeMultiplyTexture"] = shade
-            extensions["VRMC_materials_mtoon"] = mtoon
-            materials[0]["extensions"] = extensions
-            json["materials"] = materials
+            mtoon["shadeMultiplyTexture"] = .object(shade)
+            extensions["VRMC_materials_mtoon"] = .object(mtoon)
+            materials[0]["extensions"] = .object(extensions)
+            json["materials"] = .objects(materials)
         }
 
-        #expect(throws: (any Error).self) {
-            try GLTFEntityLoader(withData: modified).loadEntity()
+        await #expect(throws: (any Error).self) {
+            try await GLTFEntityLoader(withData: modified).loadEntity()
         }
         // The same document renders as a VRM, through the single-transform
         // approximation MToon logs.
@@ -327,18 +318,18 @@ struct MaterialShaderChainTests {
     private static func brokenMToonSeedSanData(isRequired: Bool) throws -> Data {
         try TestSupport.modifiedSeedSanData(name: "broken-mtoon-texture-\(isRequired ? "required" : "used")") { json in
             if isRequired {
-                json["extensionsRequired"] = (json["extensionsRequired"] as? [String] ?? [])
-                    + ["VRMC_materials_mtoon"]
+                json["extensionsRequired"] = .strings(json.strings("extensionsRequired")
+                    + ["VRMC_materials_mtoon"])
             }
-            guard var materials = json["materials"] as? [[String: Any]],
-                  var extensions = materials.first?["extensions"] as? [String: Any],
-                  var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any] else {
+            var materials = json.objects("materials")
+            guard var extensions = materials.first?.object("extensions"),
+                  var mtoon = extensions.object("VRMC_materials_mtoon") else {
                 throw VRMError.dataInconsistent("Missing Seed-san MToon extension")
             }
             mtoon["shadeMultiplyTexture"] = ["index": 9999]
-            extensions["VRMC_materials_mtoon"] = mtoon
-            materials[0]["extensions"] = extensions
-            json["materials"] = materials
+            extensions["VRMC_materials_mtoon"] = .object(mtoon)
+            materials[0]["extensions"] = .object(extensions)
+            json["materials"] = .objects(materials)
         }
     }
 
@@ -364,7 +355,7 @@ struct MaterialShaderChainTests {
         #expect(material.roughness.texture != nil)
     }
 
-    /// `.authoredOnly` (the default) leaves a plain glTF material alone.
+    /// `.authoredOnly` is the default source.
     @Test
     func testAuthoredOnlyLeavesAPlainGLTFMaterialStandard() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -376,11 +367,11 @@ struct MaterialShaderChainTests {
     /// A converted material with an outline style gets the inverted-hull
     /// outline entity, like an authored MToon material would.
     @Test
-    func testConvertAllWithOutlineStyleCreatesOutlineEntities() throws {
+    func testConvertAllWithOutlineStyleCreatesOutlineEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let style = MToonConversionStyle(outlineWidthFactor: 0.002)
-        let entity = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                          shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
+        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
+                                                shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
         let passName = MToonShader.outlinePassName
         func outlines(in root: Entity) -> [ModelEntity] {
             root.modelEntitiesInHierarchy.filter {
@@ -394,13 +385,11 @@ struct MaterialShaderChainTests {
         #expect(outline.name == "\(mesh.name)_\(passName)")
         #expect(outline.parent?.name == "\(mesh.name)_container")
 
-        let noOutline = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                             shaders: [MToonShader(source: .convertAll)]).loadEntity()
+        let noOutline = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
+                                                   shaders: [MToonShader(source: .convertAll)]).loadEntity()
         #expect(outlines(in: noOutline).isEmpty)
     }
 
-    /// `.convertAll` keeps the authored values of a material that already
-    /// carries MToon data.
     @Test
     func testConvertAllKeepsAuthoredMToonMaterials() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -419,17 +408,16 @@ struct MaterialShaderChainTests {
     }
 
     /// An unreadable MToon material is still MToon, so `.convertAll` leaves it to
-    /// the Unlit approximation rather than inventing toon values over the ones it
-    /// is already authored with.
+    /// the Unlit approximation rather than inventing toon values over it.
     @Test
-    func testConvertAllLeavesUnreadableMToonVersionsAlone() throws {
+    func testConvertAllLeavesUnreadableMToonVersionsAlone() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let futureVersion = try Self.seedSanDataWithMToonSpecVersion("1.1", isRequired: false)
 
         for source in [MToonShader.Source.authoredOnly, .convertAll] {
             let loader = try VRMEntityLoader(withData: futureVersion,
                                              shaders: [MToonShader(source: source)])
-            let entity = try loader.loadEntity()
+            let entity = try await loader.loadEntity()
             #expect(try loader.material(withMaterialIndex: 0) is UnlitMaterial)
             #expect(entity.mtoonParameters(forMaterialIndex: 0) == nil)
             // Only the unreadable material drops out; the rest still convert.
@@ -442,16 +430,16 @@ struct MaterialShaderChainTests {
     /// drawable through the Unlit approximation either, so an unreadable MToon
     /// version fails the generic glTF load.
     @Test
-    func testUnreadableMToonVersionFailsTheGLTFLoadWhenTheExtensionIsRequired() throws {
+    func testUnreadableMToonVersionFailsTheGLTFLoadWhenTheExtensionIsRequired() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let required = try Self.seedSanDataWithMToonSpecVersion("1.1", isRequired: true)
-        #expect(throws: (any Error).self) {
-            try GLTFEntityLoader(withData: required).loadEntity()
+        await #expect(throws: (any Error).self) {
+            try await GLTFEntityLoader(withData: required).loadEntity()
         }
         // A VRM renders with whatever this renderer can build, so the same
         // document still loads through the Unlit approximation.
         let vrmLoader = try VRMEntityLoader(withData: required)
-        _ = try vrmLoader.loadEntity()
+        _ = try await vrmLoader.loadEntity()
         #expect(try vrmLoader.material(withMaterialIndex: 0) is UnlitMaterial)
     }
 
@@ -461,18 +449,18 @@ struct MaterialShaderChainTests {
                                                         isRequired: Bool) throws -> Data {
         try TestSupport.modifiedSeedSanData(name: "mtoon-spec-\(specVersion)") { json in
             if isRequired {
-                json["extensionsRequired"] = (json["extensionsRequired"] as? [String] ?? [])
-                    + ["VRMC_materials_mtoon"]
+                json["extensionsRequired"] = .strings(json.strings("extensionsRequired")
+                    + ["VRMC_materials_mtoon"])
             }
-            guard var materials = json["materials"] as? [[String: Any]],
-                  var extensions = materials.first?["extensions"] as? [String: Any],
-                  var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any] else {
+            var materials = json.objects("materials")
+            guard var extensions = materials.first?.object("extensions"),
+                  var mtoon = extensions.object("VRMC_materials_mtoon") else {
                 throw VRMError.dataInconsistent("Missing Seed-san MToon extension")
             }
-            mtoon["specVersion"] = specVersion
-            extensions["VRMC_materials_mtoon"] = mtoon
-            materials[0]["extensions"] = extensions
-            json["materials"] = materials
+            mtoon["specVersion"] = .string(specVersion)
+            extensions["VRMC_materials_mtoon"] = .object(mtoon)
+            materials[0]["extensions"] = .object(extensions)
+            json["materials"] = .objects(materials)
         }
     }
 
@@ -480,21 +468,21 @@ struct MaterialShaderChainTests {
     /// under the default chain, converts too, and the expression runtime picks
     /// the converted parameters up.
     @Test
-    func testConvertAllAppliesToVRMMaterialsWithoutMToonData() throws {
+    func testConvertAllAppliesToVRMMaterialsWithoutMToonData() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let stripped = try TestSupport.modifiedSeedSanMaterial(name: "no-mtoon-extension") { material in
-            var extensions = material["extensions"] as? [String: Any] ?? [:]
+            var extensions = material.object("extensions") ?? [:]
             extensions.removeValue(forKey: "VRMC_materials_mtoon")
-            material["extensions"] = extensions
+            material["extensions"] = .object(extensions)
         }
 
-        let fallbackEntity = try VRMEntityLoader(withData: stripped,
-                                                 shaders: [MToonShader()]).loadEntity()
+        let fallbackEntity = try await VRMEntityLoader(withData: stripped,
+                                                       shaders: [MToonShader()]).loadEntity()
         #expect(fallbackEntity.mtoonParameters(forMaterialIndex: 0) == nil)
 
         let loader = try VRMEntityLoader(withData: stripped,
                                          shaders: [MToonShader(source: .convertAll)])
-        let convertedEntity = try loader.loadEntity()
+        let convertedEntity = try await loader.loadEntity()
         #expect(try loader.material(withMaterialIndex: 0) is CustomMaterial)
         #expect(convertedEntity.mtoonParameters(forMaterialIndex: 0) != nil)
     }

@@ -65,20 +65,20 @@ struct GLTFEditableDocumentTests {
     /// show the edits rather than the state the document was loaded in.
     @Test
     func testTypedSnapshotFollowsEdits() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let before = try document.typed().nodes?.count ?? 0
 
         let index = try document.addNode(name: "added")
 
         #expect(try document.typed().nodes?.count == before + 1)
-        #expect(try document.typed().nodes?[index].name == "added")
+        #expect(try document.typed().nodes?[index.rawValue].name == "added")
     }
 
     // MARK: - Node editing
 
     @Test
     func testAddNodeAttachesToItsParentAndKeepsExistingIndices() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let nodesBefore = try document.typed().nodes ?? []
 
         let transform = GLTFNodeTransform(translation: SIMD3(1, 2, 3),
@@ -87,24 +87,24 @@ struct GLTFEditableDocumentTests {
         let index = try document.addNode(name: "hand item", parent: 0, transform: transform)
 
         let nodes = try #require(try document.typed().nodes)
-        #expect(index == nodesBefore.count)
-        #expect(nodes[0].children?.contains(index) == true)
-        #expect(nodes[index].name == "hand item")
-        #expect(nodes[index].translation.x == 1)
-        #expect(nodes[index].scale.y == 2)
+        #expect(index.rawValue == nodesBefore.count)
+        #expect(nodes[0].children?.contains(index.rawValue) == true)
+        #expect(nodes[index.rawValue].name == "hand item")
+        #expect(nodes[index.rawValue].translation.x == 1)
+        #expect(nodes[index.rawValue].scale.y == 2)
         // Everything that was there is still where it was.
         #expect(zip(nodesBefore, nodes).allSatisfy { $0.name == $1.name })
     }
 
     @Test
     func testAddNodeWithoutParentBecomesASceneRoot() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
 
         let index = try document.addNode(name: "root item")
 
         let gltf = try document.typed()
         let scene = try #require(gltf.scenes?[gltf.scene ?? 0])
-        #expect(scene.nodes?.contains(index) == true)
+        #expect(scene.nodes?.contains(index.rawValue) == true)
     }
 
     /// A document holding one scene has nothing to name, which is how UniVRM
@@ -114,11 +114,11 @@ struct GLTFEditableDocumentTests {
         let json = """
         {"asset": {"version": "2.0"}, "scenes": [{"nodes": []}], "nodes": [{"name": "a"}]}
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
 
         let index = try document.addNode(name: "root item")
 
-        #expect(try document.typed().scenes?[0].nodes?.contains(index) == true)
+        #expect(try document.typed().scenes?[0].nodes?.contains(index.rawValue) == true)
     }
 
     /// Several scenes and none named is the document saying nothing about
@@ -128,7 +128,7 @@ struct GLTFEditableDocumentTests {
         let json = """
         {"asset": {"version": "2.0"}, "scenes": [{"nodes": []}, {"nodes": []}]}
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.addNode(name: "root item") }
@@ -139,7 +139,7 @@ struct GLTFEditableDocumentTests {
     /// orphaned node larger.
     @Test
     func testAddNodeUnderAMissingParentChangesNothing() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.addNode(name: "item", parent: 100_000) }
@@ -148,21 +148,21 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testSetTransformReplacesAMatrixWithItsTRS() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let index = try document.addNode(name: "item")
-        try document.updateNode(at: index) { $0["matrix"] = GLTF.Matrix.identity.values }
+        try document.updateNode(at: index.rawValue) { $0["matrix"] = .numbers(GLTF.Matrix.identity.values) }
 
         try document.setTransform(GLTFNodeTransform(translation: SIMD3(0, 1, 0)), nodeAt: index)
 
-        let node = try document.node(at: index)
+        let node = try document.node(at: index.rawValue)
         #expect(node["matrix"] == nil)
-        #expect(try document.typed().nodes?[index].translation.y == 1)
+        #expect(try document.typed().nodes?[index.rawValue].translation.y == 1)
         #expect(try document.transform(nodeAt: index).translation == SIMD3(0, 1, 0))
     }
 
     @Test
     func testNonFiniteTransformsAreRefusedWithoutChangingTheDocument() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let index = try document.addNode(name: "item")
         let before = try document.serialize()
 
@@ -179,12 +179,12 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testTransformOfAMatrixNodeIsDecomposed() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let index = try document.addNode(name: "item")
         let transform = GLTFNodeTransform(translation: SIMD3(1, 2, 3),
                                           rotation: simd_quatf(angle: .pi / 3, axis: normalize(SIMD3(1, 1, 0))),
                                           scale: SIMD3(2, 2, 2))
-        try document.updateNode(at: index) { $0["matrix"] = transform.matrix.columnMajorValues }
+        try document.updateNode(at: index.rawValue) { $0["matrix"] = .numbers(transform.matrix.columnMajorValues) }
 
         let decomposed = try document.transform(nodeAt: index)
 
@@ -221,13 +221,13 @@ struct GLTFEditableDocumentTests {
     /// glTF wants a unit quaternion, and `rotation` is the caller's to set.
     @Test
     func testANonUnitRotationIsWrittenNormalized() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let index = try document.addNode(name: "item")
         let turn = simd_quatf(angle: .pi / 3, axis: normalize(SIMD3<Float>(0, 1, 0)))
 
         try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: turn.vector * 4)), nodeAt: index)
 
-        let written = try #require(try document.typed().nodes?[index].rotation)
+        let written = try #require(try document.typed().nodes?[index.rawValue].rotation)
         let vector = SIMD4<Float>(Float(written.x), Float(written.y), Float(written.z), Float(written.w))
         #expect(abs(simd_length(vector) - 1) < 1e-5)
         #expect(abs(abs(simd_dot(vector, turn.vector)) - 1) < 1e-5)
@@ -238,14 +238,14 @@ struct GLTFEditableDocumentTests {
     /// overflow, and either would be written out as no rotation at all.
     @Test(arguments: [Float(1e-4), 1e-20, 1e20, 1e30])
     func testARotationFarFromUnitLengthKeepsItsOrientation(magnitude: Float) throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let index = try document.addNode(name: "item")
         let turn = simd_quatf(angle: .pi / 3, axis: normalize(SIMD3<Float>(0, 1, 0)))
 
         try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: turn.vector * magnitude)),
                                   nodeAt: index)
 
-        let written = try #require(try document.typed().nodes?[index].rotation)
+        let written = try #require(try document.typed().nodes?[index.rawValue].rotation)
         let vector = SIMD4<Float>(Float(written.x), Float(written.y), Float(written.z), Float(written.w))
         #expect(abs(simd_length(vector) - 1) < 1e-5)
         #expect(abs(abs(simd_dot(vector, turn.vector)) - 1) < 1e-5)
@@ -254,17 +254,17 @@ struct GLTFEditableDocumentTests {
     /// A rotation of no length names none at all, rather than NaNs.
     @Test
     func testAZeroRotationIsWrittenAsNone() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let index = try document.addNode(name: "item")
 
         try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: .zero)), nodeAt: index)
 
-        #expect(try document.node(at: index)["rotation"] == nil)
+        #expect(try document.node(at: index.rawValue)["rotation"] == nil)
     }
 
     @Test
     func testSetNameRenamesAndClearsANode() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
 
         try document.setName("renamed", nodeAt: 0)
         #expect(try document.typed().nodes?[0].name == "renamed")
@@ -274,10 +274,10 @@ struct GLTFEditableDocumentTests {
     }
 
     /// Detaching cuts the links and nothing else, so the subtree survives whole
-    /// and unreachable - and can be attached again.
+    /// and unreachable, ready to be attached again.
     @Test
     func testDetachNodeUnlinksTheSubtreeWithoutMovingOrErasingAnything() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let parent = try document.addNode(name: "container")
         let child = try document.addNode(name: "child", parent: parent)
         let nodesBefore = try #require(try document.typed().nodes).count
@@ -287,22 +287,22 @@ struct GLTFEditableDocumentTests {
         let gltf = try document.typed()
         let nodes = try #require(gltf.nodes)
         #expect(nodes.count == nodesBefore)
-        #expect(nodes[parent].name == "container")
-        #expect(nodes[parent].children == [child])
-        #expect(nodes[child].name == "child")
-        #expect(gltf.scenes?[gltf.scene ?? 0].nodes?.contains(parent) == false)
-        #expect(nodes.allSatisfy { $0.children?.contains(parent) != true })
+        #expect(nodes[parent.rawValue].name == "container")
+        #expect(nodes[parent.rawValue].children == [child.rawValue])
+        #expect(nodes[child.rawValue].name == "child")
+        #expect(gltf.scenes?[gltf.scene ?? 0].nodes?.contains(parent.rawValue) == false)
+        #expect(nodes.allSatisfy { $0.children?.contains(parent.rawValue) != true })
 
         // Nothing was lost, so it goes back where it was.
         try document.moveNode(at: parent, to: 0)
-        #expect(try document.typed().nodes?[0].children?.contains(parent) == true)
+        #expect(try document.typed().nodes?[0].children?.contains(parent.rawValue) == true)
     }
 
     /// A move is a detach and an attach in one, so the subtree leaves every
     /// parent it was under.
     @Test
     func testMoveNodeLeavesItsOldParentAndKeepsItsIndex() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let first = try document.addNode(name: "first")
         let second = try document.addNode(name: "second")
         let moved = try document.addNode(name: "moved", parent: first)
@@ -310,29 +310,29 @@ struct GLTFEditableDocumentTests {
         try document.moveNode(at: moved, to: second)
 
         let nodes = try #require(try document.typed().nodes)
-        #expect(nodes[moved].name == "moved")
-        #expect(nodes[second].children == [moved])
-        #expect(nodes[first].children == nil)
+        #expect(nodes[moved.rawValue].name == "moved")
+        #expect(nodes[second.rawValue].children == [moved.rawValue])
+        #expect(nodes[first.rawValue].children == nil)
     }
 
     @Test
     func testMoveNodeWithoutAParentMakesItASceneRoot() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let parent = try document.addNode(name: "parent")
         let child = try document.addNode(name: "child", parent: parent)
 
         try document.moveNode(at: child, to: nil)
 
         let gltf = try document.typed()
-        #expect(gltf.nodes?[parent].children == nil)
-        #expect(gltf.scenes?[gltf.scene ?? 0].nodes?.contains(child) == true)
+        #expect(gltf.nodes?[parent.rawValue].children == nil)
+        #expect(gltf.scenes?[gltf.scene ?? 0].nodes?.contains(child.rawValue) == true)
     }
 
     /// A cycle would be walked forever, so the move is refused before any link
     /// is cut.
     @Test
     func testMoveNodeUnderItsOwnDescendantIsRefusedAndChangesNothing() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let parent = try document.addNode(name: "parent")
         let child = try document.addNode(name: "child", parent: parent)
         let grandchild = try document.addNode(name: "grandchild", parent: child)
@@ -414,7 +414,7 @@ struct GLTFEditableDocumentTests {
         let json = """
         {"asset": {"version": "2.0"}}
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
 
         #expect(throws: VRMError.self) { try document.setName("x", nodeAt: 0) }
         #expect(throws: VRMError.self) { try document.detachNode(at: 0) }
@@ -427,13 +427,13 @@ struct GLTFEditableDocumentTests {
         let json = """
         {"asset": {"version": "2.0"}}
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
 
         let index = try document.addNode(name: "first")
 
         let gltf = try document.typed()
         #expect(gltf.scenes?.count == 1)
-        #expect(gltf.scenes?[gltf.scene ?? 0].nodes == [index])
+        #expect(gltf.scenes?[gltf.scene ?? 0].nodes == [index.rawValue])
     }
 
     // MARK: - Helpers
@@ -458,13 +458,10 @@ struct GLTFEditableDocumentTests {
         }
     }
 
-    /// Compares the bytes every buffer view names, which is the whole of a
-    /// glTF's binary side.
-    ///
-    /// The views are sliced out of the buffers directly rather than read
-    /// through ``GLTFDocument``, which bounds a view by the `byteLength` its
-    /// buffer declares, and the AliciaSolid fixture declares one shorter than
-    /// the views its exporter wrote.
+    /// Compares the bytes every buffer view names, which is the whole of a glTF's
+    /// binary side. Sliced out of the buffers directly rather than read through
+    /// ``GLTFDocument``, which bounds a view by the `byteLength` its buffer
+    /// declares, and AliciaSolid declares one shorter than its views.
     private func expectSameBufferViews(_ lhs: GLTFDocument,
                                        _ rhs: GLTFDocument,
                                        added: Int = 0,

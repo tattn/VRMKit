@@ -13,7 +13,7 @@ struct GLTFAuthoringTests {
     /// the loader any other asset goes through.
     @Test
     func testAuthoredMeshRoundTripsThroughAGLB() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
 
         let nodeIndex = try document.addMesh(.plate(material: .picture),
                                          name: "plate",
@@ -25,12 +25,12 @@ struct GLTFAuthoringTests {
         // The scene the document was given, named as the one it draws.
         #expect(gltf.scene == 0)
         let scene = try #require(gltf.scenes?[0])
-        #expect(scene.nodes == [nodeIndex])
-        let node = try #require(gltf.nodes?[nodeIndex])
+        #expect(scene.nodes == [nodeIndex.rawValue])
+        let node = try #require(gltf.nodes?[nodeIndex.rawValue])
         #expect(node.name == "plate")
         #expect(node.translation == SIMD3(0, 1, 0))
 
-        let primitive = try saved.primitive(onNodeAt: nodeIndex)
+        let primitive = try saved.primitive(onNodeAt: nodeIndex.rawValue)
         #expect(primitive.mode == .TRIANGLES)
         #expect(primitive.material == 0)
         let mesh = GLTFTriangleMesh.plate(material: nil)
@@ -44,7 +44,7 @@ struct GLTFAuthoringTests {
 
     @Test
     func testSamplerIsWrittenAsTheMaterialDescribedIt() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
         var material = GLTFSimpleMaterial.picture
         material.baseColorSampler = GLTFTextureSampler(wrapS: .CLAMP_TO_EDGE,
                                                        wrapT: .MIRRORED_REPEAT,
@@ -54,7 +54,7 @@ struct GLTFAuthoringTests {
         let nodeIndex = try document.addMesh(.plate(material: material))
 
         let saved = try GLTFDocument(data: try document.serialize())
-        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex).material)
+        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
         let written = try #require(saved.gltf.materials?[materialIndex])
         let textureIndex = try #require(written.pbrMetallicRoughness?.baseColorTexture?.index)
         let samplerIndex = try #require(saved.gltf.textures?[textureIndex].sampler)
@@ -69,12 +69,12 @@ struct GLTFAuthoringTests {
     /// likes, so a sampler asking for that is not written.
     @Test
     func testASamplerAtItsDefaultsIsNotWritten() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
 
         let nodeIndex = try document.addMesh(.plate(material: .picture))
 
         let saved = try GLTFDocument(data: try document.serialize())
-        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex).material)
+        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
         let written = try #require(saved.gltf.materials?[materialIndex])
         let textureIndex = try #require(written.pbrMetallicRoughness?.baseColorTexture?.index)
         #expect(saved.gltf.textures?[textureIndex].sampler == nil)
@@ -84,14 +84,13 @@ struct GLTFAuthoringTests {
     /// A sampler naming only a filter leaves the wrapping unwritten.
     @Test
     func testOnlyTheSamplerFieldsAskedForAreWritten() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
         var material = GLTFSimpleMaterial.picture
         material.baseColorSampler = GLTFTextureSampler(magFilter: .NEAREST)
 
         try document.addMesh(.plate(material: material))
 
-        let json = try #require(try JSONSerialization.jsonObject(
-            with: try JSONSerialization.data(withJSONObject: document.json)) as? JSONObject)
+        let json = try #require(try JSONValue(parsing: JSONValue.object(document.json).serialized()).objectValue)
         let sampler = try #require(json.objects(.samplers).first)
         #expect(sampler.count == 1)
         #expect(sampler.index("magFilter") == GLTF.Sampler.MagFilter.NEAREST.rawValue)
@@ -101,13 +100,13 @@ struct GLTFAuthoringTests {
     /// corners are what they are computed from.
     @Test
     func testPositionAccessorCarriesTheBoundsGLTFRequires() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
 
         let nodeIndex = try document.addMesh(.plate(material: nil))
 
         let saved = try GLTFDocument(data: try document.serialize())
-        let primitive = try saved.primitive(onNodeAt: nodeIndex)
-        let index = try #require(primitive.attributes.rawValue[.POSITION])
+        let primitive = try saved.primitive(onNodeAt: nodeIndex.rawValue)
+        let index = try #require(primitive.attributes[.POSITION])
         let accessor = try #require(saved.gltf.accessors?[index])
         #expect(accessor.min == [-0.5, -0.5, 0])
         #expect(accessor.max == [0.5, 0.5, 0])
@@ -116,12 +115,12 @@ struct GLTFAuthoringTests {
     /// Four vertices cost half as much indexed as shorts.
     @Test
     func testSmallMeshesAreIndexedAsUnsignedShorts() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
 
         let nodeIndex = try document.addMesh(.plate(material: nil))
 
         let saved = try GLTFDocument(data: try document.serialize())
-        let primitive = try saved.primitive(onNodeAt: nodeIndex)
+        let primitive = try saved.primitive(onNodeAt: nodeIndex.rawValue)
         let index = try #require(primitive.indices)
         let accessor = try #require(saved.gltf.accessors?[index])
         #expect(accessor.componentType == .unsignedShort)
@@ -129,14 +128,14 @@ struct GLTFAuthoringTests {
 
     @Test
     func testMaterialIsWrittenAsTheMeshDescribedIt() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
         var material = GLTFSimpleMaterial.picture
         material.alphaMode = .mask(cutoff: 0.25)
 
         let nodeIndex = try document.addMesh(.plate(material: material))
 
         let saved = try GLTFDocument(data: try document.serialize())
-        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex).material)
+        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
         let written = try #require(saved.gltf.materials?[materialIndex])
         #expect(written.name == "picture")
         #expect(written.pbrMetallicRoughness?.baseColorFactor == SIMD4(1, 0.5, 0.25, 1))
@@ -157,28 +156,27 @@ struct GLTFAuthoringTests {
         #expect(try saved.bufferViewData(at: view).data == GLTFSimpleMaterial.pngBytes)
     }
 
-    /// A mesh asking for no material leaves the document without one.
     @Test
     func testAMeshWithoutAMaterialAddsNone() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
 
         let nodeIndex = try document.addMesh(.plate(material: nil))
 
         let saved = try GLTFDocument(data: try document.serialize())
         #expect(saved.gltf.materials == nil)
-        #expect(try saved.primitive(onNodeAt: nodeIndex).material == nil)
+        #expect(try saved.primitive(onNodeAt: nodeIndex.rawValue).material == nil)
     }
 
     /// `materials: .mtoon` is the same choice `append` offers, so a plate added
     /// to a toon-shaded model is shaded like it.
     @Test
     func testAMeshAddedAsMToonCarriesTheMToonExtension() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
 
         let nodeIndex = try document.addMesh(.plate(material: .picture), materials: .mtoon)
 
         let saved = try GLTFDocument(data: try document.serialize())
-        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex).material)
+        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
         let material = try #require(saved.gltf.materials?[materialIndex])
         #expect(material.extensions?.materialsMToon != nil)
         #expect(saved.gltf.extensionsUsed?.contains("VRMC_materials_mtoon") == true)
@@ -188,21 +186,21 @@ struct GLTFAuthoringTests {
 
     @Test
     func testAMeshHangsUnderTheNodeItWasGiven() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let nodesBefore = try #require(try document.typed().nodes)
 
         let nodeIndex = try document.addMesh(.plate(material: nil), under: 0, name: "held")
 
         let nodes = try #require(try document.typed().nodes)
-        #expect(nodeIndex == nodesBefore.count)
-        #expect(nodes[0].children?.contains(nodeIndex) == true)
+        #expect(nodeIndex.rawValue == nodesBefore.count)
+        #expect(nodes[0].children?.contains(nodeIndex.rawValue) == true)
         // Nothing that was there moved, so the VRM extensions still name it.
         #expect(zip(nodesBefore, nodes).allSatisfy { $0.name == $1.name })
     }
 
     @Test
     func testAddingAMeshUnderAMissingNodeChangesNothing() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) {
@@ -218,9 +216,9 @@ struct GLTFAuthoringTests {
     /// takes like any other document.
     @Test
     func testAnAuthoredDocumentCanBeAppendedIntoAnother() throws {
-        let authored = GLTFEditableDocument()
+        var authored = GLTFEditableDocument()
         try authored.addMesh(.plate(material: .picture), name: "plate")
-        let target = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var target = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let materialsBefore = try target.typed().materials?.count ?? 0
 
         let container = try target.append(try GLTFDocument(data: try authored.serialize()),
@@ -229,8 +227,8 @@ struct GLTFAuthoringTests {
 
         let merged = try GLTFDocument(data: try target.serialize())
         let nodes = try #require(merged.gltf.nodes)
-        #expect(nodes[container].name == "item")
-        let plate = try #require(nodes[container].children?.first)
+        #expect(nodes[container.rawValue].name == "item")
+        let plate = try #require(nodes[container.rawValue].children?.first)
         #expect(nodes[plate].name == "plate")
         let primitive = try merged.primitive(onNodeAt: plate)
         #expect(try merged.vector3Attribute(.POSITION, of: primitive)
@@ -245,13 +243,13 @@ struct GLTFAuthoringTests {
     /// a material added to one needs an entry to keep the two lined up.
     @Test
     func testAddingAMeshToAVRM0KeepsItsMaterialPropertiesParallel() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let materialsBefore = try document.typed().materials?.count ?? 0
 
         let nodeIndex = try document.addMesh(.plate(material: .picture), under: 0)
 
         let saved = try VRM0(data: try document.serialize())
-        #expect(try saved.document.primitive(onNodeAt: nodeIndex).material == materialsBefore)
+        #expect(try saved.document.primitive(onNodeAt: nodeIndex.rawValue).material == materialsBefore)
         let materials = try #require(saved.document.gltf.materials)
         #expect(materials.count == materialsBefore + 1)
         #expect(saved.materialProperties.count == materials.count)
@@ -265,7 +263,7 @@ struct GLTFAuthoringTests {
     /// mesh may not invent one.
     @Test
     func testAddingAMeshToAVRM1AddsNoMaterialProperties() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
 
         try document.addMesh(.plate(material: .picture), under: 0)
 
@@ -278,7 +276,7 @@ struct GLTFAuthoringTests {
     /// image or the index data appended before it happened to have.
     @Test
     func testOddlySizedDataKeepsTheBufferViewsAligned() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
         // Nine bytes of image and a triangle's three shorts both leave the
         // buffer needing padding.
         let images = (0..<3).map { GLTFSimpleMaterial.pngBytes + Data([UInt8($0)]) }
@@ -314,7 +312,7 @@ struct GLTFAuthoringTests {
     func testAMeshThatCannotBePlacedLeavesTheDocumentWritable() throws {
         // Two scenes and no default one, so there is no unambiguous root scene.
         let json = #"{"asset": {"version": "2.0"}, "scenes": [{"nodes": []}, {"nodes": []}], "nodes": [{"name": "a"}]}"#
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
 
         #expect(throws: VRMError.self) { try document.addMesh(.plate(material: .picture)) }
         #expect(try document.typed().images == nil)
@@ -325,7 +323,7 @@ struct GLTFAuthoringTests {
         let saved = try GLTFDocument(data: try document.serialize())
         let images = try #require(saved.gltf.images)
         #expect(images.count == 1)
-        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex).material)
+        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
         let material = try #require(saved.gltf.materials?[materialIndex])
         let textureIndex = try #require(material.pbrMetallicRoughness?.baseColorTexture?.index)
         let source = try #require(saved.gltf.textures?[textureIndex].source)
@@ -377,7 +375,7 @@ struct GLTFAuthoringTests {
                          material: GLTFSimpleMaterial(alphaMode: .mask(cutoff: .nan))),
     ])
     func testAMeshGLTFCannotDescribeIsRefusedWithoutChangingTheDocument(mesh: GLTFTriangleMesh) throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.addMesh(mesh, under: 0) }
@@ -389,7 +387,7 @@ struct GLTFAuthoringTests {
     /// caller's to do rather than this package's.
     @Test
     func testAnImageThatIsNeitherPNGNorJPEGIsRefusedWithoutChangingTheDocument() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let before = try document.serialize()
         var material = GLTFSimpleMaterial.picture
         material.baseColorImage = Data("RIFF____WEBPVP8 ".utf8)
@@ -449,12 +447,12 @@ private extension GLTFDocument {
 
     func vector3Attribute(_ key: GLTF.Mesh.Primitive.AttributeKey,
                           of primitive: GLTF.Mesh.Primitive) throws -> [SIMD3<Float>] {
-        let index = try #require(primitive.attributes.rawValue[key])
+        let index = try #require(primitive.attributes[key])
         return try packed(accessorAt: index).floatElements(.VEC3) { SIMD3($0(0), $0(1), $0(2)) }
     }
 
     func textureCoordinates(of primitive: GLTF.Mesh.Primitive) throws -> [SIMD2<Float>] {
-        let index = try #require(primitive.attributes.rawValue[.TEXCOORD_0])
+        let index = try #require(primitive.attributes[.TEXCOORD_0])
         return try packed(accessorAt: index).floatElements(.VEC2) { SIMD2($0(0), $0(1)) }
     }
 

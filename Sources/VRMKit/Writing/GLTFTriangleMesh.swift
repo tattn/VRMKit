@@ -36,10 +36,8 @@ public struct GLTFTriangleMesh: Equatable, Sendable {
 }
 
 /// What a texture coordinate outside `[0, 1]` samples, and how the image is
-/// filtered.
-///
-/// The defaults are glTF's own, so a sampler left alone is not written and the
-/// texture is left naming none, which reads the same way.
+/// filtered. The defaults are glTF's own, so a sampler left alone is not written
+/// at all.
 public struct GLTFTextureSampler: Hashable, Sendable {
     public var wrapS: GLTF.Sampler.Wrap
 
@@ -160,8 +158,7 @@ extension GLTFTriangleMesh {
         } else {
             imageMediaType = nil
         }
-        // A texture naming no `texCoord` is read at `TEXCOORD_0`, so a mesh
-        // drawn with an image has to carry the coordinates to read it at.
+        // A texture naming no `texCoord` is read at `TEXCOORD_0`.
         guard imageMediaType == nil || textureCoordinates != nil else {
             throw VRMError._dataInconsistent(
                 "a material with a base color image needs the texture coordinates to read it at"
@@ -174,9 +171,8 @@ extension GLTFTriangleMesh {
         )
     }
 
-    /// glTF's `NORMAL` is the unit vector a renderer shades with, and a longer one
-    /// scales the light it reflects. Refused rather than normalized, so that an
-    /// attribute holds what it was given.
+    /// glTF's `NORMAL` is the unit vector a renderer shades with. A longer one is
+    /// refused rather than normalized, so an attribute holds what it was given.
     private func validateNormalsAreUnit() throws {
         for normal in normals ?? [] {
             let length = simd_length(normal)

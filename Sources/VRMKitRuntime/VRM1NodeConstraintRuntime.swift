@@ -6,20 +6,15 @@ package enum VRMNodeConstraintDescriptor {
     case aim(source: Int, axis: SIMD3<Float>, weight: Float)
     case rotation(source: Int, weight: Float)
 
-    package init?(_ constraint: GLTF.Node.NodeExtensions.NodeConstraint.Constraint) {
-        if let roll = constraint.roll {
-            self = .roll(source: roll.source,
-                         axis: roll.rollAxis.vector,
-                         weight: Float(roll.weight ?? 1.0))
-        } else if let aim = constraint.aim {
-            self = .aim(source: aim.source,
-                        axis: aim.aimAxis.vector,
-                        weight: Float(aim.weight ?? 1.0))
-        } else if let rotation = constraint.rotation {
-            self = .rotation(source: rotation.source,
-                             weight: Float(rotation.weight ?? 1.0))
-        } else {
-            return nil
+    package init(_ constraint: GLTF.Node.NodeExtensions.NodeConstraint.Constraint) {
+        let weight = Float(constraint.weight)
+        switch constraint {
+        case .roll(let roll):
+            self = .roll(source: roll.source, axis: roll.rollAxis.vector, weight: weight)
+        case .aim(let aim):
+            self = .aim(source: aim.source, axis: aim.aimAxis.vector, weight: weight)
+        case .rotation(let rotation):
+            self = .rotation(source: rotation.source, weight: weight)
         }
     }
 
@@ -29,6 +24,26 @@ package enum VRMNodeConstraintDescriptor {
              .aim(let source, _, _),
              .rotation(let source, _):
             return source
+        }
+    }
+
+    /// The nodes this constraint reads, so that whatever constrains one of them
+    /// is applied first.
+    ///
+    /// A roll or rotation constraint reads nothing but its source's local
+    /// rotation. An aim constraint reads both ends in world space and the
+    /// destination's parent world rotation, so everything above either end moves
+    /// what it sees.
+    package func dependencies(destination: Int, in hierarchy: GLTFNodeHierarchy) -> [Int] {
+        switch self {
+        case .roll, .rotation:
+            return [source]
+        case .aim:
+            // The destination's ancestors rather than its lineage: the
+            // destination itself is what this constraint poses.
+            let destinationAncestors = hierarchy.parent(at: destination)
+                .map { hierarchy.lineage(of: $0) } ?? []
+            return hierarchy.lineage(of: source) + destinationAncestors
         }
     }
 }
@@ -135,13 +150,14 @@ package enum VRMNodeConstraintRuntime {
 
 }
 
-/// Orders constraints so a constrained source is evaluated before its target,
-/// rejecting duplicate targets and dependency cycles independently of the
-/// rendering backend that owns each binding.
+/// Orders constraints so that every node a constraint reads is posed before it
+/// runs, rejecting duplicate targets and dependency cycles independently of the
+/// rendering backend that owns each binding. `dependencies` names the nodes one
+/// binding reads, of which only the constrained ones order anything.
 package func orderNodeConstraints<Binding>(
     _ bindings: [Binding],
     targetIndex: (Binding) -> Int,
-    sourceIndex: (Binding) -> Int
+    dependencies: (Binding) -> [Int]
 ) throws -> [Binding] {
     var byTargetIndex: [Int: Binding] = [:]
     for binding in bindings {
@@ -165,8 +181,10 @@ package func orderNodeConstraints<Binding>(
         }
 
         states[target] = .visiting
-        if let dependency = byTargetIndex[sourceIndex(binding)] {
-            try visit(dependency)
+        for index in dependencies(binding) {
+            if let dependency = byTargetIndex[index] {
+                try visit(dependency)
+            }
         }
         states[target] = .done
         result.append(binding)

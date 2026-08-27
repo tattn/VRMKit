@@ -13,9 +13,9 @@ import VRMTestSupport
 @MainActor
 struct GLTFAnimationPlaybackTests {
     @Test
-    func testAnimationMetadataIsLazyAndIndexBased() throws {
+    func testAnimationMetadataIsLazyAndIndexBased() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
 
         let animations = entity.animations
         #expect(animations.count == 1)
@@ -29,13 +29,13 @@ struct GLTFAnimationPlaybackTests {
     /// A controller outlives its playback whenever the caller keeps it, so it
     /// must hold neither the entity nor the runtime posing the entity graph.
     @Test
-    func testAKeptControllerDoesNotRetainTheAnimatedGraph() throws {
+    func testAKeptControllerDoesNotRetainTheAnimatedGraph() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         weak var loaded: GLTFEntity?
         weak var animatedNode: Entity?
         var controller: GLTFAnimationPlaybackController?
         do {
-            let entity = try TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
+            let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
             loaded = entity
             let node: Entity = try #require(entity.entity(forNodeAt: 0))
             animatedNode = node
@@ -49,9 +49,9 @@ struct GLTFAnimationPlaybackTests {
     }
 
     @Test
-    func testRotationChannelDrivesTheNodeTransform() throws {
+    func testRotationChannelDrivesTheNodeTransform() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
         let node = try #require(entity.entity(forNodeAt: 0))
 
         let controller = try entity.playAnimation(at: 0)
@@ -68,9 +68,9 @@ struct GLTFAnimationPlaybackTests {
     }
 
     @Test
-    func testWeightsChannelDrivesBlendShapeWeights() throws {
+    func testWeightsChannelDrivesBlendShapeWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.simpleMorph)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.simpleMorph)
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
 
         // SimpleMorph: 2 targets, keyframes at t = 0...4 with weights
@@ -89,9 +89,9 @@ struct GLTFAnimationPlaybackTests {
     }
 
     @Test
-    func testJointAnimationRefreshesTheSkeletalPose() throws {
+    func testJointAnimationRefreshesTheSkeletalPose() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.simpleSkin)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.simpleSkin)
         let binding = try #require(entity.skinBindings.first)
 
         func pose() throws -> JointTransforms {
@@ -111,9 +111,9 @@ struct GLTFAnimationPlaybackTests {
     }
 
     @Test
-    func testInterpolationTestDecodesAndPlaysEveryAnimation() throws {
+    func testInterpolationTestDecodesAndPlaysEveryAnimation() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.interpolationTest)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.interpolationTest)
 
         // 9 animations covering LINEAR / STEP / CUBICSPLINE for rotation and
         // translation; every one must decode and evaluate without throwing.
@@ -127,9 +127,9 @@ struct GLTFAnimationPlaybackTests {
     }
 
     @Test
-    func testNonLoopingPlaybackCompletesAndHoldsTheFinalPose() throws {
+    func testNonLoopingPlaybackCompletesAndHoldsTheFinalPose() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
         let node = try #require(entity.entity(forNodeAt: 0))
 
         let controller = try entity.playAnimation(at: 0)
@@ -145,9 +145,9 @@ struct GLTFAnimationPlaybackTests {
     }
 
     @Test
-    func testLoopingPlaybackWrapsAndPauseHolds() throws {
+    func testLoopingPlaybackWrapsAndPauseHolds() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
 
         let controller = try entity.playAnimation(at: 0, loops: true, speed: 2)
         entity.updateAnimations(deltaTime: 0.6) // 1.2s of animation time wraps to 0.2
@@ -184,9 +184,9 @@ struct GLTFAnimationPlaybackTests {
     /// Two *different* animations driving the same morph targets: the one started
     /// last wins, and stopping it lets the first one drive the targets again.
     @Test
-    func testASecondWeightsAnimationTakesOverAndReleasesTheTargets() throws {
+    func testASecondWeightsAnimationTakesOverAndReleasesTheTargets() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try GLTFEntityLoader(withData: twoWeightAnimationsFixture()).loadEntity()
+        let entity = try await GLTFEntityLoader(withData: twoWeightAnimationsFixture()).loadEntity()
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
         func weight() throws -> Float {
             try #require(modelEntity.blendWeights.first?.first)
@@ -209,9 +209,9 @@ struct GLTFAnimationPlaybackTests {
     /// Seeking an animation another one outranks must not let it take the target
     /// over until the next frame: the later-started animation still wins.
     @Test
-    func testSeekingAnOutrankedAnimationDoesNotTakeOverTheTarget() throws {
+    func testSeekingAnOutrankedAnimationDoesNotTakeOverTheTarget() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try GLTFEntityLoader(withData: twoWeightAnimationsFixture()).loadEntity()
+        let entity = try await GLTFEntityLoader(withData: twoWeightAnimationsFixture()).loadEntity()
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
         func weight() throws -> Float {
             try #require(modelEntity.blendWeights.first?.first)
@@ -317,14 +317,14 @@ struct GLTFAnimationPlaybackTests {
     /// glTF sizes a `weights` output by keyframes × morph targets, so one that
     /// merely divides evenly by the keyframe count is still malformed.
     @Test
-    func testWeightsOutputMustMatchTheMorphTargetCount() throws {
+    func testWeightsOutputMustMatchTheMorphTargetCount() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // One morph target and two keyframes, but four weights.
-        let mismatched = try GLTFEntityLoader(withData: weightAnimationFixture(times: [0, 1],
+        let mismatched = try await GLTFEntityLoader(withData: weightAnimationFixture(times: [0, 1],
                                                                               weights: [0, 0, 1, 1])).loadEntity()
         #expect(throws: VRMError.self) { try mismatched.playAnimation(at: 0) }
 
-        let exact = try GLTFEntityLoader(withData: weightAnimationFixture(times: [0, 1],
+        let exact = try await GLTFEntityLoader(withData: weightAnimationFixture(times: [0, 1],
                                                                          weights: [0, 1])).loadEntity()
         #expect(try exact.playAnimation(at: 0).isComplete == false)
     }
@@ -332,9 +332,9 @@ struct GLTFAnimationPlaybackTests {
     /// A zero-length animation has a single pose, so looping it completes with
     /// that pose applied instead of ticking the entity forever.
     @Test
-    func testZeroDurationLoopAppliesItsPoseAndCompletes() throws {
+    func testZeroDurationLoopAppliesItsPoseAndCompletes() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try GLTFEntityLoader(withData: weightAnimationFixture(times: [0], weights: [0.5])).loadEntity()
+        let entity = try await GLTFEntityLoader(withData: weightAnimationFixture(times: [0], weights: [0.5])).loadEntity()
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
 
         let controller = try entity.playAnimation(at: 0, loops: true)
@@ -350,9 +350,9 @@ struct GLTFAnimationPlaybackTests {
     /// A controller stays usable after it finishes: seeking it still poses the
     /// model, including the skinned meshes.
     @Test
-    func testSeekingAFinishedControllerStillUpdatesTheSkinPose() throws {
+    func testSeekingAFinishedControllerStillUpdatesTheSkinPose() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(.simpleSkin)
+        let entity = try await TestSupport.loadEntity(.simpleSkin)
         let binding = try #require(entity.skinBindings.first)
         func pose() throws -> JointTransforms {
             let component = try #require(binding.modelEntity.components[SkeletalPosesComponent.self])
@@ -375,9 +375,9 @@ struct GLTFAnimationPlaybackTests {
     /// A held pose must not re-solve the skeleton: paused playback, a zero speed
     /// and a STEP track between keyframes all leave the joints in place.
     @Test
-    func testHeldPosesDoNotReportMovedJoints() throws {
+    func testHeldPosesDoNotReportMovedJoints() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(.animatedTriangle)
+        let entity = try await TestSupport.loadEntity(.animatedTriangle)
         let controller = try entity.playAnimation(at: 0, loops: true)
 
         // A real advance moves the node...
@@ -394,9 +394,9 @@ struct GLTFAnimationPlaybackTests {
     }
 
     @Test
-    func testNegativeSpeedPlaysBackwardsFromTheEnd() throws {
+    func testNegativeSpeedPlaysBackwardsFromTheEnd() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(.animatedTriangle)
+        let entity = try await TestSupport.loadEntity(.animatedTriangle)
 
         let controller = try entity.playAnimation(at: 0, speed: -1)
         #expect(controller.time.isApproximatelyEqual(to: 1.0))
@@ -497,87 +497,86 @@ struct GLTFAnimationPlaybackTests {
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     @MainActor
-    private func loadAnimated(path: String, input: SamplerStorage, output: SamplerStorage) throws -> GLTFEntity {
-        try GLTFEntityLoader(withData: samplerFixture(path: path, input: input, output: output)).loadEntity()
+    private func loadAnimated(path: String, input: SamplerStorage, output: SamplerStorage) async throws -> GLTFEntity {
+        try await GLTFEntityLoader(withData: samplerFixture(path: path, input: input, output: output)).loadEntity()
     }
 
     /// The spec fixes a sampler input to FLOAT scalars starting at or after zero.
     /// `PackedAccessor` converts integer components to Float just as happily, so
     /// only the decoder's own check keeps a malformed input out.
     @Test
-    func testAnimationInputMustBeNonNegativeFloats() throws {
+    func testAnimationInputMustBeNonNegativeFloats() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         var integerTimes = Data()
         integerTimes.appendLittleEndian([0, 1])
-        let integer = try loadAnimated(path: "rotation",
-                                       input: SamplerStorage(componentType: 5123, type: "SCALAR",
-                                                             count: 2, bytes: integerTimes),
-                                       output: floatRotations)
+        let integer = try await loadAnimated(path: "rotation",
+                                             input: SamplerStorage(componentType: 5123, type: "SCALAR",
+                                                                   count: 2, bytes: integerTimes),
+                                             output: floatRotations)
         #expect(throws: VRMError.self) { try integer.playAnimation(at: 0) }
 
-        let negative = try loadAnimated(path: "rotation",
-                                        input: SamplerStorage(componentType: 5126, type: "SCALAR", count: 2,
-                                                              bytes: Data(littleEndianFloats: [-1, 1])),
-                                        output: floatRotations)
+        let negative = try await loadAnimated(path: "rotation",
+                                              input: SamplerStorage(componentType: 5126, type: "SCALAR", count: 2,
+                                                                    bytes: Data(littleEndianFloats: [-1, 1])),
+                                              output: floatRotations)
         #expect(throws: VRMError.self) { try negative.playAnimation(at: 0) }
     }
 
     /// A rotation is a unit quantity, so the spec also stores it as normalized
     /// integers. A translation is not, and neither is an unnormalized rotation.
     @Test
-    func testAnimationOutputComponentTypeFollowsTheTargetPath() throws {
+    func testAnimationOutputComponentTypeFollowsTheTargetPath() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let normalized = try loadAnimated(path: "rotation",
-                                          input: floatTimes,
-                                          output: SamplerStorage(componentType: 5122, type: "VEC4", count: 2,
-                                                                 bytes: shortRotationBytes, normalized: true))
+        let normalized = try await loadAnimated(path: "rotation",
+                                                input: floatTimes,
+                                                output: SamplerStorage(componentType: 5122, type: "VEC4", count: 2,
+                                                                       bytes: shortRotationBytes, normalized: true))
         let controller = try normalized.playAnimation(at: 0)
         #expect(!controller.isComplete)
 
-        let unnormalized = try loadAnimated(path: "rotation",
-                                            input: floatTimes,
-                                            output: SamplerStorage(componentType: 5122, type: "VEC4", count: 2,
-                                                                   bytes: shortRotationBytes))
+        let unnormalized = try await loadAnimated(path: "rotation",
+                                                  input: floatTimes,
+                                                  output: SamplerStorage(componentType: 5122, type: "VEC4", count: 2,
+                                                                         bytes: shortRotationBytes))
         #expect(throws: VRMError.self) { try unnormalized.playAnimation(at: 0) }
 
         var shortVectors = Data()
         shortVectors.appendLittleEndian([0, 0, 0, 0, 0, 0])
-        let translation = try loadAnimated(path: "translation",
-                                           input: floatTimes,
-                                           output: SamplerStorage(componentType: 5122, type: "VEC3", count: 2,
-                                                                  bytes: shortVectors, normalized: true))
+        let translation = try await loadAnimated(path: "translation",
+                                                 input: floatTimes,
+                                                 output: SamplerStorage(componentType: 5122, type: "VEC3", count: 2,
+                                                                        bytes: shortVectors, normalized: true))
         #expect(throws: VRMError.self) { try translation.playAnimation(at: 0) }
     }
 
     /// A rotation or a weight normalizes bytes and shorts only: UNSIGNED_INT is
     /// reserved for primitive indices, and normalizing it is forbidden outright.
     @Test
-    func testUnsignedIntAnimationOutputIsRejectedEvenWhenNormalized() throws {
+    func testUnsignedIntAnimationOutputIsRejectedEvenWhenNormalized() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         var intRotations = Data()
         intRotations.appendLittleEndian(unsignedInts: [0, 0, 0, .max, 0, 0, 0, .max])
-        let rotation = try loadAnimated(path: "rotation",
-                                        input: floatTimes,
-                                        output: SamplerStorage(componentType: 5125, type: "VEC4", count: 2,
-                                                               bytes: intRotations, normalized: true))
+        let rotation = try await loadAnimated(path: "rotation",
+                                              input: floatTimes,
+                                              output: SamplerStorage(componentType: 5125, type: "VEC4", count: 2,
+                                                                     bytes: intRotations, normalized: true))
         #expect(throws: VRMError.self) { try rotation.playAnimation(at: 0) }
     }
 
     /// At most one channel of an animation may drive a given (node, path): a
     /// file with two leaves the winner to chance, so it has to be rejected.
     @Test
-    func testDuplicateChannelTargetsAreRejected() throws {
+    func testDuplicateChannelTargetsAreRejected() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try TestSupport.loader(.animatedTriangle) { json in
-            guard var animations = json["animations"] as? [[String: Any]], !animations.isEmpty,
-                  let channels = animations[0]["channels"] as? [[String: Any]],
-                  let channel = channels.first else {
-                throw GLBRewriter.Error.invalidJSON
-            }
-            animations[0]["channels"] = channels + [channel]
-            json["animations"] = animations
+            var animations = json.objects("animations")
+            guard !animations.isEmpty else { throw GLBRewriter.Error.invalidJSON }
+            let channels = animations[0].objects("channels")
+            guard let channel = channels.first else { throw GLBRewriter.Error.invalidJSON }
+            animations[0]["channels"] = .objects(channels + [channel])
+            json["animations"] = .objects(animations)
         }
-        let entity = try loader.loadEntity()
+        let entity = try await loader.loadEntity()
 
         // The metadata pass does not read channels, so only playback rejects it.
         #expect(entity.animations.count == 1)
@@ -587,37 +586,39 @@ struct GLTFAnimationPlaybackTests {
     /// A channel targets a node of the document, and an animated node states
     /// its transform as TRS rather than as a `matrix`.
     @Test
-    func testAnimationChannelTargetsAreValidated() throws {
+    func testAnimationChannelTargetsAreValidated() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let outOfRange = try TestSupport.loader(.animatedTriangle) { json in
-            guard var animations = json["animations"] as? [[String: Any]], !animations.isEmpty,
-                  var channels = animations[0]["channels"] as? [[String: Any]], !channels.isEmpty,
-                  var target = channels[0]["target"] as? [String: Any] else {
+        let outOfRange = try await TestSupport.loader(.animatedTriangle) { json in
+            var animations = json.objects("animations")
+            guard !animations.isEmpty else { throw GLBRewriter.Error.invalidJSON }
+            var channels = animations[0].objects("channels")
+            guard !channels.isEmpty, var target = channels[0].object("target") else {
                 throw GLBRewriter.Error.invalidJSON
             }
             target["node"] = 1
-            channels[0]["target"] = target
-            animations[0]["channels"] = channels
-            json["animations"] = animations
+            channels[0]["target"] = .object(target)
+            animations[0]["channels"] = .objects(channels)
+            json["animations"] = .objects(animations)
         }.loadEntity()
         #expect(throws: VRMError.self) { try outOfRange.playAnimation(at: 0) }
 
-        let matrixNode = try TestSupport.loader(.animatedTriangle) { json in
-            guard var nodes = json["nodes"] as? [[String: Any]], !nodes.isEmpty else {
+        let matrixNode = try await TestSupport.loader(.animatedTriangle) { json in
+            var nodes = json.objects("nodes")
+            guard !nodes.isEmpty else {
                 throw GLBRewriter.Error.invalidJSON
             }
             nodes[0]["rotation"] = nil
             nodes[0]["matrix"] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
-            json["nodes"] = nodes
+            json["nodes"] = .objects(nodes)
         }.loadEntity()
         #expect(throws: VRMError.self) { try matrixNode.playAnimation(at: 0) }
     }
 
     @Test
-    func testVRMEntityInheritsTheAnimationAPI() throws {
+    func testVRMEntityInheritsTheAnimationAPI() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // The VRM fixtures carry no glTF animations; the API still answers.
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         #expect(vrmEntity.animations.isEmpty)
         #expect(throws: VRMError.self) {
             try vrmEntity.playAnimation(at: 0)

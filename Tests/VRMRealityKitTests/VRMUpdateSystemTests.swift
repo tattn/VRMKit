@@ -10,10 +10,10 @@ import VRMKit
 @MainActor
 struct VRMUpdateSystemTests {
     @Test
-    func testAutomaticUpdateIsOnByDefaultAndCanBeToggled() throws {
+    func testAutomaticUpdateIsOnByDefaultAndCanBeToggled() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
         #expect(vrmEntity.isAutomaticUpdateEnabled)
 
         vrmEntity.isAutomaticUpdateEnabled = false
@@ -24,7 +24,7 @@ struct VRMUpdateSystemTests {
     }
 
     @Test
-    func testParentKeepsTheLoadedEntityAlive() throws {
+    func testParentKeepsTheLoadedEntityAlive() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Adding the model to a scene is all its lifetime needs: nothing outside
         // the entity graph has to hold on to it for the system to keep animating.
@@ -32,7 +32,7 @@ struct VRMUpdateSystemTests {
         weak var loaded: VRMEntity?
         do {
             let loader = try VRMEntityLoader(withData: TestSupport.seedSanData)
-            let vrmEntity = try loader.loadEntity()
+            let vrmEntity = try await loader.loadEntity()
             loaded = vrmEntity
             parent.addChild(vrmEntity)
         }
@@ -42,12 +42,12 @@ struct VRMUpdateSystemTests {
     }
 
     @Test
-    func testClonedEntityIsInert() throws {
+    func testClonedEntityIsInert() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // RealityKit builds clones through `init()`, so a clone is a copy of the
         // rendered hierarchy with no runtime behind it.
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
         let clone = vrmEntity.clone(recursive: true)
 
         #expect(vrmEntity.humanoid.node(for: .neck) != nil)
@@ -60,22 +60,22 @@ struct VRMUpdateSystemTests {
     /// pose it was last put in, so its per-frame update stops re-solving every
     /// skeleton. Posing a joint directly is what says otherwise.
     @Test
-    func testAStaticModelSolvesItsSkinOnlyOnceInvalidated() throws {
+    func testAStaticModelSolvesItsSkinOnlyOnceInvalidated() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let data = try TestSupport.modifiedSeedSanData(name: "no dynamics") { json in
-            var extensions = json["extensions"] as? [String: Any] ?? [:]
+            var extensions = json.object("extensions") ?? [:]
             extensions.removeValue(forKey: "VRMC_springBone")
-            json["extensions"] = extensions
-            json["nodes"] = (json["nodes"] as? [[String: Any]] ?? []).map { node in
+            json["extensions"] = .object(extensions)
+            json["nodes"] = .objects(json.objects("nodes").map { node in
                 var node = node
-                if var nodeExtensions = node["extensions"] as? [String: Any] {
+                if var nodeExtensions = node.object("extensions") {
                     nodeExtensions.removeValue(forKey: "VRMC_node_constraint")
-                    node["extensions"] = nodeExtensions
+                    node["extensions"] = .object(nodeExtensions)
                 }
                 return node
-            }
+            })
         }
-        let vrmEntity = try VRMEntityLoader(withData: data, shaders: []).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: data, shaders: []).loadEntity()
 
         let head = try #require(vrmEntity.humanoid.node(for: .head))
         let before = TestSupport.jointRotations(in: vrmEntity)
@@ -93,9 +93,9 @@ struct VRMUpdateSystemTests {
     /// A model that does move its own joints keeps refreshing every frame, so
     /// the skip above cannot leave a spring-driven model a frame behind.
     @Test
-    func testAModelWithSpringBonesStillRefreshesEveryFrame() throws {
+    func testAModelWithSpringBonesStillRefreshesEveryFrame() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
 
         let head = try #require(vrmEntity.humanoid.node(for: .head))
         let before = TestSupport.jointRotations(in: vrmEntity)
@@ -108,10 +108,10 @@ struct VRMUpdateSystemTests {
     /// The VRM rides on the entity as a component, so a clone can still be asked
     /// what model it came from instead of trapping.
     @Test
-    func testClonedEntityStillCarriesItsVRM() throws {
+    func testClonedEntityStillCarriesItsVRM() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
         let clone = vrmEntity.clone(recursive: true)
 
         guard case .v1 = clone.vrm else {

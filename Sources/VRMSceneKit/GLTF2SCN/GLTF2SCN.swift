@@ -3,16 +3,18 @@ import Foundation
 import SceneKit
 import SpriteKit
 
-func semantic(of key: GLTF.Mesh.Primitive.AttributeKey) -> SCNGeometrySource.Semantic {
+/// Nil for an attribute SceneKit has no semantic for, an application-specific
+/// one or a set beyond the ones drawn here among them.
+func semantic(of key: GLTF.Mesh.Primitive.AttributeKey) -> SCNGeometrySource.Semantic? {
     switch key {
     case .POSITION: return .vertex
     case .NORMAL: return .normal
     case .TANGENT: return .tangent
-    case .TEXCOORD_0: return .texcoord
-    case .TEXCOORD_1: return .texcoord
+    case .TEXCOORD_0, .TEXCOORD_1: return .texcoord
     case .COLOR_0: return .color
     case .JOINTS_0: return .boneIndices
     case .WEIGHTS_0: return .boneWeights
+    default: return nil
     }
 }
 
@@ -35,13 +37,18 @@ func primitiveTypeOf(_ mode: GLTF.Mesh.Primitive.Mode) -> SCNGeometryPrimitiveTy
     case .LINES: return .line
     case .TRIANGLES: return .triangles
     case .TRIANGLE_STRIP: return .triangleStrip
-    case .LINE_LOOP, .LINE_STRIP, .TRIANGLE_FAN: return nil // TODO
+    // SceneKit draws no counterpart of these three.
+    case .LINE_LOOP, .LINE_STRIP, .TRIANGLE_FAN: return nil
     }
 }
 
 extension SIMD3 where Scalar == Float {
     func createSCNVector3() -> SCNVector3 {
         SCNVector3(x: SCNFloat(x), y: SCNFloat(y), z: SCNFloat(z))
+    }
+
+    func createSKColor(alpha: CGFloat) -> SKColor {
+        SKColor(red: CGFloat(x), green: CGFloat(y), blue: CGFloat(z), alpha: alpha)
     }
 }
 

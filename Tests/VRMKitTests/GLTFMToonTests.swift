@@ -11,7 +11,7 @@ struct GLTFMToonTests {
     /// material as it is".
     @Test
     func testAppendingAsMToonWritesAVRM0MaterialProperty() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
         let textureBase = try document.typed().textures?.count ?? 0
 
@@ -42,8 +42,8 @@ struct GLTFMToonTests {
     @Test
     func testAppendingAsMToonWritesTheMToonExtension() throws {
         let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
-        let head = try #require(vrm.nodeIndex(of: .head))
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        let head = GLTFNodeIndex(try #require(vrm.nodeIndex(of: .head)))
         let textureBase = try document.typed().textures?.count ?? 0
 
         try document.append(try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url),
@@ -74,7 +74,7 @@ struct GLTFMToonTests {
         let style = MToonConversionStyle(outlineWidthMode: .worldCoordinates, outlineWidthFactor: 0.02)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
 
-        let vrm0 = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var vrm0 = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         try vrm0.append(source, under: 0, materials: .mtoon(style))
         let property = try #require(try GLTFDocument(data: try vrm0.serialize()).rawJSON()
             .object("extensions")?.object("VRM")?.objects("materialProperties").last)
@@ -82,7 +82,7 @@ struct GLTFMToonTests {
         #expect(floats.float("_OutlineWidthMode") == 1)
         #expect(floats.float("_OutlineWidth")?.isApproximatelyEqual(to: 2) == true)
 
-        let vrm1 = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var vrm1 = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         try vrm1.append(source, under: 0, materials: .mtoon(style))
         let mtoon = try #require(try GLTFDocument(data: try vrm1.serialize())
             .gltf.materials?.last?.extensions?.materialsMToon)
@@ -92,7 +92,7 @@ struct GLTFMToonTests {
 
     @Test
     func testConvertingTheMaterialsOfAPlainGLTF() throws {
-        let document = try GLTFEditableDocument(data: GLTFSampleAsset.simpleTexture.data,
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.simpleTexture.data,
                                                 rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
 
         try document.convertMaterialsToMToon(at: [0])
@@ -108,16 +108,16 @@ struct GLTFMToonTests {
     @Test(arguments: ["rotation", "texCoord"])
     func testConvertingToVRM0RefusesUVStateItCannotCarry(unsupported: String) throws {
         let source = try GLTFSampleAsset.simpleTexture.rewritingJSON { json in
-            var materials = json["materials"] as? [[String: Any]] ?? []
+            var materials = json.objects("materials")
             materials[0].withObject("pbrMetallicRoughness") { pbr in
                 pbr.withObject("baseColorTexture") {
                     $0["extensions"] = ["KHR_texture_transform": [unsupported: 1]]
                 }
             }
-            json["materials"] = materials
+            json["materials"] = .objects(materials)
             json["extensionsUsed"] = ["KHR_texture_transform"]
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) {
@@ -134,16 +134,16 @@ struct GLTFMToonTests {
     @Test
     func testConvertingToVRM0KeepsATransformEveryTextureShares() throws {
         let source = try GLTFSampleAsset.simpleTexture.rewritingJSON { json in
-            var materials = json["materials"] as? [[String: Any]] ?? []
+            var materials = json.objects("materials")
             materials[0].withObject("pbrMetallicRoughness") { pbr in
                 pbr.withObject("baseColorTexture") {
                     $0["extensions"] = ["KHR_texture_transform": ["scale": [2, 4], "offset": [0.25, 0.5]]]
                 }
             }
-            json["materials"] = materials
+            json["materials"] = .objects(materials)
             json["extensionsUsed"] = ["KHR_texture_transform"]
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
 
         try document.append(try GLTFDocument(data: source,
                                              rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory),
@@ -159,7 +159,7 @@ struct GLTFMToonTests {
 
     @Test
     func testConvertingAMaterialThatIsNotThereThrows() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
 
         #expect(throws: VRMError.self) { try document.convertMaterialsToMToon(at: [100_000]) }
     }
@@ -168,7 +168,7 @@ struct GLTFMToonTests {
     /// telling a VRM 0.x runtime to use the glTF material.
     @Test
     func testKeepingTheMaterialsWritesTheGLTFShaderProperty() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
 
         try document.append(try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url), under: 0)
 

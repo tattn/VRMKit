@@ -1,24 +1,19 @@
 import Foundation
 
 extension GLTFEditableDocument {
-    /// Takes out everything the document has stopped drawing and returns how
-    /// many BIN bytes that reclaimed.
+    /// Takes out everything the document has stopped drawing, and says how many
+    /// BIN bytes that reclaimed and where the entries it kept ended up.
     ///
-    /// ``detachNode(at:)`` leaves the meshes and textures a subtree drew where
-    /// they were, so a document edited and saved repeatedly grows while looking the
-    /// same. This takes those bytes back, and only when asked, since keeping
-    /// unreachable data can be the point of an edit.
-    ///
-    /// The entries go with the bytes and every index is remapped, so the result is
-    /// an ordinary glTF document. ``GLTFReachability`` decides what stays: a node
-    /// something still names keeps its transform without the mesh it drew, so a
-    /// humanoid bone stays where it was, but a pruned detached subtree can no
-    /// longer be drawn again with ``moveNode(at:to:)``.
+    /// ``detachNode(at:)`` leaves the meshes and textures a subtree drew where they
+    /// were, and this takes those bytes back. ``GLTFReachability`` decides what
+    /// stays: a node something still names keeps its transform without the mesh it
+    /// drew, but a pruned detached subtree can no longer be drawn again with
+    /// ``moveNode(at:to:)``.
     ///
     /// A document declaring an extension this package cannot follow the references
     /// of is refused rather than pruned.
     @discardableResult
-    public func prune() throws -> Int {
+    public mutating func prune() throws -> GLTFPruneResult {
         try validatePrunable()
         let compaction = GLTFCompaction(of: json, keeping: GLTFReachability.of(json))
         let (views, compacted) = try prunedBufferViews(compaction)
@@ -26,36 +21,37 @@ extension GLTFEditableDocument {
         var pruned = json
         for array in GLTFArray.allCases where array != .buffers && array != .bufferViews {
             let entries = json.objects(array)
-            pruned[array] = nonEmpty(compaction.kept(array).map {
+            pruned[array] = Self.nonEmpty(compaction.kept(array).map {
                 GLTFReferences.rewriting(entries[$0],
                                          of: array,
                                          drawing: array != .nodes || compaction.draws($0),
                                          with: compaction.map)
             })
         }
-        pruned[.bufferViews] = nonEmpty(views)
+        pruned[.bufferViews] = Self.nonEmpty(views)
         pruned.withObject("extensions") { extensions in
             extensions.withObject(GLTFExtension.vrm0.rawValue) { compaction.filterMaterialProperties(of: &$0) }
             extensions = GLTFReferences.rewritingRootExtensions(extensions, with: compaction.map)
         }
 
-        // Everything that could fail is behind us, so the document changes in one
-        // go rather than through `atomicallyAppendingBinary`, which covers only an
-        // edit that appends.
+        // Everything that could fail is behind us, so the document changes in one go.
         let reclaimed = binary.count - compacted.count
         binary = compacted
         json = pruned
-        return reclaimed
+        return GLTFPruneResult(reclaimedByteCount: reclaimed, moved: compaction.moved)
     }
 
     /// glTF gives its top-level arrays a minimum of one entry.
-    private func nonEmpty(_ entries: [JSONObject]) -> [JSONObject]? {
-        entries.isEmpty ? nil : entries
+    private static func nonEmpty(_ entries: [JSONObject]) -> JSONValue? {
+        entries.isEmpty ? nil : .objects(entries)
     }
 
     /// What the walk cannot follow is what pruning would erase, so a document
     /// carrying it is refused, as one spread over several buffers is.
     private func validatePrunable() throws {
+        // A reference to an entry the document does not hold would come out of the
+        // compaction quietly deleted, which is repairing rather than pruning.
+        try GLTFReferences.validateIndices(of: json)
         let unsupported = json.carriedExtensions().subtracting(GLTFExtension.prunable)
         guard unsupported.isEmpty else {
             throw VRMError._notSupported(
@@ -63,9 +59,9 @@ extension GLTFEditableDocument {
                 + "whose references pruning cannot follow"
             )
         }
-        // A document naming no scene draws nothing, so pruning it would take
-        // everything: it is refused rather than emptied. A `VRMC_vrm_animation`
-        // is the exception, since what it drives stands in for a scene.
+        // A document naming no scene draws nothing, so it is refused rather than
+        // emptied. A `VRMC_vrm_animation` is the exception, since what it drives
+        // stands in for a scene.
         guard json.count(.scenes) != 0
             || json.count(.nodes) == 0
             || json.object("extensions")?[GLTFExtension.vrmAnimation.rawValue] != nil else {
@@ -124,9 +120,8 @@ extension GLTFEditableDocument {
     /// Lays the slices out from the start of the buffer and says where each landed.
     ///
     /// Slices that touch or overlap move together, so views over the same bytes go
-    /// on sharing them rather than each getting a copy. A cluster only ever moves
-    /// earlier and only by a multiple of four, which keeps every view on the
-    /// boundary its component type needs.
+    /// on sharing them. A cluster only moves earlier and only by a multiple of
+    /// four, which keeps every view on the boundary its component type needs.
     private func relocating(_ slices: [BinarySlice]) -> (binary: Data, placements: [BinarySliceKey: Int]) {
         var compacted = Data(capacity: binary.count)
         var placements: [BinarySliceKey: Int] = [:]
@@ -175,7 +170,7 @@ private struct GLTFCompaction {
     /// The old indices each array keeps, in order.
     private var keeping: [GLTFArray: [Int]] = [:]
     /// The new index of each old one, and no entry at all for what went.
-    private var moved: [GLTFArray: [Int: Int]] = [:]
+    private(set) var moved: [GLTFArray: [Int: Int]] = [:]
     /// The nodes still drawing, which is what a binding to what a node draws asks
     /// about rather than whether the node itself survived.
     private let drawn: Set<Int>
@@ -209,7 +204,8 @@ private struct GLTFCompaction {
     /// VRM 0.x keeps a shading entry per material, in the same order, so the
     /// array is filtered alongside the materials rather than by a reference.
     func filterMaterialProperties(of vrm0: inout JSONObject) {
-        guard let properties = vrm0["materialProperties"] as? [JSONObject] else { return }
+        guard vrm0["materialProperties"] != nil else { return }
+        let properties = vrm0.objects("materialProperties")
         let kept = kept(.materials).compactMap { properties[safe: $0] }
         vrm0.set("materialProperties", kept.isEmpty ? nil : kept)
     }

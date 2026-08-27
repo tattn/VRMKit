@@ -43,11 +43,10 @@ public final class VRMEntity: GLTFEntity {
     private var materialColorClips: [ExpressionKey: [MaterialColorBinding]] = [:]
     private var textureTransformClips: [ExpressionKey: [TextureTransformBinding]] = [:]
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
-    private var springBones: [VRMEntitySpringBone] = []
-    private var nodeConstraints: [NodeConstraintBinding] = []
-    // Binding indexes and their baseline values are fully determined by the
-    // clips, so they are built once at load time instead of on every
-    // expression change.
+    private var springBones = SpringBoneRig<Entity>()
+    private var nodeConstraints = NodeConstraintRig<Entity>()
+    // Determined by the clips alone, so built once at load time rather than on
+    // every expression change.
     private var morphBindingIndex: [MorphBindingKey: BlendShapeBinding] = [:]
     private var colorBindingIndex: [MaterialColorBindingKey: MaterialColorBinding] = [:]
     private var transformBindingIndex: [Int: TextureTransformBinding] = [:]
@@ -59,10 +58,9 @@ public final class VRMEntity: GLTFEntity {
     private var appliedMaterialColors: [MaterialColorBindingKey: SIMD4<Float>] = [:]
     private var appliedTextureTransforms: [Int: SIMD4<Float>] = [:]
 
-    /// Registers the components and the system this entity relies on. RealityKit
-    /// instantiates registered systems for every scene, including scenes that
-    /// already exist, so registering on first use is enough; `static let` runs
-    /// the body exactly once.
+    /// Registers the components and the system this entity relies on, exactly
+    /// once per process. RealityKit instantiates a registered system for every
+    /// scene, existing ones included, so registering on first use is enough.
     @MainActor private static let registerRealityKitTypes: Void = {
         VRMComponent.registerComponent()
         VRMUpdateComponent.registerComponent()
@@ -76,9 +74,8 @@ public final class VRMEntity: GLTFEntity {
         components.set(VRMUpdateComponent())
     }
 
-    /// Required by `Entity`, which also builds the copies `clone(recursive:)`
-    /// returns. Such a copy inherits the ``VRMComponent`` but not the runtime
-    /// bindings, so it renders and ``update(deltaTime:)`` does nothing to it.
+    /// Also builds the copies `clone(recursive:)` returns, which inherit the
+    /// ``VRMComponent`` but not the runtime bindings, so they only render.
     public required init() {
         super.init()
         _ = Self.registerRealityKitTypes
@@ -112,7 +109,9 @@ public final class VRMEntity: GLTFEntity {
 
     /// Called once per entity, right after its node hierarchy is built. A VRM 0.x
     /// bind names a mesh index, so it drives every entity `meshes` has for it.
-    func setUpBlendShapes(nodes: [Entity?], meshes: [Int: [Entity]], loader: VRMEntityLoader) throws {
+    func setUpBlendShapes(nodes: [Entity?],
+                          meshes: [Int: [EntityData.SceneMesh]],
+                          loader: VRMEntityLoader) throws {
         switch vrm {
         case .v0(let vrm0):
             // A 0.x group is loaded as the expression it stands for, so the
@@ -121,7 +120,7 @@ public final class VRMEntity: GLTFEntity {
                 let morphBindings: [BlendShapeBinding] = group.binds?
                     .flatMap { bind in
                         (meshes[bind.mesh] ?? []).map {
-                            BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
+                            BlendShapeBinding(mesh: $0.entity, index: bind.index, weight: bind.weight)
                         }
                     } ?? []
                 let clip = ExpressionClip(name: group.name,
@@ -177,8 +176,14 @@ public final class VRMEntity: GLTFEntity {
 
                 let transformBindings: [TextureTransformBinding] = expressionClip.expression.textureTransformBinds?
                     .compactMap { bind in
+                        // As above, a malformed bind only invalidates itself.
                         guard let base = try? currentTextureTransform(withMaterialIndex: bind.material,
                                                                       loader: loader) else {
+                            Self.logger.warning("""
+                            Skipping invalid TextureTransformBind. \
+                            expression=\(expressionClip.name, privacy: .public) \
+                            materialIndex=\(bind.material)
+                            """)
                             return nil
                         }
                         return TextureTransformBinding(materialIndex: bind.material,
@@ -217,110 +222,33 @@ public final class VRMEntity: GLTFEntity {
         }
     }
 
-    func setUpFirstPerson(nodes: [Entity?], meshes: [Int: [Entity]]) {
-        switch vrm {
-        case .v0(let vrm0):
-            firstPersonAnnotations = vrm0.firstPerson.meshAnnotations.flatMap { annotation in
-                guard let type = FirstPersonAnnotationType(vrm0Flag: annotation.firstPersonFlag) else {
-                    return [FirstPersonAnnotation]()
-                }
-                return (meshes[annotation.mesh] ?? []).map {
-                    FirstPersonAnnotation(entity: $0,
-                                          type: type,
-                                          hidesAutoInFirstPerson: false)
-                }
+    /// What each camera draws of each mesh. The `auto` cut is made as the meshes
+    /// are built, so this only pairs it with the entity drawing it.
+    func setUpFirstPerson(plan: VRMFirstPersonPlan,
+                          nodes: [Entity?],
+                          meshes: [Int: [EntityData.SceneMesh]]) {
+        let head = plan.headNode.flatMap { nodes[safe: $0] ?? nil }
+        firstPersonAnnotations = meshes.sorted { $0.key < $1.key }.flatMap { meshIndex, sceneMeshes in
+            sceneMeshes.map { sceneMesh in
+                FirstPersonAnnotation(entity: sceneMesh.entity,
+                                      type: plan.annotation(ofNodeAt: sceneMesh.nodeIndex, meshIndex: meshIndex),
+                                      // An unskinned mesh cannot be cut, so the head takes it whole.
+                                      hidesAutoInFirstPerson: sceneMesh.entity.isSameOrDescendant(of: head))
             }
-        case .v1(let vrm1):
-            let head = humanoid.node(for: .head)
-            firstPersonAnnotations = vrm1.firstPerson?.meshAnnotations.compactMap { annotation in
-                guard nodes.indices.contains(annotation.node),
-                      let node = nodes[annotation.node] else {
-                    return nil
-                }
-                let type = FirstPersonAnnotationType(vrm1Type: annotation.type)
-                return FirstPersonAnnotation(entity: node,
-                                             type: type,
-                                             hidesAutoInFirstPerson: type == .auto && node.isSameOrDescendant(of: head))
-            } ?? []
         }
         setFirstPersonRenderMode(.thirdPerson)
     }
 
-    func setUpNodeConstraints(gltfNodes: [GLTF.Node], loader: GLTFEntityLoader) throws {
-        guard case .v1 = vrm else {
-            nodeConstraints = []
-            return
+    func setUpNodeConstraints(gltfNodes: [GLTF.Node],
+                              hierarchy: GLTFNodeHierarchy,
+                              loader: GLTFEntityLoader) throws {
+        nodeConstraints = try NodeConstraintRig.make(vrm: vrm, gltfNodes: gltfNodes, hierarchy: hierarchy) {
+            try loader.node(withNodeIndex: $0)
         }
-
-        var bindings: [NodeConstraintBinding] = []
-        for (targetIndex, gltfNode) in gltfNodes.enumerated() {
-            guard let constraint = gltfNode.extensions?.nodeConstraint?.constraint,
-                  let descriptor = VRMNodeConstraintDescriptor(constraint) else {
-                continue
-            }
-            let sourceIndex = descriptor.source
-            guard sourceIndex != targetIndex else {
-                throw VRMError._dataInconsistent("VRMC_node_constraint source must not be destination: \(targetIndex)")
-            }
-            guard gltfNodes.indices.contains(sourceIndex) else {
-                throw VRMError._dataInconsistent("VRMC_node_constraint source index is out of range: \(sourceIndex)")
-            }
-
-            let target = try loader.node(withNodeIndex: targetIndex)
-            let source = try loader.node(withNodeIndex: sourceIndex)
-            bindings.append(NodeConstraintBinding(targetIndex: targetIndex,
-                                                  sourceIndex: sourceIndex,
-                                                  descriptor: descriptor,
-                                                  target: target,
-                                                  source: source))
-        }
-        nodeConstraints = try orderNodeConstraints(
-            bindings,
-            targetIndex: { $0.targetIndex },
-            sourceIndex: { $0.sourceIndex }
-        )
     }
 
     func setUpSpringBones(loader: GLTFEntityLoader) throws {
-        var springBones: [VRMEntitySpringBone] = []
-        switch vrm {
-        case .v0(let vrm0):
-            let secondaryAnimation = vrm0.secondaryAnimation
-            let allColliderGroups = try secondaryAnimation.colliderGroups.map {
-                try VRMEntitySpringBoneColliderGroup(colliderGroup: $0, loader: loader)
-            }
-            for boneGroup in secondaryAnimation.boneGroups {
-                guard !boneGroup.bones.isEmpty else { continue }
-                let rootBones: [Entity] = try boneGroup.bones.compactMap { try loader.node(withNodeIndex: $0) }
-                let centerNode = try? loader.node(withNodeIndex: boneGroup.center)
-                let colliderGroups = boneGroup.colliderGroups.compactMap { allColliderGroups[safe: $0] }
-                let springBone = VRMEntitySpringBone(center: centerNode,
-                                                     rootBones: rootBones,
-                                                     setting: SpringBoneJointSetting(vrm0BoneGroup: boneGroup),
-                                                     colliderGroups: colliderGroups)
-                springBones.append(springBone)
-            }
-        case .v1(let vrm1):
-            guard let springBone = vrm1.springBone else { break }
-            let allColliderGroups = try (springBone.colliderGroups ?? []).map {
-                try VRMEntitySpringBoneColliderGroup(colliderGroup: $0, springBone: springBone, loader: loader)
-            }
-            for spring in springBone.springs ?? [] {
-                let jointEntities = try spring.joints.map { try loader.node(withNodeIndex: $0.node) }
-                // A chain of one joint is only a tail, so it swings nothing.
-                guard jointEntities.count > 1 else { continue }
-                let centerEntity = try spring.center.map { try loader.node(withNodeIndex: $0) }
-                let colliderGroups = (spring.colliderGroups ?? []).compactMap { allColliderGroups[safe: $0] }
-                let chain = zip(jointEntities, spring.joints).map { entity, joint in
-                    (node: entity, setting: SpringBoneJointSetting(vrm1Joint: joint))
-                }
-                let springBone = VRMEntitySpringBone(center: centerEntity,
-                                                     chain: chain,
-                                                     colliderGroups: colliderGroups)
-                springBones.append(springBone)
-            }
-        }
-        self.springBones = springBones
+        springBones = try SpringBoneRig.make(vrm: vrm) { try loader.node(withNodeIndex: $0) }
     }
 
     /// The color a `materialColorBind` starts from. A state animating that color
@@ -348,23 +276,17 @@ public final class VRMEntity: GLTFEntity {
 
     /// Advances spring bones, node constraints, and skinning by one frame.
     ///
-    /// ``VRMUpdateSystem`` calls this automatically once per render frame, so
-    /// there is normally no need to call it. To drive the timing manually, set
-    /// ``isAutomaticUpdateEnabled`` to `false` first, otherwise the model
-    /// advances twice per frame.
-    ///
-    /// The skin pose is re-solved only when something has moved a joint since
-    /// the last frame, so posing a humanoid bone directly has to be followed by
+    /// ``VRMUpdateSystem`` calls this once per render frame, so set
+    /// ``isAutomaticUpdateEnabled`` to `false` before driving the timing
+    /// manually. The skin pose is re-solved only when a joint has moved, so
+    /// posing a humanoid bone directly has to be followed by
     /// ``GLTFEntity/invalidateSkinPose()``.
     public func update(deltaTime: TimeInterval) {
         let deltaTime = max(0, deltaTime)
         // Skinning runs last so that this frame's constraint and spring-bone
         // poses reach the skinned meshes in the same frame they are solved.
-        var movedJoints = false
-        for constraint in nodeConstraints where constraint.apply() {
-            movedJoints = true
-        }
-        springBones.forEach { $0.update(deltaTime: deltaTime) }
+        let movedJoints = nodeConstraints.apply()
+        springBones.update(deltaTime: deltaTime)
         if !springBones.isEmpty || movedJoints {
             invalidateSkinPose()
         }
@@ -375,11 +297,9 @@ public final class VRMEntity: GLTFEntity {
         setExpressions([key: value])
     }
 
-    /// Sets several expression weights and re-applies the result once.
-    ///
-    /// Prefer this over repeated ``setExpression(value:for:)`` calls when a single
-    /// frame changes more than one expression (face tracking, lip sync): applying
-    /// re-accumulates every active clip and can rebuild MToon parameter textures.
+    /// Sets several expression weights and re-applies the result once. Prefer it
+    /// over repeated ``setExpression(value:for:)`` calls when one frame changes
+    /// more than one expression, since applying re-accumulates every active clip.
     public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
         var changed = false
         for (key, value) in weights where storeExpressionWeight(value, for: key) {
@@ -418,16 +338,42 @@ public final class VRMEntity: GLTFEntity {
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
         for annotation in firstPersonAnnotations {
+            // An `auto` mesh is cut rather than hidden, so the body below it stays.
+            if annotation.type == .auto, applyFirstPersonCut(mode, to: annotation.entity) { continue }
             annotation.entity.isEnabled = !annotation.type.isHidden(in: mode,
                                                                     hidesAutoInFirstPerson: annotation.hidesAutoInFirstPerson)
         }
     }
 
+    /// Draws `entity` with the triangles `mode` asks for, and says whether it was cut.
+    private func applyFirstPersonCut(_ mode: FirstPersonRenderMode, to entity: Entity) -> Bool {
+        var cut = false
+        var stack = [entity]
+        while let current = stack.popLast() {
+            // The cut is stated on whatever holds one primitive: the model
+            // entity, or the container its render passes share.
+            guard let masked = current.components[FirstPersonMeshComponent.self] else {
+                stack.append(contentsOf: current.children)
+                continue
+            }
+            cut = true
+            let mesh = mode == .firstPerson ? masked.firstPersonMesh : masked.thirdPersonMesh
+            // Nothing left to draw, so what holds it goes instead.
+            current.isEnabled = mesh != nil
+            guard let mesh else { continue }
+            for model in current.modelEntitiesInHierarchy {
+                guard var component = model.components[ModelComponent.self] else { continue }
+                component.mesh = mesh
+                model.components.set(component)
+            }
+        }
+        return cut
+    }
+
     fileprivate func applyMaterialColor(_ color: SIMD4<Float>,
                                         type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
                                         materialIndex: Int) {
-        // A shader animating this color owns it in its own parameters, which
-        // reach the GPU once per material via flushDirtyMaterialStates(). An
+        // A shader animating this color owns it in its own parameters. An
         // unclaimed color falls back below.
         if mutateAnimatableState(ofMaterial: materialIndex, { $0.setColor(color, for: type) }) {
             return
@@ -440,10 +386,9 @@ public final class VRMEntity: GLTFEntity {
                                            offset: SIMD2<Float>,
                                            rotation: Float,
                                            materialIndex: Int) {
-        // A shader animating the UV transform applies it itself from its
-        // parameters; writing RealityKit's material-level transform too would
-        // transform the primary UV twice. Everything else, fallback materials
-        // included, uses the material-level transform.
+        // A shader animating the UV transform applies it from its own parameters;
+        // writing the material-level transform too would transform the primary UV
+        // twice. Everything else uses the material-level transform.
         if mutateAnimatableState(ofMaterial: materialIndex, {
             $0.setTextureTransform(scale: scale, offset: offset, rotation: rotation)
         }) {
@@ -597,49 +542,6 @@ public final class VRMEntity: GLTFEntity {
     }
 }
 
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-private struct NodeConstraintBinding {
-    let targetIndex: Int
-    let sourceIndex: Int
-    let descriptor: VRMNodeConstraintDescriptor
-    let target: Entity
-    let source: Entity
-    let targetRestRotation: simd_quatf
-    let sourceRestRotation: simd_quatf
-
-    @MainActor
-    init(targetIndex: Int,
-         sourceIndex: Int,
-         descriptor: VRMNodeConstraintDescriptor,
-         target: Entity,
-         source: Entity) {
-        self.targetIndex = targetIndex
-        self.sourceIndex = sourceIndex
-        self.descriptor = descriptor
-        self.target = target
-        self.source = source
-        self.targetRestRotation = target.utx.localRotation
-        self.sourceRestRotation = source.utx.localRotation
-    }
-
-    @MainActor
-    func apply() -> Bool {
-        let rotation = VRMNodeConstraintRuntime.evaluate(
-            descriptor,
-            sourceRestRotation: sourceRestRotation,
-            sourceLocalRotation: source.utx.localRotation,
-            sourceWorldPosition: source.utx.position,
-            destinationRestRotation: targetRestRotation,
-            destinationParentWorldRotation: target.parent?.utx.rotation ?? quat_identity_float,
-            destinationWorldPosition: target.utx.position
-        )
-        let current = target.utx.localRotation.vector
-        guard current != rotation.vector, current != -rotation.vector else { return false }
-        target.utx.setLocalRotation(rotation)
-        return true
-    }
-
-}
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 /// Identifies one morph target on one mesh entity. Used both to accumulate

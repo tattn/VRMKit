@@ -1,8 +1,12 @@
+import CoreGraphics
 import Foundation
 
 package extension GLTFDocument {
     /// The image at `index` decoded, out of a buffer view, a file or a data URI.
-    func image(at index: Int) throws -> VRMImage {
+    ///
+    /// A `CGImage`, so that parsing a glTF needs no UI framework. Each renderer
+    /// wraps it in whatever its own texture API asks for.
+    func image(at index: Int) throws -> CGImage {
         let image = try gltf.load(\.images, at: index)
         let data: Data
         if let uri = image.uri {
@@ -12,6 +16,6 @@ package extension GLTFDocument {
         } else {
             throw VRMError._dataInconsistent("the image names neither a uri nor a buffer view")
         }
-        return try VRMImage(data: data) ??? ._dataInconsistent("the image is of no format this platform decodes")
+        return try data.decodedImage ??? ._dataInconsistent("the image is of no format this platform decodes")
     }
 }

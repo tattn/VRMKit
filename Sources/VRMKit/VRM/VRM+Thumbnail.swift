@@ -1,19 +1,27 @@
+import CoreGraphics
 import Foundation
 
-package extension VRM {
+public extension VRM {
+    /// The index of the image the model shows itself by.
+    ///
+    /// The versions keep it in different places: VRM 0.x names a texture that
+    /// reads an image, VRM 1.0 names the image outright.
     var thumbnailImageIndex: Int {
         get throws {
             switch self {
-            case .v0(let vrm0):
-                return try vrm0.thumbnailImageIndex
-            case .v1(let vrm1):
-                return try vrm1.thumbnailImageIndex
+            case .v0(let vrm0): try vrm0.thumbnailImageIndex
+            case .v1(let vrm1): try vrm1.thumbnailImageIndex
             }
         }
     }
+
+    /// The image the model shows itself by.
+    var thumbnail: CGImage {
+        get throws { try document.image(at: try thumbnailImageIndex) }
+    }
 }
 
-package extension VRM0 {
+public extension VRM0 {
     var thumbnailImageIndex: Int {
         get throws {
             guard let textureIndex = meta.texture, textureIndex >= 0 else {
@@ -23,51 +31,50 @@ package extension VRM0 {
             guard textures.indices.contains(textureIndex) else {
                 throw VRMError.thumbnailNotFound
             }
-            let imageIndex = textures[textureIndex].source
-            let images = try document.gltf.load(\.images)
-            guard images.indices.contains(imageIndex) else {
-                throw VRMError.thumbnailNotFound
-            }
-            return imageIndex
+            return try validImageIndex(textures[textureIndex].source)
         }
     }
-}
 
-package extension VRM1 {
-    var thumbnailImageIndex: Int {
-        get throws {
-            guard let imageIndex = meta.thumbnailImage, imageIndex >= 0 else {
-                throw VRMError.thumbnailNotFound
-            }
-            let images = try document.gltf.load(\.images)
-            guard images.indices.contains(imageIndex) else {
-                throw VRMError.thumbnailNotFound
-            }
-            return imageIndex
-        }
-    }
-}
-
-public extension VRM {
-    /// The image the model shows itself by.
-    var thumbnail: VRMImage {
-        get throws {
-            switch self {
-            case .v0(let vrm0): try vrm0.thumbnail
-            case .v1(let vrm1): try vrm1.thumbnail
-            }
-        }
-    }
-}
-
-public extension VRM0 {
-    var thumbnail: VRMImage {
+    var thumbnail: CGImage {
         get throws { try document.image(at: try thumbnailImageIndex) }
     }
 }
 
 public extension VRM1 {
-    var thumbnail: VRMImage {
+    var thumbnailImageIndex: Int {
+        get throws {
+            guard let imageIndex = meta.thumbnailImage, imageIndex >= 0 else {
+                throw VRMError.thumbnailNotFound
+            }
+            return try validImageIndex(imageIndex)
+        }
+    }
+
+    var thumbnail: CGImage {
         get throws { try document.image(at: try thumbnailImageIndex) }
+    }
+}
+
+private extension VRM0 {
+    func validImageIndex(_ index: Int) throws -> Int {
+        try document.gltf.validThumbnailImageIndex(index)
+    }
+}
+
+private extension VRM1 {
+    func validImageIndex(_ index: Int) throws -> Int {
+        try document.gltf.validThumbnailImageIndex(index)
+    }
+}
+
+private extension GLTF {
+    /// An index the document actually holds an image at. A model naming one it
+    /// does not carry has no thumbnail rather than a broken one.
+    func validThumbnailImageIndex(_ index: Int) throws -> Int {
+        let images = try load(\.images)
+        guard images.indices.contains(index) else {
+            throw VRMError.thumbnailNotFound
+        }
+        return index
     }
 }

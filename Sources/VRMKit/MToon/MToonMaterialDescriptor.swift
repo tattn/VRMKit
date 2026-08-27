@@ -4,13 +4,12 @@ import simd
 /// Canonical `VRMC_materials_mtoon` 1.0 material model, and the one every MToon
 /// value in this package passes through.
 ///
-/// The extension, the VRM 0.x material property and a converted standard
-/// material all become one of these, and writing takes the same routes back
-/// out, so each format is read and written by one mapping rather than two.
+/// Declares no initializer of its own, so that the memberwise one stays
+/// available to ``VRM0MToonProperty``.
 ///
-/// This type knows only MToon 1.0 semantics: VRM 0.x is converted by
-/// ``VRM0MToonProperty`` first, and renderer constraints belong to the
-/// renderer layer.
+/// The extension, the VRM 0.x material property and a converted standard material
+/// all become one of these, and writing takes the same routes back out. It knows
+/// only MToon 1.0 semantics: VRM 0.x is converted by ``VRM0MToonProperty`` first.
 package struct MToonMaterialDescriptor: Equatable, Sendable {
     package enum CullMode {
         case none
@@ -59,15 +58,12 @@ package struct MToonMaterialDescriptor: Equatable, Sendable {
     package var rimMultiplyTexture: Texture?
     package var outlineWidthMultiplyTexture: Texture?
     package var uvAnimationMaskTexture: Texture?
-
-    // No initializers are declared in the struct body so that the implicit
-    // memberwise initializer stays available to VRM0MToonProperty.
 }
 
 package extension MToonMaterialDescriptor {
     /// What MToon data a glTF material carries. A material authored against an
-    /// unimplemented spec version *is* MToon, so renderers must tell it from one
-    /// that carries no MToon data at all and is theirs to shade freely.
+    /// unimplemented spec version is still MToon, so renderers must tell it from
+    /// one carrying no MToon data at all.
     enum Resolution {
         /// The material carries no MToon data.
         case none
@@ -248,17 +244,13 @@ private extension MToonMaterialDescriptor {
 
 package extension MToonMaterialDescriptor {
     /// The `VRMC_materials_mtoon` extension object, the inverse of
-    /// ``init(vrm1:material:)``.
-    ///
-    /// Only the MToon fields: the base color, the emission, the alpha mode and
-    /// the normal map belong to the glTF material the extension sits on, which
-    /// is where they were read from. `shadingShiftTextureScale` rides on the
-    /// shading shift texture, so a scale without one writes neither.
+    /// ``init(vrm1:material:)``. Only the MToon fields: the base color, emission,
+    /// alpha mode and normal map belong to the glTF material it sits on.
     func mtoonExtension() -> JSONObject {
         var mtoon: JSONObject = [
-            "specVersion": Self.writtenSpecVersion,
-            "transparentWithZWrite": transparentWithZWrite,
-            "renderQueueOffsetNumber": renderQueueOffsetNumber,
+            "specVersion": .string(Self.writtenSpecVersion),
+            "transparentWithZWrite": .bool(transparentWithZWrite),
+            "renderQueueOffsetNumber": .int(renderQueueOffsetNumber),
             "shadeColorFactor": Self.rgb(shadeColorFactor),
             "shadingShiftFactor": Self.clamped(shadingShiftFactor, to: -1...1),
             "shadingToonyFactor": Self.clamped(shadingToonyFactor),
@@ -267,14 +259,14 @@ package extension MToonMaterialDescriptor {
             "parametricRimColorFactor": Self.rgb(parametricRimColorFactor),
             "rimLightingMixFactor": Self.clamped(rimLightingMixFactor),
             "parametricRimFresnelPowerFactor": Self.clamped(parametricRimFresnelPowerFactor, to: 0...Float.infinity),
-            "parametricRimLiftFactor": parametricRimLiftFactor,
-            "outlineWidthMode": outlineWidthMode.rawValue,
+            "parametricRimLiftFactor": .number(parametricRimLiftFactor),
+            "outlineWidthMode": .string(outlineWidthMode.rawValue),
             "outlineWidthFactor": Self.clamped(outlineWidthFactor, to: 0...Float.infinity),
             "outlineColorFactor": Self.rgb(outlineColorFactor),
             "outlineLightingMixFactor": Self.clamped(outlineLightingMixFactor),
-            "uvAnimationScrollXSpeedFactor": uvAnimationScrollXSpeedFactor,
-            "uvAnimationScrollYSpeedFactor": uvAnimationScrollYSpeedFactor,
-            "uvAnimationRotationSpeedFactor": uvAnimationRotationSpeedFactor,
+            "uvAnimationScrollXSpeedFactor": .number(uvAnimationScrollXSpeedFactor),
+            "uvAnimationScrollYSpeedFactor": .number(uvAnimationScrollYSpeedFactor),
+            "uvAnimationRotationSpeedFactor": .number(uvAnimationRotationSpeedFactor),
         ]
         mtoon.set("shadeMultiplyTexture", shadeMultiplyTexture?.textureInfo())
         mtoon.set("matcapTexture", matcapTexture?.textureInfo())
@@ -283,16 +275,15 @@ package extension MToonMaterialDescriptor {
         mtoon.set("uvAnimationMaskTexture", uvAnimationMaskTexture?.textureInfo())
         if let shadingShiftTexture {
             var info = shadingShiftTexture.textureInfo()
-            info["scale"] = shadingShiftTextureScale
-            mtoon["shadingShiftTexture"] = info
+            info["scale"] = .number(shadingShiftTextureScale)
+            mtoon["shadingShiftTexture"] = .object(info)
         }
         return mtoon
     }
 
     /// Every texture the material samples, which tells a writer whether the
-    /// document has to declare `KHR_texture_transform`. The matcap is sampled
-    /// by view direction rather than by UV, so it is the one slot
-    /// ``uvAccessedTextures`` leaves out.
+    /// document has to declare `KHR_texture_transform`. The matcap is sampled by
+    /// view direction, so it is the one slot ``uvAccessedTextures`` leaves out.
     var textures: [Texture] {
         uvAccessedTextures + [matcapTexture].compactMap { $0 }
     }
@@ -302,11 +293,11 @@ package extension MToonMaterialDescriptor {
 
     /// MToon bounds the factors it defines, while a descriptor may have been
     /// assembled by a renderer override that does not.
-    private static func clamped(_ value: Float, to range: ClosedRange<Float> = 0...1) -> Float {
-        value.clamped(to: range)
+    private static func clamped(_ value: Float, to range: ClosedRange<Float> = 0...1) -> JSONValue {
+        .number(value.clamped(to: range))
     }
 
-    private static func rgb(_ color: SIMD4<Float>) -> [Float] {
-        [clamped(color.x), clamped(color.y), clamped(color.z)]
+    private static func rgb(_ color: SIMD4<Float>) -> JSONValue {
+        .numbers([color.x, color.y, color.z].map { $0.clamped(to: 0...1) })
     }
 }

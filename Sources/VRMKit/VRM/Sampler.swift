@@ -3,7 +3,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#sampler
 
 extension GLTF {
-    public struct Sampler: Codable {
+    public struct Sampler: Codable, Sendable {
         public let magFilter: MagFilter?
         public let minFilter: MinFilter?
         let _wrapS: Wrap?
@@ -15,8 +15,8 @@ extension GLTF {
             return self._wrapT ?? .REPEAT
         }
         public let name: String?
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
 
         private enum CodingKeys: String, CodingKey {
             case magFilter

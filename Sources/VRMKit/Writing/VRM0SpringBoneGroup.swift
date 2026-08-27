@@ -52,15 +52,17 @@ extension VRM0SpringBoneGroup {
     /// is how 0.x says so in a field it always writes.
     func json() -> JSONObject {
         var group: JSONObject = [
-            "bones": rootBones,
-            "center": center ?? -1,
-            "colliderGroups": colliderGroups,
-            "dragForce": dragForce,
-            "gravityDir": ["x": gravityDirection.x, "y": gravityDirection.y, "z": gravityDirection.z],
-            "gravityPower": gravityPower,
-            "hitRadius": hitRadius,
+            "bones": .numbers(rootBones),
+            "center": .int(center ?? -1),
+            "colliderGroups": .numbers(colliderGroups),
+            "dragForce": .number(dragForce),
+            "gravityDir": ["x": .number(gravityDirection.x),
+                           "y": .number(gravityDirection.y),
+                           "z": .number(gravityDirection.z)],
+            "gravityPower": .number(gravityPower),
+            "hitRadius": .number(hitRadius),
             // 0.x really does spell it this way.
-            "stiffiness": stiffness,
+            "stiffiness": .number(stiffness),
         ]
         group.set("comment", comment)
         return group

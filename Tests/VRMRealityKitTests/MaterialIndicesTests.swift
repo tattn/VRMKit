@@ -15,9 +15,9 @@ struct MaterialIndicesTests {
     /// The whole graph answers with every rendered material, and a node's
     /// subtree with exactly the materials its own model entities carry.
     @Test
-    func testMaterialIndicesFollowTheModelEntitiesUnderTheRoot() throws {
+    func testMaterialIndicesFollowTheModelEntitiesUnderTheRoot() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let allRendered = Set(TestSupport.materialIndexes(in: entity))
         #expect(!allRendered.isEmpty)
         #expect(entity.materialIndices(under: entity) == allRendered)
@@ -33,10 +33,10 @@ struct MaterialIndicesTests {
     /// Indices point into one document, so an entity loaded from another one
     /// never leaks its own into the answer, however the graphs are parented.
     @Test
-    func testEntitiesOfAnotherDocumentAreNotCounted() throws {
+    func testEntitiesOfAnotherDocumentAreNotCounted() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let avatar = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let attached = try TestSupport.loadEntity(.simpleTexture)
+        let avatar = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let attached = try await TestSupport.loadEntity(.simpleTexture)
         let avatarMaterials = avatar.materialIndices(under: avatar)
         #expect(attached.materialIndices(under: attached) == [0])
 
@@ -52,9 +52,9 @@ struct MaterialIndicesTests {
     /// A recursive clone renders, but carries no material runtime, so it
     /// answers empty rather than indices the runtime setters could not act on.
     @Test
-    func testACloneAnswersEmpty() throws {
+    func testACloneAnswersEmpty() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(.simpleTexture)
+        let entity = try await TestSupport.loadEntity(.simpleTexture)
         #expect(entity.materialIndices(under: entity) == [0])
 
         let clone = entity.clone(recursive: true)

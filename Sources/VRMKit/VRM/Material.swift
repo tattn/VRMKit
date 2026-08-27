@@ -4,10 +4,10 @@ import simd
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#material
 
 extension GLTF {
-    public struct Material: Codable {
+    public struct Material: Codable, Sendable {
         public let name: String?
         public let extensions: MaterialExtensions?
-        public let extras: CodableAny?
+        public let extras: JSONValue?
         public let pbrMetallicRoughness: PbrMetallicRoughness?
         public let normalTexture: NormalTextureInfo?
         public let occlusionTexture: OcclusionTextureInfo?
@@ -34,7 +34,7 @@ extension GLTF {
             case _doubleSided = "doubleSided"
         }
 
-        public struct PbrMetallicRoughness: Codable {
+        public struct PbrMetallicRoughness: Codable, Sendable {
             let _baseColorFactor: SIMD4<Float>?
             public var baseColorFactor: SIMD4<Float> { _baseColorFactor ?? SIMD4<Float>(repeating: 1) }
             public let baseColorTexture: TextureInfo?
@@ -43,8 +43,8 @@ extension GLTF {
             let _roughnessFactor: Float?
             public var roughnessFactor: Float { return _roughnessFactor ?? 1 }
             public let metallicRoughnessTexture: TextureInfo?
-            public let extensions: CodableAny?
-            public let extras: CodableAny?
+            public let extensions: JSONValue?
+            public let extras: JSONValue?
             private enum CodingKeys: String, CodingKey {
                 case _baseColorFactor = "baseColorFactor"
                 case baseColorTexture
@@ -56,14 +56,14 @@ extension GLTF {
             }
         }
 
-        public struct NormalTextureInfo: Codable {
+        public struct NormalTextureInfo: Codable, Sendable {
             public let index: Int
             let _texCoord: Int?
             public var texCoord: Int { return _texCoord ?? 0 }
             let _scale: Float?
             public var scale: Float { return _scale ?? 1 }
-            public let extensions: CodableAny?
-            public let extras: CodableAny?
+            public let extensions: JSONValue?
+            public let extras: JSONValue?
             private enum CodingKeys: String, CodingKey {
                 case index
                 case _texCoord = "texCoord"
@@ -73,14 +73,14 @@ extension GLTF {
             }
         }
 
-        public struct OcclusionTextureInfo: Codable {
+        public struct OcclusionTextureInfo: Codable, Sendable {
             public let index: Int
             let _texCoord: Int?
             public var texCoord: Int { return _texCoord ?? 0 }
             let _strength: Float?
             public var strength: Float { return _strength ?? 1 }
-            public let extensions: CodableAny?
-            public let extras: CodableAny?
+            public let extensions: JSONValue?
+            public let extras: JSONValue?
             private enum CodingKeys: String, CodingKey {
                 case index
                 case _texCoord = "texCoord"
@@ -96,7 +96,7 @@ extension GLTF {
             case BLEND
         }
         
-        public struct MaterialExtensions: Codable {
+        public struct MaterialExtensions: Codable, Sendable {
             public let materialsMToon: MaterialsMToon?
             public let materialsUnlit: MaterialsUnlit?
 
@@ -106,9 +106,9 @@ extension GLTF {
             }
             
             /// KHR_materials_unlit extension marker (empty object in glTF)
-            public struct MaterialsUnlit: Codable {}
+            public struct MaterialsUnlit: Codable, Sendable {}
 
-            public struct MaterialsMToon: Codable {
+            public struct MaterialsMToon: Codable, Sendable {
                 public let specVersion: String
                 public let transparentWithZWrite: Bool?
                 public let renderQueueOffsetNumber: Int?
@@ -134,22 +134,22 @@ extension GLTF {
                 public let uvAnimationScrollXSpeedFactor: Double?
                 public let uvAnimationScrollYSpeedFactor: Double?
                 public let uvAnimationRotationSpeedFactor: Double?
-                public let extensions: CodableAny?
-                public let extras: CodableAny?
+                public let extensions: JSONValue?
+                public let extras: JSONValue?
                 
-                public struct MaterialsMToonTextureInfo: Codable {
+                public struct MaterialsMToonTextureInfo: Codable, Sendable {
                     public let index: Int
                     public let texCoord: Int?
-                    public let extensions: CodableAny?
-                    public let extras: CodableAny?
+                    public let extensions: JSONValue?
+                    public let extras: JSONValue?
                 }
                 
-                public struct MaterialsMToonShadingShiftTexture: Codable {
+                public struct MaterialsMToonShadingShiftTexture: Codable, Sendable {
                     public let index: Int
                     public let texCoord: Int?
                     public let scale: Double?
-                    public let extensions: CodableAny?
-                    public let extras: CodableAny?
+                    public let extensions: JSONValue?
+                    public let extras: JSONValue?
                 }
                 
                 /// The outline mode is the one every layer of this package

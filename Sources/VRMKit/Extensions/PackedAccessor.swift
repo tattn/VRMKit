@@ -6,7 +6,7 @@ import simd
 ///
 /// Expanding an accessor removes its buffer view's stride and applies its sparse
 /// substitution, so it is done once here and every reader works off the result.
-package struct PackedAccessor {
+package struct PackedAccessor: Sendable {
     package let accessor: GLTF.Accessor
     package let data: Data
     package let componentsPerElement: Int
@@ -114,25 +114,68 @@ package struct PackedAccessor {
     }
 }
 
+/// The skinning attributes, whose component types glTF constrains further than
+/// an accessor of the same shape.
+package extension PackedAccessor {
+    /// `JOINTS_n` as glTF defines it: unsigned byte or short indices into the skin.
+    func jointIndices() throws -> [SIMD4<UInt32>] {
+        switch componentType {
+        case .unsignedByte, .unsignedShort:
+            return try unsignedElements(.VEC4) { SIMD4<UInt32>($0(0), $0(1), $0(2), $0(3)) }
+        case .byte, .short, .unsignedInt, .float:
+            throw VRMError._dataInconsistent(
+                "JOINTS_0 must use unsigned byte or short components, not \(componentType)"
+            )
+        }
+    }
+
+    /// `WEIGHTS_n` as glTF defines it: float, or normalized unsigned byte / short.
+    func jointWeights() throws -> [SIMD4<Float>] {
+        switch componentType {
+        case .float:
+            break
+        case .unsignedByte, .unsignedShort:
+            guard normalized else {
+                throw VRMError._dataInconsistent(
+                    "WEIGHTS_0 with \(componentType) components must be normalized"
+                )
+            }
+        case .byte, .short, .unsignedInt:
+            throw VRMError._dataInconsistent(
+                "WEIGHTS_0 must use float or normalized unsigned byte / short components, "
+                + "not \(componentType)"
+            )
+        }
+        return try floatElements(.VEC4) { SIMD4<Float>($0(0), $0(1), $0(2), $0(3)) }
+    }
+}
+
 /// Accessors expanded once and reused, so the primitives, skins and animation
-/// samplers that share one accessor expand it a single time.
+/// samplers sharing one accessor expand it a single time.
 ///
-/// A cache holds decoded geometry, so it belongs to whatever needs it (one
-/// scene load, one animation binding) and is dropped with it.
-package final class PackedAccessorCache {
+/// A cache holds decoded geometry, so it belongs to whatever needs it and is
+/// dropped with it. Locked because a load expands primitives in parallel.
+package final class PackedAccessorCache: Sendable {
     private let document: GLTFDocument
-    private var packedAccessors: [Int: PackedAccessor] = [:]
+    private let packedAccessors = Locked<[Int: PackedAccessor]>([:])
 
     package init(document: GLTFDocument) {
         self.document = document
     }
 
     package func accessor(at index: Int) throws -> PackedAccessor {
-        if let cached = packedAccessors[index] { return cached }
+        if let cached = packedAccessors.withLock({ $0[index] }) { return cached }
+        // Expanded outside the lock: two tasks racing on the same accessor agree
+        // on the result anyway.
         let packed = try PackedAccessor(accessor: document.gltf.load(\.accessors, at: index),
                                         bufferView: document.bufferViewProvider)
-        packedAccessors[index] = packed
+        packedAccessors.withLock { $0[index] = packed }
         return packed
+    }
+
+    /// Drops the expanded accessors, for a reader that is done with them.
+    package func removeAll() {
+        packedAccessors.withLock { $0 = [:] }
     }
 
     /// Expands a float-valued accessor of `type` element by element. `make`

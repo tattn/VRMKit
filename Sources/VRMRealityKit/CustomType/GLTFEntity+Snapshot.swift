@@ -100,12 +100,9 @@ extension GLTFEntity {
     /// pictured without a view on screen.
     ///
     /// A copy is drawn, since `RealityRenderer` takes an entity out of whatever it
-    /// is a child of. The copy carries the materials the entity has now, MToon
-    /// lighting and outline overrides included, but no animation bindings, so this
-    /// pictures the pose the entity is currently in.
-    ///
-    /// Only this entity is drawn, not the lights and props beside it in its
-    /// scene, which ``GLTFSnapshotOptions/lightIntensity`` stands in for.
+    /// is a child of, so this pictures the pose and materials the entity has now.
+    /// Only this entity is drawn, not the lights and props beside it in its scene,
+    /// which ``GLTFSnapshotOptions/lightIntensity`` stands in for.
     @MainActor
     public func snapshot(_ options: GLTFSnapshotOptions = .init()) async throws -> CGImage {
         try options.validate()
@@ -122,7 +119,7 @@ extension GLTFEntity {
                                      options: options)
         // The vector MToon wants points from the surface toward the light, which for
         // a light beside the camera is the way the camera is offset. It rides in the
-        // materials, which a copy freezes, so the light is aimed before copying.
+        // materials, so it is aimed before copying.
         let towardCamera = simd_normalize(camera.position - bounds.center)
 
         let ownLightDirection = mtoonLightDirection
@@ -173,11 +170,8 @@ extension GLTFEntity {
     }
 
     /// A camera looking at `bounds` from `direction`, backed off until the box
-    /// fits the frame.
-    ///
-    /// The distance is measured along the axes the camera ends up with rather than
-    /// along the model's own, so a model photographed from the side is fitted by
-    /// the depth that has become its width.
+    /// fits the frame. The distance is measured along the camera's own axes, so a
+    /// model photographed from the side is fitted by the depth that is now width.
     private static func makeCamera(bounds: BoundingBox,
                                    direction: SIMD3<Float>,
                                    options: GLTFSnapshotOptions) -> PerspectiveCamera {
@@ -214,8 +208,7 @@ extension GLTFEntity {
 
     private static func makeTexture(device: any MTLDevice, options: GLTFSnapshotOptions) throws -> any MTLTexture {
         // RealityKit writes the values it drew without encoding them, so an sRGB
-        // target is what makes the hardware encode them on the way in. A plain one
-        // keeps them linear, which reads as a dark picture.
+        // target is what makes the hardware encode them on the way in.
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb,
                                                                   width: options.width,
                                                                   height: options.height,
@@ -257,8 +250,7 @@ extension GLTFEntity {
     }
 
     /// The drawn pixels, copied off the GPU into memory the CPU reads. Blitted into
-    /// a buffer rather than read off the texture, since a buffer takes shared
-    /// storage on every GPU family and a texture does not.
+    /// a buffer, which takes shared storage on every GPU family.
     private static func readPixels(of texture: any MTLTexture, device: any MTLDevice) async throws -> Data {
         let bytesPerRow = texture.width * 4
         let length = bytesPerRow * texture.height

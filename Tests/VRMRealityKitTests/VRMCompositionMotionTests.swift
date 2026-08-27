@@ -16,10 +16,10 @@ struct VRMCompositionMotionTests {
     /// A merged prop brings its animation with it, and the avatar's entity
     /// plays it through the API every glTF scene has.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
-    func testAnAnimationMergedIntoAVRMPlaysOnIt(model: VRMSampleAsset) throws {
+    func testAnAnimationMergedIntoAVRMPlaysOnIt(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let composed = try ComposedModel(model: model)
-        let entity = try composed.loadEntity()
+        let entity = try await composed.loadEntity()
         let propeller = try #require(entity.entity(forNodeAt: composed.animatedNode))
 
         #expect(entity.animations.count == 1)
@@ -32,12 +32,11 @@ struct VRMCompositionMotionTests {
         #expect(abs(simd_dot(propeller.transform.rotation, quarter)) > 0.999)
     }
 
-    /// The animation tick and the VRM's own update drive different things.
     @Test
-    func testAMergedAnimationAndTheVRMUpdateDoNotDisturbEachOther() throws {
+    func testAMergedAnimationAndTheVRMUpdateDoNotDisturbEachOther() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let composed = try ComposedModel(model: .seedSan)
-        let entity = try composed.loadEntity()
+        let entity = try await composed.loadEntity()
         let propeller = try #require(entity.entity(forNodeAt: composed.animatedNode))
         let head = try #require(entity.humanoid.node(for: .head))
 
@@ -55,10 +54,10 @@ struct VRMCompositionMotionTests {
     /// A written chain is one the loader reads and the spring runtime drives:
     /// moving what it hangs off swings it, in either version's spelling.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
-    func testAnAddedSpringBoneChainSwingsTheNodesItNames(model: VRMSampleAsset) throws {
+    func testAnAddedSpringBoneChainSwingsTheNodesItNames(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let composed = try ComposedModel(model: model, springBoneChain: true)
-        let entity = try composed.loadEntity()
+        let entity = try await composed.loadEntity()
         let ornament = try composed.ornament.map { try #require(entity.entity(forNodeAt: $0)) }
         let head = try #require(entity.humanoid.node(for: .head))
 
@@ -83,10 +82,10 @@ struct VRMCompositionMotionTests {
     /// Without a chain the same nodes hang rigidly, which is what says the
     /// swing above came from the chain.
     @Test
-    func testMergedNodesWithoutAChainDoNotSwing() throws {
+    func testMergedNodesWithoutAChainDoNotSwing() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let composed = try ComposedModel(model: .seedSan)
-        let entity = try composed.loadEntity()
+        let entity = try await composed.loadEntity()
         let ornament = try composed.ornament.map { try #require(entity.entity(forNodeAt: $0)) }
         let head = try #require(entity.humanoid.node(for: .head))
 
@@ -118,25 +117,25 @@ private struct ComposedModel {
         // Parsed once and handed to both: the editable document copies the
         // JSON it edits.
         let vrm = try VRM(document: try GLTFDocument(data: model.data))
-        let document = try GLTFEditableDocument(document: vrm.document)
-        let head = try #require(vrm.nodeIndex(of: .head))
+        var document = try GLTFEditableDocument(document: vrm.document)
+        let head = GLTFNodeIndex(try #require(vrm.nodeIndex(of: .head)))
         isVRM0 = { if case .v0 = vrm { true } else { false } }()
 
         animatedNode = vrm.document.gltf.nodes?.count ?? 0
         try document.append(try GLTFDocument(withURL: GLTFSampleAsset.animatedTriangle.url),
-                            under: try #require(vrm.nodeIndex(of: .leftHand)),
+                            under: GLTFNodeIndex(try #require(vrm.nodeIndex(of: .leftHand))),
                             name: "prop")
 
         let ornament = try document.addOrnamentChain(under: head)
-        self.ornament = ornament
+        self.ornament = ornament.map(\.rawValue)
         if springBoneChain {
             if isVRM0 {
-                try document.addVRM0SpringBone(VRM0SpringBoneGroup(rootBones: [ornament[0]],
+                try document.addVRM0SpringBone(VRM0SpringBoneGroup(rootBones: [ornament[0].rawValue],
                                                                    stiffness: 0.5,
                                                                    dragForce: 0.2,
                                                                    comment: "charm"))
             } else {
-                try document.addVRM1SpringBone(VRM1Spring(joints: ornament,
+                try document.addVRM1SpringBone(VRM1Spring(joints: ornament.map(\.rawValue),
                                                           stiffness: 0.5,
                                                           dragForce: 0.2,
                                                           name: "charm"))
@@ -146,8 +145,8 @@ private struct ComposedModel {
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    func loadEntity() throws -> VRMEntity {
-        try VRMEntityLoader(withData: data, shaders: []).loadEntity()
+    func loadEntity() async throws -> VRMEntity {
+        try await VRMEntityLoader(withData: data, shaders: []).loadEntity()
     }
 }
 

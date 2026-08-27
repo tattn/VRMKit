@@ -3,7 +3,7 @@ import Foundation
 /// A parsed glTF asset together with the context needed to resolve its binary
 /// resources (the GLB BIN chunk, external files and data URIs), so that they
 /// stay resolvable after loading, e.g. for lazily decoded animation accessors.
-public final class GLTFDocument {
+public final class GLTFDocument: Sendable {
     public let gltf: GLTF
     /// GLB BIN chunk (chunk 1), when the document came from a GLB container.
     package let binaryBuffer: Data?
@@ -15,11 +15,10 @@ public final class GLTFDocument {
     package let jsonSource: Data?
 
     /// Decoded buffers, keyed by buffer index: resolving one re-reads an external
-    /// file or base64-decodes a whole data URI.
-    ///
-    /// Buffer *views* are deliberately not cached: they are copies out of these
-    /// buffers, and keeping them would hold the file's bytes a second time.
-    private var buffers: [Int: Data] = [:]
+    /// file or base64-decodes a whole data URI. Buffer views are not cached, since
+    /// keeping them would hold the file's bytes a second time. Locked because a
+    /// document is shared between threads.
+    private let buffers = Locked<[Int: Data]>([:])
 
     package init(gltf: GLTF, binaryBuffer: Data?, rootDirectory: URL?, jsonSource: Data? = nil) {
         self.gltf = gltf
@@ -78,31 +77,32 @@ public final class GLTFDocument {
 package extension GLTFDocument {
     /// The glTF JSON as an editable object tree.
     ///
-    /// A document that was loaded keeps its JSON verbatim, so nothing outside
-    /// the typed model is lost. One built from an already-decoded ``GLTF`` has
-    /// no such source and is re-encoded from the typed model instead, which
-    /// only carries the fields VRMKit models.
+    /// A document that was loaded keeps its JSON verbatim, so nothing outside the
+    /// typed model is lost. One built from an already-decoded ``GLTF`` is
+    /// re-encoded from that model, which carries only the fields VRMKit models.
     func rawJSON() throws -> JSONObject {
-        let data = try jsonSource ?? JSONEncoder().encode(gltf)
-        return try JSONSerialization.jsonObject(with: data) as? JSONObject
+        if let jsonSource {
+            return try JSONValue(parsing: jsonSource).objectValue
+                ??? ._dataInconsistent("the glTF JSON is not an object")
+        }
+        return try JSONValue(encoding: gltf).objectValue
             ??? ._dataInconsistent("the glTF JSON is not an object")
     }
 
     func bufferData(at index: Int) throws -> Data {
-        if let cached = buffers[index] { return cached }
+        if let cached = buffers.withLock({ $0[index] }) { return cached }
         let gltfBuffer = try gltf.load(\.buffers, at: index)
-        // In a GLB only buffer 0 may omit its URI and refer to the BIN chunk.
-        // Treating every URI-less buffer as the BIN chunk silently aliases
-        // malformed documents onto the same bytes.
+        // In a GLB only buffer 0 may omit its URI and refer to the BIN chunk;
+        // treating every URI-less buffer as the BIN chunk would alias them.
         guard gltfBuffer.uri != nil || index == 0 else {
             throw VRMError._dataInconsistent("only the first glTF buffer may refer to the GLB BIN chunk")
         }
+        // Read outside the lock, rather than hold it across a file read.
         let data = try Data(buffer: gltfBuffer, relativeTo: rootDirectory, binaryBuffer: binaryBuffer)
-        buffers[index] = data
+        buffers.withLock { $0[index] = data }
         return data
     }
 
-    /// ``bufferViewData(at:)`` as a ``BufferViewProvider``.
     var bufferViewProvider: BufferViewProvider {
         { [self] index in
             let (data, stride) = try bufferViewData(at: index)
@@ -124,8 +124,7 @@ package extension GLTFDocument {
             )
         }
         // A slice, not a copy: the attributes of an interleaved view each read
-        // their own elements out of it, and copying the whole view per attribute
-        // is what made a load scale with how many of them share one.
+        // their own elements out of it.
         let startIndex = buffer.startIndex + bufferView.byteOffset
         return (buffer[startIndex..<startIndex + bufferView.byteLength], bufferView.byteStride)
     }

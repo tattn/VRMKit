@@ -88,11 +88,11 @@ public struct VRM1SpringJoint: Equatable, Sendable {
 
 extension VRM1Spring {
     func json() -> JSONObject {
-        var spring: JSONObject = ["joints": joints.map { $0.json() }]
+        var spring: JSONObject = ["joints": .objects(joints.map { $0.json() })]
         spring.set("name", name)
         spring.set("center", center)
         if !colliderGroups.isEmpty {
-            spring["colliderGroups"] = colliderGroups
+            spring["colliderGroups"] = .numbers(colliderGroups)
         }
         return spring
     }
@@ -100,7 +100,7 @@ extension VRM1Spring {
 
 extension VRM1SpringJoint {
     func json() -> JSONObject {
-        var joint: JSONObject = ["node": node]
+        var joint: JSONObject = ["node": .int(node)]
         joint.set("hitRadius", hitRadius)
         joint.set("stiffness", stiffness)
         joint.set("gravityPower", gravityPower)

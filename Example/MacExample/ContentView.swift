@@ -1,11 +1,3 @@
-//
-//  ContentView.swift
-//  MacExample
-//
-//  Created by tattn on 2026/01/26.
-//  Copyright © 2026 tattn. All rights reserved.
-//
-
 import SwiftUI
 import SceneKit
 import RealityKit
@@ -58,9 +50,8 @@ struct ContentView: View {
             .labelStyle(.iconOnly)
             .padding([.top, .horizontal])
 
-            // Only the selected renderer is mounted: keeping the other alive
-            // behind `opacity(0)` would hold on to its scene graph, GPU resources
-            // and 60 Hz timer for a view nobody can see.
+            // Only the selected renderer is mounted: keeping the other alive would
+            // hold its scene graph, GPU resources and 60 Hz timer for nothing.
             switch selectedRenderer {
             case .sceneKit:
                 SceneKitRendererView(selectedModel: selectedModel,
@@ -171,9 +162,7 @@ final class RealityKitContentViewModel {
     private var currentExpression: MacExampleExpression = .neutral
     private var orbitDistance: Float = 2
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
-    /// A three-quarter view from slightly above reads better than a straight-on
-    /// one for animations that move the model around. The iOS example frames it
-    /// the same way.
+    /// A three-quarter view from slightly above, which the iOS example shares.
     private let orbitYaw: Float = -35 * .pi / 180
     private let orbitPitch: Float = 21.5 * .pi / 180
     var isVRMAPlaying: Bool { vrmaController != nil }
@@ -208,7 +197,7 @@ final class RealityKitContentViewModel {
 
             let loader = try VRMEntityLoader(named: model.rawValue,
                                              shaders: isMToonEnabled ? GLTFEntityLoader.defaultShaders : [])
-            let nextVRMEntity = try loader.loadEntity()
+            let nextVRMEntity = try await loader.loadEntity()
 
             nextVRMEntity.transform.translation = SIMD3<Float>(0, -1, 0)
             nextVRMEntity.transform.rotation = simd_quatf(angle: model.initialRotation, axis: SIMD3<Float>(0, 1, 0))
@@ -313,8 +302,7 @@ final class RealityKitContentViewModel {
         let extents = bounds.max - bounds.min
         let maxExtent = max(extents.x, max(extents.y, extents.z))
         // Both renderers use a 60° vertical field of view, so pulling back by the
-        // model's largest extent reproduces the framing the SceneKit camera gets
-        // from sitting one body height away from the model.
+        // model's largest extent reproduces the SceneKit camera's framing.
         orbitDistance = max(0.2, maxExtent)
     }
 
@@ -484,8 +472,7 @@ final class SceneKitContentViewModel {
 
 private enum MacExampleLighting {
     /// Direction from the model toward the light, as `setMToonLightDirection(_:)`
-    /// expects. Both renderers place their directional light here so that this
-    /// example differs only in the renderer.
+    /// expects. Both renderers place their directional light here.
     static let towardLight = simd_normalize(SIMD3<Float>(-0.35, -0.55, -0.75))
 }
 

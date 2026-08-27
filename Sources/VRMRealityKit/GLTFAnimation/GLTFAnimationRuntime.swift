@@ -64,9 +64,8 @@ final class GLTFAnimationDecoder {
     }
 
     /// A sampler output. Translations and scales are FLOAT-only; rotations and
-    /// weights may also arrive as the normalized bytes and shorts the spec
-    /// permits, which ``PackedAccessor`` decodes back to floats. UNSIGNED_INT is
-    /// never one of them: the spec keeps it for primitive indices.
+    /// weights may also arrive as the normalized bytes and shorts the spec permits.
+    /// UNSIGNED_INT is never one of them.
     private func output(at accessorIndex: Int,
                         type: GLTF.Accessor.`Type`,
                         allowsNormalizedIntegers: Bool) throws -> [Float] {

@@ -27,8 +27,7 @@ extension GLTFEntity {
         guard simd_distance(normalized, mtoonLightDirection) > 0.0001 else { return }
         mtoonLightDirection = normalized
         // The direction rides in custom.value rather than in a parameter row, so
-        // it reaches the materials without rebuilding their packed texture, and
-        // without clearing a rebuild an earlier row change is still waiting for.
+        // it reaches the materials without rebuilding their packed texture.
         for materialIndex in materialStates.keys {
             guard let state = mtoonState(forMaterialIndex: materialIndex) else { continue }
             state.setLightDirection(normalized)
@@ -59,23 +58,18 @@ extension GLTFEntity {
 
     // MARK: - Outline
 
-    /// Draws every outline with `override`, showing the passes that start
-    /// hidden. Which materials have a pass at all is fixed at load by
-    /// ``MToonShader/OutlinePass``. A zero ``MToonOutlineOverride/width``
-    /// outlines nothing, so it hides the passes instead.
+    /// Draws every outline with `override`, showing the passes that start hidden.
+    /// Which materials have a pass at all is fixed at load by
+    /// ``MToonShader/OutlinePass``. A zero ``MToonOutlineOverride/width`` outlines
+    /// nothing, so it hides the passes instead.
     ///
-    /// Passing nil puts the model back as it was: authored colors and widths,
-    /// and the pass visibility from before the override, a
-    /// ``GLTFEntity/setPassEnabled(_:named:)`` of the caller's own included. A
-    /// VRM `materialColorBind` expression drives the color underneath meanwhile,
-    /// so releasing reveals its current value.
+    /// Passing nil puts the model back to its authored colors and widths and to
+    /// the pass visibility from before the override. Setting the same override
+    /// again re-asserts it, which is how a set whose rows could not be baked is
+    /// retried.
     ///
-    /// Setting the same override again re-asserts it, which is how a set whose
-    /// rows could not be baked is retried. On a `clone(recursive:)` copy, which
-    /// carries no material runtime, the whole call is a no-op.
-    ///
-    /// This is ``setMToonOutlineOverride(_:forMaterials:)`` over every
-    /// material, so a nil here releases scoped overrides too.
+    /// This is ``setMToonOutlineOverride(_:forMaterials:)`` over every material,
+    /// so a nil here releases scoped overrides too.
     public func setMToonOutlineOverride(_ override: MToonOutlineOverride?) {
         setMToonOutlineOverride(override, forMaterials: Set(materialStates.keys))
     }
@@ -83,12 +77,9 @@ extension GLTFEntity {
     /// ``setMToonOutlineOverride(_:)`` restricted to `materials`, which
     /// ``GLTFEntity/materialIndices(under:)`` supplies for a node's subtree.
     ///
-    /// The unit is the glTF material: one shared beyond the selection is
-    /// outlined everywhere it draws, as glTF shares materials. Materials
-    /// outside the set keep whatever override they hold, so selections
-    /// compose; within it the last set wins per material, and releasing
-    /// restores what that material's first covering set replaced. Materials
-    /// with no outline pass, or not rendered as MToon, are left alone.
+    /// The unit is the glTF material, so one shared beyond the selection is
+    /// outlined everywhere it draws. Materials outside the set keep whatever
+    /// override they hold, and within it the last set wins per material.
     public func setMToonOutlineOverride(_ override: MToonOutlineOverride?,
                                         forMaterials materials: Set<Int>) {
         let isDrawn = mutateMToonStates(inPassNamed: MToonShader.outlinePassName,
@@ -97,15 +88,12 @@ extension GLTFEntity {
             state.outlineOverride = override
             return true
         }
-        // The visibility follows what the GPU draws, not what the rows say.
-        // Showing a pass early would draw whatever is underneath the override,
-        // nothing at all for a material `.always` built an empty pass for, and
-        // hiding one early would take away an outline still being drawn.
+        // The visibility follows what the GPU draws, not what the rows say:
+        // showing or hiding a pass early would draw the wrong thing for a frame.
         guard isDrawn else { return }
         if let override {
-            // The inverted hull's surface draws wherever its geometry does, even
-            // un-offset, so a zero-width outline must not issue the pass at all:
-            // on an open mesh it would paint back faces in the outline color.
+            // The inverted hull draws wherever its geometry does, even un-offset,
+            // so a zero-width outline must not issue the pass at all.
             overridePassEnabled(override.width > 0,
                                 named: MToonShader.outlinePassName,
                                 forMaterials: materials)
@@ -116,15 +104,12 @@ extension GLTFEntity {
 
     /// Edits every MToon material's parameter rows and pushes the result to the
     /// GPU once per material. Naming a pass restricts the edit to materials that
-    /// draw it, so rows nothing samples are not rebaked; giving a material set
-    /// restricts it further to those materials. `mutate` reports whether it
-    /// changed anything, so writing the values already in place rebakes
-    /// nothing either.
+    /// draw it, and a material set restricts it further. `mutate` reports whether
+    /// it changed anything, so writing the values already in place rebakes nothing.
     ///
-    /// Returns whether the materials it covers are drawn as their rows now
-    /// stand: false when there are none, as on a `clone(recursive:)` copy, and
-    /// false while a parameter texture that failed to bake keeps its material
-    /// dirty for the next flush to retry.
+    /// Returns whether the materials it covers are drawn as their rows now stand:
+    /// false when there are none, and false while a parameter texture that failed
+    /// to bake keeps its material dirty for the next flush to retry.
     @discardableResult
     private func mutateMToonStates(inPassNamed passName: String? = nil,
                                    forMaterials materials: Set<Int>? = nil,

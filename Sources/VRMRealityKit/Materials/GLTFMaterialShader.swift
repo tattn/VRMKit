@@ -10,10 +10,9 @@ import VRMKitRuntime
 /// shader claims render through the loader's built-in Unlit / PBR path, which
 /// implements the glTF core specification and cannot be removed.
 ///
-/// A shader replaces material *construction* only. The mesh it draws is the one
-/// the loader builds from the core glTF material, whose textures decide the UV
-/// set and whether tangents are generated, so a shader cannot ask for vertex
-/// data the core material does not.
+/// A shader replaces material construction only: the mesh it draws is the one
+/// the loader builds from the core glTF material, so a shader cannot ask for
+/// vertex data the core material does not.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public protocol GLTFMaterialShader: AnyObject {
@@ -21,19 +20,14 @@ public protocol GLTFMaterialShader: AnyObject {
     /// pass it on to the next shader in the chain (and ultimately the built-in
     /// Unlit / PBR path).
     ///
-    /// A thrown error fails the material instead of falling through: the
-    /// generic glTF load rethrows it, while a VRM load falls back to the
-    /// default material. A shader that can degrade gracefully, the way MToon
-    /// falls back to Unlit, should catch its own errors and return nil, unless
-    /// the document lists its extension in `extensionsRequired`: rendering
-    /// without it is then not a degradation the document allows.
+    /// A thrown error fails the material instead of falling through. A shader
+    /// that can degrade gracefully should catch its own errors and return nil,
+    /// unless the document lists its extension in `extensionsRequired`.
     func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial?
 
     /// glTF extensions this shader implements, merged into the loader's
-    /// `extensionsRequired` validation. Defaults to none.
-    ///
-    /// Only claim an extension this shader can draw from the material alone:
-    /// the mesh inputs are fixed, as described above.
+    /// `extensionsRequired` validation. Only claim one this shader can draw
+    /// from the material alone, since the mesh inputs are fixed.
     var supportedRequiredExtensions: Set<String> { get }
 }
 
@@ -51,20 +45,16 @@ public struct GLTFShadedMaterial {
     public struct Pass {
         public var material: any Material
         /// Appended to the mesh's name to name the pass entity: pass "glow" of
-        /// the mesh "mesh_0" is drawn by "mesh_0_glow". The entity also carries
-        /// it in a ``GLTFMaterialPassComponent``, for lookups not tied to names.
-        /// Names share one space across the whole shader chain, so pick one
-        /// unlikely to collide, as ``MToonShader/outlinePassName`` does.
+        /// the mesh "mesh_0" is drawn by "mesh_0_glow". Names share one space
+        /// across the whole shader chain, so pick one unlikely to collide.
         public var name: String
         /// Whether the pass entity starts enabled. A pass built only to be shown
         /// later issues no draw call while it stays disabled, though its entity
         /// and its runtime bindings are built and updated regardless.
         public var isInitiallyEnabled: Bool
         /// Set by a pass whose geometry modifier pushes vertices outside the
-        /// mesh's bounding box, which RealityKit culls by. The loader widens
-        /// that box by a budget it derives from the mesh and hands it here, and
-        /// the modifier has to stay within it or be culled while on screen.
-        /// Internal, since the budget only suits an outline-scale displacement.
+        /// mesh's bounding box, which RealityKit culls by. The loader widens that
+        /// box by a budget it hands here, and the modifier has to stay within it.
         var applyBoundsBudget: ((any Material, Float) -> any Material)?
 
         public init(material: any Material,
@@ -81,11 +71,8 @@ public struct GLTFShadedMaterial {
     public var additionalPasses: [Pass]
     /// Lets VRM expressions (`materialColorBind` / `textureTransformBind`) drive
     /// this material the way MToon does. Called once per material per loaded
-    /// entity graph, so animating one entity never affects another.
-    ///
-    /// Leaving it nil is fine, and so is a state claiming only some values:
-    /// everything unclaimed falls back to mutating the RealityKit material
-    /// properties directly, which only reaches the standard material types.
+    /// entity graph. Anything the state does not claim falls back to mutating
+    /// the RealityKit material properties directly.
     public var makeAnimatableState: (@MainActor () -> any VRMAnimatableMaterialState)?
 
     public init(material: any Material,
@@ -109,21 +96,16 @@ public struct GLTFMaterialShaderContext {
     public let materialIndex: Int
     public let material: GLTF.Material
     /// The VRM 0.x Unity material property describing ``material``, when the
-    /// document is a VRM 0.x model. Not public, so that a generic glTF context
-    /// stays uncoupled from the VRM 0.x material model.
+    /// document is a VRM 0.x model.
     let vrm0MaterialProperty: VRM0.MaterialProperty?
 
     /// The document being loaded, the escape hatch for anything the services
     /// below do not cover.
     public var document: GLTFDocument { loader.document }
 
-    /// Whether the document declares itself undrawable without `name` *and* this
-    /// load honors that declaration.
-    ///
-    /// A shader that degrades gracefully should still throw while this is true:
-    /// rendering the approximation is not a degradation the document allows. VRM
-    /// loads answer false even for a listed extension, because a VRM renders with
-    /// whatever this renderer can build.
+    /// Whether the document declares itself undrawable without `name` and this
+    /// load honors that declaration, so a shader that degrades gracefully should
+    /// still throw. VRM loads answer false even for a listed extension.
     public func enforcesRequiredExtension(_ name: String) -> Bool {
         loader.enforcesRequiredExtension(name)
     }
@@ -185,12 +167,11 @@ public struct GLTFMaterialShaderContext {
 ///
 /// Writes accumulate in the state; the runtime then calls ``prepareFlush()``
 /// once and ``apply(to:)`` for every material instance rendering the same glTF
-/// material (including additional passes such as outlines).
+/// material, additional passes included.
 ///
-/// A state claims values one at a time: it answers nil / false for a value it
-/// does not animate, and the runtime then drives that value through the
-/// RealityKit material properties instead. The defaults below claim nothing, so
-/// a state only implements what it animates.
+/// A state claims values one at a time, answering nil / false for a value it
+/// does not animate, which the runtime then drives through the RealityKit
+/// material properties instead.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public protocol VRMAnimatableMaterialState: AnyObject {
@@ -210,6 +191,10 @@ public protocol VRMAnimatableMaterialState: AnyObject {
     /// Bakes pending writes into whatever ``apply(to:)`` pushes. Returning
     /// false keeps the state dirty, and the runtime retries on its next flush.
     func prepareFlush() -> Bool
+    /// Whether ``apply(to:)`` still has something to push, read after
+    /// ``prepareFlush()``. A state whose values all reach the GPU through
+    /// resources its materials already hold answers false.
+    var updatesMaterialsOnFlush: Bool { get }
     /// The material updated to this state, or the material unchanged when it is
     /// not one this state describes.
     func apply(to material: any Material) -> any Material
@@ -231,5 +216,7 @@ public extension VRMAnimatableMaterialState {
     func setTextureTransform(scale: SIMD2<Float>, offset: SIMD2<Float>, rotation: Float) -> Bool { false }
 
     func prepareFlush() -> Bool { true }
+
+    var updatesMaterialsOnFlush: Bool { true }
 }
 #endif

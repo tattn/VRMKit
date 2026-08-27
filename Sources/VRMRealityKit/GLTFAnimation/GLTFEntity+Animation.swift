@@ -41,9 +41,8 @@ public final class GLTFAnimationPlaybackController {
     /// Set when a non-looping animation reaches its end or ``stop()`` is called.
     public private(set) var isComplete = false
 
-    /// Weak, so a controller the caller keeps past its playback does not hold
-    /// the loaded scene alive. An owned runtime still references the joints it
-    /// poses, so keeping one keeps that part of the skeleton.
+    /// Weak, so a controller the caller keeps past its playback does not hold the
+    /// loaded scene alive.
     private weak var entity: GLTFEntity?
     /// A runtime built for this playback alone is owned here, so that it lives
     /// exactly as long as the controller driving it; a cached one is borrowed.
@@ -65,11 +64,9 @@ public final class GLTFAnimationPlaybackController {
         self.time = speed < 0 ? animation.duration : 0
     }
 
-    /// Jumps to `time` (clamped into the animation) and applies that pose
-    /// immediately, without resuming a completed animation.
-    ///
-    /// Animations started later still win over the seeked one, exactly as they
-    /// do on a render tick.
+    /// Jumps to `time`, clamped into the animation, and applies that pose
+    /// immediately, without resuming a completed animation. Animations started
+    /// later still win over the seeked one.
     public func seek(to newTime: TimeInterval) {
         time = min(max(newTime, 0), animation.duration)
         entity?.applyPose(seekedBy: self)
@@ -96,9 +93,8 @@ public final class GLTFAnimationPlaybackController {
             isComplete = true
             return moved
         }
-        // Pausing stops time, not the playback: the pose is re-applied every
-        // frame so that an animation this one outranks cannot take its targets
-        // over, exactly as a zero ``speed`` behaves.
+        // Pausing stops time, not the playback: the pose is re-applied every frame
+        // so an animation this one outranks cannot take its targets over.
         if !isPaused {
             time += deltaTime * TimeInterval(speed)
             if loops {
@@ -186,8 +182,7 @@ extension GLTFEntity {
     }
 
     /// Puts `runtime` on the render tick under a new controller, and poses the
-    /// model once so the first frame is correct immediately rather than one
-    /// tick later.
+    /// model once so the first frame is already correct.
     ///
     /// - Parameter ownsRuntime: whether the controller is the runtime's only
     ///   owner, for runtimes built per playback rather than cached on the entity.
@@ -231,9 +226,8 @@ extension GLTFEntity {
         // A paused or held pose leaves the skeleton where the last solve put it.
         if movedTransforms {
             invalidateSkinPose()
-            // A model driving its own per-frame update solves the pose at the
-            // end of it, once this frame's constraints and spring bones have
-            // moved the same joints.
+            // A model driving its own per-frame update solves the pose at the end
+            // of it, after this frame's constraints and spring bones.
             if !refreshesSkinningPerFrame {
                 flushSkinPoseIfNeeded()
             }

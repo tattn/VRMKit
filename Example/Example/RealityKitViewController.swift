@@ -134,6 +134,10 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
     }
 
     private func loadVRM() {
+        Task { await loadVRMAsync() }
+    }
+
+    private func loadVRMAsync() async {
         guard let arView = arView else { return }
 
         updateExpressionLabels()
@@ -150,7 +154,7 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
         do {
             let loader = try VRMEntityLoader(named: model.rawValue,
                                              shaders: isMToonEnabled ? GLTFEntityLoader.defaultShaders : [])
-            let vrmEntity = try loader.loadEntity()
+            let vrmEntity = try await loader.loadEntity()
             vrmEntity.setMToonLightDirection(RealityKitExampleLighting.direction)
 
             let anchor = AnchorEntity(world: .zero)

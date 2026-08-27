@@ -95,7 +95,7 @@ final class ImmersiveViewModel {
             // visionOS has no CustomMaterial, so MToon always falls back to
             // Unlit / PBR here.
             let loader = try VRMEntityLoader(named: modelName)
-            let vrmEntity = try loader.loadEntity()
+            let vrmEntity = try await loader.loadEntity()
             
             vrmEntity.transform.translation = SIMD3<Float>(0, 0, -1.5)
             // Alicia (VRM0) needs 180 degree rotation to face camera, VRM1 samples often don't

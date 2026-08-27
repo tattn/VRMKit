@@ -10,9 +10,9 @@ import simd
 package enum VRM0MToonProperty {
     package static func descriptor(property: VRM0.MaterialProperty,
                                    material: GLTF.Material) -> MToonMaterialDescriptor {
-        let floats = property.floatProperties.dictionaryValue
+        let floats = property.floatProperties
         let textures = property.textureProperties
-        let vectors = property.vectorProperties.dictionaryValue
+        let vectors = property.vectorProperties
         let pbr = material.pbrMetallicRoughness
 
         // VRM 0.x stores Lit / Shade / Rim / Outline colors as sRGB, while
@@ -27,35 +27,34 @@ package enum VRM0MToonProperty {
         let outlineColor = srgbToLinear(vectors.simd4("_OutlineColor") ?? SIMD4<Float>(0, 0, 0, 1))
 
         let alphaMode = GLTF.Material.AlphaMode(vrm0: property, fallback: material.alphaMode)
-        // MToon 0.x has no `_ZWRITE_ON` shader keyword: the render mode lives in
-        // `_BlendMode` (3 = TransparentWithZWrite), which is what MToon10Migrator
-        // reads. `_ZWrite` is derived state, so it only separates the two
-        // transparent modes, since opaque materials write depth as well.
+        // MToon 0.x has no `_ZWRITE_ON` keyword: the render mode lives in
+        // `_BlendMode` (3 = TransparentWithZWrite). `_ZWrite` is derived state, so
+        // it only separates the two transparent modes.
         let transparentWithZWrite: Bool
-        switch floats.float("_BlendMode") {
+        switch floats["_BlendMode"] {
         case .some(3):
             transparentWithZWrite = true
         case .some:
             transparentWithZWrite = false
         default:
-            transparentWithZWrite = alphaMode == .BLEND && floats.float("_ZWrite") == 1
+            transparentWithZWrite = alphaMode == .BLEND && floats["_ZWrite"] == 1
         }
-        let cullMode = MToonMaterialDescriptor.CullMode(vrm0: floats.float("_CullMode"))
+        let cullMode = MToonMaterialDescriptor.CullMode(vrm0: floats["_CullMode"])
             ?? (material.doubleSided ? .none : .back)
         let hasMToonNormalTexture = textures["_BumpMap"] != nil
-        let shadeShift0 = floats.float("_ShadeShift") ?? 0
-        let shadeToony0 = floats.float("_ShadeToony") ?? 0.9
+        let shadeShift0 = floats["_ShadeShift"] ?? 0
+        let shadeToony0 = floats["_ShadeToony"] ?? 0.9
         let rangeMin = shadeShift0
         let rangeMax = simd_mix(Float(1), shadeShift0, shadeToony0)
 
-        let outlineWidthMode = MToonMaterialDescriptor.OutlineWidthMode(vrm0: floats.float("_OutlineWidthMode") ?? 0)
-        let outlineWidthFactor = (floats.float("_OutlineWidth") ?? 0) * outlineWidthMode.vrm0WidthScale
+        let outlineWidthMode = MToonMaterialDescriptor.OutlineWidthMode(vrm0: floats["_OutlineWidthMode"] ?? 0)
+        let outlineWidthFactor = (floats["_OutlineWidth"] ?? 0) * outlineWidthMode.vrm0WidthScale
         let outlineLightingMixFactor: Float
-        switch floats.float("_OutlineColorMode") ?? 0 {
+        switch floats["_OutlineColorMode"] ?? 0 {
         case 0: // FixedColor renders the outline unlit.
             outlineLightingMixFactor = 0
         default: // MixedLighting keeps the source mix value.
-            outlineLightingMixFactor = floats.float("_OutlineLightingMix") ?? 1
+            outlineLightingMixFactor = floats["_OutlineLightingMix"] ?? 1
         }
 
         // UniVRM keeps the _MainTex scale/offset as the material's texture
@@ -72,32 +71,30 @@ package enum VRM0MToonProperty {
             shadingShiftFactor: (-(rangeMax + rangeMin) / 2).clamped(to: -1 ... 1),
             shadingShiftTextureScale: 1,
             shadingToonyFactor: ((2 - (rangeMax - rangeMin)) / 2).clamped(to: 0 ... 1),
-            giEqualizationFactor: (1 - (floats.float("_IndirectLightIntensity") ?? 0.1)).clamped(to: 0 ... 1),
+            giEqualizationFactor: (1 - (floats["_IndirectLightIntensity"] ?? 0.1)).clamped(to: 0 ... 1),
             matcapFactor: SIMD3<Float>(1, 1, 1),
             parametricRimColorFactor: rimColor,
-            // UniVRM migrates rim lighting mix destructively to 1.0 for
-            // visual compatibility; the 0.x source value is intentionally dropped.
+            // UniVRM migrates rim lighting mix destructively to 1.0.
             rimLightingMixFactor: 1,
-            parametricRimFresnelPowerFactor: floats.float("_RimFresnelPower") ?? 1,
-            parametricRimLiftFactor: floats.float("_RimLift") ?? 0,
+            parametricRimFresnelPowerFactor: floats["_RimFresnelPower"] ?? 1,
+            parametricRimLiftFactor: floats["_RimLift"] ?? 0,
             outlineWidthMode: outlineWidthMode,
             outlineWidthFactor: outlineWidthFactor,
             outlineColorFactor: outlineColor,
             outlineLightingMixFactor: outlineLightingMixFactor,
-            uvAnimationScrollXSpeedFactor: floats.float("_UvAnimScrollX") ?? 0,
+            uvAnimationScrollXSpeedFactor: floats["_UvAnimScrollX"] ?? 0,
             // UniVRM inverts the Y scroll direction during migration.
-            uvAnimationScrollYSpeedFactor: -(floats.float("_UvAnimScrollY") ?? 0),
-            uvAnimationRotationSpeedFactor: (floats.float("_UvAnimRotation") ?? 0) * 2 * Float.pi,
+            uvAnimationScrollYSpeedFactor: -(floats["_UvAnimScrollY"] ?? 0),
+            uvAnimationRotationSpeedFactor: (floats["_UvAnimRotation"] ?? 0) * 2 * Float.pi,
             transparentWithZWrite: transparentWithZWrite,
-            // renderQueueOffsetNumber is a *relative* order among a model's
-            // transparent materials; a single material carries no such ordering,
-            // so Unity's absolute renderQueue cannot be migrated here.
+            // renderQueueOffsetNumber orders a model's transparent materials
+            // relative to each other, which a single material cannot carry.
             renderQueueOffsetNumber: 0,
             alphaMode: alphaMode,
-            alphaCutoff: floats.float("_Cutoff") ?? material.alphaCutoff,
+            alphaCutoff: floats["_Cutoff"] ?? material.alphaCutoff,
             cullMode: cullMode,
             normalScale: hasMToonNormalTexture
-                ? (floats.float("_BumpScale") ?? 1)
+                ? (floats["_BumpScale"] ?? 1)
                 : Float(material.normalTexture?.scale ?? 1),
             baseColorTexture: texture(textures["_MainTex"]),
             emissiveTexture: texture(textures["_EmissionMap"]),
@@ -115,14 +112,11 @@ package enum VRM0MToonProperty {
     /// Converts Unity `_MainTex` scale/offset (bottom-left UV origin) into
     /// KHR_texture_transform semantics (top-left origin). Returns nil for the
     /// identity transform.
-    static func mainTextureTransform(vectors: [String: Any]) -> MToonMaterialDescriptor.UVTransform? {
-        guard let values = vectors["_MainTex"] as? [Any], values.count >= 4 else {
+    static func mainTextureTransform(vectors: [String: [Float]]) -> MToonMaterialDescriptor.UVTransform? {
+        guard let values = vectors["_MainTex"], values.count >= 4 else {
             return nil
         }
-        let offsetX = values.float(at: 0, default: 0)
-        let offsetY = values.float(at: 1, default: 0)
-        let scaleX = values.float(at: 2, default: 1)
-        let scaleY = values.float(at: 3, default: 1)
+        let (offsetX, offsetY, scaleX, scaleY) = (values[0], values[1], values[2], values[3])
         guard offsetX != 0 || offsetY != 0 || scaleX != 1 || scaleY != 1 else {
             return nil
         }
@@ -140,6 +134,30 @@ package enum VRM0MToonProperty {
 
     static func linearToSRGB(_ value: SIMD4<Float>) -> [Float] {
         [SRGB.fromLinear(value.x), SRGB.fromLinear(value.y), SRGB.fromLinear(value.z), value.w]
+    }
+}
+
+/// Unity writes a `vector` shader property as the four numbers of a colour or
+/// of a texture offset and scale pair, and a property it does not carry reads
+/// as the default the shader declares.
+private extension Dictionary where Key == String, Value == [Float] {
+    func simd3(_ key: String) -> SIMD3<Float>? {
+        self[key].map { SIMD3<Float>($0.element(at: 0, default: 0),
+                                     $0.element(at: 1, default: 0),
+                                     $0.element(at: 2, default: 0)) }
+    }
+
+    func simd4(_ key: String) -> SIMD4<Float>? {
+        self[key].map { SIMD4<Float>($0.element(at: 0, default: 1),
+                                     $0.element(at: 1, default: 1),
+                                     $0.element(at: 2, default: 1),
+                                     $0.element(at: 3, default: 1)) }
+    }
+}
+
+private extension Array where Element == Float {
+    func element(at index: Int, default defaultValue: Float) -> Float {
+        indices.contains(index) ? self[index] : defaultValue
     }
 }
 
@@ -251,10 +269,9 @@ package extension GLTF.Material.AlphaMode {
 // MARK: - Writing
 
 package extension VRM0MToonProperty {
-    /// The entry a material with no VRM 0.x settings of its own gets, telling
-    /// the 0.x runtime to render the glTF material unchanged. Every key
-    /// ``VRM0/MaterialProperty`` requires is present, since a missing one fails
-    /// the decode of the whole document.
+    /// The entry a material with no VRM 0.x settings of its own gets, telling the
+    /// 0.x runtime to render the glTF material unchanged. Every key
+    /// ``VRM0/MaterialProperty`` requires is present.
     static func gltfShaderProperty(name: String?) -> JSONObject {
         property(name: name,
                  shader: .gltfShader,
@@ -266,38 +283,38 @@ package extension VRM0MToonProperty {
                  renderType: nil)
     }
 
+    /// The one place the typed Unity property maps become the JSON a VRM 0.x
+    /// `materialProperties` entry is written as.
     private static func property(name: String?,
                                  shader: VRM0.MaterialProperty.Shader,
                                  renderQueue: Int,
-                                 floats: JSONObject,
-                                 textures: JSONObject,
-                                 vectors: JSONObject,
-                                 keywordMap: JSONObject,
+                                 floats: [String: Float],
+                                 textures: [String: Int],
+                                 vectors: [String: [Float]],
+                                 keywordMap: [String: Bool],
                                  renderType: String?) -> JSONObject {
         [
-            "name": name ?? "",
-            "shader": shader.rawValue,
-            "renderQueue": renderQueue,
-            "floatProperties": floats,
-            "keywordMap": keywordMap,
-            "tagMap": renderType.map { ["RenderType": $0] as JSONObject } ?? JSONObject(),
-            "textureProperties": textures,
-            "vectorProperties": vectors,
+            "name": .string(name ?? ""),
+            "shader": .string(shader.rawValue),
+            "renderQueue": .int(renderQueue),
+            "floatProperties": .object(floats.mapValues { .double(Double($0)) }),
+            "keywordMap": .object(keywordMap.mapValues(JSONValue.bool)),
+            "tagMap": .object(renderType.map { ["RenderType": .string($0)] } ?? [:]),
+            "textureProperties": .object(textures.mapValues(JSONValue.int)),
+            "vectorProperties": .object(vectors.mapValues(JSONValue.numbers)),
         ]
     }
 
     /// The VRM 0.x `materialProperties` entry, the inverse of
-    /// ``descriptor(property:material:)``.
-    ///
-    /// `renderQueueOffsetNumber` has no Unity counterpart a single material can
-    /// carry, and is dropped as reading never produces it. UV state the format
-    /// cannot carry is refused, as ``validateVRM0RepresentableUV(of:)`` says.
+    /// ``descriptor(property:material:)``. `renderQueueOffsetNumber` is dropped,
+    /// having no counterpart a single material can carry, and UV state the format
+    /// cannot express is refused by ``validateVRM0RepresentableUV(of:)``.
     static func materialProperty(from descriptor: MToonMaterialDescriptor, name: String?) throws -> JSONObject {
         try validateVRM0RepresentableUV(of: descriptor)
         let shading = shadeShiftAndToony(shadingShiftFactor: descriptor.shadingShiftFactor,
                                          shadingToonyFactor: descriptor.shadingToonyFactor)
         let isBlend = descriptor.alphaMode == .BLEND
-        let floats: JSONObject = [
+        let floats: [String: Float] = [
             "_Cutoff": descriptor.alphaCutoff,
             "_BumpScale": descriptor.normalScale,
             "_ShadeShift": shading.shift,
@@ -306,7 +323,7 @@ package extension VRM0MToonProperty {
             "_RimFresnelPower": descriptor.parametricRimFresnelPowerFactor,
             "_RimLift": descriptor.parametricRimLiftFactor,
             "_RimLightingMix": descriptor.rimLightingMixFactor,
-            "_OutlineWidthMode": descriptor.outlineWidthMode.vrm0Code,
+            "_OutlineWidthMode": Float(descriptor.outlineWidthMode.vrm0Code),
             "_OutlineWidth": descriptor.outlineWidthMode.vrm0WidthScale == 0
                 ? 0
                 : descriptor.outlineWidthFactor / descriptor.outlineWidthMode.vrm0WidthScale,
@@ -319,8 +336,8 @@ package extension VRM0MToonProperty {
             // UniVRM inverts the Y scroll direction and reads rotation in turns.
             "_UvAnimScrollY": -descriptor.uvAnimationScrollYSpeedFactor,
             "_UvAnimRotation": descriptor.uvAnimationRotationSpeedFactor / (2 * Float.pi),
-            "_BlendMode": blendMode(of: descriptor),
-            "_CullMode": descriptor.cullMode.vrm0Code,
+            "_BlendMode": Float(blendMode(of: descriptor)),
+            "_CullMode": Float(descriptor.cullMode.vrm0Code),
             "_OutlineCullMode": 1,
             "_ZWrite": isBlend && !descriptor.transparentWithZWrite ? 0 : 1,
             "_SrcBlend": isBlend ? 5 : 1,
@@ -331,17 +348,17 @@ package extension VRM0MToonProperty {
             "_DebugMode": 0,
         ]
 
-        var textures = JSONObject()
-        textures.set("_MainTex", descriptor.baseColorTexture?.index)
-        textures.set("_ShadeTexture", descriptor.shadeMultiplyTexture?.index)
-        textures.set("_BumpMap", descriptor.normalTexture?.index)
-        textures.set("_EmissionMap", descriptor.emissiveTexture?.index)
-        textures.set("_SphereAdd", descriptor.matcapTexture?.index)
-        textures.set("_RimTexture", descriptor.rimMultiplyTexture?.index)
-        textures.set("_OutlineWidthTexture", descriptor.outlineWidthMultiplyTexture?.index)
-        textures.set("_UvAnimMaskTexture", descriptor.uvAnimationMaskTexture?.index)
+        var textures: [String: Int] = [:]
+        textures["_MainTex"] = descriptor.baseColorTexture?.index
+        textures["_ShadeTexture"] = descriptor.shadeMultiplyTexture?.index
+        textures["_BumpMap"] = descriptor.normalTexture?.index
+        textures["_EmissionMap"] = descriptor.emissiveTexture?.index
+        textures["_SphereAdd"] = descriptor.matcapTexture?.index
+        textures["_RimTexture"] = descriptor.rimMultiplyTexture?.index
+        textures["_OutlineWidthTexture"] = descriptor.outlineWidthMultiplyTexture?.index
+        textures["_UvAnimMaskTexture"] = descriptor.uvAnimationMaskTexture?.index
 
-        let vectors: JSONObject = [
+        let vectors: [String: [Float]] = [
             "_Color": linearToSRGB(descriptor.baseColorFactor),
             "_ShadeColor": linearToSRGB(descriptor.shadeColorFactor),
             // UniVRM reads emission as linear, unlike the other colors.
@@ -364,9 +381,7 @@ package extension VRM0MToonProperty {
     }
 
     /// The `_ShadeShift` / `_ShadeToony` pair whose migration yields the given
-    /// shading factors. Reading turns the pair into the range
-    /// `[shift, mix(1, shift, toony)]` and then into its midpoint and width;
-    /// this solves that back.
+    /// shading factors, solving the reading direction back.
     static func shadeShiftAndToony(shadingShiftFactor: Float,
                                    shadingToonyFactor: Float) -> (shift: Float, toony: Float) {
         let rangeMin = -shadingShiftFactor + shadingToonyFactor - 1
@@ -376,9 +391,7 @@ package extension VRM0MToonProperty {
     }
 
     /// Checks the material's textures sample the way VRM 0.x can say they do:
-    /// MToon 0.x applies one `_MainTex` scale and offset to all of them, samples
-    /// UV set 0 only, and has nowhere to put a rotation. Writing more than that
-    /// would silently render as something else.
+    /// one shared `_MainTex` scale and offset, UV set 0 only, and no rotation.
     static func validateVRM0RepresentableUV(of descriptor: MToonMaterialDescriptor) throws {
         let textures = descriptor.uvAccessedTextures
         if let texture = textures.first(where: { $0.texCoord != 0 }) {
@@ -409,7 +422,7 @@ package extension VRM0MToonProperty {
                 transform.scale.x, transform.scale.y]
     }
 
-    private static func keywordMap(of descriptor: MToonMaterialDescriptor) -> JSONObject {
+    private static func keywordMap(of descriptor: MToonMaterialDescriptor) -> [String: Bool] {
         [
             "_ALPHABLEND_ON": descriptor.alphaMode == .BLEND,
             "_ALPHAPREMULTIPLY_ON": false,

@@ -83,10 +83,9 @@ package struct ExpressionClip<Mesh> {
 package typealias ExpressionOverrideType = VRM1.Expressions.Expression.ExpressionOverrideType
 
 package extension Dictionary {
-    /// The weights left once the active expressions have overridden one
-    /// another, which is what a renderer applies rather than what it was given.
-    /// A binary expression is suppressed outright rather than scaled, having no
-    /// partial state to scale.
+    /// The weights left once the active expressions have overridden one another,
+    /// which is what a renderer applies. A binary expression is suppressed outright
+    /// rather than scaled, having no partial state.
     func effectiveWeights<Mesh>(of weights: [ExpressionKey: Float]) -> [ExpressionKey: Float]
         where Key == ExpressionKey, Value == ExpressionClip<Mesh> {
         var states = ExpressionOverrideStates()
@@ -127,8 +126,7 @@ package extension Dictionary {
 
 /// Accumulates every active expression's override of one group, following
 /// VRMC_vrm: `block` zeroes the group outright, while simultaneous `blend`
-/// overrides *add up* before being saturated, rather than composing
-/// multiplicatively.
+/// overrides add up before being saturated.
 package struct ExpressionOverrideState {
     private var isBlocked = false
     private var blendWeight: Double = 0

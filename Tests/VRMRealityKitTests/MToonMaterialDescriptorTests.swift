@@ -5,21 +5,21 @@ import VRMTestSupport
 
 @Suite
 struct MToonMaterialDescriptorTests {
-    /// JSON numbers reach the VRM extensions as `NSNumber`, and glTF indices
-    /// have to survive that intact: `Float` rounds `16_777_217` to its neighbour
-    /// and `Int32.max` past its own range.
+    /// JSON numbers reach the VRM extensions as untyped `JSONValue`s, and glTF
+    /// indices have to survive that intact: `Float` rounds `16_777_217` to its
+    /// neighbour and `Int32.max` past its own range.
     @Test
     func testIndexCoercionAcceptsOnlyExactNonNegativeInt32Values() {
-        #expect(numericIndexValue(0) == 0)
-        #expect(numericIndexValue(7) == 7)
-        #expect(numericIndexValue(16_777_217) == 16_777_217)
-        #expect(numericIndexValue(Int(Int32.max)) == Int(Int32.max))
-        #expect(numericIndexValue(Int(Int32.max) + 1) == nil)
-        #expect(numericIndexValue(-1) == nil)
-        #expect(numericIndexValue(1.5) == nil)
-        #expect(numericIndexValue(Double.nan) == nil)
-        #expect(numericIndexValue(true) == nil)
-        #expect(numericIndexValue("3") == nil)
+        #expect(JSONValue.int(0).indexValue == 0)
+        #expect(JSONValue.int(7).indexValue == 7)
+        #expect(JSONValue.int(16_777_217).indexValue == 16_777_217)
+        #expect(JSONValue.int(Int(Int32.max)).indexValue == Int(Int32.max))
+        #expect(JSONValue.int(Int(Int32.max) + 1).indexValue == nil)
+        #expect(JSONValue.int(-1).indexValue == nil)
+        #expect(JSONValue.double(1.5).indexValue == nil)
+        #expect(JSONValue.double(.nan).indexValue == nil)
+        #expect(JSONValue.bool(true).indexValue == nil)
+        #expect(JSONValue.string("3").indexValue == nil)
     }
 
     @Test

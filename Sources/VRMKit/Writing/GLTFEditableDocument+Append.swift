@@ -4,41 +4,37 @@ extension GLTFEditableDocument {
     /// Appends the default scene of `source` under `parentNode`, wrapped in one
     /// container node, and returns that container's index.
     ///
-    /// The whole source document is copied and rebased, not only what the chosen
-    /// scene reaches, so a source of several scenes costs the size of all of them
-    /// and draws one. Nothing already in the target moves, so the extensions that
-    /// make it a VRM keep pointing at what they used to.
+    /// Only what the chosen scene draws is copied, and nothing already in the
+    /// target moves, so the extensions that make it a VRM keep pointing at what
+    /// they used to. The source's own VRM extensions are not copied: this composes
+    /// props and clothing onto an avatar, not avatars onto each other.
     ///
-    /// The source's own VRM extensions are not copied: this composes props and
-    /// clothing onto an avatar, not avatars onto each other. Its materials come
-    /// over as they are unless `materials` asks for them to be written as MToon.
-    ///
-    /// A source of several scenes naming no default one has to be told which
-    /// to take, through ``append(_:sceneAt:under:name:transform:materials:)``.
+    /// A source of several scenes naming no default one has to be told which to
+    /// take, through ``append(_:sceneAt:under:name:transform:materials:)``.
     @discardableResult
-    public func append(_ source: GLTFDocument,
-                       under parentNode: Int,
+    public mutating func append(_ source: GLTFDocument,
+                       under parentNode: GLTFNodeIndex,
                        name: String? = nil,
                        transform: GLTFNodeTransform = .identity,
-                       materials: GLTFMaterialConversion = .keep) throws -> Int {
-        try append(source, scene: nil, under: parentNode,
-                   name: name, transform: transform, materials: materials)
+                       materials: GLTFMaterialConversion = .keep) throws -> GLTFNodeIndex {
+        try GLTFNodeIndex(append(source, scene: nil, under: parentNode.rawValue,
+                                 name: name, transform: transform, materials: materials))
     }
 
     /// Appends the scene at `sceneIndex` of `source`, for a document that names
     /// no default one or whose default one is not the scene wanted.
     @discardableResult
-    public func append(_ source: GLTFDocument,
-                       sceneAt sceneIndex: Int,
-                       under parentNode: Int,
+    public mutating func append(_ source: GLTFDocument,
+                       sceneAt sceneIndex: GLTFSceneIndex,
+                       under parentNode: GLTFNodeIndex,
                        name: String? = nil,
                        transform: GLTFNodeTransform = .identity,
-                       materials: GLTFMaterialConversion = .keep) throws -> Int {
-        try append(source, scene: sceneIndex, under: parentNode,
-                   name: name, transform: transform, materials: materials)
+                       materials: GLTFMaterialConversion = .keep) throws -> GLTFNodeIndex {
+        try GLTFNodeIndex(append(source, scene: sceneIndex.rawValue, under: parentNode.rawValue,
+                                 name: name, transform: transform, materials: materials))
     }
 
-    private func append(_ source: GLTFDocument,
+    private mutating func append(_ source: GLTFDocument,
                         scene sceneIndex: Int?,
                         under parentNode: Int,
                         name: String?,
@@ -47,53 +43,72 @@ extension GLTFEditableDocument {
         try transform.validate()
         let sourceJSON = try source.rawJSON()
         try Self.validateAppendable(sourceJSON)
-        // Both resolved up front, so a bad index cannot leave an orphaned copy
-        // of the whole source behind. What follows can still fail mid-write.
-        let roots = try Self.sceneRoots(of: sourceJSON, sceneAt: sceneIndex)
+        // Both resolved up front, so a bad index cannot leave an orphaned copy of
+        // the whole source behind.
+        let scene = try Self.sceneIndex(of: sourceJSON, sceneAt: sceneIndex)
         try requireNode(at: parentNode)
 
-        return try atomicallyAppendingBinary {
-            let materialBase = json.count(.materials)
-            var merger = GLTFMerger(source: source, sourceJSON: sourceJSON, target: self)
-            let nodeOffset = try merger.merge()
+        let trimmed = try Self.trimming(source, toSceneAt: scene)
+        let roots = trimmed.json.objects(.scenes).first?.ints("nodes") ?? []
+
+        return try atomically { document in
+            let materialBase = document.json.count(.materials)
+            var merger = GLTFMerger(source: trimmed)
+            let nodeOffset = try merger.merge(into: &document)
             if case .mtoon(let style) = materials {
-                try convertMaterialsToMToon(at: materialBase..<json.count(.materials), style: style)
+                let merged = (materialBase..<document.json.count(.materials)).map { GLTFMaterialIndex($0) }
+                try document.convertMaterialsToMToon(at: merged, style: style)
             }
 
             var container = JSONObject()
             container.set("name", name)
             transform.write(into: &container)
-            container.set("children", roots.isEmpty ? nil : roots.map { $0 + nodeOffset })
+            container.set("children", roots.isEmpty ? nil : .numbers(roots.map { $0 + nodeOffset }))
 
-            let index = appendNode(container)
-            try addChild(index, to: parentNode)
+            let index = document.appendNode(container)
+            try document.addChild(index, to: parentNode)
             return index
         }
     }
 
-    /// The roots of the source scene to copy: the one asked for, or the default
-    /// one the document names.
-    private static func sceneRoots(of sourceJSON: JSONObject, sceneAt sceneIndex: Int?) throws -> [Int] {
-        let scenes = sourceJSON.objects(.scenes)
+    /// The source scene to copy: the one asked for, or the default one the
+    /// document names.
+    private static func sceneIndex(of sourceJSON: JSONObject, sceneAt sceneIndex: Int?) throws -> Int {
         guard let index = sceneIndex else {
-            return try scenes[GLTFEditableDocument.defaultSceneIndex(of: sourceJSON, of: "source")]
-                .ints("nodes") ?? []
+            return try GLTFEditableDocument.defaultSceneIndex(of: sourceJSON, of: "source")
         }
-        guard scenes.indices.contains(index) else {
+        let scenes = sourceJSON.count(.scenes)
+        guard index >= 0, index < scenes else {
             throw VRMError._dataInconsistent(
-                "scene index \(index) is out of range for the \(scenes.count) scenes of the source"
+                "scene index \(index) is out of range for the \(scenes) scenes of the source"
             )
         }
-        return scenes[index].ints("nodes") ?? []
+        return index
+    }
+
+    /// The source cut down to the one scene being appended, with its resources
+    /// pulled into a single buffer the way the target's already are. What makes it
+    /// an avatar is dropped first, so pruning does not hold on to every node a
+    /// humanoid names.
+    private static func trimming(_ source: GLTFDocument, toSceneAt index: Int) throws -> GLTFEditableDocument {
+        var trimmed = try GLTFEditableDocument(document: source)
+        trimmed.json.setObjects([trimmed.json.objects(.scenes)[index]], for: .scenes)
+        trimmed.json["scene"] = 0
+        var extensions = trimmed.json.object("extensions") ?? [:]
+        for name in GLTFExtension.vrmRoot {
+            extensions.removeValue(forKey: name)
+        }
+        trimmed.json.set("extensions", extensions.isEmpty ? nil : extensions)
+        try trimmed.prune()
+        return trimmed
     }
 
     /// A merge rebases every index it carries over, so it may only carry over
     /// extensions whose shape it knows. An unknown one is refused, since one
     /// holding indices would come out silently pointing at the wrong thing.
     private static func validateAppendable(_ sourceJSON: JSONObject) throws {
-        // VRM 0.x keeps a material's MToon settings in the root extension,
-        // which describes the avatar the source is rather than the nodes
-        // borrowed out of it. Copying the nodes alone would strip their shading.
+        // VRM 0.x keeps a material's MToon settings in the root extension, so
+        // copying the nodes alone would strip their shading.
         guard sourceJSON.object("extensions")?[GLTFExtension.vrm0.rawValue] == nil else {
             throw VRMError._notSupported(
                 "the source is a VRM 0.x model, whose materials are described outside the materials themselves"
@@ -108,10 +123,9 @@ extension GLTFEditableDocument {
                 + "whose contents this merge cannot carry over"
             )
         }
-        // Read for the extensions it carries as well as asked for the ones it
-        // declares: an undeclared one would come over with its indices still
-        // pointing into the source's own arrays. A VRM 1.0 source keeps its
-        // materials on the materials, so only what makes it an avatar is dropped.
+        // Read for the extensions it carries as well as the ones it declares: an
+        // undeclared one would come over with its indices still pointing into the
+        // source's own arrays.
         let unsupported = sourceJSON.carriedExtensions()
             .subtracting(GLTFExtension.mergeable)
             .subtracting(GLTFExtension.vrmRoot)
@@ -125,51 +139,37 @@ extension GLTFEditableDocument {
 }
 
 /// Copies one glTF document into another, rebasing every index it carries over
-/// onto the end of the target's arrays.
+/// onto the end of the target's arrays. The source arrives as a single buffer
+/// with every resource in it, so what is left to move is indices and one byte
+/// offset.
 private struct GLTFMerger {
-    let source: GLTFDocument
-    let sourceJSON: JSONObject
-    let target: GLTFEditableDocument
+    let source: GLTFEditableDocument
 
+    private var sourceJSON: JSONObject { source.json }
     /// Where each source array lands in the target.
     private var base: [GLTFArray: Int] = [:]
-    /// Where each source buffer landed in the target's BIN buffer.
-    private var bufferOffsets: [Int] = []
 
-    init(source: GLTFDocument, sourceJSON: JSONObject, target: GLTFEditableDocument) {
+    init(source: GLTFEditableDocument) {
         self.source = source
-        self.sourceJSON = sourceJSON
-        self.target = target
     }
 
-    /// Copies the whole source document into the target and returns how far
-    /// every source node index moves.
-    mutating func merge() throws -> Int {
+    /// Copies the source document into `target` and returns how far every
+    /// source node index moves.
+    mutating func merge(into target: inout GLTFEditableDocument) throws -> Int {
         for array in Self.rebasedArrays {
             base[array] = target.json.count(array)
         }
-        for index in sourceJSON.objects(.buffers).indices {
-            bufferOffsets.append(target.appendToBinary(try source.bufferData(at: index)))
-        }
-
         // A buffer view names a slice of a buffer rather than an entry of an
         // array, so it is the one thing rebased by byte offset.
-        var bufferViews = try sourceJSON.objects(.bufferViews).map { view -> JSONObject in
+        let bufferOffset = target.appendToBinary(source.binary)
+        let bufferViews = try sourceJSON.objects(.bufferViews).map { view -> JSONObject in
             var view = view
-            try view.rebaseOntoSingleBuffer(offsets: bufferOffsets)
+            try view.rebaseOntoSingleBuffer(offsets: [bufferOffset])
             return view
         }
-        // An image already in a buffer view moves with it; one in a file or a
-        // data URI is read into the BIN buffer here.
-        let images = try GLTFEditableDocument.embeddingImages(
-            rebased(.images),
-            relativeTo: source.rootDirectory,
-            into: &bufferViews,
-            viewOffset: offset(of: .bufferViews)
-        ) { target.appendToBinary($0) }
 
         target.json.appendObjects(bufferViews, to: .bufferViews)
-        target.json.appendObjects(images, to: .images)
+        target.json.appendObjects(rebased(.images), to: .images)
         target.json.appendObjects(rebased(.accessors), to: .accessors)
         target.json.appendObjects(rebased(.samplers), to: .samplers)
         target.json.appendObjects(rebased(.cameras), to: .cameras)
@@ -182,7 +182,7 @@ private struct GLTFMerger {
         let materials = rebased(.materials)
         target.json.appendObjects(materials, to: .materials)
         try target.appendVRM0MaterialProperties(named: materials.map { $0.string("name") })
-        mergeExtensionDeclarations()
+        mergeExtensionDeclarations(into: &target)
 
         return offset(of: .nodes)
     }
@@ -195,11 +195,11 @@ private struct GLTFMerger {
     ]
 
     /// How far every index into `array` moves.
-    private func offset(of array: GLTFArray) -> Int { base[array] ?? 0 }
+    private mutating func offset(of array: GLTFArray) -> Int { base[array] ?? 0 }
 
     /// Every source entry of `array`, with each index it holds moved to the end
     /// of the target's arrays. ``GLTFReferences`` decides what counts as an index.
-    private func rebased(_ array: GLTFArray) -> [JSONObject] {
+    private mutating func rebased(_ array: GLTFArray) -> [JSONObject] {
         let base = base
         return sourceJSON.objects(array).map { entry in
             GLTFReferences.rewriting(entry, of: array) { array, index, _ in index + (base[array] ?? 0) }
@@ -210,7 +210,7 @@ private struct GLTFMerger {
 
     /// An extension the source could not be rendered without stays one the
     /// merged document cannot either, so both lists come over.
-    private func mergeExtensionDeclarations() {
+    private func mergeExtensionDeclarations(into target: inout GLTFEditableDocument) {
         target.declareExtensions(used: Set(sourceJSON.strings("extensionsUsed")).subtracting(GLTFExtension.vrmRoot),
                                  required: Set(sourceJSON.strings("extensionsRequired")).subtracting(GLTFExtension.vrmRoot))
     }

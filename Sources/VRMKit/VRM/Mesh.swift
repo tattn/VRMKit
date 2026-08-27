@@ -3,23 +3,23 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#mesh
 
 extension GLTF {
-    public struct Mesh: Codable {
+    public struct Mesh: Codable, Sendable {
         public let primitives: [Primitive]
         public let weights: [Float]?
         public let name: String?
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
 
-        public struct Primitive: Codable {
-            public let attributes: CodableDictionary<AttributeKey, Int>
+        public struct Primitive: Codable, Sendable {
+            public let attributes: [AttributeKey: Int]
             public let indices: Int?
             public let material: Int?
             public let mode: Mode
             public var targets: [[AttributeKey: Int]]?
-            public let extensions: CodableAny?
-            public let extras: CodableAny?
+            public let extensions: JSONValue?
+            public let extras: JSONValue?
 
-            public enum Mode: Int, Codable {
+            public enum Mode: Int, Codable, Sendable {
                 case POINTS
                 case LINES
                 case LINE_LOOP
@@ -29,36 +29,25 @@ extension GLTF {
                 case TRIANGLE_FAN
             }
 
-            public enum AttributeKey: String, Codable, CodingKey {
-                case POSITION
-                case NORMAL
-                case TANGENT
-                case TEXCOORD_0
-                case TEXCOORD_1
-                case COLOR_0
-                case JOINTS_0
-                case WEIGHTS_0
-            }
-
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
-                attributes = try container.decode(CodableDictionary<AttributeKey, Int>.self, forKey: .attributes)
+                attributes = try container.decode([AttributeKey: Int].self, forKey: .attributes)
                 indices = try container.decodeIfPresent(Int.self, forKey: .indices)
                 material = try container.decodeIfPresent(Int.self, forKey: .material)
                 // The spec defaults mode to TRIANGLES only when the key is absent;
                 // a value outside 0...6 is malformed, not an omission.
                 mode = try container.decodeIfPresent(Mode.self, forKey: .mode) ?? .TRIANGLES
-                targets = try container.decodeIfPresent([CodableDictionary<AttributeKey, IntOrDictionary>].self, forKey: .targets)?
+                targets = try container.decodeIfPresent([[AttributeKey: IntOrDictionary]].self, forKey: .targets)?
                     .map {
-                        $0.rawValue.reduce(into: [:], { (result, value) in
+                        $0.reduce(into: [:], { (result, value) in
                             // A VRM 0.x exporter writes -1 for "no accessor in this
                             // target", and objects where an index belongs.
                             guard let intValue = value.value.intValue, intValue >= 0 else { return }
                             result[value.key] = intValue
                         })
                     }
-                extensions = try container.decodeIfPresent(CodableAny.self, forKey: .extensions)
-                extras = try container.decodeIfPresent(CodableAny.self, forKey: .extras)
+                extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+                extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
             }
 
             private enum IntOrDictionary: Codable {
@@ -108,7 +97,7 @@ package extension GLTF.Mesh {
         var shared: [Int: [[Primitive.AttributeKey: Int]]] = [:]
         for primitive in primitives {
             guard let targets = primitive.targets, !targets.isEmpty,
-                  let position = primitive.attributes.rawValue[.POSITION],
+                  let position = primitive.attributes[.POSITION],
                   shared[position] == nil else { continue }
             shared[position] = targets
         }

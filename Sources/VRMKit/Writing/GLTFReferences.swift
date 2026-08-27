@@ -15,8 +15,8 @@ enum GLTFReferenceKind {
 }
 
 /// The index to write in place of one the document holds, or nil when what it
-/// named is gone. Reading a document's references is the same walk with a map that
-/// records the index and keeps it.
+/// named is gone. Reading a document's references is the same walk with a map
+/// that records the index and keeps it.
 typealias GLTFIndexMap = (GLTFArray, Int, GLTFReferenceKind) -> Int?
 
 /// Every index a glTF or VRM document holds into its top-level arrays, written
@@ -100,8 +100,8 @@ enum GLTFReferences {
             primitive.withObject("attributes") { $0.mapIndexValues(to: .accessors, map) }
             primitive.mapIndex("indices", to: .accessors, map)
             primitive.mapIndex("material", to: .materials, map)
-            if let targets = primitive["targets"] as? [JSONObject] {
-                primitive["targets"] = targets.map { target in
+            if primitive["targets"] != nil {
+                primitive.mapObjects("targets") { target in
                     var target = target
                     target.mapIndexValues(to: .accessors, map)
                     return target
@@ -171,9 +171,8 @@ enum GLTFReferences {
         return accessor
     }
 
-    /// An animation's samplers are indexed by its channels alone, so the ones left
-    /// behind when a channel goes are compacted here rather than through the
-    /// document's arrays, and the surviving channels renumbered onto them.
+    /// An animation's samplers are indexed by its channels alone, so they are
+    /// compacted here rather than through the document's arrays.
     private static func animation(_ animation: JSONObject, _ map: GLTFIndexMap) -> JSONObject {
         var animation = animation
         let samplers = animation.objects("samplers")
@@ -192,7 +191,7 @@ enum GLTFReferences {
                 moved[sampler] = kept.count
                 kept.append(sampler)
             }
-            channel["sampler"] = moved[sampler]
+            channel.set("sampler", moved[sampler])
             return channel
         }
         guard animation["channels"] != nil else { return animation }
@@ -327,6 +326,9 @@ enum GLTFReferences {
 }
 
 private extension JSONObject {
+    /// One reference, which a negative value says the object holds none of: VRM
+    /// 0.x and UniVRM both write -1 in fields they always write, from a bone
+    /// group's `center` to the attributes a morph target leaves alone.
     mutating func mapIndex(_ key: String,
                            to array: GLTFArray,
                            as kind: GLTFReferenceKind = .plain,
@@ -335,13 +337,16 @@ private extension JSONObject {
         set(key, map(array, index, kind))
     }
 
+    /// A list of references, every element of which names an entry: nothing is
+    /// spelled by leaving the element out, so a negative one is no index at all
+    /// and is passed on for ``GLTFReferences/validateIndices(of:)`` to refuse.
     mutating func mapIndices(_ key: String,
                              to array: GLTFArray,
                              as kind: GLTFReferenceKind = .plain,
                              _ map: GLTFIndexMap) {
         guard let indices = ints(key) else { return }
         let remaining = indices.compactMap { map(array, $0, kind) }
-        set(key, remaining.isEmpty ? nil : remaining)
+        set(key, remaining.isEmpty ? nil : .numbers(remaining))
     }
 
     /// Every value is an index, which is how glTF spells a primitive's
@@ -383,7 +388,7 @@ private extension JSONObject {
                                 _ map: GLTFIndexMap) -> Bool {
         guard let index = index(key) else { return true }
         guard let mapped = map(array, index, kind) else { return false }
-        self[key] = mapped
+        self[key] = .int(mapped)
         return true
     }
 
@@ -404,5 +409,68 @@ private extension JSONObject {
         guard self[key] != nil else { return }
         let remaining = objects(key).compactMap(transform)
         set(key, remaining.isEmpty ? nil : remaining)
+    }
+}
+
+// MARK: - Validation
+
+extension GLTFReferences {
+    /// Refuses a document that names an entry it does not hold.
+    ///
+    /// Every rewrite maps a reference by index alone, so an out of range one would
+    /// come out of a prune or a merge silently dropped, leaving a document that
+    /// looks repaired rather than one that says what was wrong with it. That
+    /// includes a negative index in a list of references, where nothing is spelled
+    /// by leaving the element out rather than by writing -1.
+    static func validateIndices(of json: JSONObject) throws {
+        try validateTopLevelIndices(of: json)
+        try validateLocalIndices(of: json)
+    }
+
+    private static func validateTopLevelIndices(of json: JSONObject) throws {
+        let counts = Dictionary(uniqueKeysWithValues: GLTFArray.allCases.map { ($0, json.count($0)) })
+        var dangling: (array: GLTFArray, index: Int)?
+        let check: GLTFIndexMap = { array, index, _ in
+            if !(0..<(counts[array] ?? 0)).contains(index), dangling == nil {
+                dangling = (array, index)
+            }
+            return index
+        }
+
+        for array in GLTFArray.allCases {
+            for entry in json.objects(array) {
+                _ = rewriting(entry, of: array, with: check)
+            }
+        }
+        _ = rewritingRootExtensions(json.object("extensions") ?? [:], with: check)
+
+        if let dangling {
+            throw VRMError._dataInconsistent(
+                "the document names \(dangling.array.rawValue) \(dangling.index), and holds "
+                + "\(counts[dangling.array] ?? 0)"
+            )
+        }
+    }
+
+    /// Refuses a reference into a list one entry holds of its own, which the
+    /// top-level counts say nothing about.
+    ///
+    /// An animation's channels index its own samplers, and ``animation(_:_:)``
+    /// drops a channel naming one that is not there, which would leave a
+    /// document repaired rather than refused.
+    private static func validateLocalIndices(of json: JSONObject) throws {
+        for (position, animation) in json.objects(.animations).enumerated() {
+            let samplers = animation.count("samplers")
+            for channel in animation.objects("channels") {
+                guard let sampler = channel.index("sampler") else {
+                    throw VRMError._dataInconsistent("animations \(position) has a channel naming no sampler")
+                }
+                guard sampler < samplers else {
+                    throw VRMError._dataInconsistent(
+                        "animations \(position) names sampler \(sampler), and holds \(samplers)"
+                    )
+                }
+            }
+        }
     }
 }

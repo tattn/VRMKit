@@ -17,20 +17,19 @@ struct MToonOutlineRenderingTests {
     private static let cubeScale: Float = 0.3
     private static let width: Float = 0.06
 
-    /// A cube turned 45°, since head-on every normal would point at the camera
-    /// and the inverted hull would widen nothing. The fixture's node scales the
-    /// mesh by 100, so a width resolved in the mesh's own space comes out a
-    /// hundred times too wide, which is the point of measuring.
+    /// A cube turned 45°, since head-on every normal would point at the camera and
+    /// the inverted hull would widen nothing. The fixture's node scales the mesh by
+    /// 100, so a width resolved in mesh space comes out a hundred times too wide.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func cube(outlinedWith mode: MToonOutlineWidthMode?,
                       scale: SIMD3<Float>,
                       x: Float = 0,
-                      width: Float = MToonOutlineRenderingTests.width) throws -> Entity {
+                      width: Float = MToonOutlineRenderingTests.width) async throws -> Entity {
         let style = MToonConversionStyle(outlineWidthMode: mode ?? .worldCoordinates,
                                          outlineWidthFactor: mode == nil ? 0 : width,
                                          outlineColorFactor: SIMD4<Float>(1, 0, 0, 1))
-        let entity = try GLTFEntityLoader(withURL: GLTFSampleAsset.animatedMorphCube.url,
-                                          shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
+        let entity = try await await GLTFEntityLoader(withURL: GLTFSampleAsset.animatedMorphCube.url,
+                                                      shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
         let root = Entity()
         root.addChild(entity)
         root.scale = scale
@@ -43,8 +42,8 @@ struct MToonOutlineRenderingTests {
     private func cube(outlinedWith mode: MToonOutlineWidthMode?,
                       scale: Float,
                       x: Float = 0,
-                      width: Float = MToonOutlineRenderingTests.width) throws -> Entity {
-        try cube(outlinedWith: mode, scale: SIMD3<Float>(repeating: scale), x: x, width: width)
+                      width: Float = MToonOutlineRenderingTests.width) async throws -> Entity {
+        try await cube(outlinedWith: mode, scale: SIMD3<Float>(repeating: scale), x: x, width: width)
     }
 
     private func isDrawn(_ pixel: SIMD3<Float>) -> Bool { pixel.max() > 8 }
@@ -59,10 +58,10 @@ struct MToonOutlineRenderingTests {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func outlineGrowth(mode: MToonOutlineWidthMode,
                                scale: SIMD3<Float> = SIMD3<Float>(repeating: cubeScale),
-                               viewport: (width: Int, height: Int) = (size, size)) throws -> Int {
-        let bare = try OffscreenRenderer.render(cube(outlinedWith: nil, scale: scale),
+                               viewport: (width: Int, height: Int) = (size, size)) async throws -> Int {
+        let bare = try OffscreenRenderer.render(await cube(outlinedWith: nil, scale: scale),
                                                 width: viewport.width, height: viewport.height)
-        let outlined = try OffscreenRenderer.render(cube(outlinedWith: mode, scale: scale),
+        let outlined = try OffscreenRenderer.render(await cube(outlinedWith: mode, scale: scale),
                                                     width: viewport.width, height: viewport.height)
         return silhouetteWidth(outlined) - silhouetteWidth(bare)
     }
@@ -71,11 +70,11 @@ struct MToonOutlineRenderingTests {
     /// the model-to-world scale: doubling it doubles the cube on screen and
     /// leaves the outline exactly as thick.
     @Test
-    func testScreenCoordinateWidthIgnoresEntityScale() throws {
+    func testScreenCoordinateWidthIgnoresEntityScale() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
-        let atScale = try outlineGrowth(mode: .screenCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale))
-        let atDoubleScale = try outlineGrowth(mode: .screenCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale * 2))
+        let atScale = try await outlineGrowth(mode: .screenCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale))
+        let atDoubleScale = try await outlineGrowth(mode: .screenCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale * 2))
 
         #expect(atScale > 4, "no outline band to measure")
         #expect(abs(atDoubleScale - atScale) <= 2,
@@ -86,25 +85,25 @@ struct MToonOutlineRenderingTests {
     /// outline holds its pixels while a world-space one shrinks with the model.
     /// Nothing else here tells them apart, orthographic shrinking neither.
     @Test
-    func testScreenCoordinateWidthHoldsItsPixelsAsWorldCoordinateWidthShrinks() throws {
+    func testScreenCoordinateWidthHoldsItsPixelsAsWorldCoordinateWidthShrinks() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
         let near: Float = 1.2
         let far = near * 3
 
-        func growth(_ mode: MToonOutlineWidthMode, at distance: Float, width: Float) throws -> Int {
-            let bare = try OffscreenRenderer.renderPerspective(cube(outlinedWith: nil, scale: Self.cubeScale),
+        func growth(_ mode: MToonOutlineWidthMode, at distance: Float, width: Float) async throws -> Int {
+            let bare = try OffscreenRenderer.renderPerspective(await cube(outlinedWith: nil, scale: Self.cubeScale),
                                                                size: Self.size, distance: distance)
             let outlined = try OffscreenRenderer.renderPerspective(
-                cube(outlinedWith: mode, scale: Self.cubeScale, width: width),
+                await cube(outlinedWith: mode, scale: Self.cubeScale, width: width),
                 size: Self.size, distance: distance)
             return silhouetteWidth(outlined) - silhouetteWidth(bare)
         }
 
-        let screenNear = try growth(.screenCoordinates, at: near, width: Self.width)
-        let screenFar = try growth(.screenCoordinates, at: far, width: Self.width)
-        let worldNear = try growth(.worldCoordinates, at: near, width: Self.width)
-        let worldFar = try growth(.worldCoordinates, at: far, width: Self.width)
+        let screenNear = try await growth(.screenCoordinates, at: near, width: Self.width)
+        let screenFar = try await growth(.screenCoordinates, at: far, width: Self.width)
+        let worldNear = try await growth(.worldCoordinates, at: near, width: Self.width)
+        let worldFar = try await growth(.worldCoordinates, at: far, width: Self.width)
 
         #expect(screenNear > 8, "no outline band to measure")
         // Held, not fixed: the width comes from a first-order probe of the
@@ -120,15 +119,15 @@ struct MToonOutlineRenderingTests {
     /// Squashing the model moves the normals the outline is pushed along, but
     /// not the band: a screen-space width is a distance on screen.
     @Test
-    func testScreenCoordinateWidthSurvivesNonUniformScale() throws {
+    func testScreenCoordinateWidthSurvivesNonUniformScale() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
-        let uniform = try outlineGrowth(mode: .screenCoordinates,
-                                        scale: SIMD3<Float>(repeating: Self.cubeScale))
-        let squashed = try outlineGrowth(mode: .screenCoordinates,
-                                         scale: SIMD3<Float>(Self.cubeScale * 2,
-                                                             Self.cubeScale * 0.5,
-                                                             Self.cubeScale))
+        let uniform = try await outlineGrowth(mode: .screenCoordinates,
+                                              scale: SIMD3<Float>(repeating: Self.cubeScale))
+        let squashed = try await outlineGrowth(mode: .screenCoordinates,
+                                               scale: SIMD3<Float>(Self.cubeScale * 2,
+                                                                   Self.cubeScale * 0.5,
+                                                                   Self.cubeScale))
 
         #expect(uniform > 4, "no outline band to measure")
         #expect(abs(squashed - uniform) <= 2,
@@ -138,11 +137,11 @@ struct MToonOutlineRenderingTests {
     /// A world-space width is a distance in meters, so it must not inherit the
     /// entity's scale either.
     @Test
-    func testWorldCoordinateWidthIgnoresEntityScale() throws {
+    func testWorldCoordinateWidthIgnoresEntityScale() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
-        let atScale = try outlineGrowth(mode: .worldCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale))
-        let atDoubleScale = try outlineGrowth(mode: .worldCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale * 2))
+        let atScale = try await outlineGrowth(mode: .worldCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale))
+        let atDoubleScale = try await outlineGrowth(mode: .worldCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale * 2))
 
         #expect(atScale > 4, "no outline band to measure")
         #expect(abs(atDoubleScale - atScale) <= 2,
@@ -153,31 +152,29 @@ struct MToonOutlineRenderingTests {
     /// margin: without one RealityKit drops the pass as soon as that box leaves
     /// the frustum, taking an outline that is still on screen with it.
     @Test
-    func testOutlineSurvivesCullingAtTheFrustumEdge() throws {
+    func testOutlineSurvivesCullingAtTheFrustumEdge() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
         // Far enough right that the cube itself is outside the frustum and only
         // its outline reaches back in.
         let offscreen: Float = 1.45
-        let bare = try OffscreenRenderer.render(cube(outlinedWith: nil, scale: Self.cubeScale, x: offscreen),
+        let bare = try OffscreenRenderer.render(await cube(outlinedWith: nil, scale: Self.cubeScale, x: offscreen),
                                                 size: Self.size)
-        let outlined = try OffscreenRenderer.render(cube(outlinedWith: .worldCoordinates,
-                                                         scale: Self.cubeScale,
-                                                         x: offscreen),
+        let outlined = try OffscreenRenderer.render(await cube(outlinedWith: .worldCoordinates,
+                                                               scale: Self.cubeScale,
+                                                               x: offscreen),
                                                     size: Self.size)
 
         #expect(silhouetteWidth(bare) == 0, "the cube itself must be off screen for this to measure culling")
         #expect(silhouetteWidth(outlined) > 0, "the outline was culled with the bounding box it reaches outside of")
     }
 
-    /// A screen-coordinate width holds its on-screen size at any distance, so
-    /// far from a perspective camera its world-space offset grows toward the
-    /// mesh radius funding the culling margin. Still within that radius here;
-    /// the pass must survive culling at the frustum edge like the world one.
-    /// Past the radius the shader clamps the offset instead, see the budget
-    /// test below, so the outline can never outrun the box it is culled by.
+    /// A screen-coordinate width holds its on-screen size at any distance, so far
+    /// from a perspective camera its world-space offset grows toward the mesh radius
+    /// funding the culling margin. Still within that radius here, so the pass must
+    /// survive culling at the frustum edge like the world one.
     @Test
-    func testScreenCoordinateOutlineSurvivesCullingAtTheFrustumEdgeFarAway() throws {
+    func testScreenCoordinateOutlineSurvivesCullingAtTheFrustumEdgeFarAway() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
         let distance: Float = 6
@@ -190,10 +187,10 @@ struct MToonOutlineRenderingTests {
         let offscreen = frameHalfWidth + 0.65
 
         let bare = try OffscreenRenderer.renderPerspective(
-            cube(outlinedWith: nil, scale: Self.cubeScale, x: offscreen),
+            await cube(outlinedWith: nil, scale: Self.cubeScale, x: offscreen),
             size: Self.size, distance: distance)
         let outlined = try OffscreenRenderer.renderPerspective(
-            cube(outlinedWith: .screenCoordinates, scale: Self.cubeScale, x: offscreen),
+            await cube(outlinedWith: .screenCoordinates, scale: Self.cubeScale, x: offscreen),
             size: Self.size, distance: distance)
 
         #expect(silhouetteWidth(bare) == 0, "the cube itself must be off screen for this to measure culling")
@@ -201,47 +198,82 @@ struct MToonOutlineRenderingTests {
     }
 
     /// The geometry modifier clamps its offset to the bounds margin the loader
-    /// granted the pass, so a screen-space outline far from the camera
-    /// saturates at the mesh radius in the world instead of outrunning the box
-    /// it is culled by. The saturated band still scales with the entity,
-    /// pinning the clamp to that margin rather than to a distance in the world.
+    /// granted the pass, so a distant screen-space outline saturates at the mesh
+    /// radius. The saturated band still scales with the entity, which pins the
+    /// clamp to that margin rather than to a distance in the world.
     @Test
-    func testScreenCoordinateWidthSaturatesAtTheCullingMarginFarAway() throws {
+    func testScreenCoordinateWidthSaturatesAtTheCullingMarginFarAway() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
-        func growth(scale: Float, distance: Float) throws -> Int {
+        func growth(scale: Float, distance: Float) async throws -> Int {
             let bare = try OffscreenRenderer.renderPerspective(
-                cube(outlinedWith: nil, scale: scale), size: Self.size, distance: distance)
+                await cube(outlinedWith: nil, scale: scale), size: Self.size, distance: distance)
             let outlined = try OffscreenRenderer.renderPerspective(
-                cube(outlinedWith: .screenCoordinates, scale: scale), size: Self.size, distance: distance)
+                await cube(outlinedWith: .screenCoordinates, scale: scale), size: Self.size, distance: distance)
             return silhouetteWidth(outlined) - silhouetteWidth(bare)
         }
 
         // Near the camera the nominal screen width fits inside the margin and
         // is drawn in full; far away it saturates to a fixed world distance, so
         // the band thins with distance instead of holding its pixels.
-        let nominal = try growth(scale: Self.cubeScale, distance: 3)
-        let saturated = try growth(scale: Self.cubeScale, distance: 30)
+        let nominal = try await growth(scale: Self.cubeScale, distance: 3)
+        let saturated = try await growth(scale: Self.cubeScale, distance: 30)
         #expect(nominal > 8, "no outline band to measure")
         #expect(saturated * 2 < nominal,
                 "expected the far outline to saturate below \(nominal)px, measured \(saturated)px")
 
         // The margin is measured in mesh space, so scaling the entity scales
         // the saturated band with it.
-        let saturatedAtDoubleScale = try growth(scale: Self.cubeScale * 2, distance: 30)
+        let saturatedAtDoubleScale = try await growth(scale: Self.cubeScale * 2, distance: 30)
         #expect(abs(saturatedAtDoubleScale - saturated * 2) <= 2,
                 "saturated band measured \(saturated)px, then \(saturatedAtDoubleScale)px at twice the scale")
     }
+
+#if !os(visionOS)
+    /// The parameter rows are written into the texture the materials already
+    /// sample, so a flush past the first rewrites no material, and what is drawn
+    /// still has to follow the rows.
+    @Test
+    func testRowsWrittenAfterTheFirstFlushAreDrawn() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
+              TestSupport.isMToonRenderingAvailable else { return }
+        let root = try await cube(outlinedWith: .worldCoordinates, scale: Self.cubeScale)
+        let entity = try #require(root.children.first as? GLTFEntity)
+        let state = try #require(entity.mtoonState(forMaterialIndex: 0))
+
+        // The outline is the widest thing on screen, so the silhouette's first
+        // drawn pixel is the band and nothing else.
+        func outlinePixel() throws -> SIMD3<Float> {
+            let image = try OffscreenRenderer.render(root, size: Self.size)
+            return try #require(image[image.count / 2].first(where: isDrawn))
+        }
+        func override(_ color: SIMD3<Float>) -> MToonOutlineOverride {
+            MToonOutlineOverride(color: color, width: Self.width, mode: .worldCoordinates)
+        }
+
+        entity.setMToonOutlineOverride(override(SIMD3<Float>(0, 1, 0)))
+        let green = try outlinePixel()
+        let texture = try #require(state.parameterTexture)
+        #expect(!state.updatesMaterialsOnFlush, "the first flush installs the texture, later ones must not")
+
+        entity.setMToonOutlineOverride(override(SIMD3<Float>(0, 0, 1)))
+        let blue = try outlinePixel()
+
+        #expect(state.parameterTexture === texture, "the flush allocated a parameter texture instead of writing one")
+        #expect(green.y > green.z, "the green outline measured \(green)")
+        #expect(blue.z > blue.y, "the blue outline written in place measured \(blue)")
+    }
+#endif
 
     /// MToon measures a screen-space width against the screen *height*, and the
     /// camera frames the same height either way, so widening the viewport must
     /// not change the sideways band.
     @Test
-    func testScreenCoordinateWidthIsMeasuredAgainstScreenHeight() throws {
+    func testScreenCoordinateWidthIsMeasuredAgainstScreenHeight() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
-        let square = try outlineGrowth(mode: .screenCoordinates, viewport: (Self.size, Self.size))
-        let wide = try outlineGrowth(mode: .screenCoordinates, viewport: (Self.size * 2, Self.size))
+        let square = try await outlineGrowth(mode: .screenCoordinates, viewport: (Self.size, Self.size))
+        let wide = try await outlineGrowth(mode: .screenCoordinates, viewport: (Self.size * 2, Self.size))
 
         #expect(square > 4, "no outline band to measure")
         #expect(abs(wide - square) <= 2,

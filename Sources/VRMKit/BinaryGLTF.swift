@@ -1,9 +1,8 @@
 import Foundation
 
-// see:
-// https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md
+// https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#glb-file-format-specification
 
-public struct BinaryGLTF {
+public struct BinaryGLTF: Sendable {
     /// Chunk 0.
     public let jsonData: GLTF
     /// Chunk 0 as it was written, which the editing side re-parses so that the
@@ -12,7 +11,7 @@ public struct BinaryGLTF {
     /// Chunk 1.
     public let binaryBuffer: Data?
 
-    /// magic equals 0x46546C67. It is ASCII string glTF, and can be used to identify data as Binary glTF.
+    /// The ASCII `glTF` a GLB starts with.
     static let magic: UInt32 = 0x46546C67
 
     /// The GLB header: magic, version and total length.
@@ -48,13 +47,12 @@ extension BinaryGLTF {
             throw VRMError.notSupportedVersion(rawVersion)
         }
 
-        // The header length covers the whole GLB, so fewer bytes than that means
-        // the file is truncated and the chunk walk below cannot be trusted. Bytes
-        // past it belong to no chunk and are ignored.
-        let length = try reader.readUInt32()
-        guard Int(length) <= data.count else {
+        // `Int(exactly:)` rather than `Int(_:)`: a GLB may declare up to 4 GB,
+        // which traps a 32 bit Int on watchOS rather than failing the load.
+        let rawLength = try reader.readUInt32()
+        guard let length = Int(exactly: rawLength), length <= data.count else {
             throw VRMError._dataInconsistent(
-                "GLB header length \(length) overruns the \(data.count) byte file"
+                "GLB header length \(rawLength) overruns the \(data.count) byte file"
             )
         }
 
@@ -63,22 +61,23 @@ extension BinaryGLTF {
         var json: (gltf: GLTF, chunk: Data)?
         var binaryBuffer: Data?
         var chunkIndex = 0
-        while reader.bytesRead + Self.chunkHeaderLength <= Int(length) {
-            let chunkLength = try reader.readUInt32()
+        while reader.bytesRead + Self.chunkHeaderLength <= length {
+            let rawChunkLength = try reader.readUInt32()
             let chunkType = try reader.readUInt32()
-            // Every chunk starts and ends on a 4 byte boundary, so with the 12 byte
-            // header and 8 byte chunk headers the payloads are multiples of 4 too.
-            guard chunkLength.isMultiple(of: 4) else {
+            // Every chunk starts and ends on a 4 byte boundary, and so, given the
+            // 12 and 8 byte headers, does every payload.
+            guard rawChunkLength.isMultiple(of: 4) else {
                 throw VRMError._dataInconsistent(
-                    "GLB chunk of \(chunkLength) bytes breaks the container's 4 byte alignment"
+                    "GLB chunk of \(rawChunkLength) bytes breaks the container's 4 byte alignment"
                 )
             }
-            guard reader.bytesRead + Int(chunkLength) <= Int(length) else {
+            guard let chunkLength = Int(exactly: rawChunkLength),
+                  reader.bytesRead + chunkLength <= length else {
                 throw VRMError._dataInconsistent(
-                    "GLB chunk of \(chunkLength) bytes overruns the \(length) byte container"
+                    "GLB chunk of \(rawChunkLength) bytes overruns the \(length) byte container"
                 )
             }
-            let chunkData = try reader.readData(count: Int(chunkLength))
+            let chunkData = try reader.readData(count: chunkLength)
             switch ChunkType(rawValue: chunkType) {
             case .json:
                 guard chunkIndex == 0 else {
@@ -98,11 +97,10 @@ extension BinaryGLTF {
             chunkIndex += 1
         }
 
-        // Anything left inside the declared length belongs to no chunk, so the
-        // container does not describe its own contents.
-        guard reader.bytesRead == Int(length) else {
+        // Bytes left inside the declared length belong to no chunk.
+        guard reader.bytesRead == length else {
             throw VRMError._dataInconsistent(
-                "GLB has \(Int(length) - reader.bytesRead) bytes left over after its last chunk"
+                "GLB has \(length - reader.bytesRead) bytes left over after its last chunk"
             )
         }
 

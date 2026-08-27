@@ -7,7 +7,7 @@ import OSLog
 /// `VRMC_vrm_animation` extension maps its nodes to humanoid bones,
 /// expressions and look-at, so its standard glTF animation can be retargeted
 /// onto any VRM model.
-public struct VRMAnimation {
+public struct VRMAnimation: Sendable {
     /// The `VRMC_vrm_animation` spec versions this type models: the released
     /// one, and the pre-release the reference implementation still reads.
     public static func supports(specVersion: String) -> Bool {
@@ -30,8 +30,8 @@ public struct VRMAnimation {
     public let humanoid: Humanoid?
     public let expressions: Expressions?
     public let lookAt: LookAt?
-    public let extensions: CodableAny?
-    public let extras: CodableAny?
+    public let extensions: JSONValue?
+    public let extras: JSONValue?
 
     public init(document: GLTFDocument) throws {
         self.document = document
@@ -39,7 +39,8 @@ public struct VRMAnimation {
         let extensions = try document.gltf.rootExtensions()
         let vrma = try extensions["VRMC_vrm_animation"] ??? .keyNotFound("VRMC_vrm_animation")
         if let declared = vrma["specVersion"] {
-            specVersion = try declared as? String ??? .dataInconsistent("VRMC_vrm_animation.specVersion is not a string")
+            specVersion = try declared.stringValue
+                ??? .dataInconsistent("VRMC_vrm_animation.specVersion is not a string")
             guard VRMAnimation.supports(specVersion: specVersion) else {
                 throw VRMError._notSupported("VRMC_vrm_animation specVersion \(specVersion)")
             }
@@ -61,8 +62,8 @@ public struct VRMAnimation {
         humanoid = try vrma.decodeJSONIfPresent(Humanoid.self, forKey: "humanoid")
         expressions = try vrma.decodeJSONIfPresent(Expressions.self, forKey: "expressions")
         lookAt = try vrma.decodeJSONIfPresent(LookAt.self, forKey: "lookAt")
-        self.extensions = try vrma.decodeJSONIfPresent(CodableAny.self, forKey: "extensions")
-        extras = try vrma.decodeJSONIfPresent(CodableAny.self, forKey: "extras")
+        self.extensions = try vrma.decodeJSONIfPresent(JSONValue.self, forKey: "extensions")
+        extras = try vrma.decodeJSONIfPresent(JSONValue.self, forKey: "extras")
     }
 
     /// Parses in-memory `.vrma` data, sniffing the GLB magic to pick the
@@ -86,42 +87,42 @@ public struct VRMAnimation {
 
 // VRMC_vrm_animation
 public extension VRMAnimation {
-    struct Humanoid: Codable {
+    struct Humanoid: Codable, Sendable {
         /// VRM humanoid bone name → the node its animation channels target.
         /// Keyed by the raw name, so bones this library does not know pass
         /// through instead of failing the parse.
         public let humanBones: [String: HumanBone]
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
 
-        public struct HumanBone: Codable {
+        public struct HumanBone: Codable, Sendable {
             public let node: Int
-            public let extensions: CodableAny?
-            public let extras: CodableAny?
+            public let extensions: JSONValue?
+            public let extras: JSONValue?
         }
     }
 
-    struct Expressions: Codable {
+    struct Expressions: Codable, Sendable {
         /// Preset expression name → its expression, keyed like `humanBones`.
         public let preset: [String: Expression]?
         public let custom: [String: Expression]?
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
     }
 
-    struct Expression: Codable {
+    struct Expression: Codable, Sendable {
         /// The node whose translation X component carries the expression
         /// weight, clamped to 0...1.
         public let node: Int
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
     }
 
-    struct LookAt: Codable {
+    struct LookAt: Codable, Sendable {
         /// The node whose rotation carries the gaze direction.
         public let node: Int?
         public let offsetFromHeadBone: [Double]?
-        public let extensions: CodableAny?
-        public let extras: CodableAny?
+        public let extensions: JSONValue?
+        public let extras: JSONValue?
     }
 }

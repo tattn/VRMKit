@@ -27,14 +27,7 @@ package extension VRM1.Expressions {
             return (expressionPreset.rawValue, expressionPreset, expression)
         }
 
-        guard let customMap = custom?.value as? [String: Any] else {
-            return clips
-        }
-
-        for name in customMap.keys.sorted() {
-            guard let expression = try? customMap.decodeJSON(VRM1.Expressions.Expression.self, forKey: name) else {
-                continue
-            }
+        for (name, expression) in (custom ?? [:]).sorted(by: { $0.key < $1.key }) {
             clips.append((name, nil, expression))
         }
         return clips

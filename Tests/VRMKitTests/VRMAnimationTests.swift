@@ -90,14 +90,14 @@ struct VRMAnimationTests {
 
     /// The JSON fixture with its `specVersion` replaced by an arbitrary value,
     /// for the malformed cases the fixture's `String?` cannot express.
-    private func fixtureWithSpecVersion(_ value: Any) throws -> Data {
-        var json = try #require(try JSONSerialization.jsonObject(with: VRMASampleFixture.standard()) as? [String: Any])
-        var extensions = try #require(json["extensions"] as? [String: Any])
-        var vrma = try #require(extensions["VRMC_vrm_animation"] as? [String: Any])
+    private func fixtureWithSpecVersion(_ value: JSONValue) throws -> Data {
+        var json = try #require(try JSONValue(parsing: VRMASampleFixture.standard()).objectValue)
+        var extensions = try #require(json.object("extensions"))
+        var vrma = try #require(extensions.object("VRMC_vrm_animation"))
         vrma["specVersion"] = value
-        extensions["VRMC_vrm_animation"] = vrma
-        json["extensions"] = extensions
-        return try JSONSerialization.data(withJSONObject: json)
+        extensions["VRMC_vrm_animation"] = .object(vrma)
+        json["extensions"] = .object(extensions)
+        return try JSONValue.object(json).serialized()
     }
 
     @Test

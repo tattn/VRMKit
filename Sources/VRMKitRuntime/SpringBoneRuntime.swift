@@ -25,41 +25,47 @@ package struct SpringBoneCollider {
 /// A collider as either version states one: a shape in the space of the node it
 /// hangs off. Only the renderer holds the scene graph, so it hands
 /// ``world(in:)`` the node's transform.
-package struct SpringBoneColliderShape {
-    private let offset: SIMD3<Float>
-    private let tail: SIMD3<Float>?
-    private let radius: Float
+package enum SpringBoneColliderShape {
+    case sphere(offset: SIMD3<Float>, radius: Float)
+    case capsule(offset: SIMD3<Float>, tail: SIMD3<Float>, radius: Float)
 
-    package init(vrm0Collider collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) {
-        offset = collider.offset.simd
-        tail = nil
-        radius = Float(collider.radius)
+    package init(vrm0Collider collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) throws {
+        let offset = collider.offset.simd
+        let radius = Float(collider.radius)
+        try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
+        try VRMSpringBoneParameters.requireFiniteNonnegative(radius, named: "collider radius")
+        self = .sphere(offset: offset, radius: radius)
     }
 
-    /// A VRM 1.0 collider is a sphere or a capsule. One that is neither is kept
-    /// at zero radius, so it collides with nothing without shifting the indices
-    /// the groups refer to.
-    package init(vrm1Collider collider: VRM1.SpringBone.Collider) {
-        if let sphere = collider.shape.sphere {
-            offset = SIMD3<Float>(sphere.offset, default: .zero)
-            tail = nil
-            radius = Float(sphere.radius)
-        } else if let capsule = collider.shape.capsule {
-            offset = SIMD3<Float>(capsule.offset, default: .zero)
-            tail = SIMD3<Float>(capsule.tail, default: .zero)
-            radius = Float(capsule.radius)
-        } else {
-            offset = .zero
-            tail = nil
-            radius = 0
+    package init(vrm1Collider collider: VRM1.SpringBone.Collider) throws {
+        switch collider.shape {
+        case .sphere(let sphere):
+            let offset = SIMD3<Float>(sphere.offset, default: .zero)
+            let radius = Float(sphere.radius)
+            try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
+            try VRMSpringBoneParameters.requireFiniteNonnegative(radius, named: "collider radius")
+            self = .sphere(offset: offset, radius: radius)
+        case .capsule(let capsule):
+            let offset = SIMD3<Float>(capsule.offset, default: .zero)
+            let tail = SIMD3<Float>(capsule.tail, default: .zero)
+            let radius = Float(capsule.radius)
+            try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
+            try VRMSpringBoneParameters.requireFinite(tail, named: "collider tail")
+            try VRMSpringBoneParameters.requireFiniteNonnegative(radius, named: "collider radius")
+            self = .capsule(offset: offset, tail: tail, radius: radius)
         }
     }
 
     /// Where the shape is, given where the node it hangs off is.
     package func world(in localToWorld: simd_float4x4) -> SpringBoneCollider {
-        SpringBoneCollider(head: localToWorld.multiplyPoint(offset),
-                           tail: tail.map(localToWorld.multiplyPoint),
-                           radius: radius)
+        switch self {
+        case .sphere(let offset, let radius):
+            SpringBoneCollider(head: localToWorld.multiplyPoint(offset), tail: nil, radius: radius)
+        case .capsule(let offset, let tail, let radius):
+            SpringBoneCollider(head: localToWorld.multiplyPoint(offset),
+                               tail: localToWorld.multiplyPoint(tail),
+                               radius: radius)
+        }
     }
 }
 
@@ -85,22 +91,34 @@ package struct SpringBoneJointSetting {
         self.hitRadius = hitRadius
     }
 
-    package init(vrm0BoneGroup group: VRM0.SecondaryAnimation.BoneGroup) {
+    package init(vrm0BoneGroup group: VRM0.SecondaryAnimation.BoneGroup) throws {
         self.init(stiffnessForce: Float(group.stiffiness),
                   gravityPower: Float(group.gravityPower),
                   gravityDir: group.gravityDir.simd,
                   dragForce: Float(group.dragForce),
                   hitRadius: Float(group.hitRadius))
+        try validate()
     }
 
     /// Fills in what the joint leaves out with the defaults `VRMC_springBone`
     /// declares for them.
-    package init(vrm1Joint joint: VRM1.SpringBone.Spring.Joint) {
+    package init(vrm1Joint joint: VRM1.SpringBone.Spring.Joint) throws {
         self.init(stiffnessForce: joint.stiffness.map(Float.init) ?? VRMSpringBoneDefaults.stiffness,
                   gravityPower: joint.gravityPower.map(Float.init) ?? VRMSpringBoneDefaults.gravityPower,
                   gravityDir: SIMD3<Float>(joint.gravityDir, default: VRMSpringBoneDefaults.gravityDirection),
                   dragForce: joint.dragForce.map(Float.init) ?? VRMSpringBoneDefaults.dragForce,
                   hitRadius: joint.hitRadius.map(Float.init) ?? VRMSpringBoneDefaults.hitRadius)
+        try validate()
+    }
+
+    /// Refuses what the simulation cannot swing, so that everything below
+    /// ``SpringBoneRig/make(vrm:node:)`` works on values it can trust.
+    private func validate() throws {
+        try VRMSpringBoneParameters.requireFiniteNonnegative(stiffnessForce, named: "stiffness")
+        try VRMSpringBoneParameters.requireFiniteNonnegative(gravityPower, named: "gravity power")
+        try VRMSpringBoneParameters.requireFiniteNonnegative(hitRadius, named: "hit radius")
+        try VRMSpringBoneParameters.requireDragForce(dragForce)
+        try VRMSpringBoneParameters.requireFinite(gravityDir, named: "gravity direction")
     }
 }
 
@@ -126,11 +144,8 @@ package struct SpringBoneCenter {
 }
 
 /// One head and tail pair of a spring: the joint that swings, and the state the
-/// simulation carries from frame to frame.
-///
-/// The scene graph stays outside, which is what lets both renderers swing a
-/// bone the same way: the caller reads where the joint is now, hands the
-/// numbers over, and applies the rotation that comes back.
+/// simulation carries from frame to frame. The scene graph stays outside, so both
+/// renderers swing a bone the same way.
 package struct SpringBoneJoint {
     /// Where the tail lies at rest, in the joint's own space, which is where
     /// the stiffness pulls it back to.
@@ -161,6 +176,11 @@ package struct SpringBoneJoint {
         self.prevTail = self.currentTail
     }
 
+    /// The longest step the simulation takes at once. The inertia term carries
+    /// last frame's move unscaled, so a multi-second step, as the first frame
+    /// after a pause asks for, would throw every tail far past its bone.
+    package static let maximumDeltaTime: Float = 1.0 / 15.0
+
     /// Advances the tail by `deltaTime` and answers with the world rotation the
     /// joint has to take for its bone to point at it.
     package mutating func update(deltaTime: Float,
@@ -169,6 +189,7 @@ package struct SpringBoneJoint {
                                  parentRotation: simd_quatf,
                                  center: SpringBoneCenter?,
                                  colliders: [SpringBoneCollider]) -> simd_quatf {
+        let deltaTime = min(max(0, deltaTime), Self.maximumDeltaTime)
         let restRotation = parentRotation * initialLocalRotation
         let restDirection = restRotation * boneAxis
         let currentTail = center?.world(self.currentTail) ?? self.currentTail
@@ -196,7 +217,9 @@ package struct SpringBoneJoint {
         self.prevTail = center?.centered(currentTail) ?? currentTail
         self.currentTail = center?.centered(nextTail) ?? nextTail
 
-        return simd_quatf(from: restDirection, to: nextTail - head) * restRotation
+        // `onBone` puts the tail exactly `boneLength` away, so dividing by it
+        // normalizes without a square root, which `simd_quatf(from:to:)` needs.
+        return simd_quatf(from: restDirection, to: (nextTail - head) / boneLength) * restRotation
     }
 
     /// `tail` pulled back onto the sphere the bone reaches, which is what holds

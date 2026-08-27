@@ -5,7 +5,12 @@ import ImageIO
 /// Splits glTF's packed metallic-roughness image into the linear grayscale
 /// images the rendering backends consume: roughness from green, metalness from
 /// blue.
-package func metallicRoughnessImages(from image: CGImage) throws -> (metal: CGImage, rough: CGImage) {
+///
+/// The factors are the multipliers glTF applies to the sampled channels, baked
+/// in here for a backend with nowhere else to put them.
+package func metallicRoughnessImages(from image: CGImage,
+                                     metallicFactor: Float = 1,
+                                     roughnessFactor: Float = 1) throws -> (metal: CGImage, rough: CGImage) {
     let pixelCount = image.width * image.height
     var rgba = Data(count: pixelCount * 4)
     try rgba.withUnsafeMutableBytes { pixels in
@@ -30,14 +35,19 @@ package func metallicRoughnessImages(from image: CGImage) throws -> (metal: CGIm
                       let metal = metal.bindMemory(to: UInt8.self).baseAddress,
                       let rough = rough.bindMemory(to: UInt8.self).baseAddress else { return }
                 for pixel in 0..<pixelCount {
-                    metal[pixel] = source[pixel * 4 + 2]
-                    rough[pixel] = source[pixel * 4 + 1]
+                    metal[pixel] = scaled(source[pixel * 4 + 2], by: metallicFactor)
+                    rough[pixel] = scaled(source[pixel * 4 + 1], by: roughnessFactor)
                 }
             }
         }
     }
     return (try grayscaleImage(width: image.width, height: image.height, pixels: metal),
             try grayscaleImage(width: image.width, height: image.height, pixels: rough))
+}
+
+private func scaled(_ channel: UInt8, by factor: Float) -> UInt8 {
+    guard factor != 1 else { return channel }
+    return UInt8((Float(channel) * factor).rounded().clamped(to: 0...255))
 }
 
 private func grayscaleImage(width: Int, height: Int, pixels: Data) throws -> CGImage {

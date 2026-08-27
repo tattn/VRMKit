@@ -18,11 +18,12 @@ struct GLTFDocumentLoadingTests {
     @Test
     func testOnlyFirstURIlessBufferMayUseTheGLBBINChunk() throws {
         let data = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-            guard var buffers = json["buffers"] as? [[String: Any]] else {
+            var buffers = json.objects("buffers")
+            guard !buffers.isEmpty else {
                 throw GLBRewriter.Error.invalidJSON
             }
             buffers.append(["byteLength": 4])
-            json["buffers"] = buffers
+            json["buffers"] = .objects(buffers)
         }
         let document = try GLTFDocument(data: data)
 

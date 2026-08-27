@@ -71,6 +71,12 @@ package extension Data {
         return nil
     }
 
+    /// The most an accessor with no bufferView may zero-fill. Nothing in the
+    /// document bounds the `count` such an accessor declares, and 64 MiB is a
+    /// million vertices of position and normal, far above what a real asset
+    /// zero-fills.
+    static let maximumZeroFilledByteCount = 1 << 26
+
     /// All-zero data for a glTF accessor with no bufferView.
     init(zeroedElementCount count: Int, elementSize: Int) throws {
         guard count >= 0, elementSize > 0 else {
@@ -80,16 +86,19 @@ package extension Data {
         guard !byteCount.overflow else {
             throw VRMError._dataInconsistent("accessor size overflows (count: \(count), size: \(elementSize))")
         }
+        guard byteCount.partialValue <= Self.maximumZeroFilledByteCount else {
+            throw VRMError._dataInconsistent(
+                "an accessor with no bufferView asks to zero-fill \(byteCount.partialValue) bytes, "
+                + "past the \(Self.maximumZeroFilledByteCount) byte limit"
+            )
+        }
         self.init(count: byteCount.partialValue)
     }
 
-    /// Copies `count` elements of `size` bytes each, `stride` bytes apart,
-    /// starting at `offset`, throwing when the described range overruns the
-    /// receiver.
-    ///
-    /// `offset` is relative to the receiver, which a buffer view is a slice of,
-    /// and the result is a `Data` of its own so that packed accessor bytes never
-    /// carry the buffer they were read out of.
+    /// Copies `count` elements of `size` bytes each, `stride` bytes apart, starting
+    /// at `offset`, throwing when the described range overruns the receiver. The
+    /// result is a `Data` of its own, so packed accessor bytes never carry the
+    /// buffer they were read out of.
     func subdata(offset: Int, size: Int, stride: Int, count: Int) throws -> Data {
         guard offset >= 0, size > 0, count >= 0, stride >= size else {
             throw VRMError._dataInconsistent(
@@ -163,17 +172,15 @@ package extension URL {
     /// Resolves a glTF `uri` against the asset's directory.
     ///
     /// A `uri` is a URI reference, not a file path: its reserved characters are
-    /// percent-encoded, so `My%20Buffer.bin` names a file with a space in it.
-    /// Only local files are read: a glTF must not fetch resources off the
-    /// network on the caller's behalf.
+    /// percent-encoded, so `My%20Buffer.bin` names a file with a space in it. Only
+    /// local files are read.
     init(gltfUri: String, relativeTo rootDirectory: URL?) throws {
         // A uri that is not a valid URI reference is taken as a literal path,
         // which is what exporters writing unencoded characters mean by it.
         let uri = URL(string: gltfUri, relativeTo: rootDirectory)
         guard let uri, uri.scheme != nil else {
             // A relative uri names a file beside the glTF, so without that
-            // directory the only base left is the working directory of the
-            // process, which holds some unrelated file of the same name.
+            // directory there is no base to resolve it against.
             guard let rootDirectory else {
                 throw VRMError._dataInconsistent(
                     """

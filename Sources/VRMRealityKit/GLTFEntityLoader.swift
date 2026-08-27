@@ -18,16 +18,15 @@ public class GLTFEntityLoader {
     let entityData: EntityData
     /// Accessors expanded for this loader's meshes and skins, shared by the
     /// primitives that reference the same one.
-    private let accessors: PackedAccessorCache
+    let accessors: PackedAccessorCache
 
     /// Name given to the loaded root entity. Subclasses set it from model metadata.
     var entityName: String?
     weak var currentEntity: GLTFEntity?
     static let gltfLogger = Logger(subsystem: "dev.tattn.VRMKit", category: "glTF")
 
-    /// The document's node parents, built and validated once by
-    /// ``validateStructure()`` and read by everything that walks upwards.
-    private var nodeHierarchy: GLTFNodeHierarchy?
+    /// Node parents, built and validated once by ``validateStructure()``.
+    private(set) var nodeHierarchy: GLTFNodeHierarchy?
     private var loggedLimitations: Set<String> = []
     private var materialTexCoordCache: [Int: (selected: Int, isMixed: Bool)] = [:]
     private var morphTargetCounts: [Int: Int] = [:]
@@ -38,19 +37,28 @@ public class GLTFEntityLoader {
         Self.gltfLogger.warning("\(text, privacy: .public)")
     }
 
-    /// Textures decoded per semantic: RealityKit bakes the semantic into the
-    /// resource, so one glTF texture read as color and as a normal map is two.
-    private var textureCacheBySemantic: [TextureResource.Semantic: [Int: TextureResource]] = [:]
+    /// One glTF image decoded for one semantic: RealityKit bakes the semantic
+    /// into the resource, so an image read as color and as a normal map is two.
+    /// Keying on the image, not the texture, shares the decode between textures
+    /// that differ only in their sampler.
+    private struct ImageTextureKey: Hashable {
+        let imageIndex: Int
+        let semantic: TextureResource.Semantic
+    }
+
+    private var textureCache: [ImageTextureKey: TextureResource] = [:]
+    /// Metal and roughness split out of one image's channels.
     private var metallicRoughnessCache: [Int: (metal: TextureResource, rough: TextureResource)] = [:]
-    /// One glTF texture read through a scalar factor baked into its pixels.
+    /// One glTF image read through a scalar factor baked into its pixels.
     private struct BakedTextureKey: Hashable {
-        let textureIndex: Int
+        let imageIndex: Int
         let factor: Float
         let semantic: TextureResource.Semantic
     }
 
     private var bakedTextureCache: [BakedTextureKey: TextureResource] = [:]
-    private var samplerCache: [Int: MaterialParameters.Texture.Sampler] = [:]
+    /// Keyed by glTF sampler index; nil is the texture that names no sampler.
+    private var samplerCache: [Int?: MaterialParameters.Texture.Sampler] = [:]
     private var mtoonResolutionCache: [Int: MToonMaterialDescriptor.Resolution] = [:]
 
     /// The material shaders this loader consults, in order. Materials no shader
@@ -92,23 +100,41 @@ public class GLTFEntityLoader {
                   shaders: shaders)
     }
 
-    /// Loads the document's default scene.
+    /// Loads the document's default scene, decoding its primitives concurrently
+    /// off the actor the entity graph is built on.
     ///
-    /// - Throws: when the glTF names no default `scene`; such an asset is a
-    ///   library of nodes, so the caller picks a scene with
-    ///   ``loadEntity(withSceneIndex:)``.
-    public func loadEntity() throws -> GLTFEntity {
-        let scene = try gltf.scene ??? ._dataInconsistent("this glTF has no default scene")
-        return try loadEntity(withSceneIndex: scene)
+    /// - Throws: when the glTF holds several scenes and names no default one.
+    ///   Pick one with ``loadEntity(withSceneIndex:)``.
+    public func loadEntity() async throws -> GLTFEntity {
+        try await loadEntity(withSceneIndex: gltf.defaultSceneIndex())
     }
 
-    /// Loads one scene of the glTF as its own entity graph. Every call builds a
-    /// new graph, even for the same scene, while resources are reused.
-    public func loadEntity(withSceneIndex index: Int) throws -> GLTFEntity {
+    /// Loads one scene of the glTF as its own entity graph. The document is
+    /// validated before any vertex data is read, and every call builds a new
+    /// graph, even for the same scene, while resources are reused.
+    public func loadEntity(withSceneIndex index: Int) async throws -> GLTFEntity {
+        try validateDocument()
+        try await prepareGeometry(forSceneIndex: index)
+        try Task.checkCancellation()
+        return try buildScene(withSceneIndex: index)
+    }
+
+    /// Checks the required extensions, node graph and skins before any vertex is read.
+    private func validateDocument() throws {
         try validateRequiredExtensions()
         try validateStructure()
+    }
+
+    /// Builds the entity graph of one scene from an already validated document.
+    private func buildScene(withSceneIndex index: Int) throws -> GLTFEntity {
         let gltfScene = try gltf.load(\.scenes, at: index)
         entityData.beginScene()
+        // Vertex data lives on in the mesh resources the build makes of it, so
+        // holding the intermediates past it is a second copy of the model.
+        defer {
+            entityData.primitiveGeometries.removeAll()
+            accessors.removeAll()
+        }
 
         let entity = makeRootEntity(sceneIndex: index)
         if let entityName {
@@ -122,8 +148,8 @@ public class GLTFEntityLoader {
         }
         entity.setNodeEntities(entityData.nodes)
         try didBuildScene(entity)
-        // A skin binding is registered while the graph around it is still being
-        // built, so the rest pose is only solvable once the graph is complete.
+        // Skin bindings are registered mid-build, so the rest pose is only
+        // solvable once the graph is complete.
         entity.updateSkinning()
 
         return entity
@@ -139,9 +165,6 @@ public class GLTFEntityLoader {
 
     /// glTF extensions this renderer implements, to satisfy `extensionsRequired`:
     /// the built-in ones plus whatever the shader chain claims.
-    ///
-    /// Not an override point outside this module: claiming an extension this
-    /// renderer cannot draw would only silence the check that rejects it.
     public var supportedRequiredExtensions: Set<String> {
         var extensions: Set<String> = [GLTFExtension.materialsUnlit.rawValue,
                                        GLTFExtension.textureTransform.rawValue]
@@ -152,8 +175,7 @@ public class GLTFEntityLoader {
     }
 
     /// Fails the load when the file requires an extension this renderer does not
-    /// implement, as the glTF spec demands, or leans on a required extension past
-    /// what this renderer implements of it.
+    /// implement, or leans on one past what is implemented of it.
     func validateRequiredExtensions() throws {
         if let unsupported = unsupportedRequiredExtensions().first {
             throw VRMError._notSupported("this glTF requires the \(unsupported) extension")
@@ -163,15 +185,11 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// RealityKit gives a material one UV transform, and its mesh one UV set, so
+    /// RealityKit gives a material one UV transform and its mesh one UV set, so
     /// `KHR_texture_transform` is only fully implemented while a material's
-    /// textures agree on both. An asset that merely *uses* the extension renders
+    /// textures agree on both. An asset that merely uses the extension renders
     /// through the first UV-accessed texture's set and transform and logs the
-    /// approximation; one that *requires* it is rejected instead.
-    ///
-    /// This covers the textures of the core glTF material. A shader sampling
-    /// textures the core material does not name, such as MToon's shade and rim
-    /// maps, checks those itself against the same limits.
+    /// approximation; one that requires it is rejected instead.
     private func validateTextureTransformsAreRenderable() throws {
         for (index, gltfMaterial) in (gltf.materials ?? []).enumerated() {
             let textures = sampledTextures(of: gltfMaterial)
@@ -190,13 +208,10 @@ public class GLTFEntityLoader {
         }
     }
 
-    /// Whether the document declares itself undrawable without `name` *and* this
-    /// load honors that declaration. It is the signal for a shader to fail a
-    /// material rather than draw an approximation of it.
-    ///
-    /// ``VRMEntityLoader`` renders a VRM with whatever it can build, so it
-    /// answers false even for a listed extension, matching its
-    /// ``VRMEntityLoader/validateRequiredExtensions()``.
+    /// Whether the document declares itself undrawable without `name` and this
+    /// load honors that, which tells a shader to fail a material rather than
+    /// approximate it. ``VRMEntityLoader`` renders whatever it can build, so it
+    /// answers false even for a listed extension.
     func enforcesRequiredExtension(_ name: String) -> Bool {
         gltf.extensionsRequired?.contains(name) == true
     }
@@ -207,8 +222,7 @@ public class GLTFEntityLoader {
         return (gltf.extensionsRequired ?? []).filter { !supported.contains($0) }
     }
 
-    /// Validates, once per document, the node graph and skins the rest of the
-    /// loader takes for granted.
+    /// Validates the node graph and skins, once per document.
     private func validateStructure() throws {
         guard nodeHierarchy == nil else { return }
         nodeHierarchy = try GLTFNodeHierarchy.validatingStructure(of: gltf)
@@ -218,9 +232,8 @@ public class GLTFEntityLoader {
         if let cache = try entityData.load(\.nodes, index: index) { return cache }
 
         let entity = Entity()
-        // A skinned mesh may sit below one of its own joints, whose entity its
-        // skin binding then asks for mid-build. Publishing the entity before its
-        // subtree exists ends that recursion.
+        // A skinned mesh may sit below one of its own joints, so publishing the
+        // entity before its subtree exists ends that recursion.
         entityData.nodes[index] = entity
         do {
             try build(entity, forNodeAt: index)
@@ -242,7 +255,7 @@ public class GLTFEntityLoader {
         }
 
         if let meshIndex = gltfNode.mesh {
-            let meshEntity = try mesh(withMeshIndex: meshIndex, skinIndex: gltfNode.skin)
+            let meshEntity = try mesh(withMeshIndex: meshIndex, skinIndex: gltfNode.skin, nodeIndex: index)
             entity.addChild(meshEntity)
             let modelEntities = meshEntity.modelEntitiesInHierarchy
             let targetCount = try morphTargetCount(ofMeshAt: meshIndex)
@@ -261,10 +274,8 @@ public class GLTFEntityLoader {
     }
 
     /// The number of morph targets the mesh at `index` renders with, which every
-    /// weights array driving it holds one weight for.
-    ///
-    /// A primitive declaring no target of its own does not take part: where a VRM
-    /// leaves them off, ``resolvedPrimitives(of:)`` has filled in the shared ones.
+    /// weights array driving it holds one weight for. A primitive declaring no
+    /// target of its own does not take part.
     func morphTargetCount(ofMeshAt index: Int) throws -> Int {
         if let cached = morphTargetCounts[index] { return cached }
         var targetCount = 0
@@ -283,10 +294,7 @@ public class GLTFEntityLoader {
     }
 
     /// Applies the spec's starting morph state, `node.weights` falling back to
-    /// `mesh.weights`, so the first frame renders correctly without animation.
-    ///
-    /// Both are sized by the mesh's morph target count; another length means the
-    /// file and this renderer disagree about what the weights stand for.
+    /// `mesh.weights`. Both have to be sized by the mesh's morph target count.
     private func applyInitialMorphWeights(of gltfNode: GLTF.Node,
                                           meshIndex: Int,
                                           targetCount: Int,
@@ -342,33 +350,46 @@ public class GLTFEntityLoader {
     }
 
     /// The entity one node renders a glTF mesh through, one per call.
-    func mesh(withMeshIndex index: Int, skinIndex: Int?) throws -> Entity {
-        // A mesh is built once per skin it is used with and cloned per node: the
-        // clones share the `MeshResource` and carry their own pose and weights.
-        let meshEntity = try meshTemplate(withMeshIndex: index, skinIndex: skinIndex).clone(recursive: true)
+    func mesh(withMeshIndex index: Int, skinIndex: Int?, nodeIndex: Int) throws -> Entity {
+        let headJoints = firstPersonHeadJoints(ofNodeAt: nodeIndex, meshIndex: index, skinIndex: skinIndex)
+        // Built once per template and cloned per node: the clones share the
+        // `MeshResource` and carry their own pose and weights.
+        let meshEntity = try meshTemplate(withMeshIndex: index,
+                                          skinIndex: skinIndex,
+                                          headJoints: headJoints).clone(recursive: true)
         try registerSkinBindings(in: meshEntity)
         registerMaterialBindings(in: meshEntity)
-        entityData.sceneMeshes[index, default: []].append(meshEntity)
+        entityData.sceneMeshes[index, default: []].append(.init(nodeIndex: nodeIndex, entity: meshEntity))
         return meshEntity
     }
 
-    /// The clone source for one (mesh, skin) pair, which never joins a scene itself.
-    private func meshTemplate(withMeshIndex index: Int, skinIndex: Int?) throws -> Entity {
-        let key = EntityData.MeshTemplateKey(meshIndex: index, skinIndex: skinIndex)
+    /// The clone source for one mesh as one node draws it, which never joins a
+    /// scene itself.
+    private func meshTemplate(withMeshIndex index: Int,
+                              skinIndex: Int?,
+                              headJoints: Set<UInt32>) throws -> Entity {
+        let key = EntityData.MeshTemplateKey(meshIndex: index,
+                                             skinIndex: skinIndex,
+                                             cutsHead: !headJoints.isEmpty)
         if let cache = entityData.meshTemplates[key] { return cache }
-        let template = try makeMeshEntity(withMeshIndex: index, skinIndex: skinIndex)
+        let template = try makeMeshEntity(withMeshIndex: index, skinIndex: skinIndex, headJoints: headJoints)
         entityData.meshTemplates[key] = template
         return template
     }
 
-    private func makeMeshEntity(withMeshIndex index: Int, skinIndex: Int?) throws -> Entity {
+    private func makeMeshEntity(withMeshIndex index: Int,
+                                skinIndex: Int?,
+                                headJoints: Set<UInt32>) throws -> Entity {
         let gltfMesh = try gltf.load(\.meshes, at: index)
         let meshEntity = Entity()
         meshEntity.name = gltfMesh.name ?? "mesh_\(index)"
 
-        for primitive in resolvedPrimitives(of: gltfMesh) {
+        for (primitiveIndex, primitive) in resolvedPrimitives(of: gltfMesh).enumerated() {
             if let primitiveEntity = try modelEntity(withPrimitive: primitive,
+                                                     at: primitiveIndex,
+                                                     ofMeshAt: index,
                                                      skinIndex: skinIndex,
+                                                     headJoints: headJoints,
                                                      meshName: meshEntity.name) {
                 meshEntity.addChild(primitiveEntity)
             }
@@ -382,138 +403,55 @@ public class GLTFEntityLoader {
         mesh.primitives
     }
 
+    /// The joints of `skinIndex` whose triangles a first-person camera drops
+    /// from the mesh the node at `nodeIndex` draws. Empty for a plain glTF,
+    /// which has no such camera; ``VRMEntityLoader`` overrides it.
+    func firstPersonHeadJoints(ofNodeAt nodeIndex: Int, meshIndex: Int, skinIndex: Int?) -> Set<UInt32> { [] }
+
     private func modelEntity(withPrimitive primitive: GLTF.Mesh.Primitive,
+                             at primitiveIndex: Int,
+                             ofMeshAt meshIndex: Int,
                              skinIndex: Int?,
+                             headJoints: Set<UInt32>,
                              meshName: String) throws -> Entity? {
-        guard supportsTriangles(primitive.mode) else {
+        let key = PrimitiveGeometryKey(meshIndex: meshIndex, primitiveIndex: primitiveIndex, skinIndex: skinIndex)
+        guard let geometry = try decodedGeometry(forKey: key, primitive: primitive) else {
             logOnce("primitiveMode-\(primitive.mode)", """
                 A \(primitive.mode) primitive was skipped; RealityKit meshes render triangles only.
                 """)
             return nil
         }
-
-        let attributes = primitive.attributes.rawValue
-        guard let positionIndex = attributes[.POSITION] else {
-            throw VRMError._dataInconsistent("POSITION attribute is missing")
+        for warning in geometry.warnings {
+            logOnce(warning.key, warning.message)
         }
 
-        let positions = try vector3s(positionIndex)
-
-        // glTF requires every vertex attribute to hold as many elements as POSITION.
-        func vertexAttribute<Element>(_ key: GLTF.Mesh.Primitive.AttributeKey,
-                                      _ read: (Int) throws -> [Element]) throws -> [Element]? {
-            guard let accessorIndex = attributes[key] else { return nil }
-            let values = try read(accessorIndex)
-            guard values.count == positions.count else {
-                throw VRMError._dataInconsistent(
-                    "\(key) has \(values.count) elements but POSITION has \(positions.count)"
-                )
-            }
-            return values
-        }
-
-        if attributes[.COLOR_0] != nil {
-            logOnce("COLOR_0", "COLOR_0 vertex colors are not applied; the mesh parts this renderer builds carry no vertex-color channel. The primitive renders without them.")
-        }
-
-        let normals = try vertexAttribute(.NORMAL, vector3s)
-        // A primitive without NORMAL is flat shaded, and glTF has its TANGENTs
-        // ignored along with it: they were authored for the normals it omits.
-        let rawTangents = normals == nil ? nil : try vertexAttribute(.TANGENT, vector4s)
-        let texcoords = try vertexAttribute(texcoordAttributeKey(forMaterialIndex: primitive.material,
-                                                                 attributes: attributes),
-                                            vector2s)
-        // glTF requires every primitive of a skinned mesh to carry both skinning
-        // attributes, so a missing one is a malformed asset, not an unskinned mesh.
-        let skinning: (joints: [SIMD4<UInt32>], weights: [SIMD4<Float>], remap: [Int])? = try skinIndex.map { skinIndex in
-            guard let joints = try vertexAttribute(.JOINTS_0, jointIndices),
-                  let weights = try vertexAttribute(.WEIGHTS_0, jointWeights) else {
-                throw VRMError._dataInconsistent(
-                    "a primitive of a mesh skinned by skin \(skinIndex) has no JOINTS_0 / WEIGHTS_0 attribute"
-                )
-            }
-            return (joints, weights, try skin(withSkinIndex: skinIndex).jointIndexRemap)
-        }
-        // Only POSITION morphs: RealityKit blend shapes have no NORMAL / TANGENT channel.
-        var targetOffsets: [[SIMD3<Float>]] = []
-        if let targets = primitive.targets, !targets.isEmpty {
-            targetOffsets.reserveCapacity(targets.count)
-            for target in targets {
-                if let positionAccessor = target[.POSITION] {
-                    let offsets = try vector3s(positionAccessor)
-                    guard offsets.count == positions.count else {
-                        throw VRMError._dataInconsistent("blend shape target count \(offsets.count) does not match vertex count \(positions.count)")
-                    }
-                    targetOffsets.append(offsets)
-                } else {
-                    targetOffsets.append(Array(repeating: .zero, count: positions.count))
-                }
-            }
-        }
-
-        var indexData: [UInt32]
-        if let indicesAccessor = primitive.indices {
-            indexData = try indexValues(indicesAccessor)
-        } else {
-            indexData = (0..<positions.count).map { UInt32($0) }
-        }
-        indexData = try triangulatedIndices(for: primitive.mode, indices: indexData)
-        if let maxIndex = indexData.max(), Int(maxIndex) >= positions.count {
-            throw VRMError._dataInconsistent(
-                "triangle index \(maxIndex) is out of range for \(positions.count) vertices"
-            )
-        }
-
-        var finalPositions = positions
-        var finalTexcoords = texcoords ?? []
-        var finalJoints = skinning?.joints ?? []
-        var finalWeights = skinning?.weights ?? []
-        if normals == nil {
-            // Flat shading needs a normal per triangle corner, so every attribute
-            // is expanded along the triangle list and the index buffer with it.
-            let corners = indexData
-            func expanded<Element>(_ values: [Element]) -> [Element] {
-                values.isEmpty ? values : corners.map { values[Int($0)] }
-            }
-            finalPositions = expanded(finalPositions)
-            finalTexcoords = expanded(finalTexcoords)
-            finalJoints = expanded(finalJoints)
-            finalWeights = expanded(finalWeights)
-            targetOffsets = targetOffsets.map(expanded)
-            indexData = Array(0..<UInt32(finalPositions.count))
-        }
-        let finalNormals = normals ?? flatNormals(positions: finalPositions)
-        let tangentFrame = tangentFrame(rawTangents: rawTangents,
-                                        positions: finalPositions,
-                                        normals: finalNormals,
-                                        texcoords: finalTexcoords,
-                                        indices: indexData,
-                                        materialIndex: primitive.material)
-
-        let shaded = try primitive.material.map { try primitiveShadedMaterial(withMaterialIndex: $0) }
+        let shaded = try primitive.material.map { try shadedMaterial(withMaterialIndex: $0) }
             ?? GLTFShadedMaterial(material: defaultMaterial())
 
         // A skinned primitive binds its vertex influences to the skin's skeleton;
         // an unskinned one has neither.
         var skinSkeleton: MeshResource.Skeleton?
         var jointInfluences: MeshResource.JointInfluences?
-        if let skinIndex, let skinning {
-            jointInfluences = try makeJointInfluences(joints: finalJoints,
-                                                      weights: finalWeights,
-                                                      vertexCount: finalPositions.count,
-                                                      jointIndexRemap: skinning.remap)
+        if let skinIndex, geometry.isSkinned {
+            jointInfluences = try makeJointInfluences(joints: geometry.joints,
+                                                      weights: geometry.weights,
+                                                      vertexCount: geometry.positions.count,
+                                                      jointIndexRemap: geometry.jointIndexRemap)
             skinSkeleton = try skin(withSkinIndex: skinIndex).skeleton
         }
-        let mesh = try meshResource(positions: finalPositions,
-                                    normals: finalNormals,
-                                    tangentFrame: tangentFrame,
-                                    texcoords: finalTexcoords,
-                                    indices: indexData,
-                                    blendShapeOffsets: targetOffsets,
+        let mesh = try meshResource(geometry: geometry,
                                     skeleton: skinSkeleton,
                                     jointInfluences: jointInfluences)
 
-        let blendShapeMapping = targetOffsets.isEmpty ? nil : BlendShapeWeightsMapping(meshResource: mesh)
+        let blendShapeMapping = geometry.blendShapeOffsets.isEmpty
+            ? nil
+            : BlendShapeWeightsMapping(meshResource: mesh)
+
+        let firstPerson = try firstPersonMesh(of: geometry,
+                                             drawnAs: mesh,
+                                             headJoints: headJoints,
+                                             skeleton: skinSkeleton,
+                                             jointInfluences: jointInfluences)
 
         func makeEntity(materials: [Material]) -> ModelEntity {
             let entity = ModelEntity(mesh: mesh, materials: materials)
@@ -547,16 +485,44 @@ public class GLTFEntityLoader {
                 container.addChild(passEntity)
             }
             container.addChild(modelEntity)
+            // The passes of one primitive are cut together, so it goes on what holds them.
+            if let firstPerson { container.components.set(firstPerson) }
             return container
         }
+        if let firstPerson { modelEntity.components.set(firstPerson) }
         return modelEntity
     }
 
-    /// Widens the bounding box RealityKit culls `passEntity` by, so a pass whose
-    /// geometry modifier pushes vertices outward is not culled while part of it
-    /// is still on screen, and tells the modifier how much room it got. The
-    /// mesh's own radius stands in for a budget, since how far the vertices
-    /// travel does not convert into mesh space before the entity is in a scene.
+    /// The same primitive with the head's triangles taken out, which is what a
+    /// first-person camera draws of an `auto` mesh. Nil for one it does not cut.
+    private func firstPersonMesh(of geometry: GLTFPrimitiveGeometry,
+                                 drawnAs mesh: MeshResource,
+                                 headJoints: Set<UInt32>,
+                                 skeleton: MeshResource.Skeleton?,
+                                 jointInfluences: MeshResource.JointInfluences?) throws -> FirstPersonMeshComponent? {
+        switch FirstPersonAutoMask.mask(indices: geometry.indices,
+                                        joints: geometry.joints,
+                                        weights: geometry.weights,
+                                        headJoints: headJoints) {
+        case .whole:
+            return nil
+        case .nothing:
+            return FirstPersonMeshComponent(thirdPersonMesh: mesh, firstPersonMesh: nil)
+        case .triangles(let indices):
+            var headless = geometry
+            headless.indices = indices
+            return FirstPersonMeshComponent(thirdPersonMesh: mesh,
+                                            firstPersonMesh: try meshResource(geometry: headless,
+                                                                              skeleton: skeleton,
+                                                                              jointInfluences: jointInfluences))
+        }
+    }
+
+    /// Widens the bounding box RealityKit culls `passEntity` by, so a geometry
+    /// modifier pushing vertices outward is not culled while still on screen,
+    /// and tells the modifier how much room it got. The mesh's own radius stands
+    /// in for a budget, since mesh-space travel is unknown before the entity is
+    /// in a scene.
     private func grantBoundsBudget(to passEntity: ModelEntity,
                                    mesh: MeshResource,
                                    applying applyBudget: (any Material, Float) -> any Material) {
@@ -570,7 +536,7 @@ public class GLTFEntityLoader {
     /// The UV set the meshes rendering `index` carry, and whether the material's
     /// textures disagree about it. Custom meshes carry a single UV channel, so
     /// the core material's first UV-accessed texture decides it.
-    private func resolvedTexCoord(withMaterialIndex index: Int) -> (selected: Int, isMixed: Bool) {
+    func resolvedTexCoord(withMaterialIndex index: Int) -> (selected: Int, isMixed: Bool) {
         if let cached = materialTexCoordCache[index] { return cached }
         guard let gltfMaterial = try? gltf.load(\.materials, at: index) else { return (0, false) }
         let textures = sampledTextures(of: gltfMaterial)
@@ -585,86 +551,16 @@ public class GLTFEntityLoader {
         resolvedTexCoord(withMaterialIndex: index).selected
     }
 
-    /// The attribute this primitive's mesh reads its one UV channel from.
-    private func texcoordAttributeKey(forMaterialIndex materialIndex: Int?,
-                                      attributes: [GLTF.Mesh.Primitive.AttributeKey: Int]) -> GLTF.Mesh.Primitive.AttributeKey {
-        guard let materialIndex else { return .TEXCOORD_0 }
-        let resolved = resolvedTexCoord(withMaterialIndex: materialIndex)
-        let selected = resolved.selected
-        guard selected != 0 else { return .TEXCOORD_0 }
-        let isMixed = resolved.isMixed
-        let isAvailable = selected == 1 && attributes[.TEXCOORD_1] != nil
-        if isMixed || !isAvailable {
-            logOnce("texCoord-\(materialIndex)", """
-                Material \(materialIndex) samples UV set \(selected)\(isMixed ? " among others" : ""); \
-                RealityKit meshes carry one UV channel, so \
-                \(isAvailable ? "that set is used for every texture" : "TEXCOORD_0 is used instead").
-                """)
-        }
-        return isAvailable ? .TEXCOORD_1 : .TEXCOORD_0
-    }
-
-    private func supportsTriangles(_ mode: GLTF.Mesh.Primitive.Mode) -> Bool {
-        switch mode {
-        case .TRIANGLES, .TRIANGLE_STRIP, .TRIANGLE_FAN:
+    /// Whether the material samples a normal map, which is what decides whether
+    /// a primitive without `TANGENT` needs a tangent basis generating. The MToon
+    /// descriptor is asked first because VRM 0.x carries its normal map in
+    /// Unity's `_BumpMap`.
+    func materialSamplesNormalTexture(withMaterialIndex index: Int) -> Bool {
+        if let descriptor = try? mtoonDescriptor(withMaterialIndex: index), descriptor.normalTexture != nil {
             return true
-        case .POINTS, .LINES, .LINE_LOOP, .LINE_STRIP:
-            return false
         }
-    }
-
-    private func triangulatedIndices(for mode: GLTF.Mesh.Primitive.Mode,
-                                     indices: [UInt32]) throws -> [UInt32] {
-        switch mode {
-        case .TRIANGLES:
-            guard !indices.isEmpty, indices.count.isMultiple(of: 3) else {
-                throw VRMError._dataInconsistent(
-                    "a TRIANGLES primitive needs a non-zero multiple of 3 indices, but has \(indices.count)"
-                )
-            }
-            return indices
-        case .TRIANGLE_STRIP:
-            guard indices.count >= 3 else {
-                throw VRMError._dataInconsistent(
-                    "a TRIANGLE_STRIP primitive needs at least 3 indices, but has \(indices.count)"
-                )
-            }
-            var result: [UInt32] = []
-            result.reserveCapacity((indices.count - 2) * 3)
-            for i in 0..<(indices.count - 2) {
-                let i0 = indices[i]
-                let i1 = indices[i + 1]
-                let i2 = indices[i + 2]
-                if i.isMultiple(of: 2) {
-                    result.append(contentsOf: [i0, i1, i2])
-                } else {
-                    result.append(contentsOf: [i1, i0, i2])
-                }
-            }
-            return result
-        case .TRIANGLE_FAN:
-            guard indices.count >= 3 else {
-                throw VRMError._dataInconsistent(
-                    "a TRIANGLE_FAN primitive needs at least 3 indices, but has \(indices.count)"
-                )
-            }
-            let base = indices[0]
-            var result: [UInt32] = []
-            result.reserveCapacity((indices.count - 2) * 3)
-            for i in 1..<(indices.count - 1) {
-                result.append(contentsOf: [base, indices[i], indices[i + 1]])
-            }
-            return result
-        case .POINTS, .LINES, .LINE_LOOP, .LINE_STRIP:
-            // Filtered out by supportsTriangles() before the indices are read.
-            throw VRMError._notSupported("\(mode) primitives have no triangles")
-        }
-    }
-
-    /// The materials a primitive renders with. ``VRMEntityLoader`` overrides it
-    /// to keep rendering a model whose material this renderer cannot build.
-    func primitiveShadedMaterial(withMaterialIndex index: Int) throws -> GLTFShadedMaterial {
-        try shadedMaterial(withMaterialIndex: index)
+        guard let (gltfMaterial, _) = try? materialSource(withMaterialIndex: index) else { return false }
+        return gltfMaterial.normalTexture != nil
     }
 
     /// The main material of ``shadedMaterial(withMaterialIndex:)``.
@@ -677,25 +573,35 @@ public class GLTFEntityLoader {
     func shadedMaterial(withMaterialIndex index: Int) throws -> GLTFShadedMaterial {
         if let cached = try entityData.load(\.materials, index: index) { return cached }
         defer { standardMaterialCache.removeValue(forKey: index) }
+        // Resolving the material is not shading it: an index the document does not
+        // hold fails the load rather than reaching a fallback.
         let context = try makeMaterialShaderContext(withMaterialIndex: index)
-        for shader in shaders {
-            if let shaded = try shader.makeMaterial(for: context) {
-                cacheShadedMaterial(shaded, withMaterialIndex: index)
-                return shaded
-            }
+        let shaded: GLTFShadedMaterial
+        do {
+            shaded = try shadeMaterial(for: context)
+        } catch {
+            guard let fallback = shadedMaterialFallback(for: context, error: error) else { throw error }
+            shaded = fallback
         }
-        let shaded = GLTFShadedMaterial(material: try standardMaterial(for: context))
-        cacheShadedMaterial(shaded, withMaterialIndex: index)
+        if entityData.materials.indices.contains(index) {
+            entityData.materials[index] = shaded
+        }
         return shaded
     }
 
-    /// Records what a material renders as, so the shader chain runs at most once
-    /// per material. ``VRMEntityLoader`` also caches the material it falls back
-    /// to when the chain fails.
-    func cacheShadedMaterial(_ shaded: GLTFShadedMaterial, withMaterialIndex index: Int) {
-        guard entityData.materials.indices.contains(index) else { return }
-        entityData.materials[index] = shaded
+    /// What the shader chain makes of an already resolved material, falling back
+    /// to the built-in Unlit / PBR path when no shader claims it.
+    private func shadeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial {
+        for shader in shaders {
+            if let shaded = try shader.makeMaterial(for: context) { return shaded }
+        }
+        return GLTFShadedMaterial(material: try standardMaterial(for: context))
     }
+
+    /// What to render a material the shader chain could not build as, or nil to
+    /// fail the load with the shader's error. ``VRMEntityLoader`` overrides it.
+    func shadedMaterialFallback(for context: GLTFMaterialShaderContext,
+                                error: any Error) -> GLTFShadedMaterial? { nil }
 
     func makeMaterialShaderContext(withMaterialIndex index: Int) throws -> GLTFMaterialShaderContext {
         let (gltfMaterial, materialProperty) = try materialSource(withMaterialIndex: index)
@@ -706,9 +612,9 @@ public class GLTFEntityLoader {
     }
 
     /// The built-in Unlit / PBR path of the glTF core specification, rendering
-    /// every material the shader chain leaves unclaimed. Shaders reach it
-    /// through ``GLTFMaterialShaderContext/standardMaterial()`` to decorate its
-    /// result, and it is memoized so inspecting it costs nothing.
+    /// every material the shader chain leaves unclaimed. Shaders reach it through
+    /// ``GLTFMaterialShaderContext/standardMaterial()`` to decorate its result.
+    /// Memoized, so inspecting it costs nothing.
     func standardMaterial(for context: GLTFMaterialShaderContext) throws -> Material {
         if let cached = standardMaterialCache[context.materialIndex] { return cached }
         let material = try makeStandardMaterial(for: context)
@@ -837,10 +743,8 @@ public class GLTFEntityLoader {
     }
 
     /// Converts `KHR_texture_transform` into RealityKit's `textureCoordinateTransform`.
-    ///
-    /// Only the rotation direction mirrors, since offset and scale already act
-    /// from the corner the extension measures from, which is what
-    /// `TextureTransformRenderingTests` checks against what RealityKit draws.
+    /// Only the rotation direction mirrors: offset and scale already act from the
+    /// corner the extension measures from.
     private func standardTextureTransform(withMaterialIndex index: Int,
                                           of gltfMaterial: GLTF.Material) -> MaterialParameterTypes.TextureCoordinateTransform {
         let transform = selectedUVTransform(withMaterialIndex: index,
@@ -852,8 +756,7 @@ public class GLTFEntityLoader {
 
     /// What MToon data the material at `index` carries, decoded from the
     /// `VRMC_materials_mtoon` extension or the VRM 0.x material property. The
-    /// loader keeps it even though ``MToonShader`` does the MToon rendering,
-    /// since the built-in fallback and tangent generation both read it.
+    /// built-in fallback and tangent generation both read it.
     func mtoonResolution(withMaterialIndex index: Int) throws -> MToonMaterialDescriptor.Resolution {
         if let cached = mtoonResolutionCache[index] {
             return cached
@@ -878,16 +781,10 @@ public class GLTFEntityLoader {
     }
 
     /// The glTF material and, for VRM 0.x, the Unity material property
-    /// describing it, resolved once per material index.
+    /// describing it. Both are array lookups, so neither is cached.
     private func materialSource(withMaterialIndex index: Int) throws -> (GLTF.Material, VRM0.MaterialProperty?) {
-        if let cached = materialSourceCache[index] { return cached }
-        let gltfMaterial = try gltf.load(\.materials, at: index)
-        let source = (gltfMaterial, vrm0MaterialProperty(atMaterialIndex: index))
-        materialSourceCache[index] = source
-        return source
+        (try gltf.load(\.materials, at: index), vrm0MaterialProperty(atMaterialIndex: index))
     }
-
-    private var materialSourceCache: [Int: (GLTF.Material, VRM0.MaterialProperty?)] = [:]
 
     /// VRM 0.x compatibility hook, overridden by ``VRMEntityLoader``.
     func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {
@@ -901,12 +798,12 @@ public class GLTFEntityLoader {
     }
 
     func texture(withTextureIndex index: Int, semantic: TextureResource.Semantic = .color) throws -> TextureResource {
-        if let cache = textureCacheBySemantic[semantic]?[index] { return cache }
-        let gltfTexture = try gltf.load(\.textures, at: index)
-        let image = try image(withImageIndex: gltfTexture.source)
-        let cgImage = try image.cgImage ??? .dataInconsistent("failed to load cgImage")
+        let key = ImageTextureKey(imageIndex: try gltf.load(\.textures, at: index).source,
+                                  semantic: semantic)
+        if let cache = textureCache[key] { return cache }
+        let cgImage = try image(withImageIndex: key.imageIndex)
         let texture = try TextureResource(image: cgImage, options: .init(semantic: semantic))
-        textureCacheBySemantic[semantic, default: [:]][index] = texture
+        textureCache[key] = texture
         return texture
     }
 
@@ -918,13 +815,14 @@ public class GLTFEntityLoader {
     }
 
     func sampler(withTextureIndex index: Int) throws -> MaterialParameters.Texture.Sampler {
-        if let cache = samplerCache[index] {
+        let samplerIndex = try gltf.load(\.textures, at: index).sampler
+        if let cache = samplerCache[samplerIndex] {
             return cache
         }
         let descriptor = MTLSamplerDescriptor()
-        applySampler(try gltfSampler(withTextureIndex: index), to: descriptor)
+        applySampler(try samplerIndex.map { try gltf.load(\.samplers, at: $0) }, to: descriptor)
         let sampler = MaterialParameters.Texture.Sampler(descriptor)
-        samplerCache[index] = sampler
+        samplerCache[samplerIndex] = sampler
         return sampler
     }
 
@@ -943,7 +841,7 @@ public class GLTFEntityLoader {
         descriptor.tAddressMode = (sampler?.wrapT ?? .REPEAT).metalAddressMode
     }
 
-    func image(withImageIndex index: Int) throws -> VRMImage {
+    func image(withImageIndex index: Int) throws -> CGImage {
         if let cache = try entityData.load(\.images, index: index) { return cache }
         let image = try document.image(at: index)
         entityData.images[index] = image
@@ -975,21 +873,20 @@ public class GLTFEntityLoader {
     }
 
     /// A texture with one of glTF's scalar factors baked into its pixels, built
-    /// once per texture and factor. RealityKit's normal and ambient-occlusion
-    /// parameters carry no scalar beside the texture, so a factor other than
-    /// the neutral 1 has nowhere else to go.
+    /// once per texture and factor: RealityKit's normal and ambient-occlusion
+    /// parameters carry no scalar beside the texture.
     private func bakedTexture(withTextureIndex index: Int,
                               factor: Float,
                               semantic: TextureResource.Semantic,
                               bake: (CGImage, Float) throws -> CGImage) throws -> MaterialParameters.Texture {
-        let key = BakedTextureKey(textureIndex: index, factor: factor, semantic: semantic)
+        let key = BakedTextureKey(imageIndex: try gltf.load(\.textures, at: index).source,
+                                  factor: factor,
+                                  semantic: semantic)
         let resource: TextureResource
         if let cached = bakedTextureCache[key] {
             resource = cached
         } else {
-            let gltfTexture = try gltf.load(\.textures, at: index)
-            let image = try image(withImageIndex: gltfTexture.source)
-            let cgImage = try image.cgImage ??? .dataInconsistent("failed to load cgImage")
+            let cgImage = try image(withImageIndex: key.imageIndex)
             resource = try TextureResource(image: try bake(cgImage, factor),
                                            options: .init(semantic: semantic))
             bakedTextureCache[key] = resource
@@ -1045,8 +942,8 @@ public class GLTFEntityLoader {
     }
 
     /// Draws `image` into a freshly allocated 8-bit RGBA buffer and hands `body`
-    /// that buffer, its pixel count and the context behind it. All three live
-    /// only for the call.
+    /// that buffer, its pixel count and the context behind it, all valid only
+    /// for the duration of the call.
     private func withRGBA8Pixels<Result>(
         of image: CGImage,
         _ body: (CGContext, UnsafeMutablePointer<UInt8>, Int) throws -> Result
@@ -1073,14 +970,13 @@ public class GLTFEntityLoader {
     }
 
     private func metallicRoughnessTextures(withTextureIndex index: Int) throws -> (metal: MaterialParameters.Texture, rough: MaterialParameters.Texture) {
+        let imageIndex = try gltf.load(\.textures, at: index).source
         let resources: (metal: TextureResource, rough: TextureResource)
-        if let cache = metallicRoughnessCache[index] {
+        if let cache = metallicRoughnessCache[imageIndex] {
             resources = cache
         } else {
-            let gltfTexture = try gltf.load(\.textures, at: index)
-            let image = try image(withImageIndex: gltfTexture.source)
-            let textures = try createMetallicRoughnessTextures(from: image)
-            metallicRoughnessCache[index] = textures
+            let textures = try createMetallicRoughnessTextures(from: try image(withImageIndex: imageIndex))
+            metallicRoughnessCache[imageIndex] = textures
             resources = textures
         }
         let sampler = try sampler(withTextureIndex: index)
@@ -1090,11 +986,9 @@ public class GLTFEntityLoader {
 
     /// glTF packs roughness in the green channel and metalness in the blue one of
     /// a single texture; RealityKit samples a texture of its own for each.
-    private func createMetallicRoughnessTextures(from uiImage: VRMImage) throws -> (metal: TextureResource, rough: TextureResource) {
-        guard let image = uiImage.cgImage else {
-            throw VRMError._dataInconsistent("failed to load cgImage")
-        }
-
+    private func createMetallicRoughnessTextures(
+        from image: CGImage
+    ) throws -> (metal: TextureResource, rough: TextureResource) {
         let images = try metallicRoughnessImages(from: image)
 
         // Metallic / roughness are linear data; .color would apply an sRGB conversion.
@@ -1116,64 +1010,6 @@ public class GLTFEntityLoader {
         let settings = GLTFAlphaModeSettings(mode, alphaCutoff: alphaCutoff)
         material.blending = settings.isTransparent ? .transparent(opacity: .init(scale: 1.0)) : .opaque
         material.opacityThreshold = settings.opacityThreshold
-    }
-
-    /// UVs arrive V-flipped: glTF's origin is top-left, RealityKit's is bottom-left.
-    private func vector2s(_ accessorIndex: Int) throws -> [SIMD2<Float>] {
-        try accessors.floatElements(at: accessorIndex, type: .VEC2) {
-            SIMD2<Float>($0(0), 1.0 - $0(1))
-        }
-    }
-
-    private func vector3s(_ accessorIndex: Int) throws -> [SIMD3<Float>] {
-        try accessors.floatElements(at: accessorIndex, type: .VEC3) {
-            SIMD3<Float>($0(0), $0(1), $0(2))
-        }
-    }
-
-    private func vector4s(_ accessorIndex: Int) throws -> [SIMD4<Float>] {
-        try accessors.floatElements(at: accessorIndex, type: .VEC4) {
-            SIMD4<Float>($0(0), $0(1), $0(2), $0(3))
-        }
-    }
-
-    private func indexValues(_ accessorIndex: Int) throws -> [UInt32] {
-        try accessors.accessor(at: accessorIndex).unsignedElements(.SCALAR) { $0(0) }
-    }
-
-    /// JOINTS_n as glTF defines it: unsigned byte or short indices into the skin.
-    private func jointIndices(_ accessorIndex: Int) throws -> [SIMD4<UInt32>] {
-        let packed = try accessors.accessor(at: accessorIndex)
-        switch packed.componentType {
-        case .unsignedByte, .unsignedShort:
-            return try packed.unsignedElements(.VEC4) {
-                SIMD4<UInt32>($0(0), $0(1), $0(2), $0(3))
-            }
-        case .byte, .short, .unsignedInt, .float:
-            throw VRMError._dataInconsistent(
-                "JOINTS_0 must use unsigned byte or short components, not \(packed.componentType)"
-            )
-        }
-    }
-
-    /// WEIGHTS_n as glTF defines it: float, or normalized unsigned byte / short.
-    private func jointWeights(_ accessorIndex: Int) throws -> [SIMD4<Float>] {
-        let packed = try accessors.accessor(at: accessorIndex)
-        switch packed.componentType {
-        case .float:
-            return try vector4s(accessorIndex)
-        case .unsignedByte, .unsignedShort:
-            guard packed.normalized else {
-                throw VRMError._dataInconsistent(
-                    "WEIGHTS_0 with \(packed.componentType) components must be normalized"
-                )
-            }
-            return try vector4s(accessorIndex)
-        case .byte, .short, .unsignedInt:
-            throw VRMError._dataInconsistent(
-                "WEIGHTS_0 must use float or normalized unsigned byte / short components, not \(packed.componentType)"
-            )
-        }
     }
 
     private func makeJointInfluences(joints: [SIMD4<UInt32>],
@@ -1222,7 +1058,7 @@ public class GLTFEntityLoader {
 
     /// The skin at `index` resolved for RealityKit. Its skeleton and its joint
     /// remap come out of the same ordering pass, so they are cached together.
-    private func skin(withSkinIndex index: Int) throws -> EntityData.Skin {
+    func skin(withSkinIndex index: Int) throws -> EntityData.Skin {
         if let cache = try entityData.load(\.skins, index: index) { return cache }
         let skin = try gltf.load(\.skins, at: index)
         let nodes = try gltf.load(\.nodes)
@@ -1298,8 +1134,8 @@ public class GLTFEntityLoader {
             }
         }
 
-        // `validateStructure()` has proven the hierarchy to be a forest, so the
-        // joints form one too and visiting every root reaches all of them.
+        // The validated hierarchy is a forest, so visiting every root reaches
+        // every joint.
         let roots = parentIndices.enumerated().compactMap { $0.element == nil ? $0.offset : nil }
         for root in roots {
             visit(root)
@@ -1313,29 +1149,24 @@ public class GLTFEntityLoader {
         return (parentIndices, order, remap)
     }
 
-    private func meshResource(positions: [SIMD3<Float>],
-                              normals: [SIMD3<Float>],
-                              tangentFrame: TangentFrame,
-                              texcoords: [SIMD2<Float>],
-                              indices: [UInt32],
-                              blendShapeOffsets: [[SIMD3<Float>]],
+    private func meshResource(geometry: GLTFPrimitiveGeometry,
                               skeleton: MeshResource.Skeleton?,
                               jointInfluences: MeshResource.JointInfluences?) throws -> MeshResource {
         var part = MeshResource.Part(id: UUID().uuidString, materialIndex: 0)
-        part.positions = MeshBuffer(positions)
-        if !normals.isEmpty {
-            part.normals = MeshBuffer(normals)
+        part.positions = MeshBuffer(geometry.positions)
+        if !geometry.normals.isEmpty {
+            part.normals = MeshBuffer(geometry.normals)
         }
-        if !tangentFrame.tangents.isEmpty {
-            part.tangents = MeshBuffer(tangentFrame.tangents)
-            part.bitangents = MeshBuffer(tangentFrame.bitangents)
+        if !geometry.tangents.isEmpty {
+            part.tangents = MeshBuffer(geometry.tangents)
+            part.bitangents = MeshBuffer(geometry.bitangents)
         }
-        if !texcoords.isEmpty {
-            part.textureCoordinates = MeshBuffer(texcoords)
+        if !geometry.texcoords.isEmpty {
+            part.textureCoordinates = MeshBuffer(geometry.texcoords)
         }
-        part.triangleIndices = MeshBuffer(indices)
-        if !blendShapeOffsets.isEmpty {
-            for (targetIndex, offsets) in blendShapeOffsets.enumerated() {
+        part.triangleIndices = MeshBuffer(geometry.indices)
+        if !geometry.blendShapeOffsets.isEmpty {
+            for (targetIndex, offsets) in geometry.blendShapeOffsets.enumerated() {
                 let name = "blendShape_\(targetIndex)"
                 part.setBlendShapeOffsets(named: name, buffer: MeshBuffer(offsets))
             }
@@ -1399,146 +1230,6 @@ public class GLTFEntityLoader {
                                                   materialIndex: materialIndex,
                                                   loader: self)
         }
-    }
-
-    /// A complete tangent basis. RealityKit derives neither buffer from the other,
-    /// so both are filled together or left empty together.
-    private struct TangentFrame {
-        static let empty = TangentFrame(tangents: [], bitangents: [])
-
-        let tangents: [SIMD3<Float>]
-        let bitangents: [SIMD3<Float>]
-    }
-
-    /// The tangent basis a normal map needs: glTF `TANGENT` when the primitive has
-    /// one, otherwise derived from the UVs. Skipped when no normal map samples it.
-    private func tangentFrame(rawTangents: [SIMD4<Float>]?,
-                              positions: [SIMD3<Float>],
-                              normals: [SIMD3<Float>],
-                              texcoords: [SIMD2<Float>],
-                              indices: [UInt32],
-                              materialIndex: Int?) -> TangentFrame {
-        if let rawTangents {
-            // glTF stores handedness in w.
-            var tangents = [SIMD3<Float>](repeating: .zero, count: positions.count)
-            var bitangents = tangents
-            for i in 0..<positions.count {
-                let raw = rawTangents[i]
-                let tangent = SIMD3<Float>(raw.x, raw.y, raw.z)
-                tangents[i] = tangent
-                bitangents[i] = simd_cross(normals[i], tangent) * (raw.w < 0 ? -1 : 1)
-            }
-            return TangentFrame(tangents: tangents, bitangents: bitangents)
-        }
-        guard texcoords.count == positions.count,
-              let materialIndex,
-              materialUsesNormalTexture(withMaterialIndex: materialIndex) else {
-            return .empty
-        }
-        return generatedTangentFrame(positions: positions,
-                                     normals: normals,
-                                     texcoords: texcoords,
-                                     indices: indices)
-    }
-
-    /// Whether the material samples a normal map. The MToon descriptor is asked
-    /// first because VRM 0.x carries its normal map in Unity's `_BumpMap`.
-    private func materialUsesNormalTexture(withMaterialIndex index: Int) -> Bool {
-        if let descriptor = try? mtoonDescriptor(withMaterialIndex: index), descriptor.normalTexture != nil {
-            return true
-        }
-        guard let (gltfMaterial, _) = try? materialSource(withMaterialIndex: index) else { return false }
-        return gltfMaterial.normalTexture != nil
-    }
-
-    /// Per-triangle UV gradients accumulated per vertex, then orthonormalized
-    /// against the normal. The spec only *recommends* MikkTSpace here, and this
-    /// averaging is the cheaper approximation, so a mesh whose baked normal map
-    /// assumes MikkTSpace can differ slightly along UV seams.
-    private func generatedTangentFrame(positions: [SIMD3<Float>],
-                                       normals: [SIMD3<Float>],
-                                       texcoords: [SIMD2<Float>],
-                                       indices: [UInt32]) -> TangentFrame {
-        var tangentSums = [SIMD3<Float>](repeating: .zero, count: positions.count)
-        var bitangentSums = tangentSums
-        let triangleCount = indices.count / 3
-        for i in 0..<triangleCount {
-            let base = i * 3
-            let i0 = Int(indices[base])
-            let i1 = Int(indices[base + 1])
-            let i2 = Int(indices[base + 2])
-
-            let edge1 = positions[i1] - positions[i0]
-            let edge2 = positions[i2] - positions[i0]
-            // `texcoords` point v up while the normal map works in glTF UV space,
-            // so the v gradients are negated back into it.
-            let deltaUV1 = gltfUVDelta(texcoords[i1] - texcoords[i0])
-            let deltaUV2 = gltfUVDelta(texcoords[i2] - texcoords[i0])
-
-            // A degenerate UV triangle carries no direction.
-            let determinant = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y
-            guard abs(determinant) > 1e-12 else { continue }
-            let scale = 1 / determinant
-            let tangent = (edge1 * deltaUV2.y - edge2 * deltaUV1.y) * scale
-            let bitangent = (edge2 * deltaUV1.x - edge1 * deltaUV2.x) * scale
-            tangentSums[i0] += tangent
-            tangentSums[i1] += tangent
-            tangentSums[i2] += tangent
-            bitangentSums[i0] += bitangent
-            bitangentSums[i1] += bitangent
-            bitangentSums[i2] += bitangent
-        }
-
-        var tangents = [SIMD3<Float>](repeating: .zero, count: positions.count)
-        var bitangents = tangents
-        for i in 0..<positions.count {
-            let normal = normals[i]
-            let tangent = orthonormalizedTangent(tangentSums[i], normal: normal)
-            tangents[i] = tangent
-            // Mirrored UV islands need the flipped bitangent.
-            let bitangent = simd_cross(normal, tangent)
-            bitangents[i] = simd_dot(bitangent, bitangentSums[i]) < 0 ? -bitangent : bitangent
-        }
-        return TangentFrame(tangents: tangents, bitangents: bitangents)
-    }
-
-    /// A UV difference converted from the mesh's v-up coordinates into glTF UV space.
-    private func gltfUVDelta(_ delta: SIMD2<Float>) -> SIMD2<Float> {
-        SIMD2<Float>(delta.x, -delta.y)
-    }
-
-    /// Gram-Schmidt against the normal, falling back to any perpendicular axis.
-    private func orthonormalizedTangent(_ tangent: SIMD3<Float>, normal: SIMD3<Float>) -> SIMD3<Float> {
-        // A degenerate triangle leaves the zero normal `flatNormals()` writes, and
-        // nothing is perpendicular to it, so normalizing a fallback axis would
-        // only turn that into a NaN basis.
-        guard simd_length_squared(normal) > 1e-12 else { return .zero }
-        let projected = tangent - normal * simd_dot(normal, tangent)
-        if simd_length_squared(projected) > 1e-12 {
-            return simd_normalize(projected)
-        }
-        let axis = abs(normal.x) < 0.9 ? SIMD3<Float>(1, 0, 0) : SIMD3<Float>(0, 1, 0)
-        return simd_normalize(simd_cross(normal, axis))
-    }
-
-    /// The flat normals glTF asks for when a primitive ships no NORMAL: one face
-    /// normal shared by the triangle's three corners.
-    ///
-    /// - Precondition: the positions are expanded per triangle corner, so each
-    ///   triangle owns the vertices it writes.
-    private func flatNormals(positions: [SIMD3<Float>]) -> [SIMD3<Float>] {
-        var normals = [SIMD3<Float>](repeating: .zero, count: positions.count)
-        for base in stride(from: 0, to: positions.count - positions.count % 3, by: 3) {
-            let faceNormal = simd_cross(positions[base + 1] - positions[base],
-                                        positions[base + 2] - positions[base])
-            // A degenerate triangle keeps a zero normal rather than a NaN one.
-            guard simd_length_squared(faceNormal) > 1e-24 else { continue }
-            let normal = simd_normalize(faceNormal)
-            normals[base] = normal
-            normals[base + 1] = normal
-            normals[base + 2] = normal
-        }
-        return normals
     }
 
     /// glTF's default material for a primitive that names none: lit, white, and

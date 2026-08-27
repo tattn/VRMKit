@@ -22,13 +22,46 @@ struct SpringBoneRuntimeTests {
         let joint = try JSONDecoder().decode(VRM1.SpringBone.Spring.Joint.self,
                                              from: Data(#"{"node": 3}"#.utf8))
 
-        let setting = SpringBoneJointSetting(vrm1Joint: joint)
+        let setting = try SpringBoneJointSetting(vrm1Joint: joint)
 
         #expect(setting.stiffnessForce == 1.0)
         #expect(setting.gravityPower == 0.0)
         #expect(setting.gravityDir == SIMD3<Float>(0, -1, 0))
         #expect(setting.dragForce == 0.5)
         #expect(setting.hitRadius == 0.0)
+    }
+
+    /// A joint the simulation cannot swing fails the model rather than swinging
+    /// on a negative stiffness, or on a drag force that grows last frame's move
+    /// instead of damping it.
+    @Test(arguments: [#"{"node": 3, "dragForce": 1.5}"#,
+                      #"{"node": 3, "stiffness": -1}"#,
+                      #"{"node": 3, "gravityPower": -1}"#])
+    func testAJointOutsideTheRangesItsSpecStatesIsRefused(json: String) throws {
+        let joint = try JSONDecoder().decode(VRM1.SpringBone.Spring.Joint.self, from: Data(json.utf8))
+
+        #expect(throws: VRMError.self) { try SpringBoneJointSetting(vrm1Joint: joint) }
+    }
+
+    /// A `VRMC_springBone` collider states a sphere or a capsule. One that
+    /// states neither still collides, since a joint adds its own hit radius to
+    /// the collider's, so it is refused rather than kept at zero radius.
+    @Test(arguments: [#"{"node": 0, "shape": {}}"#,
+                      #"{"node": 0, "shape": {"sphere": {"offset": [0, 0, 0], "radius": 1},"#
+                          + #""capsule": {"offset": [0, 0, 0], "radius": 1, "tail": [0, 1, 0]}}}"#])
+    func testAColliderThatIsNeitherASphereNorACapsuleIsRefused(json: String) throws {
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(VRM1.SpringBone.Collider.self, from: Data(json.utf8))
+        }
+    }
+
+    /// A radius the simulation cannot collide against fails the model.
+    @Test
+    func testAColliderWithANegativeRadiusIsRefused() throws {
+        let json = #"{"node": 0, "shape": {"sphere": {"offset": [0, 0, 0], "radius": -1}}}"#
+        let collider = try JSONDecoder().decode(VRM1.SpringBone.Collider.self, from: Data(json.utf8))
+
+        #expect(throws: VRMError.self) { try SpringBoneColliderShape(vrm1Collider: collider) }
     }
 
     /// The length a joint holds its tail at is the world distance to it, so a
@@ -80,8 +113,6 @@ struct SpringBoneRuntimeTests {
         #expect(simd_length(rotation.vector).isFinite)
     }
 
-    /// Gravity swings the tail towards where it pulls, and the joint turns to
-    /// follow it.
     @Test
     func testGravitySwingsTheJointTowardsWhereItPulls() throws {
         var joint = try #require(SpringBoneJoint(head: .zero,
@@ -110,5 +141,53 @@ struct SpringBoneRuntimeTests {
         let tail = rotation * SIMD3<Float>(0, 0, 1)
         #expect(abs(simd_length(tail) - 1) < 1e-4)
         #expect(tail.y < 0)
+    }
+
+    /// `simd_quatf(from:to:)` asks for unit vectors, and the bone the joint
+    /// points along is as long as the bone. A rotation carrying that length
+    /// scales whatever it is applied to.
+    @Test(arguments: [Float(0.07), 1, 12])
+    func testTheRotationAJointAnswersWithIsAUnitQuaternion(boneLength: Float) throws {
+        var joint = try #require(SpringBoneJoint(head: .zero,
+                                                 localTail: SIMD3(0, 0, 1),
+                                                 worldTail: SIMD3(0, 0, boneLength),
+                                                 initialLocalRotation: Self.identity,
+                                                 center: nil))
+
+        for _ in 0..<30 {
+            let rotation = joint.update(deltaTime: 1.0 / 60.0,
+                                        setting: Self.setting,
+                                        head: .zero,
+                                        parentRotation: Self.identity,
+                                        center: nil,
+                                        colliders: [])
+            #expect(abs(simd_length(rotation) - 1) < 1e-5)
+        }
+    }
+
+    /// The stiffness and gravity terms scale with the step while the inertia
+    /// carries last frame's move unscaled, so the multi-second step the first
+    /// frame after a pause asks for would throw every tail past its bone.
+    @Test
+    func testASteppedFrameSwingsNoFurtherThanTheLongestStep() throws {
+        func swing(afterStepping deltaTime: Float) throws -> SIMD3<Float> {
+            var joint = try #require(SpringBoneJoint(head: .zero,
+                                                     localTail: SIMD3(0, 0, 1),
+                                                     worldTail: SIMD3(0, 0, 1),
+                                                     initialLocalRotation: Self.identity,
+                                                     center: nil))
+            let rotation = joint.update(deltaTime: deltaTime,
+                                        setting: Self.setting,
+                                        head: .zero,
+                                        parentRotation: Self.identity,
+                                        center: nil,
+                                        colliders: [])
+            return rotation * SIMD3<Float>(0, 0, 1)
+        }
+
+        let clamped = try swing(afterStepping: SpringBoneJoint.maximumDeltaTime)
+        for hitch in [Float(0.5), 2, 120] {
+            #expect(simd_distance(try swing(afterStepping: hitch), clamped) < 1e-5)
+        }
     }
 }

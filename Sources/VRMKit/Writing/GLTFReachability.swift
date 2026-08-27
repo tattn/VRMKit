@@ -3,11 +3,10 @@ import Foundation
 /// Which of a glTF document's entries are still there for a reason, which tells
 /// ``GLTFEditableDocument/prune()`` what it may throw away.
 ///
-/// An entry is **drawn** when a scene reaches it, down through the nodes, meshes,
-/// materials and accessors it hangs together, and that is what keeps bytes in the
-/// BIN buffer. A node is merely **named** when something points at it without
-/// drawing it: a skin's joints, a spring bone's colliders, a humanoid bone. Naming
-/// keeps the node's entry and its transform, not the mesh it used to draw.
+/// An entry is drawn when a scene reaches it, which is what keeps bytes in the BIN
+/// buffer. A node is merely named when something points at it without drawing it,
+/// as a skin's joints or a humanoid bone are: naming keeps the node's entry and
+/// its transform, not the mesh it used to draw.
 ///
 /// References are read through ``GLTFReferences``, so the walk cannot fall behind
 /// what rewriting knows.
@@ -34,8 +33,7 @@ struct GLTFReachability {
 }
 
 private struct Walk {
-    // Bridged out of the JSON once rather than per step, which would cost the
-    // square of the model's size.
+    // Bridged out of the JSON once rather than per step.
     private let json: JSONObject
     private let entries: [GLTFArray: [JSONObject]]
     /// VRM 0.x's per-material shading, an array parallel to `materials` at the
@@ -71,8 +69,7 @@ private struct Walk {
 
     mutating func markNamed() {
         // An animation is played by name rather than reached through a scene, so
-        // its keyframes are read whatever it animates. One whose every channel
-        // drives a node no scene draws has nothing left to move.
+        // it is kept unless every channel drives a node no scene draws.
         for index in indices(of: .animations) where drivesSomethingDrawn(entries[.animations]?[index]) {
             mark(index, in: .animations)
         }
@@ -119,7 +116,7 @@ private struct Walk {
     /// beside it, textures and all.
     private mutating func markVRM0MaterialTextures(at index: Int) {
         for (_, texture) in vrm0MaterialProperties[safe: index]?.object("textureProperties") ?? [:] {
-            mark(numericIndexValue(texture), in: .textures)
+            mark(texture.indexValue, in: .textures)
         }
     }
 
@@ -134,9 +131,8 @@ private struct Walk {
         }
     }
 
-    /// The references worth following out of `object`. The rewrite runs for them
-    /// alone and its copy is thrown away, so what the walk keeps alive and what the
-    /// rewrite keeps in the document cannot disagree.
+    /// The references worth following out of `object`, collected by running the
+    /// rewrite and throwing its copy away, so the walk cannot disagree with it.
     private func references(
         of object: JSONObject,
         _ rewrite: (JSONObject, @escaping GLTFIndexMap) -> JSONObject
@@ -151,9 +147,9 @@ private struct Walk {
         return found
     }
 
-    /// Puts a node in the hierarchy a scene draws. It may have been walked already
-    /// as one something merely named, and that walk stopped short of what it draws,
-    /// so it is queued again.
+    /// Puts a node in the hierarchy a scene draws. A node already walked as one
+    /// something merely named is queued again, that walk having stopped short of
+    /// what it draws.
     private mutating func draw(_ index: Int) {
         guard drawn.insert(index).inserted else { return }
         guard live[.nodes]?.contains(index) == true else { return }

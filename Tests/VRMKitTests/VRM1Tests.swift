@@ -46,11 +46,11 @@ struct VRM1Tests {
         #expect(!VRM1.SpringBone.supports(specVersion: "2.0"))
 
         let raised = try VRMSampleAsset.seedSan.rewritingJSON { json in
-            var extensions = json["extensions"] as? [String: Any] ?? [:]
-            var springBone = try #require(extensions["VRMC_springBone"] as? [String: Any])
+            var extensions = json.object("extensions") ?? [:]
+            var springBone = try #require(extensions.object("VRMC_springBone"))
             springBone["specVersion"] = "2.0"
-            extensions["VRMC_springBone"] = springBone
-            json["extensions"] = extensions
+            extensions["VRMC_springBone"] = .object(springBone)
+            json["extensions"] = .object(extensions)
         }
         #expect(throws: (any Error).self) { try VRM1(data: raised) }
     }
@@ -216,1069 +216,545 @@ struct VRM1Tests {
         assertSpeechAndEyeExpressions()
     }
 
+    /// Every emotion preset of the fixture is bound the same way: one morph
+    /// target on node 2, one texture transform on material 11 scaled 1:1, and
+    /// binary blending. Only the target, the offset and the overrides differ.
     private func assertEmotionExpressions() {
-        #expect(vrm.expressions?.preset?.happy?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.happy?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.happy?.morphTargetBinds?[0].index == 33)
-        #expect(vrm.expressions?.preset?.happy?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.happy?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.happy?.textureTransformBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.happy?.textureTransformBinds?[0].material == 11)
-        #expect(vrm.expressions?.preset?.happy?.textureTransformBinds?[0].offset?.count == 2)
-        #expect(vrm.expressions?.preset?.happy?.textureTransformBinds?[0].offset?[0] == 0.25)
-        #expect(vrm.expressions?.preset?.happy?.textureTransformBinds?[0].offset?[1] == 0)
-        #expect(vrm.expressions?.preset?.happy?.textureTransformBinds?[0].scale?.count == 2)
-        #expect(vrm.expressions?.preset?.happy?.textureTransformBinds?[0].scale?[0] == 1)
-        #expect(vrm.expressions?.preset?.happy?.textureTransformBinds?[0].scale?[1] == 1)
-        #expect(vrm.expressions?.preset?.happy?.isBinary == true)
-        #expect(vrm.expressions?.preset?.happy?.overrideBlink == .blend)
-        #expect(vrm.expressions?.preset?.happy?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.happy?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.angry?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.angry?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.angry?.morphTargetBinds?[0].index == 34)
-        #expect(vrm.expressions?.preset?.angry?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.angry?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.angry?.textureTransformBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.angry?.textureTransformBinds?[0].material == 11)
-        #expect(vrm.expressions?.preset?.angry?.textureTransformBinds?[0].offset?.count == 2)
-        #expect(vrm.expressions?.preset?.angry?.textureTransformBinds?[0].offset?[0] == 0.5)
-        #expect(vrm.expressions?.preset?.angry?.textureTransformBinds?[0].offset?[1] == 0)
-        #expect(vrm.expressions?.preset?.angry?.textureTransformBinds?[0].scale?.count == 2)
-        #expect(vrm.expressions?.preset?.angry?.textureTransformBinds?[0].scale?[0] == 1)
-        #expect(vrm.expressions?.preset?.angry?.textureTransformBinds?[0].scale?[1] == 1)
-        #expect(vrm.expressions?.preset?.angry?.isBinary == true)
-        #expect(vrm.expressions?.preset?.angry?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.angry?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.angry?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.sad?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.sad?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.sad?.morphTargetBinds?[0].index == 35)
-        #expect(vrm.expressions?.preset?.sad?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.sad?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.sad?.textureTransformBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.sad?.textureTransformBinds?[0].material == 11)
-        #expect(vrm.expressions?.preset?.sad?.textureTransformBinds?[0].offset?.count == 2)
-        #expect(vrm.expressions?.preset?.sad?.textureTransformBinds?[0].offset?[0] == 0.75)
-        #expect(vrm.expressions?.preset?.sad?.textureTransformBinds?[0].offset?[1] == 0)
-        #expect(vrm.expressions?.preset?.sad?.textureTransformBinds?[0].scale?.count == 2)
-        #expect(vrm.expressions?.preset?.sad?.textureTransformBinds?[0].scale?[0] == 1)
-        #expect(vrm.expressions?.preset?.sad?.textureTransformBinds?[0].scale?[1] == 1)
-        #expect(vrm.expressions?.preset?.sad?.isBinary == true)
-        #expect(vrm.expressions?.preset?.sad?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.sad?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.sad?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.relaxed?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.relaxed?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.relaxed?.morphTargetBinds?[0].index == 36)
-        #expect(vrm.expressions?.preset?.relaxed?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.relaxed?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.relaxed?.textureTransformBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.relaxed?.textureTransformBinds?[0].material == 11)
-        #expect(vrm.expressions?.preset?.relaxed?.textureTransformBinds?[0].offset?.count == 2)
-        #expect(vrm.expressions?.preset?.relaxed?.textureTransformBinds?[0].offset?[0] == 0.5)
-        #expect(vrm.expressions?.preset?.relaxed?.textureTransformBinds?[0].offset?[1] == 0.25)
-        #expect(vrm.expressions?.preset?.relaxed?.textureTransformBinds?[0].scale?.count == 2)
-        #expect(vrm.expressions?.preset?.relaxed?.textureTransformBinds?[0].scale?[0] == 1)
-        #expect(vrm.expressions?.preset?.relaxed?.textureTransformBinds?[0].scale?[1] == 1)
-        #expect(vrm.expressions?.preset?.relaxed?.isBinary == true)
-        #expect(vrm.expressions?.preset?.relaxed?.overrideBlink == .some(.block))
-        #expect(vrm.expressions?.preset?.relaxed?.overrideLookAt == .some(.block))
-        #expect(vrm.expressions?.preset?.relaxed?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.surprised?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.surprised?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.surprised?.morphTargetBinds?[0].index == 38)
-        #expect(vrm.expressions?.preset?.surprised?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.surprised?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.surprised?.textureTransformBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.surprised?.textureTransformBinds?[0].material == 11)
-        #expect(vrm.expressions?.preset?.surprised?.textureTransformBinds?[0].offset?.count == 2)
-        #expect(vrm.expressions?.preset?.surprised?.textureTransformBinds?[0].offset?[0] == 0)
-        #expect(vrm.expressions?.preset?.surprised?.textureTransformBinds?[0].offset?[1] == 0.25)
-        #expect(vrm.expressions?.preset?.surprised?.textureTransformBinds?[0].scale?.count == 2)
-        #expect(vrm.expressions?.preset?.surprised?.textureTransformBinds?[0].scale?[0] == 1)
-        #expect(vrm.expressions?.preset?.surprised?.textureTransformBinds?[0].scale?[1] == 1)
-        #expect(vrm.expressions?.preset?.surprised?.isBinary == true)
-        #expect(vrm.expressions?.preset?.surprised?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.surprised?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.surprised?.overrideMouth == .some(.none))
-
+        assertEmotionExpression(vrm.expressions?.preset?.happy,
+                                morphTargetIndex: 33,
+                                textureOffset: [0.25, 0],
+                                overrideBlink: .blend,
+                                overrideLookAt: .none,
+                                overrideMouth: .none)
+        assertEmotionExpression(vrm.expressions?.preset?.angry,
+                                morphTargetIndex: 34,
+                                textureOffset: [0.5, 0],
+                                overrideBlink: .none,
+                                overrideLookAt: .none,
+                                overrideMouth: .none)
+        assertEmotionExpression(vrm.expressions?.preset?.sad,
+                                morphTargetIndex: 35,
+                                textureOffset: [0.75, 0],
+                                overrideBlink: .none,
+                                overrideLookAt: .none,
+                                overrideMouth: .none)
+        assertEmotionExpression(vrm.expressions?.preset?.relaxed,
+                                morphTargetIndex: 36,
+                                textureOffset: [0.5, 0.25],
+                                overrideBlink: .block,
+                                overrideLookAt: .block,
+                                overrideMouth: .none)
+        assertEmotionExpression(vrm.expressions?.preset?.surprised,
+                                morphTargetIndex: 38,
+                                textureOffset: [0, 0.25],
+                                overrideBlink: .none,
+                                overrideLookAt: .none,
+                                overrideMouth: .none)
     }
 
+    private typealias ExpressionOverride = VRM1.Expressions.Expression.ExpressionOverrideType
+
+    private func assertEmotionExpression(_ expression: VRM1.Expressions.Expression?,
+                                         morphTargetIndex: Int,
+                                         textureOffset: [Double],
+                                         overrideBlink: ExpressionOverride,
+                                         overrideLookAt: ExpressionOverride,
+                                         overrideMouth: ExpressionOverride,
+                                         sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(expression?.morphTargetBinds?.count == 1, sourceLocation: sourceLocation)
+        #expect(expression?.morphTargetBinds?[0].node == 2, sourceLocation: sourceLocation)
+        #expect(expression?.morphTargetBinds?[0].index == morphTargetIndex, sourceLocation: sourceLocation)
+        #expect(expression?.morphTargetBinds?[0].weight == 1, sourceLocation: sourceLocation)
+        #expect(expression?.materialColorBinds?.count == nil, sourceLocation: sourceLocation)
+        #expect(expression?.textureTransformBinds?.count == 1, sourceLocation: sourceLocation)
+        #expect(expression?.textureTransformBinds?[0].material == 11, sourceLocation: sourceLocation)
+        #expect(expression?.textureTransformBinds?[0].offset == textureOffset, sourceLocation: sourceLocation)
+        #expect(expression?.textureTransformBinds?[0].scale == [1, 1], sourceLocation: sourceLocation)
+        #expect(expression?.isBinary == true, sourceLocation: sourceLocation)
+        #expect(expression?.overrideBlink == overrideBlink, sourceLocation: sourceLocation)
+        #expect(expression?.overrideLookAt == overrideLookAt, sourceLocation: sourceLocation)
+        #expect(expression?.overrideMouth == overrideMouth, sourceLocation: sourceLocation)
+    }
+
+    /// The speech and eye presets of the fixture bind morph targets on node 2
+    /// at full weight and nothing else: no material colour, no texture
+    /// transform, no binary blending and no overrides.
     private func assertSpeechAndEyeExpressions() {
-        #expect(vrm.expressions?.preset?.aa?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.aa?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.aa?.morphTargetBinds?[0].index == 25)
-        #expect(vrm.expressions?.preset?.aa?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.aa?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.aa?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.aa?.isBinary == false)
-        #expect(vrm.expressions?.preset?.aa?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.aa?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.aa?.overrideMouth == .some(.none))
-        #expect(vrm.expressions?.preset?.ih?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.ih?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.ih?.morphTargetBinds?[0].index == 26)
-        #expect(vrm.expressions?.preset?.ih?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.ih?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.ih?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.ih?.isBinary == false)
-        #expect(vrm.expressions?.preset?.ih?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.ih?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.ih?.overrideMouth == .some(.none))
+        assertPlainExpression(vrm.expressions?.preset?.aa, morphTargetIndices: [25])
+        assertPlainExpression(vrm.expressions?.preset?.ih, morphTargetIndices: [26])
+        assertPlainExpression(vrm.expressions?.preset?.ou, morphTargetIndices: [27])
+        assertPlainExpression(vrm.expressions?.preset?.ee, morphTargetIndices: [28])
+        assertPlainExpression(vrm.expressions?.preset?.oh, morphTargetIndices: [29])
+        assertPlainExpression(vrm.expressions?.preset?.blink, morphTargetIndices: [1, 2])
+        assertPlainExpression(vrm.expressions?.preset?.blinkLeft, morphTargetIndices: [1])
+        assertPlainExpression(vrm.expressions?.preset?.blinkRight, morphTargetIndices: [2])
+        assertPlainExpression(vrm.expressions?.preset?.lookUp, morphTargetIndices: [39])
+        assertPlainExpression(vrm.expressions?.preset?.lookDown, morphTargetIndices: [40])
+        assertPlainExpression(vrm.expressions?.preset?.lookLeft, morphTargetIndices: [41])
+        assertPlainExpression(vrm.expressions?.preset?.lookRight, morphTargetIndices: [42])
+        assertPlainExpression(vrm.expressions?.preset?.neutral, morphTargetIndices: nil)
+    }
 
-        #expect(vrm.expressions?.preset?.ou?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.ou?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.ou?.morphTargetBinds?[0].index == 27)
-        #expect(vrm.expressions?.preset?.ou?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.ou?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.ou?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.ou?.isBinary == false)
-        #expect(vrm.expressions?.preset?.ou?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.ou?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.ou?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.ee?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.ee?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.ee?.morphTargetBinds?[0].index == 28)
-        #expect(vrm.expressions?.preset?.ee?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.ee?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.ee?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.ee?.isBinary == false)
-        #expect(vrm.expressions?.preset?.ee?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.ee?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.ee?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.oh?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.oh?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.oh?.morphTargetBinds?[0].index == 29)
-        #expect(vrm.expressions?.preset?.oh?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.oh?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.oh?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.oh?.isBinary == false)
-        #expect(vrm.expressions?.preset?.oh?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.oh?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.oh?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.blink?.morphTargetBinds?.count == 2)
-        #expect(vrm.expressions?.preset?.blink?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.blink?.morphTargetBinds?[0].index == 1)
-        #expect(vrm.expressions?.preset?.blink?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.blink?.morphTargetBinds?[1].node == 2)
-        #expect(vrm.expressions?.preset?.blink?.morphTargetBinds?[1].index == 2)
-        #expect(vrm.expressions?.preset?.blink?.morphTargetBinds?[1].weight == 1)
-        #expect(vrm.expressions?.preset?.blink?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.blink?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.blink?.isBinary == false)
-        #expect(vrm.expressions?.preset?.blink?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.blink?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.blink?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.blinkLeft?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.blinkLeft?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.blinkLeft?.morphTargetBinds?[0].index == 1)
-        #expect(vrm.expressions?.preset?.blinkLeft?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.blinkLeft?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.blinkLeft?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.blinkLeft?.isBinary == false)
-        #expect(vrm.expressions?.preset?.blinkLeft?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.blinkLeft?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.blinkLeft?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.blinkRight?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.blinkRight?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.blinkRight?.morphTargetBinds?[0].index == 2)
-        #expect(vrm.expressions?.preset?.blinkRight?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.blinkRight?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.blinkRight?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.blinkRight?.isBinary == false)
-        #expect(vrm.expressions?.preset?.blinkRight?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.blinkRight?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.blinkRight?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.lookUp?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.lookUp?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.lookUp?.morphTargetBinds?[0].index == 39)
-        #expect(vrm.expressions?.preset?.lookUp?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.lookUp?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.lookUp?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.lookUp?.isBinary == false)
-        #expect(vrm.expressions?.preset?.lookUp?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.lookUp?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.lookUp?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.lookDown?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.lookDown?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.lookDown?.morphTargetBinds?[0].index == 40)
-        #expect(vrm.expressions?.preset?.lookDown?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.lookDown?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.lookDown?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.lookDown?.isBinary == false)
-        #expect(vrm.expressions?.preset?.lookDown?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.lookDown?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.lookDown?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.lookLeft?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.lookLeft?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.lookLeft?.morphTargetBinds?[0].index == 41)
-        #expect(vrm.expressions?.preset?.lookLeft?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.lookLeft?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.lookLeft?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.lookLeft?.isBinary == false)
-        #expect(vrm.expressions?.preset?.lookLeft?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.lookLeft?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.lookLeft?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.lookRight?.morphTargetBinds?.count == 1)
-        #expect(vrm.expressions?.preset?.lookRight?.morphTargetBinds?[0].node == 2)
-        #expect(vrm.expressions?.preset?.lookRight?.morphTargetBinds?[0].index == 42)
-        #expect(vrm.expressions?.preset?.lookRight?.morphTargetBinds?[0].weight == 1)
-        #expect(vrm.expressions?.preset?.lookRight?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.lookRight?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.lookRight?.isBinary == false)
-        #expect(vrm.expressions?.preset?.lookRight?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.lookRight?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.lookRight?.overrideMouth == .some(.none))
-
-        #expect(vrm.expressions?.preset?.neutral?.morphTargetBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.neutral?.materialColorBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.neutral?.textureTransformBinds?.count == nil)
-        #expect(vrm.expressions?.preset?.neutral?.isBinary == false)
-        #expect(vrm.expressions?.preset?.neutral?.overrideBlink == .some(.none))
-        #expect(vrm.expressions?.preset?.neutral?.overrideLookAt == .some(.none))
-        #expect(vrm.expressions?.preset?.neutral?.overrideMouth == .some(.none))
+    private func assertPlainExpression(_ expression: VRM1.Expressions.Expression?,
+                                       morphTargetIndices: [Int]?,
+                                       sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(expression?.morphTargetBinds?.count == morphTargetIndices?.count, sourceLocation: sourceLocation)
+        for (position, index) in (morphTargetIndices ?? []).enumerated() {
+            #expect(expression?.morphTargetBinds?[position].node == 2, sourceLocation: sourceLocation)
+            #expect(expression?.morphTargetBinds?[position].index == index, sourceLocation: sourceLocation)
+            #expect(expression?.morphTargetBinds?[position].weight == 1, sourceLocation: sourceLocation)
+        }
+        #expect(expression?.materialColorBinds?.count == nil, sourceLocation: sourceLocation)
+        #expect(expression?.textureTransformBinds?.count == nil, sourceLocation: sourceLocation)
+        #expect(expression?.isBinary == false, sourceLocation: sourceLocation)
+        #expect(expression?.overrideBlink == ExpressionOverride.none, sourceLocation: sourceLocation)
+        #expect(expression?.overrideLookAt == ExpressionOverride.none, sourceLocation: sourceLocation)
+        #expect(expression?.overrideMouth == ExpressionOverride.none, sourceLocation: sourceLocation)
     }
     
     @Test
     func testSpringBone() {
-        // colliders
         #expect(vrm.springBone?.specVersion == "1.0")
+        assertColliders()
+        assertColliderGroups()
+        assertSprings()
+    }
+
+    /// Every collider of the fixture is a capsule but one, and each one hangs
+    /// off a node with an offset and a radius.
+    private func assertColliders() {
         #expect(vrm.springBone?.colliders?.count == 8)
-        #expect(vrm.springBone?.colliders?[0].node == 4)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.offset.count == 3)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.offset[0] == -0.04)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.offset[1] == 0)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.offset[2] == 0.02)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.radius == 0.088)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.tail.count == 3)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.tail[0] == 0.04)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.tail[1] == 0)
-        #expect(vrm.springBone?.colliders?[0].shape.capsule?.tail[2] == 0.02)
-        
-        #expect(vrm.springBone?.colliders?[1].node == 5)
-        #expect(vrm.springBone?.colliders?[1].shape.sphere?.offset.count == 3)
-        #expect(vrm.springBone?.colliders?[1].shape.sphere?.offset[0] == 0)
-        #expect(vrm.springBone?.colliders?[1].shape.sphere?.offset[1] == 0.02)
-        #expect(vrm.springBone?.colliders?[1].shape.sphere?.offset[2] == -0.07)
-        #expect(vrm.springBone?.colliders?[1].shape.sphere?.radius == 0.113)
-        
-        #expect(vrm.springBone?.colliders?[2].node == 5)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.offset.count == 3)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.offset[0] == 0.065)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.offset[1] == 0.14)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.offset[2] == 0.01)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.radius == 0.083)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.tail.count == 3)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.tail[0] == -0.065)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.tail[1] == 0.14)
-        #expect(vrm.springBone?.colliders?[2].shape.capsule?.tail[2] == 0.01)
-        
-        #expect(vrm.springBone?.colliders?[3].node == 5)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.offset.count == 3)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.offset[0] == 0.04)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.offset[1] == 0)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.offset[2] == 0.02)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.radius == 0.083)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.tail.count == 3)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.tail[0] == -0.04)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.tail[1] == 0)
-        #expect(vrm.springBone?.colliders?[3].shape.capsule?.tail[2] == 0.02)
-        
-        #expect(vrm.springBone?.colliders?[4].node == 130)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.offset.count == 3)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.offset[0] == -0.004536999)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.offset[1] == 7.566095e-9)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.offset[2] == 0.0127928918)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.radius == 0.07)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.tail.count == 3)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.tail[0] == -0.001991607)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.tail[1] == 0.329534262)
-        #expect(vrm.springBone?.colliders?[4].shape.capsule?.tail[2] == 0.009325488)
-        
-        #expect(vrm.springBone?.colliders?[5].node == 131)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.offset.count == 3)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.offset[0] == 4.570225e-9)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.offset[1] == -1.477034e-8)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.offset[2] == 0.008859742)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.radius == 0.065)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.tail.count == 3)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.tail[0] == 2.013798e-8)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.tail[1] == 0.3535266)
-        #expect(vrm.springBone?.colliders?[5].shape.capsule?.tail[2] == 0.008811156)
-        
-        #expect(vrm.springBone?.colliders?[6].node == 137)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.offset.count == 3)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.offset[0] == 0.004536999)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.offset[1] == 7.566095e-9)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.offset[2] == 0.0127928918)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.radius == 0.07)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.tail.count == 3)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.tail[0] == 0.001991607)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.tail[1] == 0.329534262)
-        #expect(vrm.springBone?.colliders?[6].shape.capsule?.tail[2] == 0.009325488)
-        
-        #expect(vrm.springBone?.colliders?[7].node == 138)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.offset.count == 3)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.offset[0] == -4.57022464e-9)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.offset[1] == -1.477034e-8)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.offset[2] == 0.008859742)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.radius == 0.065)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.tail.count == 3)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.tail[0] == -2.013798e-8)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.tail[1] == 0.3535266)
-        #expect(vrm.springBone?.colliders?[7].shape.capsule?.tail[2] == 0.008811156)
-        
-        // colliderGroups
+        assertCapsuleCollider(0, node: 4,
+                              offset: [-0.04, 0, 0.02],
+                              radius: 0.088,
+                              tail: [0.04, 0, 0.02])
+        assertSphereCollider(1, node: 5,
+                             offset: [0, 0.02, -0.07],
+                             radius: 0.113)
+        assertCapsuleCollider(2, node: 5,
+                              offset: [0.065, 0.14, 0.01],
+                              radius: 0.083,
+                              tail: [-0.065, 0.14, 0.01])
+        assertCapsuleCollider(3, node: 5,
+                              offset: [0.04, 0, 0.02],
+                              radius: 0.083,
+                              tail: [-0.04, 0, 0.02])
+        assertCapsuleCollider(4, node: 130,
+                              offset: [-0.004536999, 7.566095e-9, 0.0127928918],
+                              radius: 0.07,
+                              tail: [-0.001991607, 0.329534262, 0.009325488])
+        assertCapsuleCollider(5, node: 131,
+                              offset: [4.570225e-9, -1.477034e-8, 0.008859742],
+                              radius: 0.065,
+                              tail: [2.013798e-8, 0.3535266, 0.008811156])
+        assertCapsuleCollider(6, node: 137,
+                              offset: [0.004536999, 7.566095e-9, 0.0127928918],
+                              radius: 0.07,
+                              tail: [0.001991607, 0.329534262, 0.009325488])
+        assertCapsuleCollider(7, node: 138,
+                              offset: [-4.57022464e-9, -1.477034e-8, 0.008859742],
+                              radius: 0.065,
+                              tail: [-2.013798e-8, 0.3535266, 0.008811156])
+    }
+
+    private func assertCapsuleCollider(_ index: Int,
+                                       node: Int,
+                                       offset: [Double],
+                                       radius: Double,
+                                       tail: [Double],
+                                       sourceLocation: SourceLocation = #_sourceLocation) {
+        guard case .capsule(let capsule) = vrm.springBone?.colliders?[index].shape else {
+            Issue.record("collider \(index) is not a capsule", sourceLocation: sourceLocation)
+            return
+        }
+        #expect(vrm.springBone?.colliders?[index].node == node, sourceLocation: sourceLocation)
+        assertComponents(capsule.offset, offset, sourceLocation: sourceLocation)
+        #expect(capsule.radius == radius, sourceLocation: sourceLocation)
+        assertComponents(capsule.tail, tail, sourceLocation: sourceLocation)
+    }
+
+    private func assertSphereCollider(_ index: Int,
+                                      node: Int,
+                                      offset: [Double],
+                                      radius: Double,
+                                      sourceLocation: SourceLocation = #_sourceLocation) {
+        guard case .sphere(let sphere) = vrm.springBone?.colliders?[index].shape else {
+            Issue.record("collider \(index) is not a sphere", sourceLocation: sourceLocation)
+            return
+        }
+        #expect(vrm.springBone?.colliders?[index].node == node, sourceLocation: sourceLocation)
+        assertComponents(sphere.offset, offset, sourceLocation: sourceLocation)
+        #expect(sphere.radius == radius, sourceLocation: sourceLocation)
+    }
+
+    /// Checks a vector one component at a time so that a mismatch names the
+    /// component rather than printing two whole arrays.
+    private func assertComponents(_ vector: [Double]?,
+                                  _ expected: [Double],
+                                  sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(vector?.count == expected.count, sourceLocation: sourceLocation)
+        for (position, value) in expected.enumerated() {
+            #expect(vector?[position] == value, sourceLocation: sourceLocation)
+        }
+    }
+
+    private func assertColliderGroups() {
         #expect(vrm.springBone?.colliderGroups?.count == 2)
-        #expect(vrm.springBone?.colliderGroups?[0].colliders.count == 4)
-        #expect(vrm.springBone?.colliderGroups?[0].colliders[0] == 0)
-        #expect(vrm.springBone?.colliderGroups?[0].colliders[1] == 1)
-        #expect(vrm.springBone?.colliderGroups?[0].colliders[2] == 2)
-        #expect(vrm.springBone?.colliderGroups?[0].colliders[3] == 3)
-        #expect(vrm.springBone?.colliderGroups?[1].colliders.count == 4)
-        #expect(vrm.springBone?.colliderGroups?[1].colliders[0] == 6)
-        #expect(vrm.springBone?.colliderGroups?[1].colliders[1] == 7)
-        #expect(vrm.springBone?.colliderGroups?[1].colliders[2] == 4)
-        #expect(vrm.springBone?.colliderGroups?[1].colliders[3] == 5)
-        
-        // springs
+        assertColliderGroup(0, colliders: [0, 1, 2, 3])
+        assertColliderGroup(1, colliders: [6, 7, 4, 5])
+    }
+
+    private func assertColliderGroup(_ index: Int,
+                                     colliders: [Int],
+                                     sourceLocation: SourceLocation = #_sourceLocation) {
+        let group = vrm.springBone?.colliderGroups?[index]
+        #expect(group?.colliders.count == colliders.count, sourceLocation: sourceLocation)
+        for (position, collider) in colliders.enumerated() {
+            #expect(group?.colliders[position] == collider, sourceLocation: sourceLocation)
+        }
+    }
+
+    /// The fixture springs the tail hair, seven strands of front hair and the
+    /// robot wire, and only the first and the last of those meet a collider.
+    private func assertSprings() {
         #expect(vrm.springBone?.springs?.count == 9)
-        #expect(vrm.springBone?.springs?[0].center == 3)
-        #expect(vrm.springBone?.springs?[0].colliderGroups?.count == 1)
-        #expect(vrm.springBone?.springs?[0].colliderGroups?[0] == 0)
-        #expect(vrm.springBone?.springs?[0].joints.count == 7)
-        #expect(vrm.springBone?.springs?[0].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[0].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[0].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[0].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[0].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[0].joints[0].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[0].joints[0].node == 75)
-        #expect(vrm.springBone?.springs?[0].joints[0].stiffness == 4)
-        #expect(vrm.springBone?.springs?[0].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[0].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[0].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[0].joints[1].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[0].joints[1].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[0].joints[1].node == 76)
-        #expect(vrm.springBone?.springs?[0].joints[1].stiffness == 4)
-        #expect(vrm.springBone?.springs?[0].joints[2].dragForce == 1)
-        #expect(vrm.springBone?.springs?[0].joints[2].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[0].joints[2].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[2].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[0].joints[2].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[2].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[0].joints[2].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[0].joints[2].node == 77)
-        #expect(vrm.springBone?.springs?[0].joints[2].stiffness == 3)
-        #expect(vrm.springBone?.springs?[0].joints[3].dragForce == 1)
-        #expect(vrm.springBone?.springs?[0].joints[3].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[0].joints[3].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[3].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[0].joints[3].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[3].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[0].joints[3].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[0].joints[3].node == 78)
-        #expect(vrm.springBone?.springs?[0].joints[3].stiffness == 3)
-        #expect(vrm.springBone?.springs?[0].joints[4].dragForce == 1)
-        #expect(vrm.springBone?.springs?[0].joints[4].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[0].joints[4].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[4].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[0].joints[4].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[4].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[0].joints[4].node == 79)
-        #expect(vrm.springBone?.springs?[0].joints[4].stiffness == 2)
-        #expect(vrm.springBone?.springs?[0].joints[5].dragForce == 1)
-        #expect(vrm.springBone?.springs?[0].joints[5].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[0].joints[5].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[5].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[0].joints[5].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[5].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[0].joints[5].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[0].joints[5].node == 80)
-        #expect(vrm.springBone?.springs?[0].joints[5].stiffness == 2)
-        #expect(vrm.springBone?.springs?[0].joints[6].dragForce == 1)
-        #expect(vrm.springBone?.springs?[0].joints[6].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[0].joints[6].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[6].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[0].joints[6].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[0].joints[6].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[0].joints[6].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[0].joints[6].node == 81)
-        #expect(vrm.springBone?.springs?[0].joints[6].stiffness == 2)
-        #expect(vrm.springBone?.springs?[0].name == "TailHair")
+        assertTailHairSpring()
+        assertFrontHairSpring(1, name: "FrontHairA", jointNodes: [47, 48])
+        assertFrontHairSpring(2, name: "FrontHairB", jointNodes: [50, 51])
+        assertFrontHairSpring(3, name: "FrontHairC", jointNodes: [53, 54])
+        assertFrontHairSpring(4, name: "FrontHairD", jointNodes: [56, 57])
+        assertFrontHairSpring(5, name: "FrontHairE", jointNodes: [59, 60])
+        assertFrontHairSpring(6, name: "FrontHairF", jointNodes: [62, 63])
+        assertFrontHairSpring(7, name: "FrontHairG", jointNodes: [65, 66])
+        assertRoboWireSpring()
+    }
 
-        #expect(vrm.springBone?.springs?[1].center == 3)
-        #expect(vrm.springBone?.springs?[1].joints.count == 2)
-        #expect(vrm.springBone?.springs?[1].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[1].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[1].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[1].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[1].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[1].joints[0].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[1].joints[0].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[1].joints[0].node == 47)
-        #expect(vrm.springBone?.springs?[1].joints[0].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[1].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[1].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[1].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[1].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[1].joints[1].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[1].joints[1].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[1].joints[1].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[1].joints[1].node == 48)
-        #expect(vrm.springBone?.springs?[1].joints[1].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[1].name == "FrontHairA")
+    /// The tail hair runs over seven joints that soften towards its tip.
+    private func assertTailHairSpring() {
+        let spring = vrm.springBone?.springs?[0]
+        #expect(spring?.center == 3)
+        #expect(spring?.colliderGroups?.count == 1)
+        #expect(spring?.colliderGroups?[0] == 0)
+        #expect(spring?.joints.count == 7)
+        let stiffnesses: [Double] = [4, 4, 3, 3, 2, 2, 2]
+        for (position, stiffness) in stiffnesses.enumerated() {
+            assertJoint(spring?.joints[position], node: 75 + position, hitRadius: 0.02, stiffness: stiffness)
+        }
+        #expect(spring?.name == "TailHair")
+    }
 
-        #expect(vrm.springBone?.springs?[2].center == 3)
-        #expect(vrm.springBone?.springs?[2].joints.count == 2)
-        #expect(vrm.springBone?.springs?[2].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[2].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[2].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[2].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[2].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[2].joints[0].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[2].joints[0].node == 50)
-        #expect(vrm.springBone?.springs?[2].joints[0].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[2].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[2].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[2].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[2].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[2].joints[1].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[2].joints[1].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[2].joints[1].node == 51)
-        #expect(vrm.springBone?.springs?[2].joints[1].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[2].name == "FrontHairB")
+    /// Every strand of front hair is two equally soft joints centred on the
+    /// hips and touched by no collider.
+    private func assertFrontHairSpring(_ index: Int,
+                                       name: String,
+                                       jointNodes: [Int],
+                                       sourceLocation: SourceLocation = #_sourceLocation) {
+        let spring = vrm.springBone?.springs?[index]
+        #expect(spring?.center == 3, sourceLocation: sourceLocation)
+        #expect(spring?.joints.count == jointNodes.count, sourceLocation: sourceLocation)
+        for (position, node) in jointNodes.enumerated() {
+            assertJoint(spring?.joints[position],
+                        node: node,
+                        hitRadius: 0.01,
+                        stiffness: 1.2,
+                        sourceLocation: sourceLocation)
+        }
+        #expect(spring?.name == name, sourceLocation: sourceLocation)
+    }
 
-        #expect(vrm.springBone?.springs?[3].center == 3)
-        #expect(vrm.springBone?.springs?[3].joints.count == 2)
-        #expect(vrm.springBone?.springs?[3].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[3].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[3].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[3].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[3].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[3].joints[0].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[3].joints[0].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[3].joints[0].node == 53)
-        #expect(vrm.springBone?.springs?[3].joints[0].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[3].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[3].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[3].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[3].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[3].joints[1].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[3].joints[1].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[3].joints[1].node == 54)
-        #expect(vrm.springBone?.springs?[3].joints[1].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[3].name == "FrontHairC")
+    /// The robot wire is uniformly stiff and thickens at its sixth joint.
+    private func assertRoboWireSpring() {
+        let spring = vrm.springBone?.springs?[8]
+        #expect(spring?.colliderGroups?.count == 1)
+        #expect(spring?.colliderGroups?[0] == 1)
+        #expect(spring?.joints.count == 7)
+        let hitRadii: [Double] = [0.02, 0.02, 0.02, 0.02, 0.02, 0.06, 0.02]
+        for (position, hitRadius) in hitRadii.enumerated() {
+            assertJoint(spring?.joints[position], node: 37 + position, hitRadius: hitRadius, stiffness: 4)
+        }
+        #expect(spring?.name == "RoboWire")
+    }
 
-        #expect(vrm.springBone?.springs?[4].center == 3)
-        #expect(vrm.springBone?.springs?[4].joints.count == 2)
-        #expect(vrm.springBone?.springs?[4].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[4].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[4].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[4].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[4].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[4].joints[0].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[4].joints[0].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[4].joints[0].node == 56)
-        #expect(vrm.springBone?.springs?[4].joints[0].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[4].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[4].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[4].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[4].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[4].joints[1].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[4].joints[1].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[4].joints[1].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[4].joints[1].node == 57)
-        #expect(vrm.springBone?.springs?[4].joints[1].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[4].name == "FrontHairD")
-
-        #expect(vrm.springBone?.springs?[5].center == 3)
-        #expect(vrm.springBone?.springs?[5].joints.count == 2)
-        #expect(vrm.springBone?.springs?[5].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[5].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[5].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[5].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[5].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[5].joints[0].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[5].joints[0].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[5].joints[0].node == 59)
-        #expect(vrm.springBone?.springs?[5].joints[0].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[5].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[5].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[5].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[5].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[5].joints[1].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[5].joints[1].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[5].joints[1].node == 60)
-        #expect(vrm.springBone?.springs?[5].joints[1].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[5].name == "FrontHairE")
-
-        #expect(vrm.springBone?.springs?[6].center == 3)
-        #expect(vrm.springBone?.springs?[6].joints.count == 2)
-        #expect(vrm.springBone?.springs?[6].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[6].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[6].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[6].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[6].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[6].joints[0].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[6].joints[0].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[6].joints[0].node == 62)
-        #expect(vrm.springBone?.springs?[6].joints[0].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[6].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[6].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[6].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[6].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[6].joints[1].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[6].joints[1].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[6].joints[1].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[6].joints[1].node == 63)
-        #expect(vrm.springBone?.springs?[6].joints[1].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[6].name == "FrontHairF")
-
-        #expect(vrm.springBone?.springs?[7].center == 3)
-        #expect(vrm.springBone?.springs?[7].joints.count == 2)
-        #expect(vrm.springBone?.springs?[7].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[7].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[7].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[7].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[7].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[7].joints[0].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[7].joints[0].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[7].joints[0].node == 65)
-        #expect(vrm.springBone?.springs?[7].joints[0].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[7].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[7].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[7].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[7].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[7].joints[1].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[7].joints[1].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[7].joints[1].hitRadius == 0.01)
-        #expect(vrm.springBone?.springs?[7].joints[1].node == 66)
-        #expect(vrm.springBone?.springs?[7].joints[1].stiffness == 1.2)
-        #expect(vrm.springBone?.springs?[7].name == "FrontHairG")
-
-        #expect(vrm.springBone?.springs?[8].colliderGroups?.count == 1)
-        #expect(vrm.springBone?.springs?[8].colliderGroups?[0] == 1)
-        #expect(vrm.springBone?.springs?[8].joints.count == 7)
-        #expect(vrm.springBone?.springs?[8].joints[0].dragForce == 1)
-        #expect(vrm.springBone?.springs?[8].joints[0].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[8].joints[0].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[0].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[8].joints[0].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[0].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[8].joints[0].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[8].joints[0].node == 37)
-        #expect(vrm.springBone?.springs?[8].joints[0].stiffness == 4)
-        #expect(vrm.springBone?.springs?[8].joints[1].dragForce == 1)
-        #expect(vrm.springBone?.springs?[8].joints[1].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[8].joints[1].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[1].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[8].joints[1].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[1].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[8].joints[1].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[8].joints[1].node == 38)
-        #expect(vrm.springBone?.springs?[8].joints[1].stiffness == 4)
-        #expect(vrm.springBone?.springs?[8].joints[2].dragForce == 1)
-        #expect(vrm.springBone?.springs?[8].joints[2].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[8].joints[2].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[2].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[8].joints[2].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[2].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[8].joints[2].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[8].joints[2].node == 39)
-        #expect(vrm.springBone?.springs?[8].joints[2].stiffness == 4)
-        #expect(vrm.springBone?.springs?[8].joints[3].dragForce == 1)
-        #expect(vrm.springBone?.springs?[8].joints[3].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[8].joints[3].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[3].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[8].joints[3].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[3].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[8].joints[3].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[8].joints[3].node == 40)
-        #expect(vrm.springBone?.springs?[8].joints[3].stiffness == 4)
-        #expect(vrm.springBone?.springs?[8].joints[4].dragForce == 1)
-        #expect(vrm.springBone?.springs?[8].joints[4].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[8].joints[4].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[4].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[8].joints[4].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[4].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[8].joints[4].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[8].joints[4].node == 41)
-        #expect(vrm.springBone?.springs?[8].joints[4].stiffness == 4)
-        #expect(vrm.springBone?.springs?[8].joints[5].dragForce == 1)
-        #expect(vrm.springBone?.springs?[8].joints[5].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[8].joints[5].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[5].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[8].joints[5].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[5].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[8].joints[5].hitRadius == 0.06)
-        #expect(vrm.springBone?.springs?[8].joints[5].node == 42)
-        #expect(vrm.springBone?.springs?[8].joints[5].stiffness == 4)
-        #expect(vrm.springBone?.springs?[8].joints[6].dragForce == 1)
-        #expect(vrm.springBone?.springs?[8].joints[6].gravityDir?.count == 3)
-        #expect(vrm.springBone?.springs?[8].joints[6].gravityDir?[0] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[6].gravityDir?[1] == -1)
-        #expect(vrm.springBone?.springs?[8].joints[6].gravityDir?[2] == 0)
-        #expect(vrm.springBone?.springs?[8].joints[6].gravityPower == 0)
-        #expect(vrm.springBone?.springs?[8].joints[6].hitRadius == 0.02)
-        #expect(vrm.springBone?.springs?[8].joints[6].node == 43)
-        #expect(vrm.springBone?.springs?[8].joints[6].stiffness == 4)
-        #expect(vrm.springBone?.springs?[8].name == "RoboWire")
+    /// Every joint of the fixture drags at full force and aims its gravity
+    /// straight down at no power at all.
+    private func assertJoint(_ joint: VRM1.SpringBone.Spring.Joint?,
+                             node: Int,
+                             hitRadius: Double,
+                             stiffness: Double,
+                             sourceLocation: SourceLocation = #_sourceLocation) {
+        #expect(joint?.dragForce == 1, sourceLocation: sourceLocation)
+        assertComponents(joint?.gravityDir, [0, -1, 0], sourceLocation: sourceLocation)
+        #expect(joint?.gravityPower == 0, sourceLocation: sourceLocation)
+        #expect(joint?.hitRadius == hitRadius, sourceLocation: sourceLocation)
+        #expect(joint?.node == node, sourceLocation: sourceLocation)
+        #expect(joint?.stiffness == stiffness, sourceLocation: sourceLocation)
     }
 
     @Test
     func testMaterialsMToon() {
-        let material0MToon = vrm.document.gltf.materials?[0].extensions?.materialsMToon
-        #expect(material0MToon?.giEqualizationFactor == 0.9)
-        #expect(material0MToon?.matcapFactor?.count == 3)
-        #expect(material0MToon?.matcapFactor?[0] == 0)
-        #expect(material0MToon?.matcapFactor?[1] == 0)
-        #expect(material0MToon?.matcapFactor?[2] == 0)
-        #expect(material0MToon?.outlineColorFactor?.count == 3)
-        #expect(material0MToon?.outlineColorFactor?[0] == 0)
-        #expect(material0MToon?.outlineColorFactor?[1] == 0)
-        #expect(material0MToon?.outlineColorFactor?[2] == 0)
-        #expect(material0MToon?.outlineLightingMixFactor == 1)
-        #expect(material0MToon?.outlineWidthFactor == 0.0005)
-        #expect(material0MToon?.outlineWidthMode == .some(.worldCoordinates))
-        #expect(material0MToon?.outlineWidthMultiplyTexture?.index == 1)
-        #expect(material0MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material0MToon?.parametricRimColorFactor?[0] == 0)
-        #expect(material0MToon?.parametricRimColorFactor?[1] == 0)
-        #expect(material0MToon?.parametricRimColorFactor?[2] == 0)
-        #expect(material0MToon?.parametricRimFresnelPowerFactor == 1)
-        #expect(material0MToon?.parametricRimLiftFactor == 0)
-        #expect(material0MToon?.renderQueueOffsetNumber == 0)
-        #expect(material0MToon?.rimLightingMixFactor == 1)
-        #expect(material0MToon?.shadeColorFactor?.count == 3)
-        #expect(material0MToon?.shadeColorFactor?[0] == 0.301212043)
-        #expect(material0MToon?.shadeColorFactor?[1] == 0.301212043)
-        #expect(material0MToon?.shadeColorFactor?[2] == 0.301212043)
-        #expect(material0MToon?.shadeMultiplyTexture?.index == 0)
-        #expect(material0MToon?.shadingShiftFactor == -0.05)
-        #expect(material0MToon?.shadingToonyFactor == 0.95)
-        #expect(material0MToon?.specVersion == "1.0")
-        #expect(material0MToon?.transparentWithZWrite == false)
-        #expect(material0MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material0MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material0MToon?.uvAnimationScrollYSpeedFactor == 0)
+        assertMToonMaterials()
+        assertMaterialsWithoutMToon()
+    }
 
-        let material1MToon = vrm.document.gltf.materials?[1].extensions?.materialsMToon
-        #expect(material1MToon?.giEqualizationFactor == 0.9)
-        #expect(material1MToon?.matcapFactor?.count == 3)
-        #expect(material1MToon?.matcapFactor?[0] == 0)
-        #expect(material1MToon?.matcapFactor?[1] == 0)
-        #expect(material1MToon?.matcapFactor?[2] == 0)
-        #expect(material1MToon?.outlineColorFactor?.count == 3)
-        #expect(material1MToon?.outlineColorFactor?[0] == 0.151317075)
-        #expect(material1MToon?.outlineColorFactor?[1] == 0.193065077)
-        #expect(material1MToon?.outlineColorFactor?[2] == 0.222877234)
-        #expect(material1MToon?.outlineLightingMixFactor == 1)
-        #expect(material1MToon?.outlineWidthFactor == 0.0015)
-        #expect(material1MToon?.outlineWidthMode == .some(.worldCoordinates))
-        #expect(material1MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material1MToon?.parametricRimColorFactor?[0] == 0)
-        #expect(material1MToon?.parametricRimColorFactor?[1] == 0)
-        #expect(material1MToon?.parametricRimColorFactor?[2] == 0)
-        #expect(material1MToon?.parametricRimFresnelPowerFactor == 1)
-        #expect(material1MToon?.parametricRimLiftFactor == 0)
-        #expect(material1MToon?.renderQueueOffsetNumber == 0)
-        #expect(material1MToon?.rimLightingMixFactor == 1)
-        #expect(material1MToon?.shadeColorFactor?.count == 3)
-        #expect(material1MToon?.shadeColorFactor?[0] == 0.20541285)
-        #expect(material1MToon?.shadeColorFactor?[1] == 0.20541285)
-        #expect(material1MToon?.shadeColorFactor?[2] == 0.20541285)
-        #expect(material1MToon?.shadeMultiplyTexture?.index == 2)
-        #expect(material1MToon?.shadingShiftFactor == -0.1)
-        #expect(material1MToon?.shadingToonyFactor == 0.9)
-        #expect(material1MToon?.specVersion == "1.0")
-        #expect(material1MToon?.transparentWithZWrite == false)
-        #expect(material1MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material1MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material1MToon?.uvAnimationScrollYSpeedFactor == 0)
+    /// Every MToon material of the fixture shares its outline and rim lighting
+    /// mix, its render queue, its spec version, its opaque z write and its
+    /// still UV animation. Only the factors and the textures below differ.
+    private func assertMToonMaterials() {
+        assertMToonMaterial(0,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [0, 0, 0],
+                            outlineColorFactor: [0, 0, 0],
+                            outlineWidthFactor: 0.0005,
+                            outlineWidthMode: .worldCoordinates,
+                            outlineWidthMultiplyTextureIndex: 1,
+                            parametricRimColorFactor: [0, 0, 0],
+                            parametricRimFresnelPowerFactor: 1,
+                            parametricRimLiftFactor: 0,
+                            shadeColorFactor: [0.301212043, 0.301212043, 0.301212043],
+                            shadeMultiplyTextureIndex: 0,
+                            shadingShiftFactor: -0.05,
+                            shadingToonyFactor: 0.95)
+        assertMToonMaterial(1,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [0, 0, 0],
+                            outlineColorFactor: [0.151317075, 0.193065077, 0.222877234],
+                            outlineWidthFactor: 0.0015,
+                            outlineWidthMode: .worldCoordinates,
+                            parametricRimColorFactor: [0, 0, 0],
+                            parametricRimFresnelPowerFactor: 1,
+                            parametricRimLiftFactor: 0,
+                            shadeColorFactor: [0.20541285, 0.20541285, 0.20541285],
+                            shadeMultiplyTextureIndex: 2,
+                            shadingShiftFactor: -0.1,
+                            shadingToonyFactor: 0.9)
+        assertMToonMaterial(2,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [0, 0, 0],
+                            outlineColorFactor: [0.2411783, 0.181807414, 0.1557278],
+                            outlineWidthFactor: 0.0011,
+                            outlineWidthMode: .worldCoordinates,
+                            outlineWidthMultiplyTextureIndex: 6,
+                            parametricRimColorFactor: [0, 0, 0],
+                            parametricRimFresnelPowerFactor: 1,
+                            parametricRimLiftFactor: 0,
+                            shadeColorFactor: [1, 0.613979936, 0.5079454],
+                            shadeMultiplyTextureIndex: 4,
+                            shadingShiftFactor: -0.2,
+                            shadingShiftTextureIndex: 5,
+                            shadingShiftTextureScale: 1,
+                            shadingToonyFactor: 0.8)
+        assertMToonMaterial(3,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [0, 0, 0],
+                            outlineColorFactor: [0, 0, 0],
+                            outlineWidthFactor: 0.5,
+                            outlineWidthMode: .none,
+                            parametricRimColorFactor: [0, 0, 0],
+                            parametricRimFresnelPowerFactor: 1,
+                            parametricRimLiftFactor: 0,
+                            shadeColorFactor: [0.4352691, 0.3970382, 0.500747442],
+                            shadeMultiplyTextureIndex: 7,
+                            shadingShiftFactor: -0.2,
+                            shadingToonyFactor: 0.8)
+        assertMToonMaterial(4,
+                            giEqualizationFactor: 0.5,
+                            matcapFactor: [0, 0, 0],
+                            outlineColorFactor: [0, 0, 0],
+                            outlineWidthFactor: 0.5,
+                            outlineWidthMode: .none,
+                            parametricRimColorFactor: [0, 0, 0],
+                            parametricRimFresnelPowerFactor: 1,
+                            parametricRimLiftFactor: 0,
+                            shadeColorFactor: [1, 1, 1],
+                            shadingShiftFactor: -0.2,
+                            shadingToonyFactor: 0.8)
+        assertMToonMaterial(5,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [0, 0, 0],
+                            outlineColorFactor: [0, 0, 0],
+                            outlineWidthFactor: 0.0015,
+                            outlineWidthMode: .worldCoordinates,
+                            parametricRimColorFactor: [0.07896994, 0.07896994, 0.07896994],
+                            parametricRimFresnelPowerFactor: 4.3,
+                            parametricRimLiftFactor: 0.182,
+                            shadeColorFactor: [0.4352691, 0.3970382, 0.500747442],
+                            shadeMultiplyTextureIndex: 8,
+                            shadingShiftFactor: -0.1,
+                            shadingToonyFactor: 0.9)
+        assertMToonMaterial(6,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [1, 1, 1],
+                            matcapTextureIndex: 9,
+                            outlineColorFactor: [0.07896994, 0.07896994, 0.07896994],
+                            outlineWidthFactor: 0.002,
+                            outlineWidthMode: .worldCoordinates,
+                            parametricRimColorFactor: [0.345616162, 0.345616162, 0.345616162],
+                            parametricRimFresnelPowerFactor: 3.2,
+                            parametricRimLiftFactor: 0.15,
+                            shadeColorFactor: [0.342953056, 0.37243554, 0.432035774],
+                            shadeMultiplyTextureIndex: 8,
+                            shadingShiftFactor: -0.1,
+                            shadingToonyFactor: 0.9)
+        assertMToonMaterial(8,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [0, 0, 0],
+                            outlineColorFactor: [0.01850021, 0.0176419467, 0.0251868479],
+                            outlineWidthFactor: 0.001,
+                            outlineWidthMode: .worldCoordinates,
+                            parametricRimColorFactor: [0, 0, 0],
+                            parametricRimFresnelPowerFactor: 1,
+                            parametricRimLiftFactor: 0,
+                            shadeColorFactor: [0.4352691, 0.3970382, 0.500747442],
+                            shadeMultiplyTextureIndex: 4,
+                            shadingShiftFactor: -0.2,
+                            shadingToonyFactor: 0.8)
+        assertMToonMaterial(10,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [1, 1, 1],
+                            matcapTextureIndex: 9,
+                            outlineColorFactor: [0.009166719, 0.009166719, 0.009166719],
+                            outlineWidthFactor: 0.001,
+                            outlineWidthMode: .worldCoordinates,
+                            parametricRimColorFactor: [0.432035774, 0.432035774, 0.432035774],
+                            parametricRimFresnelPowerFactor: 7.9,
+                            parametricRimLiftFactor: 0.153,
+                            shadeColorFactor: [0.4352691, 0.3970382, 0.500747442],
+                            shadeMultiplyTextureIndex: 2,
+                            shadingShiftFactor: -0.1,
+                            shadingToonyFactor: 0.9)
+        assertMToonMaterial(11,
+                            giEqualizationFactor: 0.9,
+                            matcapFactor: [0, 0, 0],
+                            outlineColorFactor: [0, 0, 0],
+                            outlineWidthFactor: 0.5,
+                            outlineWidthMode: .none,
+                            parametricRimColorFactor: [0, 0, 0],
+                            parametricRimFresnelPowerFactor: 1,
+                            parametricRimLiftFactor: 0,
+                            shadeColorFactor: [1, 1, 1],
+                            shadeMultiplyTextureIndex: 12,
+                            shadingShiftFactor: -0.1,
+                            shadingToonyFactor: 0.9)
+    }
 
-        let material2MToon = vrm.document.gltf.materials?[2].extensions?.materialsMToon
-        #expect(material2MToon?.giEqualizationFactor == 0.9)
-        #expect(material2MToon?.matcapFactor?.count == 3)
-        #expect(material2MToon?.matcapFactor?[0] == 0)
-        #expect(material2MToon?.matcapFactor?[1] == 0)
-        #expect(material2MToon?.matcapFactor?[2] == 0)
-        #expect(material2MToon?.outlineColorFactor?.count == 3)
-        #expect(material2MToon?.outlineColorFactor?[0] == 0.2411783)
-        #expect(material2MToon?.outlineColorFactor?[1] == 0.181807414)
-        #expect(material2MToon?.outlineColorFactor?[2] == 0.1557278)
-        #expect(material2MToon?.outlineLightingMixFactor == 1)
-        #expect(material2MToon?.outlineWidthFactor == 0.0011)
-        #expect(material2MToon?.outlineWidthMode == .some(.worldCoordinates))
-        #expect(material2MToon?.outlineWidthMultiplyTexture?.index == 6)
-        #expect(material2MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material2MToon?.parametricRimColorFactor?[0] == 0)
-        #expect(material2MToon?.parametricRimColorFactor?[1] == 0)
-        #expect(material2MToon?.parametricRimColorFactor?[2] == 0)
-        #expect(material2MToon?.parametricRimFresnelPowerFactor == 1)
-        #expect(material2MToon?.parametricRimLiftFactor == 0)
-        #expect(material2MToon?.renderQueueOffsetNumber == 0)
-        #expect(material2MToon?.rimLightingMixFactor == 1)
-        #expect(material2MToon?.shadeColorFactor?.count == 3)
-        #expect(material2MToon?.shadeColorFactor?[0] == 1)
-        #expect(material2MToon?.shadeColorFactor?[1] == 0.613979936)
-        #expect(material2MToon?.shadeColorFactor?[2] == 0.5079454)
-        #expect(material2MToon?.shadeMultiplyTexture?.index == 4)
-        #expect(material2MToon?.shadingShiftFactor == -0.2)
-        #expect(material2MToon?.shadingShiftTexture?.index == 5)
-        #expect(material2MToon?.shadingShiftTexture?.scale == 1)
-        #expect(material2MToon?.shadingToonyFactor == 0.8)
-        #expect(material2MToon?.specVersion == "1.0")
-        #expect(material2MToon?.transparentWithZWrite == false)
-        #expect(material2MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material2MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material2MToon?.uvAnimationScrollYSpeedFactor == 0)
+    private func assertMToonMaterial(_ index: Int,
+                                     giEqualizationFactor: Double,
+                                     matcapFactor: [Double],
+                                     matcapTextureIndex: Int? = nil,
+                                     outlineColorFactor: [Double],
+                                     outlineWidthFactor: Double,
+                                     outlineWidthMode: MToonOutlineWidthMode,
+                                     outlineWidthMultiplyTextureIndex: Int? = nil,
+                                     parametricRimColorFactor: [Double],
+                                     parametricRimFresnelPowerFactor: Double,
+                                     parametricRimLiftFactor: Double,
+                                     shadeColorFactor: [Double],
+                                     shadeMultiplyTextureIndex: Int? = nil,
+                                     shadingShiftFactor: Double,
+                                     shadingShiftTextureIndex: Int? = nil,
+                                     shadingShiftTextureScale: Double? = nil,
+                                     shadingToonyFactor: Double,
+                                     sourceLocation: SourceLocation = #_sourceLocation) {
+        let mToon = vrm.document.gltf.materials?[index].extensions?.materialsMToon
+        #expect(mToon?.giEqualizationFactor == giEqualizationFactor, sourceLocation: sourceLocation)
+        assertComponents(mToon?.matcapFactor, matcapFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.matcapTexture?.index == matcapTextureIndex, sourceLocation: sourceLocation)
+        assertComponents(mToon?.outlineColorFactor, outlineColorFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.outlineLightingMixFactor == 1, sourceLocation: sourceLocation)
+        #expect(mToon?.outlineWidthFactor == outlineWidthFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.outlineWidthMode == outlineWidthMode, sourceLocation: sourceLocation)
+        #expect(mToon?.outlineWidthMultiplyTexture?.index == outlineWidthMultiplyTextureIndex, sourceLocation: sourceLocation)
+        assertComponents(mToon?.parametricRimColorFactor, parametricRimColorFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.parametricRimFresnelPowerFactor == parametricRimFresnelPowerFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.parametricRimLiftFactor == parametricRimLiftFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.renderQueueOffsetNumber == 0, sourceLocation: sourceLocation)
+        #expect(mToon?.rimLightingMixFactor == 1, sourceLocation: sourceLocation)
+        assertComponents(mToon?.shadeColorFactor, shadeColorFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.shadeMultiplyTexture?.index == shadeMultiplyTextureIndex, sourceLocation: sourceLocation)
+        #expect(mToon?.shadingShiftFactor == shadingShiftFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.shadingShiftTexture?.index == shadingShiftTextureIndex, sourceLocation: sourceLocation)
+        #expect(mToon?.shadingShiftTexture?.scale == shadingShiftTextureScale, sourceLocation: sourceLocation)
+        #expect(mToon?.shadingToonyFactor == shadingToonyFactor, sourceLocation: sourceLocation)
+        #expect(mToon?.specVersion == "1.0", sourceLocation: sourceLocation)
+        #expect(mToon?.transparentWithZWrite == false, sourceLocation: sourceLocation)
+        #expect(mToon?.uvAnimationRotationSpeedFactor == 0, sourceLocation: sourceLocation)
+        #expect(mToon?.uvAnimationScrollXSpeedFactor == 0, sourceLocation: sourceLocation)
+        #expect(mToon?.uvAnimationScrollYSpeedFactor == 0, sourceLocation: sourceLocation)
+    }
 
-        let material3MToon = vrm.document.gltf.materials?[3].extensions?.materialsMToon
-        #expect(material3MToon?.giEqualizationFactor == 0.9)
-        #expect(material3MToon?.matcapFactor?.count == 3)
-        #expect(material3MToon?.matcapFactor?[0] == 0)
-        #expect(material3MToon?.matcapFactor?[1] == 0)
-        #expect(material3MToon?.matcapFactor?[2] == 0)
-        #expect(material3MToon?.outlineColorFactor?.count == 3)
-        #expect(material3MToon?.outlineColorFactor?[0] == 0)
-        #expect(material3MToon?.outlineColorFactor?[1] == 0)
-        #expect(material3MToon?.outlineColorFactor?[2] == 0)
-        #expect(material3MToon?.outlineLightingMixFactor == 1)
-        #expect(material3MToon?.outlineWidthFactor == 0.5)
-        #expect(material3MToon?.outlineWidthMode == .some(.none))
-        #expect(material3MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material3MToon?.parametricRimColorFactor?[0] == 0)
-        #expect(material3MToon?.parametricRimColorFactor?[1] == 0)
-        #expect(material3MToon?.parametricRimColorFactor?[2] == 0)
-        #expect(material3MToon?.parametricRimFresnelPowerFactor == 1)
-        #expect(material3MToon?.parametricRimLiftFactor == 0)
-        #expect(material3MToon?.renderQueueOffsetNumber == 0)
-        #expect(material3MToon?.rimLightingMixFactor == 1)
-        #expect(material3MToon?.shadeColorFactor?.count == 3)
-        #expect(material3MToon?.shadeColorFactor?[0] == 0.4352691)
-        #expect(material3MToon?.shadeColorFactor?[1] == 0.3970382)
-        #expect(material3MToon?.shadeColorFactor?[2] == 0.500747442)
-        #expect(material3MToon?.shadeMultiplyTexture?.index == 7)
-        #expect(material3MToon?.shadingShiftFactor == -0.2)
-        #expect(material3MToon?.shadingToonyFactor == 0.8)
-        #expect(material3MToon?.specVersion == "1.0")
-        #expect(material3MToon?.transparentWithZWrite == false)
-        #expect(material3MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material3MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material3MToon?.uvAnimationScrollYSpeedFactor == 0)
-
-        let material4MToon = vrm.document.gltf.materials?[4].extensions?.materialsMToon
-        #expect(material4MToon?.giEqualizationFactor == 0.5)
-        #expect(material4MToon?.matcapFactor?.count == 3)
-        #expect(material4MToon?.matcapFactor?[0] == 0)
-        #expect(material4MToon?.matcapFactor?[1] == 0)
-        #expect(material4MToon?.matcapFactor?[2] == 0)
-        #expect(material4MToon?.outlineColorFactor?.count == 3)
-        #expect(material4MToon?.outlineColorFactor?[0] == 0)
-        #expect(material4MToon?.outlineColorFactor?[1] == 0)
-        #expect(material4MToon?.outlineColorFactor?[2] == 0)
-        #expect(material4MToon?.outlineLightingMixFactor == 1)
-        #expect(material4MToon?.outlineWidthFactor == 0.5)
-        #expect(material4MToon?.outlineWidthMode == .some(.none))
-        #expect(material4MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material4MToon?.parametricRimColorFactor?[0] == 0)
-        #expect(material4MToon?.parametricRimColorFactor?[1] == 0)
-        #expect(material4MToon?.parametricRimColorFactor?[2] == 0)
-        #expect(material4MToon?.parametricRimFresnelPowerFactor == 1)
-        #expect(material4MToon?.parametricRimLiftFactor == 0)
-        #expect(material4MToon?.renderQueueOffsetNumber == 0)
-        #expect(material4MToon?.rimLightingMixFactor == 1)
-        #expect(material4MToon?.shadeColorFactor?.count == 3)
-        #expect(material4MToon?.shadeColorFactor?[0] == 1)
-        #expect(material4MToon?.shadeColorFactor?[1] == 1)
-        #expect(material4MToon?.shadeColorFactor?[2] == 1)
-        #expect(material4MToon?.shadingShiftFactor == -0.2)
-        #expect(material4MToon?.shadingToonyFactor == 0.8)
-        #expect(material4MToon?.specVersion == "1.0")
-        #expect(material4MToon?.transparentWithZWrite == false)
-        #expect(material4MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material4MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material4MToon?.uvAnimationScrollYSpeedFactor == 0)
-
-        let material5MToon = vrm.document.gltf.materials?[5].extensions?.materialsMToon
-        #expect(material5MToon?.giEqualizationFactor == 0.9)
-        #expect(material5MToon?.matcapFactor?.count == 3)
-        #expect(material5MToon?.matcapFactor?[0] == 0)
-        #expect(material5MToon?.matcapFactor?[1] == 0)
-        #expect(material5MToon?.matcapFactor?[2] == 0)
-        #expect(material5MToon?.outlineColorFactor?.count == 3)
-        #expect(material5MToon?.outlineColorFactor?[0] == 0)
-        #expect(material5MToon?.outlineColorFactor?[1] == 0)
-        #expect(material5MToon?.outlineColorFactor?[2] == 0)
-        #expect(material5MToon?.outlineLightingMixFactor == 1)
-        #expect(material5MToon?.outlineWidthFactor == 0.0015)
-        #expect(material5MToon?.outlineWidthMode == .some(.worldCoordinates))
-        #expect(material5MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material5MToon?.parametricRimColorFactor?[0] == 0.07896994)
-        #expect(material5MToon?.parametricRimColorFactor?[1] == 0.07896994)
-        #expect(material5MToon?.parametricRimColorFactor?[2] == 0.07896994)
-        #expect(material5MToon?.parametricRimFresnelPowerFactor == 4.3)
-        #expect(material5MToon?.parametricRimLiftFactor == 0.182)
-        #expect(material5MToon?.renderQueueOffsetNumber == 0)
-        #expect(material5MToon?.rimLightingMixFactor == 1)
-        #expect(material5MToon?.shadeColorFactor?.count == 3)
-        #expect(material5MToon?.shadeColorFactor?[0] == 0.4352691)
-        #expect(material5MToon?.shadeColorFactor?[1] == 0.3970382)
-        #expect(material5MToon?.shadeColorFactor?[2] == 0.500747442)
-        #expect(material5MToon?.shadeMultiplyTexture?.index == 8)
-        #expect(material5MToon?.shadingShiftFactor == -0.1)
-        #expect(material5MToon?.shadingToonyFactor == 0.9)
-        #expect(material5MToon?.specVersion == "1.0")
-        #expect(material5MToon?.transparentWithZWrite == false)
-        #expect(material5MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material5MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material5MToon?.uvAnimationScrollYSpeedFactor == 0)
-
-        let material6MToon = vrm.document.gltf.materials?[6].extensions?.materialsMToon
-        #expect(material6MToon?.giEqualizationFactor == 0.9)
-        #expect(material6MToon?.matcapFactor?.count == 3)
-        #expect(material6MToon?.matcapFactor?[0] == 1)
-        #expect(material6MToon?.matcapFactor?[1] == 1)
-        #expect(material6MToon?.matcapFactor?[2] == 1)
-        #expect(material6MToon?.matcapTexture?.index == 9)
-        #expect(material6MToon?.outlineColorFactor?.count == 3)
-        #expect(material6MToon?.outlineColorFactor?[0] == 0.07896994)
-        #expect(material6MToon?.outlineColorFactor?[1] == 0.07896994)
-        #expect(material6MToon?.outlineColorFactor?[2] == 0.07896994)
-        #expect(material6MToon?.outlineLightingMixFactor == 1)
-        #expect(material6MToon?.outlineWidthFactor == 0.002)
-        #expect(material6MToon?.outlineWidthMode == .some(.worldCoordinates))
-        #expect(material6MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material6MToon?.parametricRimColorFactor?[0] == 0.345616162)
-        #expect(material6MToon?.parametricRimColorFactor?[1] == 0.345616162)
-        #expect(material6MToon?.parametricRimColorFactor?[2] == 0.345616162)
-        #expect(material6MToon?.parametricRimFresnelPowerFactor == 3.2)
-        #expect(material6MToon?.parametricRimLiftFactor == 0.15)
-        #expect(material6MToon?.renderQueueOffsetNumber == 0)
-        #expect(material6MToon?.rimLightingMixFactor == 1)
-        #expect(material6MToon?.shadeColorFactor?.count == 3)
-        #expect(material6MToon?.shadeColorFactor?[0] == 0.342953056)
-        #expect(material6MToon?.shadeColorFactor?[1] == 0.37243554)
-        #expect(material6MToon?.shadeColorFactor?[2] == 0.432035774)
-        #expect(material6MToon?.shadeMultiplyTexture?.index == 8)
-        #expect(material6MToon?.shadingShiftFactor == -0.1)
-        #expect(material6MToon?.shadingToonyFactor == 0.9)
-        #expect(material6MToon?.specVersion == "1.0")
-        #expect(material6MToon?.transparentWithZWrite == false)
-        #expect(material6MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material6MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material6MToon?.uvAnimationScrollYSpeedFactor == 0)
-
-        let material7MToon = vrm.document.gltf.materials?[7].extensions?.materialsMToon
-        #expect(material7MToon == nil)
-
-        let material8MToon = vrm.document.gltf.materials?[8].extensions?.materialsMToon
-        #expect(material8MToon?.giEqualizationFactor == 0.9)
-        #expect(material8MToon?.matcapFactor?.count == 3)
-        #expect(material8MToon?.matcapFactor?[0] == 0)
-        #expect(material8MToon?.matcapFactor?[1] == 0)
-        #expect(material8MToon?.matcapFactor?[2] == 0)
-        #expect(material8MToon?.outlineColorFactor?.count == 3)
-        #expect(material8MToon?.outlineColorFactor?[0] == 0.01850021)
-        #expect(material8MToon?.outlineColorFactor?[1] == 0.0176419467)
-        #expect(material8MToon?.outlineColorFactor?[2] == 0.0251868479)
-        #expect(material8MToon?.outlineLightingMixFactor == 1)
-        #expect(material8MToon?.outlineWidthFactor == 0.001)
-        #expect(material8MToon?.outlineWidthMode == .some(.worldCoordinates))
-        #expect(material8MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material8MToon?.parametricRimColorFactor?[0] == 0)
-        #expect(material8MToon?.parametricRimColorFactor?[1] == 0)
-        #expect(material8MToon?.parametricRimColorFactor?[2] == 0)
-        #expect(material8MToon?.parametricRimFresnelPowerFactor == 1)
-        #expect(material8MToon?.parametricRimLiftFactor == 0)
-        #expect(material8MToon?.renderQueueOffsetNumber == 0)
-        #expect(material8MToon?.rimLightingMixFactor == 1)
-        #expect(material8MToon?.shadeColorFactor?.count == 3)
-        #expect(material8MToon?.shadeColorFactor?[0] == 0.4352691)
-        #expect(material8MToon?.shadeColorFactor?[1] == 0.3970382)
-        #expect(material8MToon?.shadeColorFactor?[2] == 0.500747442)
-        #expect(material8MToon?.shadeMultiplyTexture?.index == 4)
-        #expect(material8MToon?.shadingShiftFactor == -0.2)
-        #expect(material8MToon?.shadingToonyFactor == 0.8)
-        #expect(material8MToon?.specVersion == "1.0")
-        #expect(material8MToon?.transparentWithZWrite == false)
-        #expect(material8MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material8MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material8MToon?.uvAnimationScrollYSpeedFactor == 0)
-
-        let material9MToon = vrm.document.gltf.materials?[9].extensions?.materialsMToon
-        #expect(material9MToon == nil)
-
-        let material10MToon = vrm.document.gltf.materials?[10].extensions?.materialsMToon
-        #expect(material10MToon?.giEqualizationFactor == 0.9)
-        #expect(material10MToon?.matcapFactor?.count == 3)
-        #expect(material10MToon?.matcapFactor?[0] == 1)
-        #expect(material10MToon?.matcapFactor?[1] == 1)
-        #expect(material10MToon?.matcapFactor?[2] == 1)
-        #expect(material10MToon?.matcapTexture?.index == 9)
-        #expect(material10MToon?.outlineColorFactor?.count == 3)
-        #expect(material10MToon?.outlineColorFactor?[0] == 0.009166719)
-        #expect(material10MToon?.outlineColorFactor?[1] == 0.009166719)
-        #expect(material10MToon?.outlineColorFactor?[2] == 0.009166719)
-        #expect(material10MToon?.outlineLightingMixFactor == 1)
-        #expect(material10MToon?.outlineWidthFactor == 0.001)
-        #expect(material10MToon?.outlineWidthMode == .some(.worldCoordinates))
-        #expect(material10MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material10MToon?.parametricRimColorFactor?[0] == 0.432035774)
-        #expect(material10MToon?.parametricRimColorFactor?[1] == 0.432035774)
-        #expect(material10MToon?.parametricRimColorFactor?[2] == 0.432035774)
-        #expect(material10MToon?.parametricRimFresnelPowerFactor == 7.9)
-        #expect(material10MToon?.parametricRimLiftFactor == 0.153)
-        #expect(material10MToon?.renderQueueOffsetNumber == 0)
-        #expect(material10MToon?.rimLightingMixFactor == 1)
-        #expect(material10MToon?.shadeColorFactor?.count == 3)
-        #expect(material10MToon?.shadeColorFactor?[0] == 0.4352691)
-        #expect(material10MToon?.shadeColorFactor?[1] == 0.3970382)
-        #expect(material10MToon?.shadeColorFactor?[2] == 0.500747442)
-        #expect(material10MToon?.shadeMultiplyTexture?.index == 2)
-        #expect(material10MToon?.shadingShiftFactor == -0.1)
-        #expect(material10MToon?.shadingToonyFactor == 0.9)
-        #expect(material10MToon?.specVersion == "1.0")
-        #expect(material10MToon?.transparentWithZWrite == false)
-        #expect(material10MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material10MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material10MToon?.uvAnimationScrollYSpeedFactor == 0)
-
-        let material11MToon = vrm.document.gltf.materials?[11].extensions?.materialsMToon
-        #expect(material11MToon?.giEqualizationFactor == 0.9)
-        #expect(material11MToon?.matcapFactor?.count == 3)
-        #expect(material11MToon?.matcapFactor?[0] == 0)
-        #expect(material11MToon?.matcapFactor?[1] == 0)
-        #expect(material11MToon?.matcapFactor?[2] == 0)
-        #expect(material11MToon?.outlineColorFactor?.count == 3)
-        #expect(material11MToon?.outlineColorFactor?[0] == 0)
-        #expect(material11MToon?.outlineColorFactor?[1] == 0)
-        #expect(material11MToon?.outlineColorFactor?[2] == 0)
-        #expect(material11MToon?.outlineLightingMixFactor == 1)
-        #expect(material11MToon?.outlineWidthFactor == 0.5)
-        #expect(material11MToon?.outlineWidthMode == .some(.none))
-        #expect(material11MToon?.parametricRimColorFactor?.count == 3)
-        #expect(material11MToon?.parametricRimColorFactor?[0] == 0)
-        #expect(material11MToon?.parametricRimColorFactor?[1] == 0)
-        #expect(material11MToon?.parametricRimColorFactor?[2] == 0)
-        #expect(material11MToon?.parametricRimFresnelPowerFactor == 1)
-        #expect(material11MToon?.parametricRimLiftFactor == 0)
-        #expect(material11MToon?.renderQueueOffsetNumber == 0)
-        #expect(material11MToon?.rimLightingMixFactor == 1)
-        #expect(material11MToon?.shadeColorFactor?.count == 3)
-        #expect(material11MToon?.shadeColorFactor?[0] == 1)
-        #expect(material11MToon?.shadeColorFactor?[1] == 1)
-        #expect(material11MToon?.shadeColorFactor?[2] == 1)
-        #expect(material11MToon?.shadeMultiplyTexture?.index == 12)
-        #expect(material11MToon?.shadingShiftFactor == -0.1)
-        #expect(material11MToon?.shadingToonyFactor == 0.9)
-        #expect(material11MToon?.specVersion == "1.0")
-        #expect(material11MToon?.transparentWithZWrite == false)
-        #expect(material11MToon?.uvAnimationRotationSpeedFactor == 0)
-        #expect(material11MToon?.uvAnimationScrollXSpeedFactor == 0)
-        #expect(material11MToon?.uvAnimationScrollYSpeedFactor == 0)
-
-        let material12MToon = vrm.document.gltf.materials?[12].extensions?.materialsMToon
-        #expect(material12MToon == nil)
-
-        let material13MToon = vrm.document.gltf.materials?[13].extensions?.materialsMToon
-        #expect(material13MToon == nil)
-
-        let material14MToon = vrm.document.gltf.materials?[14].extensions?.materialsMToon
-        #expect(material14MToon == nil)
-
-        let material15MToon = vrm.document.gltf.materials?[15].extensions?.materialsMToon
-        #expect(material15MToon == nil)
-
-        let material16MToon = vrm.document.gltf.materials?[16].extensions?.materialsMToon
-        #expect(material16MToon == nil)
+    /// The rest of the materials of the fixture are shaded by plain glTF and
+    /// carry no MToon extension at all.
+    private func assertMaterialsWithoutMToon() {
+        for index in [7, 9, 12, 13, 14, 15, 16] {
+            #expect(vrm.document.gltf.materials?[index].extensions?.materialsMToon == nil)
+        }
     }
 
     @Test
     func testNodeConstraint() {
-        #expect(vrm.document.gltf.nodes?[14].extensions?.nodeConstraint?.constraint.rotation?.source == 82)
-        #expect(vrm.document.gltf.nodes?[14].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[14].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[15].extensions?.nodeConstraint?.constraint.rotation?.source == 83)
-        #expect(vrm.document.gltf.nodes?[15].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[15].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[16].extensions?.nodeConstraint?.constraint.rotation?.source == 84)
-        #expect(vrm.document.gltf.nodes?[16].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[16].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[17].extensions?.nodeConstraint?.constraint.rotation?.source == 86)
-        #expect(vrm.document.gltf.nodes?[17].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[17].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[18].extensions?.nodeConstraint?.constraint.rotation?.source == 87)
-        #expect(vrm.document.gltf.nodes?[18].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[18].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[19].extensions?.nodeConstraint?.constraint.rotation?.source == 88)
-        #expect(vrm.document.gltf.nodes?[19].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[19].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[20].extensions?.nodeConstraint?.constraint.rotation?.source == 89)
-        #expect(vrm.document.gltf.nodes?[20].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[20].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[21].extensions?.nodeConstraint?.constraint.rotation?.source == 90)
-        #expect(vrm.document.gltf.nodes?[21].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[21].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[22].extensions?.nodeConstraint?.constraint.rotation?.source == 91)
-        #expect(vrm.document.gltf.nodes?[22].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[22].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[23].extensions?.nodeConstraint?.constraint.rotation?.source == 92)
-        #expect(vrm.document.gltf.nodes?[23].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[23].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[24].extensions?.nodeConstraint?.constraint.rotation?.source == 93)
-        #expect(vrm.document.gltf.nodes?[24].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[24].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[25].extensions?.nodeConstraint?.constraint.rotation?.source == 94)
-        #expect(vrm.document.gltf.nodes?[25].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[25].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[26].extensions?.nodeConstraint?.constraint.rotation?.source == 95)
-        #expect(vrm.document.gltf.nodes?[26].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[26].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[27].extensions?.nodeConstraint?.constraint.rotation?.source == 96)
-        #expect(vrm.document.gltf.nodes?[27].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[27].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[28].extensions?.nodeConstraint?.constraint.rotation?.source == 97)
-        #expect(vrm.document.gltf.nodes?[28].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[28].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[29].extensions?.nodeConstraint?.constraint.rotation?.source == 98)
-        #expect(vrm.document.gltf.nodes?[29].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[29].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[30].extensions?.nodeConstraint?.constraint.rotation?.source == 99)
-        #expect(vrm.document.gltf.nodes?[30].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[30].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[31].extensions?.nodeConstraint?.constraint.rotation?.source == 100)
-        #expect(vrm.document.gltf.nodes?[31].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[31].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[32].extensions?.nodeConstraint?.constraint.rotation?.source == 101)
-        #expect(vrm.document.gltf.nodes?[32].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[32].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[33].extensions?.nodeConstraint?.constraint.rotation?.source == 102)
-        #expect(vrm.document.gltf.nodes?[33].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[33].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[34].extensions?.nodeConstraint?.constraint.rotation?.source == 103)
-        #expect(vrm.document.gltf.nodes?[34].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[34].extensions?.nodeConstraint?.specVersion == "1.0")
-        #expect(vrm.document.gltf.nodes?[35].extensions?.nodeConstraint?.constraint.rotation?.source == 104)
-        #expect(vrm.document.gltf.nodes?[35].extensions?.nodeConstraint?.constraint.rotation?.weight == 1)
-        #expect(vrm.document.gltf.nodes?[35].extensions?.nodeConstraint?.specVersion == "1.0")
+        // Nodes 14...35 are each rotation-constrained by one node, node 85
+        // being the one gap in the sources they name.
+        let sources = Array(82...84) + Array(86...104)
+        for (node, source) in zip(14...35, sources) {
+            let constraint = vrm.document.gltf.nodes?[node].extensions?.nodeConstraint
+            #expect(constraint?.specVersion == "1.0")
+            guard case .rotation(let rotation) = constraint?.constraint else {
+                Issue.record("node \(node) is not rotation-constrained")
+                continue
+            }
+            #expect(rotation.source == source)
+            #expect(rotation.weight == 1)
+        }
+    }
+
+    /// The version decides how everything else is read, so a document carrying
+    /// both extensions, or neither, is refused rather than guessed at.
+    @Test
+    func testADocumentThatIsNotOneVRMIsRefused() throws {
+        let both = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
+            var extensions = json.object("extensions") ?? [:]
+            extensions["VRMC_vrm"] = ["specVersion": "1.0"]
+            json["extensions"] = .object(extensions)
+        }
+        let neither = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
+            json.removeValue(forKey: "extensions")
+        }
+
+        for data in [both, neither] {
+            #expect(throws: VRMError.self) { try VRM(data: data) }
+        }
+    }
+
+    /// `VRMC_node_constraint` defines exactly one of roll, aim and rotation;
+    /// none or several says nothing about how the node is driven.
+    @Test
+    func testANodeConstraintMustDefineExactlyOneKind() throws {
+        for constraint: JSONValue in [[:], ["roll": ["source": 0, "rollAxis": "X"], "rotation": ["source": 1]]] {
+            let data = try VRMSampleAsset.seedSan.rewritingJSON { json in
+                var nodes = json.objects("nodes")
+                nodes[14]["extensions"] = ["VRMC_node_constraint": ["specVersion": "1.0", "constraint": constraint]]
+                json["nodes"] = .objects(nodes)
+            }
+            #expect(throws: (any Error).self) { try VRM1(data: data) }
+        }
+    }
+
+    /// The extension carries its own version, and a constraint of one this
+    /// cannot read would be solved as if it said something else.
+    @Test
+    func testAnUnsupportedNodeConstraintSpecVersionIsRejected() throws {
+        typealias NodeConstraint = GLTF.Node.NodeExtensions.NodeConstraint
+        #expect(NodeConstraint.supports(specVersion: "1.0"))
+        #expect(NodeConstraint.supports(specVersion: "1.0-beta"))
+        #expect(!NodeConstraint.supports(specVersion: "2.0"))
+
+        let data = try VRMSampleAsset.seedSan.rewritingJSON { json in
+            var nodes = json.objects("nodes")
+            var constraint = try #require(nodes[14].object("extensions")?.object("VRMC_node_constraint"))
+            constraint["specVersion"] = "2.0"
+            nodes[14]["extensions"] = ["VRMC_node_constraint": .object(constraint)]
+            json["nodes"] = .objects(nodes)
+        }
+        #expect(throws: (any Error).self) { try VRM1(data: data) }
     }
 }

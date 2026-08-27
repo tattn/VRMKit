@@ -1,14 +1,12 @@
 import Foundation
 
 extension GLTFEditableDocument {
-    /// Adds a VRM 0.x bone group, so that everything below its root bones
-    /// swings, and returns the index of the group.
-    ///
-    /// The group is appended and nothing already in the document moves. A model
-    /// carrying no spring bones is given what holds them, and one whose bone
-    /// groups are not an array to append to is refused rather than written over.
+    /// Adds a VRM 0.x bone group, so that everything below its root bones swings,
+    /// and returns the index of the group. Nothing already in the document moves,
+    /// and a model whose bone groups are not an array to append to is refused
+    /// rather than written over.
     @discardableResult
-    public func addVRM0SpringBone(_ group: VRM0SpringBoneGroup) throws -> Int {
+    public mutating func addVRM0SpringBone(_ group: VRM0SpringBoneGroup) throws -> Int {
         try requireVRMSpecVersion(.v0, forWriting: "a secondaryAnimation bone group")
         let colliderGroupCount = try existingVRM0ColliderGroupCount()
         guard !group.rootBones.isEmpty else {
@@ -18,11 +16,11 @@ extension GLTFEditableDocument {
         for bone in group.rootBones {
             try requireNode(at: bone)
         }
-        try requireFiniteNonnegative(group.stiffness, named: "stiffness")
-        try requireFiniteNonnegative(group.gravityPower, named: "gravity power")
-        try requireFiniteNonnegative(group.hitRadius, named: "hit radius")
-        try requireDragForce(group.dragForce)
-        try requireGravityDirection(group.gravityDirection)
+        try VRMSpringBoneParameters.requireFiniteNonnegative(group.stiffness, named: "stiffness")
+        try VRMSpringBoneParameters.requireFiniteNonnegative(group.gravityPower, named: "gravity power")
+        try VRMSpringBoneParameters.requireFiniteNonnegative(group.hitRadius, named: "hit radius")
+        try VRMSpringBoneParameters.requireDragForce(group.dragForce)
+        try VRMSpringBoneParameters.requireFinite(group.gravityDirection, named: "gravity direction")
         if let center = group.center {
             try requireNode(at: center)
         }
@@ -31,32 +29,34 @@ extension GLTFEditableDocument {
         return try updateRootExtension(GLTFExtension.vrm0.rawValue) { vrm in
             var secondaryAnimation = vrm.object(Self.vrm0SpringBonesKey) ?? [:]
             let index = secondaryAnimation.appendObject(group.json(), to: "boneGroups")
-            vrm[Self.vrm0SpringBonesKey] = secondaryAnimation
+            vrm[Self.vrm0SpringBonesKey] = .object(secondaryAnimation)
             return index
         }
     }
 
-    /// Adds a `VRMC_springBone` spring and returns its index.
-    ///
-    /// The spring is appended and nothing already in the document moves. What a
-    /// spring may swing is decided against the springs already there, so a model
-    /// whose own springs cannot be read is refused rather than added to.
+    /// Adds a `VRMC_springBone` spring and returns its index. What a spring may
+    /// swing is decided against the springs already there, so a model whose own
+    /// springs cannot be read is refused rather than added to.
     @discardableResult
-    public func addVRM1SpringBone(_ spring: VRM1Spring) throws -> Int {
+    public mutating func addVRM1SpringBone(_ spring: VRM1Spring) throws -> Int {
         try requireVRMSpecVersion(.v1, forWriting: "a VRMC_springBone spring")
         let existing = try existingVRM1Springs()
         for joint in spring.joints {
             for parameter in joint.statedParameters {
-                try requireFiniteNonnegative(parameter.value, named: parameter.name)
+                try VRMSpringBoneParameters.requireFiniteNonnegative(parameter.value, named: parameter.name)
             }
-            if let dragForce = joint.dragForce { try requireDragForce(dragForce) }
-            if let gravityDirection = joint.gravityDirection { try requireGravityDirection(gravityDirection) }
+            if let dragForce = joint.dragForce {
+                try VRMSpringBoneParameters.requireDragForce(dragForce)
+            }
+            if let gravityDirection = joint.gravityDirection {
+                try VRMSpringBoneParameters.requireFinite(gravityDirection, named: "gravity direction")
+            }
         }
         try requireColliderGroups(spring.colliderGroups, available: existing.colliderGroups)
         try validateChain(of: spring, against: existing.springs)
 
         return try updateRootExtension(GLTFExtension.springBone.rawValue) { springBone in
-            springBone["specVersion"] = Self.writableSpecVersion
+            springBone["specVersion"] = .string(Self.writableSpecVersion)
             return springBone.appendObject(spring.json(), to: "springs")
         }
     }
@@ -65,7 +65,7 @@ extension GLTFEditableDocument {
     /// A VRM 1.0 model keeps them in ``GLTFExtension/springBone`` beside it.
     private static let vrm0SpringBonesKey = "secondaryAnimation"
 
-    private func requireVRMSpecVersion(_ required: VRMSpecVersion, forWriting subject: String) throws {
+    private mutating func requireVRMSpecVersion(_ required: VRMSpecVersion, forWriting subject: String) throws {
         let version = try vrmSpecVersion()
         guard version == required else {
             throw VRMError._notSupported(
@@ -78,9 +78,8 @@ extension GLTFEditableDocument {
 
     /// What adding a spring has to know about the ones already there: the nodes
     /// each swings, so that no two claim one, and how many collider groups a new
-    /// spring may name. Read strictly, since a spring cannot be kept clear of
-    /// springs that cannot be made out.
-    private func existingVRM1Springs() throws -> (springs: [[Int]], colliderGroups: Int) {
+    /// spring may name.
+    private mutating func existingVRM1Springs() throws -> (springs: [[Int]], colliderGroups: Int) {
         let name = GLTFExtension.springBone.rawValue
         guard let object = try rootExtensionObject(name) else { return ([], 0) }
         // The extension carries its own version rather than the model's.
@@ -95,41 +94,20 @@ extension GLTFEditableDocument {
 
     /// How many collider groups a VRM 0.x bone group may name. A 0.x group
     /// swings what hangs below its roots, so it has nothing to keep clear of.
-    private func existingVRM0ColliderGroupCount() throws -> Int {
+    private mutating func existingVRM0ColliderGroupCount() throws -> Int {
         let name = "\(GLTFExtension.vrm0.rawValue).\(Self.vrm0SpringBonesKey)"
         guard let vrm = try rootExtensionObject(GLTFExtension.vrm0.rawValue),
               let secondaryAnimation = try vrm.requiredObject(Self.vrm0SpringBonesKey,
                                                               of: GLTFExtension.vrm0.rawValue) else { return 0 }
-        // Read for its shape alone: appending to something that is not an array of
-        // groups would throw away whatever it holds.
+        // Read for its shape alone: appending to something that is not an array
+        // of groups would throw away whatever it holds.
         _ = try secondaryAnimation.requiredObjects("boneGroups", of: name)
         return try secondaryAnimation.requiredObjects("colliderGroups", of: name)?.count ?? 0
     }
 
     // MARK: - Parameters
 
-    // The ranges a parameter is written in. VRM 1.0 states them in its schema; VRM
-    // 0.x states none, so these are the ranges its runtime behaves in.
-
-    private func requireFiniteNonnegative(_ value: Float, named name: String) throws {
-        guard value.isFinite, value >= 0 else {
-            throw VRMError._dataInconsistent("spring bone \(name) must be finite and nonnegative")
-        }
-    }
-
-    private func requireDragForce(_ dragForce: Float) throws {
-        guard dragForce.isFinite, (0...1).contains(dragForce) else {
-            throw VRMError._dataInconsistent("spring bone drag force must be finite and in 0...1")
-        }
-    }
-
-    private func requireGravityDirection(_ direction: SIMD3<Float>) throws {
-        guard direction.x.isFinite, direction.y.isFinite, direction.z.isFinite else {
-            throw VRMError._dataInconsistent("spring bone gravity direction cannot contain infinity or NaN")
-        }
-    }
-
-    private func requireColliderGroups(_ groups: [Int], available: Int) throws {
+    private mutating func requireColliderGroups(_ groups: [Int], available: Int) throws {
         for group in groups {
             guard group >= 0, group < available else {
                 throw VRMError._dataInconsistent(

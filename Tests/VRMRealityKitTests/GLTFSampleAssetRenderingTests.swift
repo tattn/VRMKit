@@ -13,9 +13,9 @@ import VRMTestSupport
 @MainActor
 struct GLTFSampleAssetRenderingTests {
     @Test(arguments: GLTFSampleAsset.allCases)
-    func testEverySampleAssetLoadsIntoARenderableEntity(_ asset: GLTFSampleAsset) throws {
+    func testEverySampleAssetLoadsIntoARenderableEntity(_ asset: GLTFSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(asset)
+        let entity = try await TestSupport.loadEntity(asset)
 
         // Every asset must produce drawable geometry, not just an empty graph.
         let modelEntities = entity.modelEntitiesInHierarchy
@@ -43,10 +43,10 @@ struct GLTFSampleAssetRenderingTests {
     }
 
     @Test
-    func testIndexedAndNonIndexedTrianglesBothRenderThreeVertices() throws {
+    func testIndexedAndNonIndexedTrianglesBothRenderThreeVertices() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         for asset in [GLTFSampleAsset.triangle, .triangleWithoutIndices] {
-            let entity = try TestSupport.loadEntity(asset)
+            let entity = try await TestSupport.loadEntity(asset)
             let model = try #require(entity.modelEntitiesInHierarchy.first?.components[ModelComponent.self])
             let part = try #require(model.mesh.contents.models.first?.parts.first)
 
@@ -56,9 +56,9 @@ struct GLTFSampleAssetRenderingTests {
     }
 
     @Test
-    func testTwoNodesSharingOneMeshBecomeTwoEntities() throws {
+    func testTwoNodesSharingOneMeshBecomeTwoEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.simpleMeshes)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.simpleMeshes)
 
         let first = try #require(entity.entity(forNodeAt: 0))
         let second = try #require(entity.entity(forNodeAt: 1))
@@ -81,9 +81,9 @@ struct GLTFSampleAssetRenderingTests {
     }
 
     @Test
-    func testSkinnedSampleGetsSkeletonAndInitialPose() throws {
+    func testSkinnedSampleGetsSkeletonAndInitialPose() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.simpleSkin)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.simpleSkin)
 
         let binding = try #require(entity.skinBindings.first)
         // SimpleSkin's skin lists two joints, nodes 1 and 2.
@@ -96,9 +96,9 @@ struct GLTFSampleAssetRenderingTests {
     /// SimpleMorph declares `mesh.weights = [0.5, 0.5]` and no node weights, so
     /// it is the fixture for the `node.weights` → `mesh.weights` fallback.
     @Test
-    func testInitialMorphWeightsFallBackToMeshWeights() throws {
+    func testInitialMorphWeightsFallBackToMeshWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.simpleMorph)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.simpleMorph)
 
         let binding = try #require(entity.morphBindings[0])
         #expect(binding.targetCount == 2)
@@ -108,9 +108,9 @@ struct GLTFSampleAssetRenderingTests {
     }
 
     @Test
-    func testCamerasBecomeCameraComponents() throws {
+    func testCamerasBecomeCameraComponents() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.cameras)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.cameras)
 
         let perspectiveNode = try #require(entity.entity(forNodeAt: 1))
         let perspective = try #require(perspectiveNode.components[PerspectiveCameraComponent.self])
@@ -130,9 +130,9 @@ struct GLTFSampleAssetRenderingTests {
     /// A loaded animated model sits in its rest pose until something plays an
     /// animation. Playback itself is covered by GLTFAnimationPlaybackTests.
     @Test
-    func testAnimatedSamplesRenderTheirRestPose() throws {
+    func testAnimatedSamplesRenderTheirRestPose() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
 
         let node = try #require(entity.entity(forNodeAt: 0))
         #expect(node.transform.rotation.vector.isApproximatelyEqual(to: SIMD4<Float>(0, 0, 0, 1)))
@@ -140,9 +140,9 @@ struct GLTFSampleAssetRenderingTests {
     }
 
     @Test
-    func testAnimatedMorphCubeKeepsItsMorphBindings() throws {
+    func testAnimatedMorphCubeKeepsItsMorphBindings() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try TestSupport.loadEntity(GLTFSampleAsset.animatedMorphCube)
+        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedMorphCube)
 
         // The weights channel targets a node, which has to resolve to the
         // blend-shape model entities the animation runtime writes to.
@@ -157,18 +157,19 @@ struct GLTFSampleAssetRenderingTests {
     /// below one of its own joints, a joint whose entity is then asked for while
     /// its own node is still under construction.
     @Test
-    func testSkinnedMeshBelowOneOfItsJointsResolvesToTheSameJointEntities() throws {
+    func testSkinnedMeshBelowOneOfItsJointsResolvesToTheSameJointEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // SimpleSkin's node 0 is the skinned mesh and its joints are nodes 1 / 2.
         let loader = try TestSupport.loader(.simpleSkin) { json in
-            guard var nodes = json["nodes"] as? [[String: Any]], nodes.count == 3 else {
+            var nodes = json.objects("nodes")
+            guard nodes.count == 3 else {
                 throw VRMError.dataInconsistent("Missing SimpleSkin node fixture data")
             }
             nodes[1]["children"] = [2, 0]
-            json["nodes"] = nodes
+            json["nodes"] = .objects(nodes)
             json["scenes"] = [["nodes": [1]]]
         }
-        let entity = try loader.loadEntity()
+        let entity = try await loader.loadEntity()
 
         let jointRoot = try #require(entity.entity(forNodeAt: 1))
         let meshNode = try #require(entity.entity(forNodeAt: 0))
@@ -186,22 +187,22 @@ struct GLTFSampleAssetRenderingTests {
     /// glTF requires every primitive of a skinned mesh to carry both skinning
     /// attributes, so a file missing one is malformed rather than unskinned.
     @Test
-    func testSkinnedPrimitiveWithoutSkinningAttributesFailsTheLoad() throws {
+    func testSkinnedPrimitiveWithoutSkinningAttributesFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         for dropped in ["JOINTS_0", "WEIGHTS_0"] {
             let loader = try TestSupport.loader(.simpleSkin) { json in
-                guard var meshes = json["meshes"] as? [[String: Any]],
-                      var primitives = meshes.first?["primitives"] as? [[String: Any]],
-                      var attributes = primitives.first?["attributes"] as? [String: Any] else {
+                var meshes = json.objects("meshes")
+                var primitives = meshes.first?.objects("primitives") ?? []
+                guard var attributes = primitives.first?.object("attributes") else {
                     throw VRMError.dataInconsistent("Missing SimpleSkin mesh fixture data")
                 }
                 attributes[dropped] = nil
-                primitives[0]["attributes"] = attributes
-                meshes[0]["primitives"] = primitives
-                json["meshes"] = meshes
+                primitives[0]["attributes"] = .object(attributes)
+                meshes[0]["primitives"] = .objects(primitives)
+                json["meshes"] = .objects(meshes)
             }
-            #expect(throws: VRMError.self, "a skinned primitive without \(dropped)") {
-                try loader.loadEntity()
+            await #expect(throws: VRMError.self, "a skinned primitive without \(dropped)") {
+                try await loader.loadEntity()
             }
         }
     }
@@ -209,11 +210,11 @@ struct GLTFSampleAssetRenderingTests {
     /// The loader keeps no scene cache, so one loader can hand out several
     /// independently animatable copies of the same scene.
     @Test
-    func testLoadingOneSceneTwiceBuildsIndependentEntities() throws {
+    func testLoadingOneSceneTwiceBuildsIndependentEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleSkin.url)
-        let first = try loader.loadEntity()
-        let second = try loader.loadEntity()
+        let first = try await loader.loadEntity()
+        let second = try await loader.loadEntity()
 
         #expect(first !== second)
         #expect(first.entity(forNodeAt: 1) !== second.entity(forNodeAt: 1))
@@ -236,9 +237,8 @@ struct GLTFSampleAssetRenderingTests {
             return material.textureCoordinateTransform
         }
 
-        // Offsets and scales carry over as-is; only the rotation direction
-        // mirrors. `TextureTransformRenderingTests` is what proves that mapping
-        // right; this pins it down for the Khronos fixture's own materials.
+        // Offsets and scales carry over as-is; only the rotation direction mirrors,
+        // which `TextureTransformRenderingTests` is what proves right.
         // Material 2 "Offset UV", 3 "Rotation" (π/8), 4 "Scale", 5 "All":
         #expect(try transform(2).offset.isApproximatelyEqual(to: SIMD2<Float>(0.5, 0.5)))
         #expect(try transform(3).rotation.isApproximatelyEqual(to: -0.39269908))

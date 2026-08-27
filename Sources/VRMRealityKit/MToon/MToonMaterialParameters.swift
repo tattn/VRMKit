@@ -67,9 +67,9 @@ struct MToonMaterialParameters {
         matcapColor = SIMD4<Float>(mtoon.matcapFactor, 1)
         outlineColor = mtoon.outlineColorFactor
         emissiveFactor = SIMD4<Float>(mtoon.emissiveFactor, 1)
-        // z keeps the rows a faithful copy of the material, but the shader has
-        // no use for giEqualizationFactor: equalizing GI needs a direction
-        // dependent ambient term, and VRMEntity exposes one uniform color.
+        // z keeps the rows a faithful copy of the material; the shader has no use
+        // for giEqualizationFactor, since VRMEntity exposes one uniform ambient
+        // color rather than a direction dependent term.
         shadeParams = SIMD4<Float>(mtoon.shadingShiftFactor,
                                    mtoon.shadingToonyFactor,
                                    mtoon.giEqualizationFactor,
@@ -100,10 +100,8 @@ struct MToonMaterialParameters {
     }
 
     /// What does not belong in the packed texture: the light direction, which
-    /// changes far too often to rebake rows for, and the outline's offset
-    /// budget, which belongs to the mesh a pass draws rather than to the
-    /// material these rows describe, so it is passed through from wherever the
-    /// loader wrote it. (UV animation time comes from `uniforms().time()`.)
+    /// moves too often to rebake rows for, and the outline budget, which belongs
+    /// to the mesh a pass draws rather than to the material.
     func customValue(outlineBudget: Float) -> SIMD4<Float> {
         SIMD4<Float>(lightDirection, outlineBudget)
     }
@@ -193,15 +191,22 @@ struct MToonMaterialParameters {
         }
     }
 
-    @MainActor
-    func textureResource() throws -> TextureResource {
-        // Sampler rows follow the base rows, indexed by MToonTextureSlot.rawValue.
+    /// The rows as the shader indexes them: the base rows in
+    /// ``MToonParameterRow`` order, then the sampler rows at
+    /// `MToonTextureSlot.rawValue`.
+    var packedRows: [SIMD4<Float>] {
         let rows = MToonParameterRow.allCases.map(value(for:)) + samplers
         precondition(rows.count == Self.textureRowCount)
+        return rows
+    }
+
+    @MainActor
+    func textureResource() throws -> TextureResource {
+        let rows = packedRows
         let data = rows.withUnsafeBufferPointer { Data(buffer: $0) }
         let mip = TextureResource.Contents.MipmapLevel.mip(
             data: data,
-            bytesPerRow: MemoryLayout<SIMD4<Float>>.stride * rows.count
+            bytesPerRow: MToonParameterTexture.bytesPerRow
         )
         return try TextureResource(dimensions: .dimensions(width: rows.count, height: 1),
                                    format: .raw(pixelFormat: .rgba32Float),
@@ -209,13 +214,101 @@ struct MToonMaterialParameters {
     }
 }
 
+/// One material's packed parameter rows as a texture the rows are written into
+/// in place.
+///
+/// The rows move on per-frame paths, so the resource is allocated once and every
+/// later write is a blit into it: the materials keep sampling the same
+/// ``resource``.
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+@MainActor
+final class MToonParameterTexture {
+    static let bytesPerRow = MemoryLayout<SIMD4<Float>>.stride * MToonMaterialParameters.textureRowCount
+
+    /// What the materials sample. It outlives every write, so installing it on
+    /// a material once is enough.
+    let resource: TextureResource
+
+    private let texture: LowLevelTexture
+    private let commandQueue: MTLCommandQueue
+    private let device: MTLDevice
+
+    /// How many times the rows have been written, which pins the flush path to
+    /// one write per actual change.
+    private(set) var writeCount = 0
+
+    /// One queue carries every parameter texture's blits, since the writes are
+    /// all main-actor.
+    private static var sharedCommandQueue: MTLCommandQueue?
+
+    init(rows: [SIMD4<Float>]) throws {
+        var descriptor = LowLevelTexture.Descriptor()
+        descriptor.textureType = .type2D
+        descriptor.pixelFormat = .rgba32Float
+        descriptor.width = MToonMaterialParameters.textureRowCount
+        descriptor.height = 1
+        descriptor.mipmapLevelCount = 1
+        descriptor.textureUsage = [.shaderRead]
+        texture = try LowLevelTexture(descriptor: descriptor)
+        // Encoded on the device RealityKit gave the texture, which on a multi-GPU
+        // machine need not be the system default.
+        device = texture.read().device
+        commandQueue = try Self.commandQueue(for: device)
+        resource = try TextureResource(from: texture)
+        try write(rows: rows)
+    }
+
+    /// Replaces every row. The texture is well under a page, so writing all of
+    /// them costs less than tracking which moved.
+    func write(rows: [SIMD4<Float>]) throws {
+        precondition(rows.count == MToonMaterialParameters.textureRowCount)
+        // A buffer of its own per write: the GPU reads it whenever it runs the
+        // blit, and a few hundred bytes cost less than synchronizing a shared one.
+        guard let buffer = rows.withUnsafeBytes({
+            device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)
+        }) else {
+            throw VRMError._dataInconsistent("failed to allocate the MToon parameter staging buffer")
+        }
+
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            throw VRMError._dataInconsistent("failed to make a command buffer for the MToon parameter texture")
+        }
+        let destination = texture.replace(using: commandBuffer)
+        guard let blit = commandBuffer.makeBlitCommandEncoder() else {
+            throw VRMError._dataInconsistent("failed to encode the MToon parameter texture write")
+        }
+        blit.copy(from: buffer,
+                  sourceOffset: 0,
+                  sourceBytesPerRow: Self.bytesPerRow,
+                  sourceBytesPerImage: Self.bytesPerRow,
+                  sourceSize: MTLSize(width: rows.count, height: 1, depth: 1),
+                  to: destination,
+                  destinationSlice: 0,
+                  destinationLevel: 0,
+                  destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+        blit.endEncoding()
+        commandBuffer.commit()
+        writeCount += 1
+    }
+
+    private static func commandQueue(for device: MTLDevice) throws -> MTLCommandQueue {
+        if let sharedCommandQueue, sharedCommandQueue.device === device {
+            return sharedCommandQueue
+        }
+        guard let queue = device.makeCommandQueue() else {
+            throw VRMError._dataInconsistent("failed to make a command queue for the MToon parameter texture")
+        }
+        sharedCommandQueue = queue
+        return queue
+    }
+}
+
 /// The filter half of a sampler parameter row.
 ///
 /// glTF's `magFilter` and `minFilter` are independent, and `minFilter` itself
 /// encodes both the minification texel filter and the mip filter. `MToon.metal`
-/// reads ``index`` and applies all three to the sample itself, because the 16
-/// constant samplers a Metal entry point allows are already spent on addressing
-/// modes and shared with the shaders RealityKit generates.
+/// reads ``index`` and applies all three itself, the 16 constant samplers a Metal
+/// entry point allows being already spent on addressing modes.
 struct MToonSamplerFilter {
     enum TexelFilter: Int, CaseIterable {
         case linear

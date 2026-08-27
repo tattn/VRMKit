@@ -12,15 +12,15 @@ struct GLTFPruneTests {
     /// still draws comes back byte for byte through indices that have moved.
     @Test(arguments: VRMSampleAsset.allCases)
     func testPruneReclaimsWhatADetachedSubtreeDrew(asset: VRMSampleAsset) throws {
-        let document = try GLTFEditableDocument(data: asset.data)
-        try document.detachNode(at: try #require(drawingSceneRoot(of: try document.typed())))
+        var document = try GLTFEditableDocument(data: asset.data)
+        try document.detachNode(at: GLTFNodeIndex(try #require(drawingSceneRoot(of: try document.typed()))))
         let before = try GLTFDocument(data: try document.serialize())
         let expected = try drawnContents(of: before)
 
         let reclaimed = try document.prune()
 
         let after = try document.serialize()
-        #expect(reclaimed > 0)
+        #expect(reclaimed.reclaimedByteCount > 0)
         #expect(after.count < asset.data.count)
         let saved = try GLTFDocument(data: after)
         #expect(try drawnContents(of: saved) == expected)
@@ -31,16 +31,15 @@ struct GLTFPruneTests {
     }
 
     /// Every index the VRM extensions hold moves with the arrays, so the avatar
-    /// names the same bones and swings the same joints. What it bound to what a
-    /// node drew, though, goes when the node stops drawing.
+    /// names the same bones. A binding to what a node drew goes with the drawing.
     @Test(arguments: VRMSampleAsset.allCases)
     func testPruneKeepsTheVRMExtensionsPointingAtTheSameEntries(asset: VRMSampleAsset) throws {
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
         let detached = try #require(drawingSceneRoot(of: try document.typed()))
         let gone = [try #require(try document.typed().nodes?[detached].name),
                     try #require(try document.typed().nodes?[detached].mesh
                         .flatMap { try document.typed().meshes?[$0].name })]
-        try document.detachNode(at: detached)
+        try document.detachNode(at: GLTFNodeIndex(detached))
         let before = try GLTFDocument(data: try document.serialize())
         let bones = try humanoidBoneNames(of: before)
         let joints = try springBoneJointNames(of: before)
@@ -62,10 +61,10 @@ struct GLTFPruneTests {
     func testPruneKeepsTheThumbnailOfAModelWithNothingLeftToDraw(asset: VRMSampleAsset) throws {
         let original = try GLTFDocument(data: asset.data)
         let expected = try #require(try thumbnailBytes(of: original))
-        let document = try GLTFEditableDocument(data: asset.data)
+        var document = try GLTFEditableDocument(data: asset.data)
 
         for root in try #require(try document.typed().scenes)[try document.defaultSceneIndex()].nodes ?? [] {
-            try document.detachNode(at: root)
+            try document.detachNode(at: GLTFNodeIndex(root))
         }
         try document.prune()
 
@@ -76,12 +75,11 @@ struct GLTFPruneTests {
         expectReadableAccessors(saved)
     }
 
-    /// `append` copies the whole source and hangs one scene's roots under the
-    /// container, so detaching it leaves the copy reachable through nothing at
-    /// all and pruning has to put the document back where it started.
+    /// Detaching an appended container leaves the whole copy unreachable, so
+    /// pruning has to put the document back where it started.
     @Test
     func testPruneUndoesAnAppendThatWasDetachedAgain() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         // Settled first, so the comparison sees the append alone rather than
         // the gaps the model was exported with.
         try document.prune()
@@ -93,7 +91,7 @@ struct GLTFPruneTests {
         try document.detachNode(at: container)
         let reclaimed = try document.prune()
 
-        #expect(reclaimed > 0)
+        #expect(reclaimed.reclaimedByteCount > 0)
         #expect(try document.serialize() == before)
     }
 
@@ -101,11 +99,11 @@ struct GLTFPruneTests {
     /// with the keyframes only it read, while the rest of the animation stays.
     @Test
     func testPruneDropsOnlyTheChannelsThatDriveWhatWasDetached() throws {
-        let document = try GLTFEditableDocument(data: Data(Self.mixedAnimationDocument.utf8))
+        var document = try GLTFEditableDocument(data: Data(Self.mixedAnimationDocument.utf8))
 
         try document.detachNode(at: 2)
         // The detached channel's own keyframes, and nothing the other reads.
-        #expect(try document.prune() == 8)
+        #expect(try document.prune().reclaimedByteCount == 8)
 
         let saved = try GLTFDocument(data: try document.serialize())
         let animation = try #require(saved.gltf.animations?.first)
@@ -117,11 +115,22 @@ struct GLTFPruneTests {
         try expectAWellFormedDocument(saved)
     }
 
+    /// An animation's channels index its own samplers, and pruning compacts
+    /// those, so a channel naming one it does not hold is refused, not dropped.
+    @Test(arguments: ["999", "-1"])
+    func testPruneRejectsOutOfRangeAnimationSampler(sampler: String) throws {
+        let json = Self.mixedAnimationDocument.replacingOccurrences(of: #""sampler": 1"#,
+                                                                   with: #""sampler": \#(sampler)"#)
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
+
+        #expect(throws: VRMError.self) { try document.prune() }
+    }
+
     /// A `VRMC_vrm_animation` document describes a humanoid rather than a
     /// model, so what it drives is what it keeps.
     @Test(arguments: VRMASampleAsset.allCases)
     func testPruneKeepsEveryChannelOfAVRMAnimation(asset: VRMASampleAsset) throws {
-        let document = try GLTFEditableDocument(document: try GLTFDocument(withURL: asset.url))
+        var document = try GLTFEditableDocument(document: try GLTFDocument(withURL: asset.url))
         let before = try GLTFDocument(data: try document.serialize())
 
         try document.prune()
@@ -142,7 +151,40 @@ struct GLTFPruneTests {
         let json = """
         {"asset": {"version": "2.0"}, "nodes": [{"name": "orphan"}]}
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
+        let before = try document.serialize()
+
+        #expect(throws: VRMError.self) { try document.prune() }
+
+        #expect(try document.serialize() == before)
+    }
+
+    /// A reference naming an entry the document does not hold would come out of
+    /// the compaction deleted, so pruning refuses such a document.
+    @Test
+    func testPruneRefusesADocumentNamingAnEntryItDoesNotHold() throws {
+        let json = """
+        {"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "scene": 0, \
+        "nodes": [{"name": "root", "children": [7]}]}
+        """
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
+        let before = try document.serialize()
+
+        #expect(throws: VRMError.self) { try document.prune() }
+
+        #expect(try document.serialize() == before)
+    }
+
+    /// A list of references spells "nothing" by leaving the element out, so a
+    /// negative one is no index at all and is refused rather than quietly
+    /// dropped by the compaction.
+    @Test
+    func testPruneRefusesANegativeIndexInAListOfReferences() throws {
+        let json = """
+        {"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "scene": 0, \
+        "nodes": [{"name": "root", "children": [-1]}]}
+        """
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.prune() }
@@ -151,13 +193,12 @@ struct GLTFPruneTests {
     }
 
     /// A node something names keeps its transform and nothing else: not the
-    /// subtree under it, not what that subtree drew, and not the bindings that
-    /// named the subtree for what it drew.
+    /// subtree under it, nor what that subtree drew.
     @Test
     func testPruneKeepsANamedNodeWithoutWhatHungUnderIt() throws {
-        let document = try GLTFEditableDocument(data: Data(Self.namedButUndrawnDocument.utf8))
+        var document = try GLTFEditableDocument(data: Data(Self.namedButUndrawnDocument.utf8))
 
-        #expect(try document.prune() == 8)
+        #expect(try document.prune().reclaimedByteCount == 8)
 
         let saved = try GLTFDocument(data: try document.serialize())
         #expect(saved.gltf.nodes?.map(\.name) == ["named", "root", "drawn"])
@@ -201,7 +242,7 @@ struct GLTFPruneTests {
             "extensions": {"VRMC_springBone": {"springs": [{"joints": [{"node": 0}]}]}}
         }
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
 
         try document.prune()
 
@@ -243,9 +284,9 @@ struct GLTFPruneTests {
             }
         }
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
 
-        #expect(try document.prune() == 0)
+        #expect(try document.prune().reclaimedByteCount == 0)
 
         let saved = try GLTFDocument(data: try document.serialize())
         #expect(saved.gltf.animations?.first?.channels.count == 1)
@@ -266,7 +307,7 @@ struct GLTFPruneTests {
             "extensions": {"VRMC_vrm": {"extensions": {"ACME_x": {"node": 0}}}}
         }
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.prune() }
@@ -280,11 +321,11 @@ struct GLTFPruneTests {
     /// are all still read, so only the two orphaned views go.
     @Test
     func testPruneKeepsSparseEmbeddedAndCompressedData() throws {
-        let document = try GLTFEditableDocument(data: Data(Self.sixtyFourByteDocument.utf8))
+        var document = try GLTFEditableDocument(data: Data(Self.sixtyFourByteDocument.utf8))
         let original = try GLTFDocument(data: try document.serialize())
 
         // Four bytes of orphaned view, and eight more of another.
-        #expect(try document.prune() == 12)
+        #expect(try document.prune().reclaimedByteCount == 12)
 
         let saved = try GLTFDocument(data: try document.serialize())
         let views = try #require(saved.gltf.bufferViews)
@@ -309,18 +350,17 @@ struct GLTFPruneTests {
             "buffers": [{"uri": "data:application/octet-stream;base64,AAECAwQFBgc=", "byteLength": 8}]
         }
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
 
-        #expect(try document.prune() == 8)
+        #expect(try document.prune().reclaimedByteCount == 8)
 
         let saved = try GLTFDocument(data: try document.serialize())
         #expect(saved.gltf.buffers == nil)
         #expect(saved.gltf.bufferViews == nil)
     }
 
-    /// An extension this package cannot read may reach a mesh or a view in a
-    /// shape the walk does not know, so the document is refused whole. Being
-    /// declared is not what makes one unreadable, so neither is not being.
+    /// An extension this package cannot read may reach a mesh or a view in a shape
+    /// the walk does not know, so the document is refused whether declared or not.
     @Test(arguments: [#"{"extensionsUsed": ["ACME_buffer_thing"]}"#,
                       #"{"extensions": {"ACME_buffer_thing": {"bufferView": 0}}}"#,
                       #"{"extensionsUsed": ["KHR_animation_pointer"]}"#])
@@ -333,7 +373,7 @@ struct GLTFPruneTests {
             "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 8}]
         }
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.prune() }
@@ -341,9 +381,8 @@ struct GLTFPruneTests {
         #expect(try document.serialize() == before)
     }
 
-    /// A skin reaches its joints without reaching the scene they hang in, so a
-    /// joint can be walked before the hierarchy gets to it. What it draws has
-    /// to survive either order.
+    /// A skin reaches its joints without reaching the scene they hang in, so what
+    /// a joint draws has to survive either walk order.
     @Test
     func testPruneKeepsWhatASkinReachedBeforeTheHierarchyDid() throws {
         let json = """
@@ -365,9 +404,9 @@ struct GLTFPruneTests {
             "scene": 0
         }
         """
-        let document = try GLTFEditableDocument(data: Data(json.utf8))
+        var document = try GLTFEditableDocument(data: Data(json.utf8))
 
-        #expect(try document.prune() == 0)
+        #expect(try document.prune().reclaimedByteCount == 0)
 
         let saved = try GLTFDocument(data: try document.serialize())
         #expect(saved.gltf.meshes?.map(\.name) == ["skinned", "onTheJoint"])
@@ -379,23 +418,23 @@ struct GLTFPruneTests {
 
     @Test
     func testPruneOfADocumentWithNothingOrphanedChangesNothing() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
         try document.addMesh(GLTFTriangleMesh(positions: [SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0)],
                                               indices: [0, 1, 2]))
         let before = try document.serialize()
 
-        #expect(try document.prune() == 0)
+        #expect(try document.prune().reclaimedByteCount == 0)
 
         #expect(try document.serialize() == before)
     }
 
     @Test
     func testPruneOfADocumentWithoutBufferViewsChangesNothing() throws {
-        let document = GLTFEditableDocument()
+        var document = GLTFEditableDocument()
         try document.addNode(name: "empty")
         let before = try document.serialize()
 
-        #expect(try document.prune() == 0)
+        #expect(try document.prune().reclaimedByteCount == 0)
 
         #expect(try document.serialize() == before)
     }
@@ -404,22 +443,21 @@ struct GLTFPruneTests {
     /// document laid out the way it reads it.
     @Test(arguments: VRMSampleAsset.allCases)
     func testPruneIsIdempotent(asset: VRMSampleAsset) throws {
-        let document = try GLTFEditableDocument(data: asset.data)
-        try document.detachNode(at: try #require(drawingSceneRoot(of: try document.typed())))
+        var document = try GLTFEditableDocument(data: asset.data)
+        try document.detachNode(at: GLTFNodeIndex(try #require(drawingSceneRoot(of: try document.typed()))))
 
-        #expect(try document.prune() > 0)
+        #expect(try document.prune().reclaimedByteCount > 0)
         let pruned = try document.serialize()
 
-        #expect(try document.prune() == 0)
+        #expect(try document.prune().reclaimedByteCount == 0)
         #expect(try document.serialize() == pruned)
     }
 
     // MARK: - Helpers
 
-    /// Every index the document holds, checked against the array it points
-    /// into, plus the minimums glTF gives its arrays and views. The references
-    /// come from ``GLTFReferences``, so a rewriting rule and the check on it
-    /// cannot drift apart.
+    /// Every index the document holds, checked against the array it points into,
+    /// plus the minimums glTF gives its arrays and views. The references come from
+    /// ``GLTFReferences``, so the rule and the check cannot drift apart.
     private func expectAWellFormedDocument(_ document: GLTFDocument,
                                            sourceLocation: SourceLocation = #_sourceLocation) throws {
         let json = try document.rawJSON()
@@ -446,9 +484,8 @@ struct GLTFPruneTests {
 
     }
 
-    /// Reading each accessor is what says its view is still big enough for
-    /// what it declares. Only for documents whose bytes mean what they say: a
-    /// meshopt view holds compressed data no accessor reads straight.
+    /// Reading each accessor is what says its view is still big enough. Only for
+    /// documents whose bytes mean what they say, so no meshopt views.
     private func expectReadableAccessors(_ document: GLTFDocument,
                                          sourceLocation: SourceLocation = #_sourceLocation) {
         for index in (document.gltf.accessors ?? []).indices {
@@ -458,9 +495,8 @@ struct GLTFPruneTests {
         }
     }
 
-    /// What a document draws: every mesh its scenes reach, read through its
-    /// accessors, so two documents match only if they draw the same thing
-    /// whatever indices they read it through.
+    /// Every mesh the document's scenes reach, read through its accessors, so two
+    /// documents match only if they draw the same thing.
     private func drawnContents(of document: GLTFDocument) throws -> Set<String> {
         let gltf = document.gltf
         var contents: Set<String> = []
@@ -471,7 +507,7 @@ struct GLTFPruneTests {
             pending.append(contentsOf: node.children ?? [])
             guard let mesh = node.mesh.flatMap({ gltf.meshes?[safe: $0] }) else { continue }
             for (number, primitive) in mesh.primitives.enumerated() {
-                var accessors = primitive.attributes.rawValue
+                var accessors = primitive.attributes
                     .sorted { $0.key.rawValue < $1.key.rawValue }
                     .map { (name: $0.key.rawValue, accessor: $0.value) }
                 if let indices = primitive.indices {
@@ -623,11 +659,10 @@ struct GLTFPruneTests {
     }
     """
 
-    /// A document over 64 bytes numbered 0 to 63, holding one of everything
-    /// the walk has to follow and two views nothing reaches: 0-11 positions,
-    /// 12-15 and 16-27 the sparse override, 28-31 orphaned, 32-39 the image,
-    /// 40-47 the meshopt fallback and 48-55 its compressed bytes, 56-63
-    /// orphaned.
+    /// A document over 64 bytes numbered 0 to 63, holding one of everything the
+    /// walk has to follow and two views nothing reaches: 0-11 positions, 12-15 and
+    /// 16-27 the sparse override, 28-31 orphaned, 32-39 the image, 40-47 the
+    /// meshopt fallback, 48-55 its compressed bytes, 56-63 orphaned.
     private static let sixtyFourByteDocument = """
     {
         "asset": {"version": "2.0"},

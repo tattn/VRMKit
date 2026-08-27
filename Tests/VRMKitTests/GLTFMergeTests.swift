@@ -12,22 +12,22 @@ struct GLTFMergeTests {
     @Test
     func testAppendingUnderAHumanoidBoneKeepsTheModelIntact() throws {
         let vrm = try VRM(data: VRMSampleAsset.aliciaSolid.data)
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let hand = try #require(vrm.nodeIndex(of: .leftHand))
         let before = try document.typed()
 
         let container = try document.append(try GLTFDocument(withURL: GLTFSampleAsset.boxVertexColors.url),
-                                            under: hand,
+                                            under: GLTFNodeIndex(hand),
                                             name: "prop",
                                             transform: GLTFNodeTransform(translation: SIMD3(0, 0.1, 0)))
 
         let output = try document.serialize()
         let merged = try VRM0(data: output)
         let nodes = try #require(merged.document.gltf.nodes)
-        #expect(nodes[hand].children?.contains(container) == true)
-        #expect(nodes[container].name == "prop")
-        #expect(nodes[container].translation.y == 0.1)
-        #expect(nodes[container].children?.count == 1)
+        #expect(nodes[hand].children?.contains(container.rawValue) == true)
+        #expect(nodes[container.rawValue].name == "prop")
+        #expect(nodes[container.rawValue].translation.y == 0.1)
+        #expect(nodes[container.rawValue].children?.count == 1)
         // The model's own nodes stayed where they were, so its humanoid, spring
         // bones and blend shapes still name what they used to.
         #expect(try VRM(data: output).nodeIndex(of: .leftHand) == hand)
@@ -39,7 +39,7 @@ struct GLTFMergeTests {
     /// to `materials`, so appending a material has to extend it too.
     @Test
     func testAppendingToAVRM0KeepsMaterialPropertiesParallel() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
         let materialsBefore = try document.typed().materials?.count ?? 0
 
@@ -58,10 +58,11 @@ struct GLTFMergeTests {
     @Test
     func testAppendingToAVRM1LeavesItsExtensionsAlone() throws {
         let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let head = try #require(vrm.nodeIndex(of: .head))
 
-        try document.append(try GLTFDocument(withURL: GLTFSampleAsset.boxVertexColors.url), under: head)
+        try document.append(try GLTFDocument(withURL: GLTFSampleAsset.boxVertexColors.url),
+                            under: GLTFNodeIndex(head))
 
         let output = try document.serialize()
         let merged = try VRM1(data: output)
@@ -75,7 +76,7 @@ struct GLTFMergeTests {
     /// rebases one wrongly comes apart in a way only the data shows.
     @Test
     func testAppendedSkinAndAnimationKeepTheirData() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleSkin.url)
         let before = try document.typed()
         let nodeBase = before.nodes?.count ?? 0
@@ -102,13 +103,13 @@ struct GLTFMergeTests {
         // the four buffers the source spread them across.
         let sourcePrimitive = try #require(source.gltf.meshes?.first?.primitives.first)
         let mergedPrimitive = try #require(merged.gltf.meshes?[meshBase].primitives.first)
-        for (attribute, index) in sourcePrimitive.attributes.rawValue {
-            #expect(mergedPrimitive.attributes.rawValue[attribute] == index + accessorBase)
+        for (attribute, index) in sourcePrimitive.attributes {
+            #expect(mergedPrimitive.attributes[attribute] == index + accessorBase)
         }
         try expectSameAccessors(source, merged,
                                 offset: accessorBase,
-                                indices: Array(sourcePrimitive.attributes.rawValue.values))
-        #expect(try #require(merged.gltf.nodes)[container].children?.count == 2)
+                                indices: Array(sourcePrimitive.attributes.values))
+        #expect(try #require(merged.gltf.nodes)[container.rawValue].children?.count == 2)
     }
 
     /// A merged animation is the same animation: every channel drives the node
@@ -116,7 +117,7 @@ struct GLTFMergeTests {
     /// reads back the keyframes it was authored with.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testAppendedAnimationsKeepTheirChannelsAndKeyframes(model: VRMSampleAsset) throws {
-        let document = try GLTFEditableDocument(data: model.data)
+        var document = try GLTFEditableDocument(data: model.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.interpolationTest.url)
         let before = try document.typed()
         let nodeBase = before.nodes?.count ?? 0
@@ -149,7 +150,7 @@ struct GLTFMergeTests {
     /// first one's channels and keyframes as they were.
     @Test
     func testAppendingAgainLeavesTheAnimationsAlreadyThereAlone() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         try document.append(try GLTFDocument(withURL: GLTFSampleAsset.interpolationTest.url), under: 0)
         let once = try GLTFDocument(data: try document.serialize())
         let animations = try #require(once.gltf.animations)
@@ -169,7 +170,7 @@ struct GLTFMergeTests {
     /// source left in a file of its own is read into the buffer.
     @Test
     func testAppendedImagesAreEmbeddedInTheBuffer() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
         let before = try document.typed()
         let imageBase = before.images?.count ?? 0
@@ -197,18 +198,26 @@ struct GLTFMergeTests {
     /// buffers being concatenated happen to have.
     @Test
     func testAppendingOddlySizedBuffersKeepsTheAlignment() throws {
+        // One vertex of colour in a buffer of three bytes, and one of position
+        // in a buffer of twelve, so both the source's own concatenation and the
+        // merge into the target have an odd length to get past.
         let source = """
         {
             "asset": {"version": "2.0"},
             "scene": 0,
             "scenes": [{"nodes": [0]}],
-            "nodes": [{"name": "odd"}],
-            "buffers": [{"uri": "data:application/octet-stream;base64,AAECAwQ=", "byteLength": 5},
-                        {"uri": "data:application/octet-stream;base64,BQYH", "byteLength": 3}],
-            "bufferViews": [{"buffer": 0, "byteLength": 5}, {"buffer": 1, "byteLength": 3}]
+            "nodes": [{"name": "odd", "mesh": 0}],
+            "meshes": [{"primitives": [{"attributes": {"COLOR_0": 0, "POSITION": 1}}]}],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5121, "normalized": true, "count": 1, "type": "VEC3"},
+                {"bufferView": 1, "componentType": 5126, "count": 1, "type": "VEC3"}
+            ],
+            "buffers": [{"uri": "data:application/octet-stream;base64,AAEC", "byteLength": 3},
+                        {"uri": "data:application/octet-stream;base64,AAECAwQFBgcICQoL", "byteLength": 12}],
+            "bufferViews": [{"buffer": 0, "byteLength": 3}, {"buffer": 1, "byteLength": 12}]
         }
         """
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
 
         for _ in 0..<3 {
             try document.append(try GLTFDocument(data: Data(source.utf8)), under: 0)
@@ -221,7 +230,7 @@ struct GLTFMergeTests {
         let appended = views.indices.suffix(6)
         #expect(appended.allSatisfy { views[$0].byteOffset % 4 == 0 })
         for (offset, index) in appended.enumerated() {
-            let expected = offset.isMultiple(of: 2) ? Data([0, 1, 2, 3, 4]) : Data([5, 6, 7])
+            let expected = offset.isMultiple(of: 2) ? Data([0, 1, 2]) : Data(Array(0..<12))
             #expect(try merged.bufferViewData(at: index).data == expected)
         }
     }
@@ -232,7 +241,7 @@ struct GLTFMergeTests {
             $0["extensionsRequired"] = ["KHR_draco_mesh_compression"]
             $0["extensionsUsed"] = ["KHR_draco_mesh_compression"]
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: draco, rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
 
         #expect(throws: VRMError.self) { try document.append(source, under: 0) }
@@ -243,7 +252,7 @@ struct GLTFMergeTests {
         let lit = try GLTFSampleAsset.triangle.rewritingJSON {
             $0["extensions"] = ["KHR_lights_punctual": ["lights": [["type": "point"]]]]
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: lit, rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
 
         #expect(throws: VRMError.self) { try document.append(source, under: 0) }
@@ -256,7 +265,7 @@ struct GLTFMergeTests {
         let unknown = try GLTFSampleAsset.triangle.rewritingJSON {
             $0["extensionsUsed"] = ["EXT_something_nobody_here_has_read"]
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: unknown, rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
 
         #expect(throws: VRMError.self) { try document.append(source, under: 0) }
@@ -268,11 +277,11 @@ struct GLTFMergeTests {
     @Test
     func testAppendingLeavesMaterialExtrasAlone() throws {
         let withExtras = try GLTFSampleAsset.simpleTexture.rewritingJSON { json in
-            var materials = json["materials"] as? [[String: Any]] ?? []
+            var materials = json.objects("materials")
             materials[0]["extras"] = ["previewTexture": ["index": 0]]
-            json["materials"] = materials
+            json["materials"] = .objects(materials)
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: withExtras, rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
         let texturesBefore = try document.typed().textures?.count ?? 0
 
@@ -291,11 +300,11 @@ struct GLTFMergeTests {
     @Test
     func testAppendingASourceWithAnUndeclaredMaterialExtensionFails() throws {
         let unknown = try GLTFSampleAsset.simpleTexture.rewritingJSON { json in
-            var materials = json["materials"] as? [[String: Any]] ?? []
+            var materials = json.objects("materials")
             materials[0]["extensions"] = ["ACME_materials_glitter": ["glitterTexture": ["index": 0]]]
-            json["materials"] = materials
+            json["materials"] = .objects(materials)
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: unknown, rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
 
         #expect(throws: VRMError.self) { try document.append(source, under: 0) }
@@ -309,7 +318,7 @@ struct GLTFMergeTests {
             $0["extensionsUsed"] = ["KHR_materials_unlit"]
             $0["extensionsRequired"] = ["KHR_materials_unlit"]
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: unlit, rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
 
         try document.append(source, under: 0)
@@ -321,7 +330,7 @@ struct GLTFMergeTests {
 
     @Test
     func testAppendingUnderAMissingNodeChangesNothing() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) {
@@ -330,15 +339,42 @@ struct GLTFMergeTests {
         #expect(try document.serialize() == before)
     }
 
+    /// Only the scene being appended is copied. What another scene of the source
+    /// drew would land in the target undrawn, at the size of a whole model.
+    @Test
+    func testAppendingOneSceneLeavesTheOtherScenesBehind() throws {
+        let twoScenes = try GLTFSampleAsset.triangle.rewritingJSON { json in
+            var meshes = json.objects(.meshes)
+            meshes.append(meshes[0])
+            var nodes = json.objects(.nodes)
+            nodes.append(["name": "drawn only by the second scene", "mesh": .int(meshes.count - 1)])
+            json[.meshes] = .objects(meshes)
+            json[.nodes] = .objects(nodes)
+            json[.scenes] = .objects(json.objects(.scenes) + [["nodes": [.int(nodes.count - 1)]]])
+            json["scene"] = 0
+        }
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        let meshesBefore = try document.typed().meshes?.count ?? 0
+
+        try document.append(try GLTFDocument(data: twoScenes,
+                                             rootDirectory: GLTFSampleAsset.triangle.rootDirectory),
+                            sceneAt: 0,
+                            under: 0)
+
+        let merged = try GLTFDocument(data: try document.serialize())
+        #expect(merged.gltf.meshes?.count == meshesBefore + 1)
+        #expect(merged.gltf.nodes?.contains { $0.name == "drawn only by the second scene" } == false)
+    }
+
     /// A source holding several scenes and naming none says nothing about
     /// which to take, so it has to be told which.
     @Test
     func testAppendingASourceThatNamesNoSceneAmongSeveralFails() throws {
         let ambiguous = try GLTFSampleAsset.triangle.rewritingJSON { json in
-            json[.scenes] = json.objects(.scenes) + [["nodes": []]]
+            json[.scenes] = .objects(json.objects(.scenes) + [["nodes": []]])
             json.removeValue(forKey: "scene")
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: ambiguous, rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
 
         #expect(throws: VRMError.self) { try document.append(source, under: 0) }
@@ -348,7 +384,7 @@ struct GLTFMergeTests {
 
     @Test
     func testAppendingASceneOutOfRangeFails() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.triangle.url)
         let before = try document.serialize()
 
@@ -360,7 +396,7 @@ struct GLTFMergeTests {
     /// extension, so copying its nodes alone would strip their shading.
     @Test
     func testAppendingAVRM0SourceFails() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let source = try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
 
         #expect(throws: VRMError.self) { try document.append(source, under: 0) }
@@ -370,7 +406,7 @@ struct GLTFMergeTests {
     /// only what makes it an avatar is dropped and the props keep their look.
     @Test
     func testAppendingAVRM1SourceKeepsItsMToonMaterials() throws {
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: VRMSampleAsset.seedSan.data)
         let materialsBefore = try document.typed().materials?.count ?? 0
 
@@ -389,7 +425,7 @@ struct GLTFMergeTests {
         let broken = try GLTFSampleAsset.simpleTexture.rewritingJSON {
             $0[.images] = [["uri": "there-is-no-such-file.png"]]
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let before = try document.serialize()
         let source = try GLTFDocument(data: broken,
                                       rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
@@ -408,13 +444,13 @@ struct GLTFMergeTests {
                 var mesh = mesh
                 mesh.mapObjects("primitives") { primitive in
                     var primitive = primitive
-                    primitive["extensions"] = ["KHR_draco_mesh_compression": ["bufferView": 0]] as JSONObject
+                    primitive["extensions"] = ["KHR_draco_mesh_compression": ["bufferView": 0]]
                     return primitive
                 }
                 return mesh
             }
         }
-        let document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(data: undeclared,
                                       rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
 

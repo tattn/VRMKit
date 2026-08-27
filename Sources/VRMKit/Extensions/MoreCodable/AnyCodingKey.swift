@@ -1,11 +1,3 @@
-//
-//  AnyCodingKey.swift
-//  MoreCodable
-//
-//  Created by Tatsuya Tanaka on 20180211.
-//  Copyright © 2018年 tattn. All rights reserved.
-//
-
 import Foundation
 
 struct AnyCodingKey : CodingKey {

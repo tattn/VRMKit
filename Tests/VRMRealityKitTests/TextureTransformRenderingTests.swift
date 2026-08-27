@@ -26,8 +26,10 @@ struct TextureTransformRenderingTests {
         var scale: SIMD2<Float> = .one
         var rotation: Float = 0
 
-        var json: [String: Any] {
-            ["offset": [offset.x, offset.y], "scale": [scale.x, scale.y], "rotation": rotation]
+        var json: JSONValue {
+            ["offset": .numbers([offset.x, offset.y]),
+             "scale": .numbers([scale.x, scale.y]),
+             "rotation": .number(rotation)]
         }
 
         /// `translation * rotation * scale` applied to a glTF UV.
@@ -39,14 +41,14 @@ struct TextureTransformRenderingTests {
     }
 
     @Test
-    func testTransformedUVsSampleTheTexelsTheExtensionNames() throws {
+    func testTransformedUVsSampleTheTexelsTheExtensionNames() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Nothing to assert on a machine that cannot render.
         guard OffscreenRenderer.isAvailable else { return }
 
         // With no transform a rendered pixel shows the texel its own UV names,
         // which both checks the V flip and calibrates colour → texel below.
-        let identity = try render(UVTransform())
+        let identity = try await render(UVTransform())
         var texelOfColour: [SIMD3<Float>: SIMD2<Int>] = [:]
         let pixelsPerTexel = Self.renderSize / Self.textureSize
         for row in 0..<Self.textureSize {
@@ -55,10 +57,9 @@ struct TextureTransformRenderingTests {
                 texelOfColour[pixel] = SIMD2<Int>(column, row)
             }
         }
-        // The identity render doubles as the machine's capability check. The
-        // visionOS simulator builds RealityKit's compositing pipelines on the
-        // host GPU and hands back a blank frame wherever they fail to compile,
-        // and a pixel test that cannot see its own subject has nothing to say.
+        // The identity render doubles as the machine's capability check: the
+        // visionOS simulator hands back a blank frame wherever RealityKit's
+        // pipelines fail to compile.
         let rendersEveryTexel = texelOfColour.count == Self.textureSize * Self.textureSize
 #if os(visionOS)
         guard rendersEveryTexel else { return }
@@ -70,14 +71,14 @@ struct TextureTransformRenderingTests {
             ("scale", UVTransform(scale: SIMD2<Float>(2, 0.5))),
             ("rotation", UVTransform(rotation: .pi / 2)),
             ("offset and scale", UVTransform(offset: SIMD2<Float>(0.125, -0.375),
-                                             scale: SIMD2<Float>(0.5, 2))),
+                                                                                                     scale: SIMD2<Float>(0.5, 2))),
             ("all", UVTransform(offset: SIMD2<Float>(-0.2, -0.1),
-                                scale: SIMD2<Float>(1.5, 1.5),
-                                rotation: 0.3)),
+                                                                                        scale: SIMD2<Float>(1.5, 1.5),
+                                                                                        rotation: 0.3)),
         ]
 
         for (name, transform) in transforms {
-            let rendered = try render(transform)
+            let rendered = try await render(transform)
             var checked = 0
             for row in stride(from: 2, to: Self.renderSize, by: 5) {
                 for column in stride(from: 2, to: Self.renderSize, by: 5) {
@@ -109,8 +110,8 @@ struct TextureTransformRenderingTests {
     /// Loads a one-quad glTF whose only material carries `transform`, and renders
     /// it filling the viewport.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private func render(_ transform: UVTransform) throws -> [[SIMD3<Float>]] {
-        let entity = try GLTFEntityLoader(withData: Self.quadGLTF(transform)).loadEntity()
+    private func render(_ transform: UVTransform) async throws -> [[SIMD3<Float>]] {
+        let entity = try await GLTFEntityLoader(withData: Self.quadGLTF(transform)).loadEntity()
         return try OffscreenRenderer.render(entity, size: Self.renderSize)
     }
 
@@ -137,7 +138,7 @@ struct TextureTransformRenderingTests {
         }
 
         let png = try OffscreenRenderer.makeProbeTexturePNG(size: textureSize)
-        let json: [String: Any] = [
+        let json: JSONObject = [
             "asset": ["version": "2.0"],
             "scene": 0,
             "scenes": [["nodes": [0]]],
@@ -155,31 +156,31 @@ struct TextureTransformRenderingTests {
                     ],
                 ],
                 // Unlit keeps the rendered colour equal to the sampled texel.
-                "extensions": ["KHR_materials_unlit": [String: Any]()],
+                "extensions": ["KHR_materials_unlit": [:]],
             ]],
             "extensionsUsed": ["KHR_materials_unlit", "KHR_texture_transform"],
             "textures": [["sampler": 0, "source": 0]],
             // Nearest filtering and repeat wrapping keep every rendered pixel one
             // whole texel of the probe image.
             "samplers": [["magFilter": 9728, "minFilter": 9728, "wrapS": 10497, "wrapT": 10497]],
-            "images": [["uri": "data:image/png;base64,\(png.base64EncodedString())"]],
+            "images": [["uri": .string("data:image/png;base64,\(png.base64EncodedString())")]],
             "buffers": [[
-                "uri": "data:application/octet-stream;base64,\(buffer.base64EncodedString())",
-                "byteLength": buffer.count,
+                "uri": .string("data:application/octet-stream;base64,\(buffer.base64EncodedString())"),
+                "byteLength": .int(buffer.count),
             ]],
             "bufferViews": [
                 ["buffer": 0, "byteOffset": 0, "byteLength": 48],
                 ["buffer": 0, "byteOffset": 48, "byteLength": 32],
-                ["buffer": 0, "byteOffset": indexOffset, "byteLength": 12],
+                ["buffer": 0, "byteOffset": .int(indexOffset), "byteLength": 12],
             ],
             "accessors": [
                 ["bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3",
-                 "min": [-1, -1, 0], "max": [1, 1, 0]],
+                           "min": [-1, -1, 0], "max": [1, 1, 0]],
                 ["bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC2"],
                 ["bufferView": 2, "componentType": 5123, "count": 6, "type": "SCALAR"],
             ],
         ]
-        return try JSONSerialization.data(withJSONObject: json)
+        return try JSONValue.object(json).serialized()
     }
 }
 #endif

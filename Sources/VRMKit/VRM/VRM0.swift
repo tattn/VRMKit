@@ -1,7 +1,6 @@
 import Foundation
 
-/// VRM 0.x format data structure
-public struct VRM0 {
+public struct VRM0: Sendable {
     /// The underlying glTF document, which carries the model's glTF and the
     /// binary resources it is drawn from.
     public let document: GLTFDocument
@@ -26,11 +25,10 @@ public struct VRM0 {
 
         let extensions = try document.gltf.rootExtensions()
 
-        // VRM 0.x must have "VRM" extension
         let vrm = try extensions["VRM"] ??? .keyNotFound("VRM")
 
         meta = try vrm.decodeJSON(Meta.self, forKey: "meta")
-        version = vrm["version"] as? String
+        version = vrm.string("version")
         // Absent in some files, and in `prune()` output once every material died
         materialProperties = try vrm.decodeJSONIfPresent([MaterialProperty].self, forKey: "materialProperties") ?? []
         humanoid = try vrm.decodeJSON(Humanoid.self, forKey: "humanoid")
@@ -43,11 +41,9 @@ public struct VRM0 {
 }
 
 public extension VRM0 {
-    /// The Unity material settings describing the material at `index`.
-    ///
-    /// VRM 0.x writes `materialProperties` as an array parallel to the glTF
-    /// `materials`, so the index pairs the two. Two materials may share a name,
-    /// which is why the name never does.
+    /// The Unity material settings describing the material at `index`. VRM 0.x
+    /// writes `materialProperties` as an array parallel to the glTF `materials`,
+    /// so the index pairs the two.
     func materialProperty(at index: Int) -> MaterialProperty? {
         materialProperties[safe: index]
     }
@@ -63,7 +59,7 @@ public extension VRM {
 }
 
 public extension VRM0 {
-    struct Meta: Codable {
+    struct Meta: Codable, Sendable {
         public let title: String?
         public let author: String?
         public let contactInformation: String?
@@ -81,18 +77,38 @@ public extension VRM0 {
         public let otherLicenseUrl: String?
     }
 
-    struct MaterialProperty: Codable {
+    struct MaterialProperty: Codable, Sendable {
         public let name: String
         public let shader: String
         public let renderQueue: Int
-        public let floatProperties: CodableAny
+        /// Unity's `float` shader properties, `_Cutoff` and `_BlendMode` among
+        /// them.
+        public let floatProperties: [String: Float]
         public let keywordMap: [String: Bool]
         public let tagMap: [String: String]
         public let textureProperties: [String: Int]
-        public let vectorProperties: CodableAny
+        /// Unity's `vector` shader properties: a colour, or the `_MainTex`
+        /// offset and scale pair.
+        public let vectorProperties: [String: [Float]]
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            name = try container.decode(String.self, forKey: .name)
+            shader = try container.decode(String.self, forKey: .shader)
+            renderQueue = try container.decode(Int.self, forKey: .renderQueue)
+            keywordMap = try container.decode([String: Bool].self, forKey: .keywordMap)
+            tagMap = try container.decode([String: String].self, forKey: .tagMap)
+            textureProperties = try container.decode([String: Int].self, forKey: .textureProperties)
+            // A property whose value is of no use to a renderer is dropped
+            // rather than failing the load of the whole model.
+            floatProperties = try container.decode([String: JSONValue].self, forKey: .floatProperties)
+                .compactMapValues(\.floatValue)
+            vectorProperties = try container.decode([String: JSONValue].self, forKey: .vectorProperties)
+                .compactMapValues { $0.arrayValue?.compactMap(\.floatValue) }
+        }
     }
 
-    struct Humanoid: Codable {
+    struct Humanoid: Codable, Sendable {
         public let armStretch: Double
         public let feetSpacing: Double
         public let hasTranslationDoF: Bool
@@ -103,16 +119,16 @@ public extension VRM0 {
         public let upperLegTwist: Double
         public let humanBones: [HumanBone]
 
-        public struct HumanBone: Codable {
+        public struct HumanBone: Codable, Sendable {
             public let bone: String
             public let node: Int
             public let useDefaultValues: Bool
         }
     }
 
-    struct BlendShapeMaster: Codable {
+    struct BlendShapeMaster: Codable, Sendable {
         public let blendShapeGroups: [BlendShapeGroup]
-        public struct BlendShapeGroup: Codable {
+        public struct BlendShapeGroup: Codable, Sendable {
             public let binds: [Bind]?
             public let materialValues: [MaterialValueBind]?
             public let name: String
@@ -126,12 +142,12 @@ public extension VRM0 {
                 case presetName
                 case _isBinary = "isBinary"
             }
-            public struct Bind: Codable {
+            public struct Bind: Codable, Sendable {
                 public let index: Int
                 public let mesh: Int
                 public let weight: Double
             }
-            public struct MaterialValueBind: Codable {
+            public struct MaterialValueBind: Codable, Sendable {
                 public let materialName: String
                 public let propertyName: String
                 public let targetValue: [Double]
@@ -139,7 +155,7 @@ public extension VRM0 {
         }
     }
 
-    struct FirstPerson: Codable {
+    struct FirstPerson: Codable, Sendable {
         public let firstPersonBone: Int
         public let firstPersonBoneOffset: Vector3
         /// Absent in files with nothing annotated, `prune()` output among them
@@ -154,18 +170,18 @@ public extension VRM0 {
             lookAtTypeName = try container.decode(LookAtType.self, forKey: .lookAtTypeName)
         }
 
-        public struct MeshAnnotation: Codable {
+        public struct MeshAnnotation: Codable, Sendable {
             public let firstPersonFlag: String
             public let mesh: Int
         }
-        public enum LookAtType: String, Codable {
+        public enum LookAtType: String, Codable, Sendable {
             case none = "None"
             case bone = "Bone"
             case blendShape = "BlendShape"
         }
     }
 
-    struct SecondaryAnimation: Codable {
+    struct SecondaryAnimation: Codable, Sendable {
         /// Either array is absent in a model that states nothing for it, and
         /// both are in one that swings nothing at all.
         public let boneGroups: [BoneGroup]
@@ -182,7 +198,7 @@ public extension VRM0 {
             colliderGroups = try container.decodeIfPresent([ColliderGroup].self, forKey: .colliderGroups) ?? []
         }
 
-        public struct BoneGroup: Codable {
+        public struct BoneGroup: Codable, Sendable {
             public let bones: [Int]
             public let center: Int
             public let colliderGroups: [Int]
@@ -194,18 +210,18 @@ public extension VRM0 {
             public let stiffiness: Double
         }
 
-        public struct ColliderGroup: Codable {
+        public struct ColliderGroup: Codable, Sendable {
             public let node: Int
             public let colliders: [Collider]
 
-            public struct Collider: Codable {
+            public struct Collider: Codable, Sendable {
                 public let offset: Vector3
                 public let radius: Double
             }
         }
     }
 
-    struct Vector3: Codable {
+    struct Vector3: Codable, Sendable {
         public let x, y, z: Double
     }
 }

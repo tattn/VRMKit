@@ -19,9 +19,13 @@ package enum GLTFArray: String, Sendable, CaseIterable {
 }
 
 package extension JSONObject {
-    subscript(array: GLTFArray) -> Any? {
+    subscript(array: GLTFArray) -> JSONValue? {
         get { self[array.rawValue] }
         set { self[array.rawValue] = newValue }
+    }
+
+    mutating func setObjects(_ elements: [JSONObject], for array: GLTFArray) {
+        self[array] = .objects(elements)
     }
 
     func objects(_ array: GLTFArray) -> [JSONObject] { objects(array.rawValue) }
@@ -30,6 +34,12 @@ package extension JSONObject {
 
     mutating func mapObjects(_ array: GLTFArray, _ transform: (JSONObject) throws -> JSONObject) rethrows {
         try mapObjects(array.rawValue, transform)
+    }
+
+    mutating func updateObject(at index: Int,
+                               in array: GLTFArray,
+                               _ body: (inout JSONObject) throws -> Void) rethrows {
+        try updateObject(at: index, in: array.rawValue, body)
     }
 
     mutating func appendObjects(_ elements: [JSONObject], to array: GLTFArray) {

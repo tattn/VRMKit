@@ -70,13 +70,13 @@ struct BinaryGLTFTests {
     /// can be sliced out of it.
     @Test
     func testBufferViewDataRejectsRangesBeyondTheBuffer() throws {
-        let overrunning = try document(withFirstBufferView: ["byteOffset": 0, "byteLength": Int(UInt32.max)])
+        let overrunning = try document(withFirstBufferView: ["byteOffset": 0, "byteLength": .int(Int(UInt32.max))])
         #expect(throws: (any Error).self) { try overrunning.bufferViewData(at: 0) }
 
-        let overflowing = try document(withFirstBufferView: ["byteOffset": Int.max, "byteLength": 16])
+        let overflowing = try document(withFirstBufferView: ["byteOffset": .int(.max), "byteLength": 16])
         #expect(throws: (any Error).self) { try overflowing.bufferViewData(at: 0) }
 
-        let negative = try document(withFirstBufferView: ["byteOffset": -1, "byteLength": 16])
+        let negative = try document(withFirstBufferView: ["byteOffset": .int(-1), "byteLength": 16])
         #expect(throws: (any Error).self) { try negative.bufferViewData(at: 0) }
     }
 
@@ -84,16 +84,17 @@ struct BinaryGLTFTests {
     /// for the buffer, so the resource is what bounds a view.
     @Test
     func testBufferViewDataReadsPastAnUnderstatedBufferLength() throws {
-        func document(bufferByteLength: Int, bufferView: [String: Any]) throws -> GLTFDocument {
+        func document(bufferByteLength: Int, bufferView: JSONObject) throws -> GLTFDocument {
             let data = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-                guard var buffers = json["buffers"] as? [[String: Any]], !buffers.isEmpty,
-                      var bufferViews = json["bufferViews"] as? [[String: Any]], !bufferViews.isEmpty else {
+                var buffers = json.objects("buffers")
+                var bufferViews = json.objects("bufferViews")
+                guard !buffers.isEmpty, !bufferViews.isEmpty else {
                     throw GLBRewriter.Error.invalidJSON
                 }
-                buffers[0]["byteLength"] = bufferByteLength
-                json["buffers"] = buffers
+                buffers[0]["byteLength"] = .int(bufferByteLength)
+                json["buffers"] = .objects(buffers)
                 bufferViews[0].merge(bufferView) { _, new in new }
-                json["bufferViews"] = bufferViews
+                json["bufferViews"] = .objects(bufferViews)
             }
             return try GLTFDocument(data: data)
         }
@@ -103,7 +104,7 @@ struct BinaryGLTFTests {
 
         // A view past the end of the resource is still refused.
         let beyondTheResource = try document(bufferByteLength: 64,
-                                             bufferView: ["byteOffset": 0, "byteLength": Int(UInt32.max)])
+                                             bufferView: ["byteOffset": 0, "byteLength": .int(Int(UInt32.max))])
         #expect(throws: (any Error).self) { try beyondTheResource.bufferViewData(at: 0) }
     }
 
@@ -115,13 +116,14 @@ struct BinaryGLTFTests {
 
     /// The fixture with `byteOffset` / `byteLength` of its first buffer view
     /// replaced, leaving the rest of the file intact.
-    private func document(withFirstBufferView fields: [String: Any]) throws -> GLTFDocument {
+    private func document(withFirstBufferView fields: JSONObject) throws -> GLTFDocument {
         let data = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-            guard var bufferViews = json["bufferViews"] as? [[String: Any]], !bufferViews.isEmpty else {
+            var bufferViews = json.objects("bufferViews")
+            guard !bufferViews.isEmpty else {
                 throw GLBRewriter.Error.invalidJSON
             }
             bufferViews[0].merge(fields) { _, new in new }
-            json["bufferViews"] = bufferViews
+            json["bufferViews"] = .objects(bufferViews)
         }
         return try GLTFDocument(data: data)
     }
@@ -266,16 +268,16 @@ struct BinaryGLTFTests {
     @Test
     func testRejectsAnAssetVersionItDoesNotImplement() throws {
         let futureVersion = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-            var asset = json["asset"] as? [String: Any] ?? [:]
+            var asset = json.object("asset") ?? [:]
             asset["version"] = "3.0"
-            json["asset"] = asset
+            json["asset"] = .object(asset)
         }
         #expect(throws: (any Error).self) { try BinaryGLTF(data: futureVersion) }
 
         let futureMinVersion = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-            var asset = json["asset"] as? [String: Any] ?? [:]
+            var asset = json.object("asset") ?? [:]
             asset["minVersion"] = "2.1"
-            json["asset"] = asset
+            json["asset"] = .object(asset)
         }
         #expect(throws: (any Error).self) { try BinaryGLTF(data: futureMinVersion) }
     }
@@ -320,6 +322,11 @@ struct BinaryGLTFTests {
     func testZeroedAccessorDataRejectsOverflowingSizes() throws {
         #expect(throws: (any Error).self) { try Data(zeroedElementCount: .max, elementSize: 12) }
         #expect(throws: (any Error).self) { try Data(zeroedElementCount: -1, elementSize: 12) }
+        // Nothing in the file bounds what such an accessor asks for, so the
+        // limit is what stops a two-line glTF allocating a device out of memory.
+        #expect(throws: (any Error).self) {
+            try Data(zeroedElementCount: Data.maximumZeroFilledByteCount / 12 + 1, elementSize: 12)
+        }
         #expect(try Data(zeroedElementCount: 3, elementSize: 4).count == 12)
     }
 }

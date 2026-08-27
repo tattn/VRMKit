@@ -1,16 +1,17 @@
 import VRMKit
+import VRMKitRuntime
 import SceneKit
 import simd
 
 @available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
 extension SCNNode {
-    convenience init(node: GLTF.Node, loader: VRMSceneLoader) throws {
+    convenience init(node: GLTF.Node, at nodeIndex: Int, loader: VRMSceneLoader) throws {
         self.init()
         name = node.name
         camera = try node.camera.map(loader.camera)
 
         if let mesh = node.mesh {
-            let meshNode = try loader.mesh(withMeshIndex: mesh)
+            let meshNode = try loader.mesh(withMeshIndex: mesh, skinIndex: node.skin, nodeIndex: nodeIndex)
             addChildNode(meshNode)
 
             if let skinIndex = node.skin {
@@ -41,22 +42,34 @@ extension SCNNode {
         }
     }
 
-    convenience init(mesh: GLTF.Mesh, loader: VRMSceneLoader) throws {
+    convenience init(mesh: GLTF.Mesh,
+                     at meshIndex: Int,
+                     skinIndex: Int?,
+                     nodeIndex: Int,
+                     loader: VRMSceneLoader) throws {
         self.init()
         name = mesh.name
-        // A primitive carrying no morph targets of its own morphs with those
-        // of whichever primitive shares its POSITION accessor, and with one
-        // morpher between them rather than a copy each. One carrying its own
-        // keeps them, however they compare to the rest of the mesh's.
+        // A primitive carrying no morph targets of its own morphs with those of
+        // whichever primitive shares its POSITION accessor, through one morpher
+        // between them rather than a copy each.
         let sharedTargets = mesh.morphTargetsByPositionAccessor()
         var morphers: [Int: SCNMorpher] = [:]
+        var cuts: [(SCNNode, FirstPersonPrimitiveMask)] = []
 
         for primitive in mesh.primitives {
             let node = SCNNode()
-            var attributes = try loader.attributes(primitive.attributes.rawValue)
+            var attributes = try loader.attributes(primitive.attributes)
             let vertex = try attributes.first { $0.semantic == .vertex }
                 ??? ._dataInconsistent("a mesh primitive has no POSITION attribute")
             let hasNormal = attributes.contains { $0.semantic == .normal }
+            // Every attribute describes the same vertices, so a shorter one
+            // would be read past its end.
+            if let short = attributes.first(where: { $0.vectorCount < vertex.vectorCount }) {
+                throw VRMError._dataInconsistent(
+                    "a \(short.semantic.rawValue) attribute holds \(short.vectorCount) vectors, "
+                    + "fewer than the primitive's \(vertex.vectorCount) vertices"
+                )
+            }
 
             var elements: [SCNGeometryElement] = []
             if let index = primitive.indices {
@@ -68,9 +81,21 @@ extension SCNNode {
                 try element.validateIndices(vertexCount: vertex.vectorCount)
             }
 
-            if !hasNormal {
-                attributes.append(try vertex.createEstimatedNormal(with: elements))
+            // glTF has a primitive without NORMAL flat shaded, and a flat normal
+            // belongs to a face rather than to a vertex, so every triangle takes
+            // its own copy of the three vertices it draws.
+            let corners = hasNormal ? nil : try elements.flatMap { try $0.triangleCorners() }
+            if let corners {
+                let vertices = try vertex.createVertices()
+                attributes = try attributes.map { try $0.expanded(to: corners) }
+                elements = [.triangles(cornerCount: corners.count)]
+                attributes.append(.flatNormals(ofTriangleCorners: corners.map { vertices[$0] }))
             }
+
+            let headVertices = try loader.firstPersonHeadVertices(of: primitive,
+                                                                  ofNodeAt: nodeIndex,
+                                                                  meshIndex: meshIndex,
+                                                                  skinIndex: skinIndex)
 
             let geometry = SCNGeometry(sources: attributes, elements: elements); do {
                 geometry.materials = try {
@@ -82,7 +107,6 @@ extension SCNNode {
                 }()
                 node.geometry = geometry
 
-                // FIXME/TODO:
                 if let renderQueue = try loader.renderQueue(forMaterialAt: primitive.material),
                    renderQueue != -1 {
                     let lastRenderingOrder = childNodes.last?.renderingOrder ?? 0
@@ -90,21 +114,79 @@ extension SCNNode {
                 }
             }
 
-            let position = primitive.attributes.rawValue[.POSITION]
+            let position = primitive.attributes[.POSITION]
+            // A morph target moves the vertices of its own primitive, so one whose
+            // vertices were unshared shares no morpher with the rest of the mesh.
+            let shareable = corners == nil ? position : nil
             if let targets = primitive.targets, !targets.isEmpty {
-                let morpher = try SCNMorpher(primitiveTargets: targets, loader: loader)
+                let morpher = try SCNMorpher(primitiveTargets: targets, loader: loader, corners: corners)
                 node.morpher = morpher
                 // The first such primitive is the one the mesh shares, so the
                 // ones falling back to it read the morpher already built.
-                if let position, morphers[position] == nil { morphers[position] = morpher }
+                if let shareable, morphers[shareable] == nil { morphers[shareable] = morpher }
             } else if let position, let targets = sharedTargets[position] {
-                let morpher = try morphers[position] ?? SCNMorpher(primitiveTargets: targets, loader: loader)
-                morphers[position] = morpher
+                let morpher = try shareable.flatMap { morphers[$0] }
+                    ?? SCNMorpher(primitiveTargets: targets, loader: loader, corners: corners)
+                if let shareable { morphers[shareable] = morpher }
                 node.morpher = morpher
             }
 
             addChildNode(node)
+
+            if let headVertices {
+                cuts.append((node, try geometry.firstPersonTriangles(elements: elements,
+                                                                     headVertices: headVertices,
+                                                                     corners: corners)))
+            }
         }
+
+        // After the primitives, so a mesh still lists what the document declares first.
+        for (node, cut) in cuts {
+            switch cut {
+            case .whole:
+                break
+            case .nothing:
+                loader.recordFirstPersonPrimitive(.init(thirdPerson: node, firstPerson: nil))
+            case .triangles(let kept):
+                let headless = node.standingInForItsFirstPersonTriangles(kept)
+                addChildNode(headless)
+                loader.recordFirstPersonPrimitive(.init(thirdPerson: node, firstPerson: headless))
+            }
+        }
+    }
+}
+
+@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
+private extension SCNNode {
+    /// A node drawing `triangles` of this one's vertices, which is what a
+    /// first-person camera draws in its place.
+    func standingInForItsFirstPersonTriangles(_ triangles: [UInt32]) -> SCNNode {
+        let headless = SCNNode()
+        let geometry = SCNGeometry(sources: self.geometry?.sources ?? [],
+                                   elements: [.triangles(triangles)])
+        geometry.materials = self.geometry?.materials ?? []
+        headless.geometry = geometry
+        // The morpher of the node it stands in for, which expressions already drive.
+        headless.morpher = morpher
+        headless.renderingOrder = renderingOrder
+        headless.isHidden = true
+        return headless
+    }
+}
+
+@available(*, deprecated, message: "Deprecated. Use VRMRealityKit instead.")
+private extension SCNGeometry {
+    /// The triangles of this primitive a first-person camera draws: what is left
+    /// of an `auto` mesh once the head's are taken out.
+    ///
+    /// `corners` is what flat shading unshared the vertices into, so a drawn
+    /// index still says which vertex it is weighted by.
+    func firstPersonTriangles(elements: [SCNGeometryElement],
+                              headVertices: Set<Int>,
+                              corners: [Int]?) throws -> FirstPersonPrimitiveMask {
+        let drawn = try elements.flatMap { try $0.triangleCorners() }.map(UInt32.init)
+        let vertex: (UInt32) -> Int = corners.map { corners in { corners[safe: Int($0)] ?? -1 } } ?? { Int($0) }
+        return FirstPersonAutoMask.mask(indices: drawn, headVertices: headVertices, vertex: vertex)
     }
 }
 
@@ -121,48 +203,25 @@ private extension SCNGeometrySource {
         }
     }
 
-    func createEstimatedNormal(with elements: [SCNGeometryElement]) throws -> SCNGeometrySource {
-        let vertices = try createVertices()
+    /// The flat normals glTF asks for when a primitive ships no NORMAL: one face
+    /// normal written to each of the triangle's three corners.
+    ///
+    /// - Precondition: the vertices are one per triangle corner, so that each
+    ///   triangle owns the ones it writes to.
+    static func flatNormals(ofTriangleCorners vertices: [SIMD3<Float>]) -> SCNGeometrySource {
         var normals = [SIMD3<Float>](repeating: .zero, count: vertices.count)
-
-        for element in elements {
-            try element.enumerateTriangles { index0, index1, index2 in
-                let faceNormal = simd_cross(vertices[index1] - vertices[index0],
-                                            vertices[index2] - vertices[index0])
-                let lengthSquared = simd_length_squared(faceNormal)
-                guard lengthSquared.isFinite, lengthSquared > 0 else { return }
-                let normalized = simd_normalize(faceNormal)
-                normals[index0] += normalized
-                normals[index1] += normalized
-                normals[index2] += normalized
-            }
-        }
-
-        for index in normals.indices {
-            let lengthSquared = simd_length_squared(normals[index])
-            if lengthSquared.isFinite, lengthSquared > 0 {
-                normals[index] = simd_normalize(normals[index])
-            }
+        for corner in stride(from: 0, to: vertices.count - vertices.count % 3, by: 3) {
+            let faceNormal = simd_cross(vertices[corner + 1] - vertices[corner],
+                                        vertices[corner + 2] - vertices[corner])
+            let lengthSquared = simd_length_squared(faceNormal)
+            // A degenerate triangle keeps a zero normal rather than a NaN one.
+            guard lengthSquared.isFinite, lengthSquared > 0 else { continue }
+            let normal = simd_normalize(faceNormal)
+            normals[corner] = normal
+            normals[corner + 1] = normal
+            normals[corner + 2] = normal
         }
         return SCNGeometrySource(normals: normals.map { SCNVector3($0.x, $0.y, $0.z) })
-    }
-
-    func createVertices() throws -> [SIMD3<Float>] {
-        guard componentsPerVector == 3 else { throw VRMError._notSupported("vertex array is support for 3 component only: \(componentsPerVector)") }
-        if !usesFloatComponents || bytesPerComponent != 4 { throw VRMError._notSupported("vertex array is support for float components only") }
-
-        var vertices: [SIMD3<Float>] = []
-        vertices.reserveCapacity(vectorCount)
-        data.withUnsafeBytes { rawPtr in
-            guard let ptr = rawPtr.bindMemory(to: Float32.self).baseAddress else { return }
-            var index = dataOffset / bytesPerComponent
-            let step = dataStride / bytesPerComponent
-            for _ in 0..<vectorCount {
-                vertices.append(SIMD3<Float>(ptr[index], ptr[index + 1], ptr[index + 2]))
-                index += step
-            }
-        }
-        return vertices
     }
 }
 
@@ -175,10 +234,36 @@ private extension SCNGeometryElement {
         }
     }
 
+    /// A triangle list of the vertices `indices` names.
+    static func triangles(_ indices: [UInt32]) -> SCNGeometryElement {
+        switch UInt64(indices.max() ?? 0) {
+        case ...UInt64(UInt16.max): SCNGeometryElement(indices: indices.map(UInt16.init), primitiveType: .triangles)
+        default: SCNGeometryElement(indices: indices, primitiveType: .triangles)
+        }
+    }
+
+    /// A triangle list of `cornerCount` vertices drawn in the order they are
+    /// stored, for a geometry whose vertices a flat shading unshared.
+    static func triangles(cornerCount: Int) -> SCNGeometryElement {
+        let corners = 0..<cornerCount
+        switch UInt64(cornerCount) {
+        case ...UInt64(UInt16.max): return SCNGeometryElement(indices: corners.map(UInt16.init), primitiveType: .triangles)
+        case ...UInt64(UInt32.max): return SCNGeometryElement(indices: corners.map(UInt32.init), primitiveType: .triangles)
+        default: return SCNGeometryElement(indices: corners.map(UInt64.init), primitiveType: .triangles)
+        }
+    }
+
+    /// The vertices of every triangle the element draws, three to a triangle.
+    func triangleCorners() throws -> [Int] {
+        var corners: [Int] = []
+        try enumerateTriangles { corners.append(contentsOf: [$0, $1, $2]) }
+        return corners
+    }
+
     /// Calls `body` with each triangle of the element, expanding a strip into
     /// the triangles it stands for so a mesh without `NORMAL` can be shaded
     /// whichever way its faces are stored.
-    func enumerateTriangles(_ body: (Int, Int, Int) throws -> Void) throws {
+    private func enumerateTriangles(_ body: (Int, Int, Int) throws -> Void) throws {
         let indices = createIndices()
         switch primitiveType {
         case .triangles:

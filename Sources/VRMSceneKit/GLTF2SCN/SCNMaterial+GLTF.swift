@@ -48,9 +48,9 @@ extension SCNMaterial {
 
             if let baseTexture = pbr.baseColorTexture {
                 try diffuse.setTexture(.init(baseTexture), loader: loader)
-                if shader == .mToon || isMToon {
-                    multiply.contents = pbr.baseColorFactor.createSKColor()
-                }
+                // glTF multiplies the base texture by the factor, and `multiply`
+                // is where SceneKit takes it. MToon overwrites it below.
+                multiply.contents = pbr.baseColorFactor.createSKColor()
             } else {
                 diffuse.contents = pbr.baseColorFactor.createSKColor()
             }
@@ -60,7 +60,7 @@ extension SCNMaterial {
                 try roughness.setTexture(.init(metallicTexture), loader: loader)
 
                 let image = try metalness.contents as? VRMImage ??? ._dataInconsistent("failed to load texture image")
-                let (metalTexture, roughTexture) = try createMetallicRoughnessTexture(from: image)
+                let (metalTexture, roughTexture) = try createMetallicRoughnessTexture(from: image, of: pbr)
                 metalness.contents = metalTexture
                 roughness.contents = roughTexture
             } else {
@@ -78,13 +78,31 @@ extension SCNMaterial {
             ambientOcclusion.intensity = CGFloat(occlusionTexture.strength)
         }
 
+        let emissiveFactor = material.emissiveFactor
         if let emissiveTexture = material.emissiveTexture {
             try emission.setTexture(.init(emissiveTexture), loader: loader)
+            // The factor multiplies the sampled emission, and its strongest
+            // channel is as much of that as an intensity can carry.
+            emission.intensity = CGFloat(emissiveFactor.max())
+        } else if emissiveFactor != .zero {
+            emission.contents = emissiveFactor.createSKColor(alpha: 1)
+        }
+
+        if material.alphaMode == .MASK {
+            applyAlphaCutoff(material.alphaCutoff)
         }
 
         if let mtoon {
             try applyMToon(mtoon, material: material, loader: loader)
         }
+    }
+
+    /// glTF draws a `MASK` material opaque at the cutoff and not at all below it,
+    /// which SceneKit, having no cutoff of its own, has to discard for.
+    private func applyAlphaCutoff(_ cutoff: Float) {
+        shaderModifiers = [
+            .fragment: "if (_output.color.a < \(cutoff)) { discard_fragment(); }"
+        ]
     }
 
     private func applyMToon(_ mtoon: GLTF.Material.MaterialExtensions.MaterialsMToon,
@@ -115,14 +133,17 @@ extension SCNMaterial {
         if material.alphaMode == .BLEND || mtoon.transparentWithZWrite == true {
             blendMode = .alpha
         }
-        if material.alphaMode == .MASK {
-            transparencyMode = .aOne
-        }
     }
 
-    private func createMetallicRoughnessTexture(from uiImage: VRMImage) throws -> (metal: VRMImage, rough: VRMImage) {
+    private func createMetallicRoughnessTexture(
+        from uiImage: VRMImage,
+        of pbr: GLTF.Material.PbrMetallicRoughness
+    ) throws -> (metal: VRMImage, rough: VRMImage) {
         let image = try uiImage.cgImage ??? ._dataInconsistent("failed to get cgImage")
-        let images = try metallicRoughnessImages(from: image)
+        // SceneKit modulates neither property, so the factors are baked in.
+        let images = try metallicRoughnessImages(from: image,
+                                                 metallicFactor: pbr.metallicFactor,
+                                                 roughnessFactor: pbr.roughnessFactor)
         return (VRMImage(cgImage: images.metal), VRMImage(cgImage: images.rough))
     }
 
@@ -131,7 +152,8 @@ extension SCNMaterial {
         switch alphaMode {
         case .OPAQUE: return .replace
         case .BLEND: return .alpha // FIXME/TODO: blend shader
-        case .MASK: return .alpha // FIXME/TODO: alphaCutoff shader
+        // Nothing survives the cutoff part-way, so it draws as an opaque one.
+        case .MASK: return .replace
         }
     }
 }

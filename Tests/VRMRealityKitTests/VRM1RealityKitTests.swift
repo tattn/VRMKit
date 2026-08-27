@@ -35,7 +35,7 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testVRM1MToonRenderingCanBeDisabled() throws {
+    func testVRM1MToonRenderingCanBeDisabled() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let defaultLoader = try VRMEntityLoader(withData: seedSan)
@@ -48,17 +48,17 @@ struct VRM1RealityKitTests {
         #expect(!(disabledMaterial is CustomMaterial))
         #expect(disabledMaterial is UnlitMaterial)
 
-        let disabledEntity = try disabledLoader.loadEntity()
+        let disabledEntity = try await disabledLoader.loadEntity()
         #expect(!TestSupport.hasCustomMaterial(in: disabledEntity))
         #expect(!TestSupport.hasMToonParameters(in: disabledEntity))
     }
 
     @Test
-    func testMToonParameterTextureRowsMatchMetalConstant() throws {
+    func testMToonParameterTextureRowsMatchMetalConstant() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let vrmEntity = try vrmLoader.loadEntity()
+        let vrmEntity = try await vrmLoader.loadEntity()
         let parameters = try firstMToonParameters(in: vrmEntity)
         let texture = try parameters.textureResource()
         let shader = TestSupport.mtoonShaderSource
@@ -70,9 +70,8 @@ struct VRM1RealityKitTests {
         #expect(texture.width == MToonMaterialParameters.textureRowCount)
         #expect(texture.height == 1)
 
-        // The shader's row constants must match MToonParameterRow exactly:
-        // extract them instead of restating the literals, so any reordering or
-        // insertion on either side fails here.
+        // Extracted rather than restated, so any reordering or insertion on
+        // either side fails here.
         let shaderConstants = shaderFloatConstants(in: shader)
         #expect(shaderConstants["mtoonParameterTextureWidth"] == Float(MToonMaterialParameters.textureRowCount))
         #expect(shaderConstants["mtoonSamplerParameterStart"] == Float(MToonMaterialParameters.baseParameterRowCount))
@@ -89,25 +88,25 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testMToonNormalScaleIsPassedToShaderParameters() throws {
+    func testMToonNormalScaleIsPassedToShaderParameters() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanMaterial(name: "normal-scale") { material in
             material["normalTexture"] = ["index": 0, "scale": 0.35]
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
         let parameters = try mtoonParameters(in: vrmEntity, materialIndex: 0)
 
         #expect(parameters.normalParameters.x.isApproximatelyEqual(to: 0.35))
     }
 
     @Test
-    func testMToonSkipsWorkThatCannotContribute() throws {
+    func testMToonSkipsWorkThatCannotContribute() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san material 0 ("hair") has an outlineWidthMultiplyTexture; 1
         // ("huku_bake") does not, so the flag must differ between them.
-        let entity = try VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         #expect(try mtoonParameters(in: entity, materialIndex: 0).outlineParams.w == 1)
         #expect(try mtoonParameters(in: entity, materialIndex: 1).outlineParams.w == 0)
     }
@@ -117,9 +116,9 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let textureIndex = 0
         let modified = try TestSupport.modifiedSeedSanMToonExtension(name: "raw-mask-textures") { mtoon in
-            mtoon["shadingShiftTexture"] = ["index": textureIndex]
-            mtoon["outlineWidthMultiplyTexture"] = ["index": textureIndex]
-            mtoon["uvAnimationMaskTexture"] = ["index": textureIndex]
+            mtoon["shadingShiftTexture"] = ["index": .int(textureIndex)]
+            mtoon["outlineWidthMultiplyTexture"] = ["index": .int(textureIndex)]
+            mtoon["uvAnimationMaskTexture"] = ["index": .int(textureIndex)]
         }
 
         let loader = try VRMEntityLoader(withData: modified)
@@ -141,11 +140,11 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testMToonEmissiveFlagFactorAndEmissionColorBind() throws {
+    func testMToonEmissiveFlagFactorAndEmissionColorBind() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let vrmEntity = try vrmLoader.loadEntity()
+        let vrmEntity = try await vrmLoader.loadEntity()
         var parameters = try firstMToonParameters(in: vrmEntity)
         let boundColor = SIMD4<Float>(0.25, 0.5, 0.75, 0.2)
 
@@ -157,11 +156,11 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testMToonShadeMultiplyTextureFallsBackToWhite() throws {
+    func testMToonShadeMultiplyTextureFallsBackToWhite() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try seedSanDataWithNonDefaultEyeSampler()
         let vrmLoader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try vrmLoader.loadEntity()
+        let vrmEntity = try await vrmLoader.loadEntity()
         let eyeTransparentParameters = try mtoonParameters(in: vrmEntity, materialIndex: 4)
 
         #expect(eyeTransparentParameters.samplers[MToonTextureSlot.base.rawValue] != MToonMaterialParameters.defaultSampler)
@@ -186,17 +185,17 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testTransparentOutlinePreservesBaseTextureAlpha() throws {
+    func testTransparentOutlinePreservesBaseTextureAlpha() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanMaterial(name: "transparent-outline") { material in
             material["alphaMode"] = "BLEND"
-            var pbr = material["pbrMetallicRoughness"] as? [String: Any] ?? [:]
+            var pbr = material.object("pbrMetallicRoughness") ?? [:]
             pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 0.5]
-            material["pbrMetallicRoughness"] = pbr
+            material["pbrMetallicRoughness"] = .object(pbr)
         }
 
         let loader = try VRMEntityLoader(withData: modified)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
         let outline = try customMaterial(in: vrmEntity,
                                          materialIndex: 0,
                                          faceCulling: .front)
@@ -209,11 +208,11 @@ struct VRM1RealityKitTests {
     func testMToonUsesFirstUVTransformWhenTextureSlotsDiffer() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanMaterial(name: "different-uv-transforms") { material in
-            guard var pbr = material["pbrMetallicRoughness"] as? [String: Any],
-                  var baseTexture = pbr["baseColorTexture"] as? [String: Any],
-                  var extensions = material["extensions"] as? [String: Any],
-                  var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any],
-                  var shadeTexture = mtoon["shadeMultiplyTexture"] as? [String: Any] else {
+            guard var pbr = material.object("pbrMetallicRoughness"),
+                  var baseTexture = pbr.object("baseColorTexture"),
+                  var extensions = material.object("extensions"),
+                  var mtoon = extensions.object("VRMC_materials_mtoon"),
+                  var shadeTexture = mtoon.object("shadeMultiplyTexture") else {
                 throw VRMError.dataInconsistent("Missing Seed-san MToon texture fixture data")
             }
             baseTexture["texCoord"] = 1
@@ -225,8 +224,8 @@ struct VRM1RealityKitTests {
                     "texCoord": 1
                 ]
             ]
-            pbr["baseColorTexture"] = baseTexture
-            material["pbrMetallicRoughness"] = pbr
+            pbr["baseColorTexture"] = .object(baseTexture)
+            material["pbrMetallicRoughness"] = .object(pbr)
 
             shadeTexture["extensions"] = [
                 "KHR_texture_transform": [
@@ -234,9 +233,9 @@ struct VRM1RealityKitTests {
                     "scale": [0.4, 0.3]
                 ]
             ]
-            mtoon["shadeMultiplyTexture"] = shadeTexture
-            extensions["VRMC_materials_mtoon"] = mtoon
-            material["extensions"] = extensions
+            mtoon["shadeMultiplyTexture"] = .object(shadeTexture)
+            extensions["VRMC_materials_mtoon"] = .object(mtoon)
+            material["extensions"] = .object(extensions)
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
@@ -257,7 +256,7 @@ struct VRM1RealityKitTests {
     func testMToonKeepsAnIdentityTransformWhenOnlyALaterSlotHasOne() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanMToonExtension(name: "shade-only-uv-transform") { mtoon in
-            guard var shadeTexture = mtoon["shadeMultiplyTexture"] as? [String: Any] else {
+            guard var shadeTexture = mtoon.object("shadeMultiplyTexture") else {
                 throw VRMError.dataInconsistent("Missing Seed-san MToon texture fixture data")
             }
             shadeTexture["extensions"] = [
@@ -266,7 +265,7 @@ struct VRM1RealityKitTests {
                     "scale": [0.4, 0.3]
                 ]
             ]
-            mtoon["shadeMultiplyTexture"] = shadeTexture
+            mtoon["shadeMultiplyTexture"] = .object(shadeTexture)
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
@@ -282,10 +281,10 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testNormalMappedMeshesCarryACompleteTangentBasis() throws {
+    func testNormalMappedMeshesCarryACompleteTangentBasis() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
 
         var checkedParts = 0
         for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
@@ -293,8 +292,7 @@ struct VRM1RealityKitTests {
             for part in mesh.contents.models.flatMap(\.parts) {
                 guard let tangents = part.tangents?.elements, !tangents.isEmpty else { continue }
                 // MToon.metal falls back to the geometry normal unless both
-                // buffers are present and non-degenerate, and RealityKit derives
-                // neither buffer from the other.
+                // buffers are present and non-degenerate.
                 let bitangents = try #require(part.bitangents?.elements)
                 #expect(tangents.count == part.positions.count)
                 #expect(bitangents.count == tangents.count)
@@ -309,14 +307,13 @@ struct VRM1RealityKitTests {
     }
 
     /// MToon samples the normal map in glTF UV space, where v points down, while
-    /// the mesh stores UVs with v up. A basis generated from the stored UVs would
-    /// have the opposite handedness to the one a TANGENT accessor supplies, so
-    /// the generated bitangent has to follow glTF +v.
+    /// the mesh stores UVs with v up, so the generated bitangent has to follow
+    /// glTF +v to match what a TANGENT accessor supplies.
     @Test
-    func testGeneratedBitangentsFollowTheGLTFUVOrientation() throws {
+    func testGeneratedBitangentsFollowTheGLTFUVOrientation() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
 
         var checkedTriangles = 0
         var agreeingTriangles = 0
@@ -355,108 +352,99 @@ struct VRM1RealityKitTests {
     }
 
     /// glTF requires every vertex attribute to match POSITION in length, so a
-    /// short NORMAL accessor has to fail the load rather than be indexed per
-    /// vertex while the tangent basis is built.
+    /// short NORMAL accessor has to fail the load.
     @Test
-    func testVertexAttributeShorterThanPositionFailsTheLoad() throws {
+    func testVertexAttributeShorterThanPositionFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let data = try TestSupport.modifiedSeedSanData(name: "short NORMAL") { json in
-            guard var accessors = json["accessors"] as? [[String: Any]],
-                  let meshes = json["meshes"] as? [[String: Any]],
-                  let primitives = meshes.first?["primitives"] as? [[String: Any]],
-                  let attributes = primitives.first?["attributes"] as? [String: Any],
-                  let normalIndex = attributes["NORMAL"] as? Int,
+            var accessors = json.objects("accessors")
+            let primitives = json.objects("meshes").first?.objects("primitives") ?? []
+            guard let attributes = primitives.first?.object("attributes"),
+                  let normalIndex = attributes.int("NORMAL"),
                   accessors.indices.contains(normalIndex),
-                  let count = accessors[normalIndex]["count"] as? Int, count > 1 else {
+                  let count = accessors[normalIndex].int("count"), count > 1 else {
                 throw VRMError.dataInconsistent("Missing Seed-san NORMAL accessor")
             }
-            accessors[normalIndex]["count"] = count - 1
-            json["accessors"] = accessors
+            accessors[normalIndex]["count"] = .int(count - 1)
+            json["accessors"] = .objects(accessors)
         }
 
         let loader = try VRMEntityLoader(withData: data)
-        #expect(throws: VRMError.self) {
-            try loader.loadEntity()
+        await #expect(throws: VRMError.self) {
+            try await loader.loadEntity()
         }
     }
 
-    /// glTF defines `JOINTS_n` as unsigned integer indices. A signed or floating
-    /// point component type is a malformed file, and converting one to `UInt32`
-    /// traps for a negative or out-of-range value, so the load has to fail.
+    /// glTF defines `JOINTS_n` as unsigned integer indices, and converting a
+    /// signed one to `UInt32` would trap, so the load has to fail.
     @Test
-    func testSignedJointIndicesFailTheLoad() throws {
+    func testSignedJointIndicesFailTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let data = try TestSupport.modifiedSeedSanData(name: "signed JOINTS_0") { json in
-            guard var accessors = json["accessors"] as? [[String: Any]],
-                  let meshes = json["meshes"] as? [[String: Any]],
-                  let primitives = meshes.first?["primitives"] as? [[String: Any]],
-                  let attributes = primitives.first?["attributes"] as? [String: Any],
-                  let jointsIndex = attributes["JOINTS_0"] as? Int,
+            var accessors = json.objects("accessors")
+            let primitives = json.objects("meshes").first?.objects("primitives") ?? []
+            guard let attributes = primitives.first?.object("attributes"),
+                  let jointsIndex = attributes.int("JOINTS_0"),
                   accessors.indices.contains(jointsIndex),
-                  // The signed counterpart of the same width, so the accessor
-                  // still fits its buffer view and the component type is what
-                  // fails the load.
-                  let signed = [5121: 5120, 5123: 5122][accessors[jointsIndex]["componentType"] as? Int ?? 0] else {
+                  // The signed counterpart of the same width, so the component
+                  // type is what fails the load.
+                  let signed = [5121: 5120, 5123: 5122][accessors[jointsIndex].int("componentType") ?? 0] else {
                 throw VRMError.dataInconsistent("Missing Seed-san JOINTS_0 accessor")
             }
-            accessors[jointsIndex]["componentType"] = signed
-            json["accessors"] = accessors
+            accessors[jointsIndex]["componentType"] = .int(signed)
+            json["accessors"] = .objects(accessors)
         }
 
         let loader = try VRMEntityLoader(withData: data)
-        #expect(throws: VRMError.self) {
-            try loader.loadEntity()
+        await #expect(throws: VRMError.self) {
+            try await loader.loadEntity()
         }
     }
 
-    /// glTF defines `inverseBindMatrices` as one matrix per skin joint. An
-    /// accessor covering fewer of them is a broken file, and quietly padding it
-    /// with identities would bind those joints to the wrong rest pose.
+    /// glTF defines `inverseBindMatrices` as one matrix per skin joint, and
+    /// padding a short one with identities would bind the wrong rest pose.
     @Test
-    func testShortInverseBindMatricesFailTheLoad() throws {
+    func testShortInverseBindMatricesFailTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let data = try TestSupport.modifiedSeedSanData(name: "short inverseBindMatrices") { json in
-            guard var accessors = json["accessors"] as? [[String: Any]],
-                  let skins = json["skins"] as? [[String: Any]],
-                  let matricesIndex = skins.first?["inverseBindMatrices"] as? Int,
+            var accessors = json.objects("accessors")
+            guard let matricesIndex = json.objects("skins").first?.int("inverseBindMatrices"),
                   accessors.indices.contains(matricesIndex),
-                  let count = accessors[matricesIndex]["count"] as? Int, count > 1 else {
+                  let count = accessors[matricesIndex].int("count"), count > 1 else {
                 throw VRMError.dataInconsistent("Missing Seed-san inverseBindMatrices accessor")
             }
-            accessors[matricesIndex]["count"] = count - 1
-            json["accessors"] = accessors
+            accessors[matricesIndex]["count"] = .int(count - 1)
+            json["accessors"] = .objects(accessors)
         }
 
         let loader = try VRMEntityLoader(withData: data)
-        #expect {
-            try loader.loadEntity()
+        await #expect {
+            try await loader.loadEntity()
         } throws: { error in
             isDataInconsistent(error, containing: "inverseBindMatrices")
         }
     }
 
-    /// A TRIANGLES primitive holds a multiple of three indices. Trimming the
-    /// remainder away would load a file whose triangle list is not the one it
-    /// describes, so the load fails instead.
+    /// A TRIANGLES primitive holds a multiple of three indices, and trimming the
+    /// remainder would draw a triangle list the file does not describe.
     @Test
-    func testTriangleIndexCountThatIsNotAMultipleOfThreeFailsTheLoad() throws {
+    func testTriangleIndexCountThatIsNotAMultipleOfThreeFailsTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let data = try TestSupport.modifiedSeedSanData(name: "partial triangle") { json in
-            guard var accessors = json["accessors"] as? [[String: Any]],
-                  let meshes = json["meshes"] as? [[String: Any]],
-                  let primitives = meshes.first?["primitives"] as? [[String: Any]],
-                  let indicesIndex = primitives.first?["indices"] as? Int,
+            var accessors = json.objects("accessors")
+            let primitives = json.objects("meshes").first?.objects("primitives") ?? []
+            guard let indicesIndex = primitives.first?.int("indices"),
                   accessors.indices.contains(indicesIndex),
-                  let count = accessors[indicesIndex]["count"] as? Int, count > 3 else {
+                  let count = accessors[indicesIndex].int("count"), count > 3 else {
                 throw VRMError.dataInconsistent("Missing Seed-san indices accessor")
             }
-            accessors[indicesIndex]["count"] = count - 1
-            json["accessors"] = accessors
+            accessors[indicesIndex]["count"] = .int(count - 1)
+            json["accessors"] = .objects(accessors)
         }
 
         let loader = try VRMEntityLoader(withData: data)
-        #expect {
-            try loader.loadEntity()
+        await #expect {
+            try await loader.loadEntity()
         } throws: { error in
             isDataInconsistent(error, containing: "TRIANGLES")
         }
@@ -466,28 +454,26 @@ struct VRM1RealityKitTests {
     /// unnormalized integer accessor holds raw counts, not the 0...1 weights the
     /// joint influences are built from.
     @Test
-    func testUnnormalizedIntegerJointWeightsFailTheLoad() throws {
+    func testUnnormalizedIntegerJointWeightsFailTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let data = try TestSupport.modifiedSeedSanData(name: "unnormalized WEIGHTS_0") { json in
-            guard var accessors = json["accessors"] as? [[String: Any]],
-                  let meshes = json["meshes"] as? [[String: Any]],
-                  let primitives = meshes.first?["primitives"] as? [[String: Any]],
-                  let attributes = primitives.first?["attributes"] as? [String: Any],
-                  let weightsIndex = attributes["WEIGHTS_0"] as? Int,
+            var accessors = json.objects("accessors")
+            let primitives = json.objects("meshes").first?.objects("primitives") ?? []
+            guard let attributes = primitives.first?.object("attributes"),
+                  let weightsIndex = attributes.int("WEIGHTS_0"),
                   accessors.indices.contains(weightsIndex) else {
                 throw VRMError.dataInconsistent("Missing Seed-san WEIGHTS_0 accessor")
             }
             // Narrower than the float components the fixture ships, so the
-            // accessor still fits its buffer view and the missing `normalized`
-            // flag is what fails the load.
+            // missing `normalized` flag is what fails the load.
             accessors[weightsIndex]["componentType"] = 5121
             accessors[weightsIndex]["normalized"] = false
-            json["accessors"] = accessors
+            json["accessors"] = .objects(accessors)
         }
 
         let loader = try VRMEntityLoader(withData: data)
-        #expect {
-            try loader.loadEntity()
+        await #expect {
+            try await loader.loadEntity()
         } throws: { error in
             isDataInconsistent(error, containing: "WEIGHTS_0")
         }
@@ -496,10 +482,10 @@ struct VRM1RealityKitTests {
     /// The light direction is carried in `custom.value` and the light color in a
     /// parameter row, so updating one must not drop the other.
     @Test
-    func testMToonLightColorUpdateKeepsTheCustomLightDirection() throws {
+    func testMToonLightColorUpdateKeepsTheCustomLightDirection() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmLoader = try VRMEntityLoader(withData: TestSupport.seedSanData)
-        let vrmEntity = try vrmLoader.loadEntity()
+        let vrmEntity = try await vrmLoader.loadEntity()
 
         vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
         vrmEntity.setMToonLightColor(SIMD3<Float>(0.8, 0.7, 0.6))
@@ -515,53 +501,54 @@ struct VRM1RealityKitTests {
     }
 
     private func isDataInconsistent(_ error: any Error, containing fragment: String) -> Bool {
-        guard case VRMError.dataInconsistent(let message) = error else { return false }
-        return message.contains(fragment)
+        guard let error = error as? VRMError, error.kind == .dataInconsistent else { return false }
+        return error.message.contains(fragment)
     }
 
     /// VRM 0.x keeps its normal map in Unity's `_BumpMap`, which the migration
-    /// surfaces on the MToon descriptor and not on the glTF material. A
-    /// primitive without a TANGENT accessor still needs a generated basis for
-    /// it, or MToon.metal falls back to the geometry normal and the map does
-    /// nothing.
+    /// surfaces on the MToon descriptor rather than on the glTF material, so a
+    /// primitive without TANGENT still needs a generated basis for it.
     @Test
-    func testVRM0BumpMapGeneratesATangentBasisWithoutTANGENT() throws {
+    func testVRM0BumpMapGeneratesATangentBasisWithoutTANGENT() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let materialIndex = 0
         let data = try TestSupport.modifiedAliciaSolidData(name: "VRM0 _BumpMap without TANGENT") { json in
-            guard var extensions = json["extensions"] as? [String: Any],
-                  var vrm = extensions["VRM"] as? [String: Any],
-                  var properties = vrm["materialProperties"] as? [[String: Any]],
-                  properties.indices.contains(materialIndex),
-                  var textures = properties[materialIndex]["textureProperties"] as? [String: Any],
-                  let mainTexture = textures["_MainTex"],
-                  var meshes = json["meshes"] as? [[String: Any]] else {
+            guard var extensions = json.object("extensions"),
+                  var vrm = extensions.object("VRM") else {
                 throw VRMError.dataInconsistent("Missing AliciaSolid material properties")
             }
+            var properties = vrm.objects("materialProperties")
+            guard properties.indices.contains(materialIndex),
+                  var textures = properties[materialIndex].object("textureProperties"),
+                  let mainTexture = textures["_MainTex"] else {
+                throw VRMError.dataInconsistent("Missing AliciaSolid material properties")
+            }
+            var meshes = json.objects("meshes")
             // The fixture ships unlit materials with a TANGENT accessor, which
             // is the opposite of what this exercises.
             properties[materialIndex]["shader"] = "VRM/MToon"
             textures["_BumpMap"] = mainTexture
-            properties[materialIndex]["textureProperties"] = textures
-            vrm["materialProperties"] = properties
-            extensions["VRM"] = vrm
-            json["extensions"] = extensions
+            properties[materialIndex]["textureProperties"] = .object(textures)
+            vrm["materialProperties"] = .objects(properties)
+            extensions["VRM"] = .object(vrm)
+            json["extensions"] = .object(extensions)
 
             for meshIndex in meshes.indices {
-                guard var primitives = meshes[meshIndex]["primitives"] as? [[String: Any]] else { continue }
+                var primitives = meshes[meshIndex].objects("primitives")
+                guard !primitives.isEmpty else { continue }
                 for primitiveIndex in primitives.indices {
-                    guard primitives[primitiveIndex]["material"] as? Int == materialIndex,
-                          var attributes = primitives[primitiveIndex]["attributes"] as? [String: Any] else { continue }
+                    guard primitives[primitiveIndex].int("material") == materialIndex,
+                          var attributes = primitives[primitiveIndex].object("attributes") else { continue }
                     attributes.removeValue(forKey: "TANGENT")
-                    primitives[primitiveIndex]["attributes"] = attributes
+                    primitives[primitiveIndex]["attributes"] = .object(attributes)
                 }
-                meshes[meshIndex]["primitives"] = primitives
+                meshes[meshIndex]["primitives"] = .objects(primitives)
             }
-            json["meshes"] = meshes
+            json["meshes"] = .objects(meshes)
         }
 
         let loader = try VRMEntityLoader(withData: data, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
 
         var checkedParts = 0
         for modelEntity in TestSupport.modelEntities(in: vrmEntity)
@@ -580,11 +567,11 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testSetMToonLightAndAmbientColorUpdateParameterRows() throws {
+    func testSetMToonLightAndAmbientColorUpdateParameterRows() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let vrmEntity = try vrmLoader.loadEntity()
+        let vrmEntity = try await vrmLoader.loadEntity()
         let lightColor = SIMD3<Float>(0.8, 0.7, 0.6)
         let ambientColor = SIMD3<Float>(0.05, 0.1, 0.15)
 
@@ -599,11 +586,11 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testMToonTextureTransformBindUpdatesParameterTexture() throws {
+    func testMToonTextureTransformBindUpdatesParameterTexture() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let vrmLoader = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try vrmLoader.loadEntity()
+        let vrmEntity = try await vrmLoader.loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
 
@@ -618,11 +605,11 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testExpressionTextureTransformsAccumulateAndResetIndependently() throws {
+    func testExpressionTextureTransformsAccumulateAndResetIndependently() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let loader = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
         vrmEntity.setExpression(value: 1, for: .preset(.angry))
@@ -639,22 +626,22 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testExpressionMaterialColorsAccumulateAndResetIndependently() throws {
+    func testExpressionMaterialColorsAccumulateAndResetIndependently() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanData(name: "accumulated-material-colors") { json in
-            guard var materials = json["materials"] as? [[String: Any]],
-                  materials.indices.contains(0),
-                  var pbr = materials[0]["pbrMetallicRoughness"] as? [String: Any],
-                  var extensions = json["extensions"] as? [String: Any],
-                  var vrm = extensions["VRMC_vrm"] as? [String: Any],
-                  var expressions = vrm["expressions"] as? [String: Any],
-                  var preset = expressions["preset"] as? [String: Any],
-                  var happy = preset["happy"] as? [String: Any],
-                  var angry = preset["angry"] as? [String: Any] else {
+            var materials = json.objects("materials")
+            guard materials.indices.contains(0),
+                  var pbr = materials[0].object("pbrMetallicRoughness"),
+                  var extensions = json.object("extensions"),
+                  var vrm = extensions.object("VRMC_vrm"),
+                  var expressions = vrm.object("expressions"),
+                  var preset = expressions.object("preset"),
+                  var happy = preset.object("happy"),
+                  var angry = preset.object("angry") else {
                 throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
             }
             pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]
-            materials[0]["pbrMetallicRoughness"] = pbr
+            materials[0]["pbrMetallicRoughness"] = .object(pbr)
             happy["materialColorBinds"] = [[
                 "material": 0,
                 "type": "color",
@@ -665,17 +652,17 @@ struct VRM1RealityKitTests {
                 "type": "color",
                 "targetValue": [1.0, 0.6, 1.0, 1.0]
             ]]
-            preset["happy"] = happy
-            preset["angry"] = angry
-            expressions["preset"] = preset
-            vrm["expressions"] = expressions
-            extensions["VRMC_vrm"] = vrm
-            json["extensions"] = extensions
-            json["materials"] = materials
+            preset["happy"] = .object(happy)
+            preset["angry"] = .object(angry)
+            expressions["preset"] = .object(preset)
+            vrm["expressions"] = .object(expressions)
+            extensions["VRMC_vrm"] = .object(vrm)
+            json["extensions"] = .object(extensions)
+            json["materials"] = .objects(materials)
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
         vrmEntity.setExpression(value: 1, for: .preset(.angry))
         var parameters = try mtoonParameters(in: vrmEntity, materialIndex: 0)
@@ -783,10 +770,10 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testBlockingExpressionOverrideSuppressesBlinkAndLookAtWeights() throws {
+    func testBlockingExpressionOverrideSuppressesBlinkAndLookAtWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san's `relaxed` declares overrideBlink / overrideLookAt = block.
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                             shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.blink))
@@ -810,18 +797,18 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testBlendingExpressionOverrideScalesBlinkWeights() throws {
+    func testBlendingExpressionOverrideScalesBlinkWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san's `happy` declares overrideBlink = blend, but is binary; a
         // non-binary variant makes the partial blend observable.
         let modified = try TestSupport.modifiedSeedSanExpressions(name: "non-binary-happy") { preset in
-            guard var happy = preset["happy"] as? [String: Any] else {
+            guard var happy = preset.object("happy") else {
                 throw VRMError.dataInconsistent("Missing Seed-san happy expression")
             }
             happy["isBinary"] = false
-            preset["happy"] = happy
+            preset["happy"] = .object(happy)
         }
-        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpressions([.preset(.blink): 1, .preset(.happy): 0.25])
 
@@ -829,14 +816,12 @@ struct VRM1RealityKitTests {
         #expect(blinkWeight.isApproximatelyEqual(to: 0.75))
     }
 
-    /// Alicia's `Joy` and `Fun` groups both bind face target 38. VRM 0.x blend
-    /// shape groups load as expressions, so two meeting on one morph target
-    /// compose the way VRM 1.0 expressions do: their contributions add up
-    /// rather than overwrite.
+    /// Alicia's `Joy` and `Fun` groups both bind face target 38, and VRM 0.x blend
+    /// shape groups load as expressions, so their contributions add up.
     @Test
-    func testVRM0BlendShapeGroupsSharingAMorphTargetAccumulate() throws {
+    func testVRM0BlendShapeGroupsSharingAMorphTargetAccumulate() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
 
         vrmEntity.setExpression(value: 0.25, for: .preset(.happy))
         #expect(try #require(morphWeight(in: vrmEntity, targetIndex: 38)).isApproximatelyEqual(to: 0.25))
@@ -853,22 +838,21 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testSimultaneousBlendOverridesAccumulateBeforeSaturating() throws {
+    func testSimultaneousBlendOverridesAccumulateBeforeSaturating() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Two non-binary expressions that each blend-override blink. VRM sums
-        // their weights and saturates, so 0.5 + 0.5 fully suppresses blink;
-        // composing the factors multiplicatively would leave 0.25 behind.
+        // their weights and saturates, so 0.5 + 0.5 fully suppresses blink.
         let modified = try TestSupport.modifiedSeedSanExpressions(name: "two-blend-overrides") { preset in
             for name in ["happy", "sad"] {
-                guard var expression = preset[name] as? [String: Any] else {
+                guard var expression = preset.object(name) else {
                     throw VRMError.dataInconsistent("Missing Seed-san \(name) expression")
                 }
                 expression["isBinary"] = false
                 expression["overrideBlink"] = "blend"
-                preset[name] = expression
+                preset[name] = .object(expression)
             }
         }
-        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpressions([.preset(.blink): 1, .preset(.happy): 0.5])
         #expect(try #require(morphWeight(in: vrmEntity, targetIndex: 1)).isApproximatelyEqual(to: 0.5))
@@ -882,22 +866,22 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testOverriddenBinaryExpressionIsSuppressedEntirely() throws {
+    func testOverriddenBinaryExpressionIsSuppressedEntirely() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // A binary expression has no partial state, so *any* override effect
         // must zero it rather than scale it.
         let modified = try TestSupport.modifiedSeedSanExpressions(name: "binary-blink") { preset in
-            guard var blink = preset["blink"] as? [String: Any],
-                  var happy = preset["happy"] as? [String: Any] else {
+            guard var blink = preset.object("blink"),
+                  var happy = preset.object("happy") else {
                 throw VRMError.dataInconsistent("Missing Seed-san blink/happy expressions")
             }
             blink["isBinary"] = true
             happy["isBinary"] = false
             happy["overrideBlink"] = "blend"
-            preset["blink"] = blink
-            preset["happy"] = happy
+            preset["blink"] = .object(blink)
+            preset["happy"] = .object(happy)
         }
-        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.blink))
         #expect(morphWeight(in: vrmEntity, targetIndex: 1) == 1)
@@ -908,18 +892,18 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testExpressionDoesNotOverrideItsOwnKind() throws {
+    func testExpressionDoesNotOverrideItsOwnKind() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // "Like overrideBlink for blink, settings for the same kind are treated
         // as invalid": blink must not suppress itself or its own group.
         let modified = try TestSupport.modifiedSeedSanExpressions(name: "self-overriding-blink") { preset in
-            guard var blink = preset["blink"] as? [String: Any] else {
+            guard var blink = preset.object("blink") else {
                 throw VRMError.dataInconsistent("Missing Seed-san blink expression")
             }
             blink["overrideBlink"] = "block"
-            preset["blink"] = blink
+            preset["blink"] = .object(blink)
         }
-        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpressions([.preset(.blink): 1, .preset(.blinkLeft): 1])
 
@@ -930,10 +914,10 @@ struct VRM1RealityKitTests {
 // there is no `CustomMaterial`, so MToon falls back to Unlit / PBR materials.
 #if !os(visionOS)
     @Test
-    func testBinaryExpressionIsOnlyActiveAboveHalf() throws {
+    func testBinaryExpressionIsOnlyActiveAboveHalf() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // `angry` is binary and carries a textureTransformBind on material 11.
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                             shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpression(value: 0.5, for: .preset(.angry))
@@ -948,9 +932,9 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testSetExpressionsAppliesEveryWeightAtOnce() throws {
+    func testSetExpressionsAppliesEveryWeightAtOnce() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                             shaders: TestSupport.noOutlineShaders).loadEntity()
 
         vrmEntity.setExpressions([.preset(.happy): 1, .preset(.angry): 1])
@@ -967,23 +951,24 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testMToonSamplerKeepsMagAndMinFiltersIndependent() throws {
+    func testMToonSamplerKeepsMagAndMinFiltersIndependent() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // glTF magFilter and minFilter are independent, so a LINEAR magFilter
         // must stay linear next to a NEAREST minFilter.
         // Material 0's base color texture uses sampler 0.
         let modified = try TestSupport.modifiedSeedSanData(name: "mixed-filter-sampler") { json in
-            guard var samplers = json["samplers"] as? [[String: Any]], !samplers.isEmpty else {
+            var samplers = json.objects("samplers")
+            guard !samplers.isEmpty else {
                 throw VRMError.dataInconsistent("Missing Seed-san sampler fixture data")
             }
             samplers[0]["magFilter"] = 9729                 // LINEAR
             samplers[0]["minFilter"] = 9728                 // NEAREST
             samplers[0]["wrapS"] = 33071                    // CLAMP_TO_EDGE
             samplers[0]["wrapT"] = 33648                    // MIRRORED_REPEAT
-            json["samplers"] = samplers
+            json["samplers"] = .objects(samplers)
         }
 
-        let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
         let parameters = try mtoonParameters(in: vrmEntity, materialIndex: 0)
 
         // (wrapS, wrapT, filterIndex, 0): clamp / mirrored repeat, and a
@@ -1001,7 +986,7 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testEveryGLTFMinFilterMapsToADistinctSampler() throws {
+    func testEveryGLTFMinFilterMapsToADistinctSampler() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // glTF's six minFilter values are two independent choices, the
         // minification texel filter and the filter between mip levels, so each
@@ -1018,13 +1003,14 @@ struct VRM1RealityKitTests {
         var seenIndexes: Set<Int> = []
         for entry in minFilters {
             let modified = try TestSupport.modifiedSeedSanData(name: "min-filter-\(entry.raw)") { json in
-                guard var samplers = json["samplers"] as? [[String: Any]], !samplers.isEmpty else {
+                var samplers = json.objects("samplers")
+                guard !samplers.isEmpty else {
                     throw VRMError.dataInconsistent("Missing Seed-san sampler fixture data")
                 }
-                samplers[0]["minFilter"] = entry.raw
-                json["samplers"] = samplers
+                samplers[0]["minFilter"] = .int(entry.raw)
+                json["samplers"] = .objects(samplers)
             }
-            let vrmEntity = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
+            let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
             let parameters = try mtoonParameters(in: vrmEntity, materialIndex: 0)
             let expected = MToonSamplerFilter(magnification: .linear,
                                               minification: entry.minification,
@@ -1043,14 +1029,14 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         func customMaterial(alphaMode: String, transparentWithZWrite: Bool) throws -> CustomMaterial {
             let modified = try TestSupport.modifiedSeedSanMaterial(name: "z-write-\(alphaMode)-\(transparentWithZWrite)") { material in
-                material["alphaMode"] = alphaMode
-                guard var extensions = material["extensions"] as? [String: Any],
-                      var mtoon = extensions["VRMC_materials_mtoon"] as? [String: Any] else {
+                material["alphaMode"] = .string(alphaMode)
+                guard var extensions = material.object("extensions"),
+                      var mtoon = extensions.object("VRMC_materials_mtoon") else {
                     throw VRMError.dataInconsistent("Missing Seed-san MToon extension")
                 }
-                mtoon["transparentWithZWrite"] = transparentWithZWrite
-                extensions["VRMC_materials_mtoon"] = mtoon
-                material["extensions"] = extensions
+                mtoon["transparentWithZWrite"] = .bool(transparentWithZWrite)
+                extensions["VRMC_materials_mtoon"] = .object(mtoon)
+                material["extensions"] = .object(extensions)
             }
             let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
             return try #require(loader.material(withMaterialIndex: 0) as? CustomMaterial,
@@ -1066,9 +1052,9 @@ struct VRM1RealityKitTests {
 #endif
 
     @Test
-    func testUpdateAppliesSpringBonePosesWithoutAFrameOfLag() throws {
+    func testUpdateAppliesSpringBonePosesWithoutAFrameOfLag() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData,
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                             shaders: []).loadEntity()
 
         // Rotating a parent bone drags the spring chains, so spring bones write
@@ -1110,9 +1096,9 @@ struct VRM1RealityKitTests {
     /// `VRMC_springBone` pairs the joints of a spring consecutively, so the
     /// last of them is only the tail the one before it swings towards.
     @Test
-    func testTheLastJointOfASpringIsOnlyItsTail() throws {
+    func testTheLastJointOfASpringIsOnlyItsTail() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
         guard case .v1(let vrm1) = vrmEntity.vrm else {
             Issue.record("Seed-san is a VRM 1.0 fixture")
             return
@@ -1138,23 +1124,23 @@ struct VRM1RealityKitTests {
 
     /// A spring of one joint has no pair in it, so there is nothing to swing.
     @Test
-    func testASpringOfOneJointSwingsNothing() throws {
+    func testASpringOfOneJointSwingsNothing() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         var jointNode = 0
         let data = try TestSupport.modifiedSeedSanData(name: "one joint spring") { json in
-            var extensions = json["extensions"] as? [String: Any] ?? [:]
-            var springBone = extensions["VRMC_springBone"] as? [String: Any] ?? [:]
-            let springs = springBone["springs"] as? [[String: Any]] ?? []
-            let joints = springs.first?["joints"] as? [[String: Any]] ?? []
-            guard let node = joints.first?["node"] as? Int else {
+            var extensions = json.object("extensions") ?? [:]
+            var springBone = extensions.object("VRMC_springBone") ?? [:]
+            let springs = springBone.objects("springs")
+            let joints = springs.first?.objects("joints") ?? []
+            guard let node = joints.first?.int("node") else {
                 throw VRMError.dataInconsistent("Missing Seed-san spring bone fixture data")
             }
             jointNode = node
-            springBone["springs"] = [["joints": [["node": node]]]]
-            extensions["VRMC_springBone"] = springBone
-            json["extensions"] = extensions
+            springBone["springs"] = [["joints": [["node": .int(node)]]]]
+            extensions["VRMC_springBone"] = .object(springBone)
+            json["extensions"] = .object(extensions)
         }
-        let vrmEntity = try VRMEntityLoader(withData: data, shaders: []).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: data, shaders: []).loadEntity()
         let joint = try #require(vrmEntity.entity(forNodeAt: jointNode))
         let rotation = joint.transform.rotation
 
@@ -1166,21 +1152,22 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testScenesSharingNodesLoadIndependentEntityGraphs() throws {
+    func testScenesSharingNodesLoadIndependentEntityGraphs() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // A second scene referencing the same root nodes. Entity instances
         // cannot be shared between scenes, so each load must build its own.
         let modified = try TestSupport.modifiedSeedSanData(name: "duplicated-scene") { json in
-            guard var scenes = json["scenes"] as? [[String: Any]], let first = scenes.first else {
+            var scenes = json.objects("scenes")
+            guard let first = scenes.first else {
                 throw VRMError.dataInconsistent("Missing Seed-san scene fixture data")
             }
             scenes.append(first)
-            json["scenes"] = scenes
+            json["scenes"] = .objects(scenes)
         }
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
 
-        let firstScene = try loader.loadEntity(withSceneIndex: 0)
-        let secondScene = try loader.loadEntity(withSceneIndex: 1)
+        let firstScene = try await loader.loadEntity(withSceneIndex: 0)
+        let secondScene = try await loader.loadEntity(withSceneIndex: 1)
 
         #expect(firstScene !== secondScene)
         // Neither scene may have had its nodes stolen by the other: both keep a
@@ -1200,7 +1187,7 @@ struct VRM1RealityKitTests {
 
         // Loading a scene again builds another independent entity, so one loader
         // can hand out several animatable copies of the same scene.
-        let reloaded = try loader.loadEntity(withSceneIndex: 0)
+        let reloaded = try await loader.loadEntity(withSceneIndex: 0)
         #expect(reloaded !== firstScene)
         #expect(reloaded.hasRuntimeBindings)
         #expect(Set(TestSupport.modelEntities(in: reloaded).map(ObjectIdentifier.init))
@@ -1209,28 +1196,143 @@ struct VRM1RealityKitTests {
         #expect(morphWeight(in: firstScene, targetIndex: 33) == 1)
     }
 
+    /// A `thirdPersonOnly` mesh goes in first person. What goes is the mesh,
+    /// not the node drawing it, so the nodes hanging off that one keep drawing.
     @Test
-    func testVRM1FirstPersonAutoHidesHeadDescendants() throws {
+    func testVRM1ThirdPersonOnlyMeshIsHiddenInFirstPerson() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let seedSan = TestSupport.seedSanData
-        let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let vrmEntity = try vrmLoader.loadEntity()
-        let annotatedEntity = try vrmLoader.node(withNodeIndex: 0)
+        let vrmLoader = try VRMEntityLoader(withData: TestSupport.seedSanData)
+        let vrmEntity = try await vrmLoader.loadEntity()
+        let node = try vrmLoader.node(withNodeIndex: 0)
+        let mesh = try #require(node.children.first)
 
-        #expect(annotatedEntity.isEnabled == true)
+        #expect(mesh.isEnabled == true)
         vrmEntity.setFirstPersonRenderMode(.firstPerson)
-        #expect(annotatedEntity.isEnabled == false)
+        #expect(mesh.isEnabled == false)
+        #expect(node.isEnabled == true)
         vrmEntity.setFirstPersonRenderMode(.thirdPerson)
-        #expect(annotatedEntity.isEnabled == true)
+        #expect(mesh.isEnabled == true)
+    }
+
+    /// glTF lets two nodes draw one mesh, and VRM 1.0 annotates the node rather
+    /// than the mesh, so one of the two may go in first person while the other
+    /// stays.
+    @Test
+    func testVRM1AnnotatesEachNodeDrawingAMeshOnItsOwn() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        // Node 0 draws mesh 0 as `thirdPersonOnly`; the copy draws it as `both`.
+        let data = try Self.seedSanSharingMeshZero(copyAnnotatedAs: "both")
+        let vrmLoader = try VRMEntityLoader(withData: data)
+        let vrmEntity = try await vrmLoader.loadEntity()
+        let annotated = try #require(vrmLoader.node(withNodeIndex: 0).children.first)
+        let copy = try #require(vrmLoader.node(withNodeIndex: Self.seedSanMeshCopyNodeIndex).children.first)
+
+        vrmEntity.setFirstPersonRenderMode(.firstPerson)
+        #expect(annotated.isEnabled == false)
+        #expect(copy.isEnabled == true)
+
+        vrmEntity.setFirstPersonRenderMode(.thirdPerson)
+        #expect(annotated.isEnabled == true)
+        #expect(copy.isEnabled == true)
+    }
+
+    /// The `auto` cut is made as a mesh is built, so a mesh one node draws
+    /// `auto` and another draws whole is built twice rather than cut for both.
+    @Test
+    func testVRM1CutsAMeshOnlyForTheNodesAnnotatedAuto() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        // Node 0 draws mesh 0 as `auto`, so the head's triangles go; the copy
+        // draws it as `both`, so it keeps them.
+        let data = try Self.seedSanSharingMeshZero(copyAnnotatedAs: "both") { annotations in
+            annotations.map { annotation in
+                var annotation = annotation
+                if annotation.int("node") == 0 { annotation["type"] = .string("auto") }
+                return annotation
+            }
+        }
+        let vrmLoader = try VRMEntityLoader(withData: data, shaders: [])
+        _ = try await vrmLoader.loadEntity()
+        let annotated = try #require(vrmLoader.node(withNodeIndex: 0).children.first)
+        let copy = try #require(vrmLoader.node(withNodeIndex: Self.seedSanMeshCopyNodeIndex).children.first)
+
+        let cutPrimitives = TestSupport.firstPersonCuts(in: annotated)
+        #expect(!cutPrimitives.isEmpty)
+        #expect(TestSupport.firstPersonCuts(in: copy).isEmpty)
+    }
+
+    /// The node index the fixture rewrite below gives its copy of node 0.
+    private static let seedSanMeshCopyNodeIndex = 147
+
+    /// Seed-san with a second node drawing node 0's mesh through node 0's skin,
+    /// annotated `copyAnnotatedAs`. `modifyAnnotations` rewrites the annotations
+    /// the fixture already carries.
+    private static func seedSanSharingMeshZero(
+        copyAnnotatedAs type: String,
+        modifyAnnotations: ([[String: JSONValue]]) -> [[String: JSONValue]] = { $0 }
+    ) throws -> Data {
+        try TestSupport.modifiedSeedSanData(name: "one mesh drawn by two nodes") { json in
+            var nodes = json.objects("nodes")
+            guard nodes.count == seedSanMeshCopyNodeIndex,
+                  let mesh = nodes.first?.int("mesh"), let skin = nodes.first?.int("skin") else {
+                throw VRMError.dataInconsistent("Unexpected Seed-san node layout")
+            }
+            nodes.append(["name": .string("hair_copy"), "mesh": .int(mesh), "skin": .int(skin)])
+            json["nodes"] = .objects(nodes)
+
+            var scenes = json.objects("scenes")
+            let roots = (scenes.first?["nodes"]?.arrayValue ?? []) + [.int(seedSanMeshCopyNodeIndex)]
+            scenes[0]["nodes"] = .array(roots)
+            json["scenes"] = .objects(scenes)
+
+            guard var extensions = json.object("extensions"),
+                  var vrm = extensions.object("VRMC_vrm"),
+                  var firstPerson = vrm.object("firstPerson") else {
+                throw VRMError.dataInconsistent("Missing Seed-san firstPerson")
+            }
+            let annotations = modifyAnnotations(firstPerson.objects("meshAnnotations"))
+            firstPerson["meshAnnotations"] = .objects(
+                annotations + [["node": .int(seedSanMeshCopyNodeIndex), "type": .string(type)]]
+            )
+            vrm["firstPerson"] = .object(firstPerson)
+            extensions["VRMC_vrm"] = .object(vrm)
+            json["extensions"] = .object(extensions)
+        }
+    }
+
+    /// An `auto` mesh keeps the triangles no head bone draws, and a primitive
+    /// the head draws whole goes with it.
+    @Test
+    func testFirstPersonAutoDrawsAMeshWithoutTheHeadsTriangles() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        // Alicia annotates every mesh `Auto`, hers being split head from body.
+        let vrmLoader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data, shaders: [])
+        let vrmEntity = try await vrmLoader.loadEntity()
+        let cut = TestSupport.firstPersonCuts(in: vrmEntity)
+        let trimmed = try #require(cut.first { $0.component.firstPersonMesh != nil })
+        let dropped = try #require(cut.first { $0.component.firstPersonMesh == nil })
+
+        // The trimmed primitive loses triangles without losing all of them.
+        let whole = TestSupport.triangleIndexCount(of: trimmed.component.thirdPersonMesh)
+        let headless = TestSupport.triangleIndexCount(of: try #require(trimmed.component.firstPersonMesh))
+        #expect(headless > 0)
+        #expect(headless < whole)
+
+        vrmEntity.setFirstPersonRenderMode(.firstPerson)
+        #expect(TestSupport.drawnTriangleIndexCount(of: trimmed.entity) == headless)
+        #expect(dropped.entity.isEnabled == false)
+
+        vrmEntity.setFirstPersonRenderMode(.thirdPerson)
+        #expect(TestSupport.drawnTriangleIndexCount(of: trimmed.entity) == whole)
+        #expect(dropped.entity.isEnabled == true)
     }
 
 #if !os(visionOS)
     @Test
-    func testUpdateDoesNotMutateMToonMaterialsPerFrame() throws {
+    func testUpdateDoesNotMutateMToonMaterialsPerFrame() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let vrmEntity = try vrmLoader.loadEntity()
+        let vrmEntity = try await vrmLoader.loadEntity()
         let initialValue = try firstCustomMaterial(in: vrmEntity).custom.value
 
         vrmEntity.update(deltaTime: 0.25)
@@ -1243,18 +1345,17 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testSetMToonLightDirectionUpdatesRegisteredMaterials() throws {
+    func testSetMToonLightDirectionUpdatesRegisteredMaterials() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let vrmEntity = try vrmLoader.loadEntity()
+        let vrmEntity = try await vrmLoader.loadEntity()
 
         // The direction is normalized before it reaches the parameter rows.
         vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
 
-        // Every MToon material is rebound, not just the first one found, and
-        // each keeps the parameter texture the shader samples. Only xyz carries
-        // the direction; w is the outline pass's bounds budget, left as it is.
+        // Every MToon material is rebound, each keeping the parameter texture the
+        // shader samples. Only xyz carries the direction; w is the bounds budget.
         var checkedMaterials = 0
         for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
             guard let model = modelEntity.components[ModelComponent.self] else { continue }
@@ -1271,14 +1372,14 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testMalformedMaterialColorBindDoesNotFailModelLoad() throws {
+    func testMalformedMaterialColorBindDoesNotFailModelLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanData(name: "malformed-color-bind") { json in
-            guard var extensions = json["extensions"] as? [String: Any],
-                  var vrm = extensions["VRMC_vrm"] as? [String: Any],
-                  var expressions = vrm["expressions"] as? [String: Any],
-                  var preset = expressions["preset"] as? [String: Any],
-                  var happy = preset["happy"] as? [String: Any] else {
+            guard var extensions = json.object("extensions"),
+                  var vrm = extensions.object("VRMC_vrm"),
+                  var expressions = vrm.object("expressions"),
+                  var preset = expressions.object("preset"),
+                  var happy = preset.object("happy") else {
                 throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
             }
             happy["materialColorBinds"] = [
@@ -1293,15 +1394,15 @@ struct VRM1RealityKitTests {
                     "targetValue": [0.5, 1.0, 1.0, 1.0]
                 ]
             ]
-            preset["happy"] = happy
-            expressions["preset"] = preset
-            vrm["expressions"] = expressions
-            extensions["VRMC_vrm"] = vrm
-            json["extensions"] = extensions
+            preset["happy"] = .object(happy)
+            expressions["preset"] = .object(preset)
+            vrm["expressions"] = .object(expressions)
+            extensions["VRMC_vrm"] = .object(vrm)
+            json["extensions"] = .object(extensions)
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
 
         // The invalid bind is skipped while the valid one keeps working.
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
@@ -1312,14 +1413,14 @@ struct VRM1RealityKitTests {
     /// A malformed MToon extension is a rendering limitation, not a broken file:
     /// the material falls back to Unlit / PBR and the model still loads.
     @Test
-    func testMToonExtensionWithAnInvalidTextureFallsBackInsteadOfFailingTheLoad() throws {
+    func testMToonExtensionWithAnInvalidTextureFallsBackInsteadOfFailingTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanMToonExtension(name: "mtoon-texture-out-of-range") { mtoon in
             mtoon["shadeMultiplyTexture"] = ["index": 9999]
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
 
         // The state goes with the material, so no expression bind keeps writing
         // parameter rows no shader reads.
@@ -1330,28 +1431,28 @@ struct VRM1RealityKitTests {
     /// One unbuildable material must cost that primitive its material, not the
     /// whole model.
     @Test
-    func testMaterialThatCannotBeBuiltFallsBackToTheDefaultMaterial() throws {
+    func testMaterialThatCannotBeBuiltFallsBackToTheDefaultMaterial() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let modified = try TestSupport.modifiedSeedSanMaterial(name: "base-texture-out-of-range") { material in
             // Without the MToon extension the material takes the Unlit / PBR
             // path, where an out-of-range base color texture throws.
-            material["extensions"] = [String: Any]()
+            material["extensions"] = .object([:])
             material["pbrMetallicRoughness"] = ["baseColorTexture": ["index": 9999]]
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
 
         #expect(TestSupport.materialIndexes(in: vrmEntity).contains(0))
         #expect(!TestSupport.modelEntities(in: vrmEntity).isEmpty)
     }
 
     @Test
-    func testFallbackMaterialsDoNotCarryMToonRuntimeState() throws {
+    func testFallbackMaterialsDoNotCarryMToonRuntimeState() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
         let loader = try VRMEntityLoader(withData: seedSan, shaders: [])
-        let vrmEntity = try loader.loadEntity()
+        let vrmEntity = try await loader.loadEntity()
 
         // With MToon disabled, no entity carries MToon runtime state, and
         // expression color binds resolve through the fallback material path.
@@ -1362,15 +1463,15 @@ struct VRM1RealityKitTests {
     }
 
     @Test
-    func testVRM1MToonOutlineEntitiesFollowTheOutlineOption() throws {
+    func testVRM1MToonOutlineEntitiesFollowTheOutlineOption() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
-        let outlineEntity = try VRMEntityLoader(withData: seedSan).loadEntity()
+        let outlineEntity = try await VRMEntityLoader(withData: seedSan).loadEntity()
         #expect(hasOutlineEntities(in: outlineEntity))
 
         // Outlines are the inverted hull only; disabling them must not take the
         // MToon surface shader with them.
-        let noOutlineEntity = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders).loadEntity()
+        let noOutlineEntity = try await VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders).loadEntity()
         #expect(!hasOutlineEntities(in: noOutlineEntity))
         #expect(TestSupport.hasCustomMaterial(in: noOutlineEntity))
     }
@@ -1504,15 +1605,15 @@ struct VRM1RealityKitTests {
 
     private func seedSanDataWithNonDefaultEyeSampler() throws -> Data {
         try TestSupport.modifiedSeedSanData(name: "nondefault-eye-sampler") { json in
-            guard var samplers = json["samplers"] as? [[String: Any]],
-                  samplers.indices.contains(7) else {
+            var samplers = json.objects("samplers")
+            guard samplers.indices.contains(7) else {
                 throw VRMError.dataInconsistent("Missing Seed-san sampler fixture data")
             }
             samplers[7]["magFilter"] = 9728
             samplers[7]["minFilter"] = 9728
             samplers[7]["wrapS"] = 33071
             samplers[7]["wrapT"] = 33071
-            json["samplers"] = samplers
+            json["samplers"] = .objects(samplers)
         }
     }
 }

@@ -15,24 +15,23 @@ public enum GLTFMaterialConversion: Equatable, Sendable {
 }
 
 extension GLTFEditableDocument {
-    /// Makes the materials at `indices` MToon, leaving the ones that already
-    /// are as they were authored.
+    /// Makes the materials at `indices` MToon, leaving the ones that already are
+    /// as they were authored.
     ///
     /// A material carrying no MToon data is converted through
-    /// `StandardMToonConverter`, the same one a renderer toon-shades with, so a
-    /// preview and a save look alike. One that carries MToon data keeps it:
+    /// `StandardMToonConverter`, the same one a renderer toon-shades with, so
     /// `style` describes what to invent where there is nothing.
     ///
     /// The form follows the document: a VRM 0.x model gets the Unity material
     /// property its runtime reads, and every other document gets the
     /// `VRMC_materials_mtoon` extension with a `KHR_materials_unlit` fallback.
-    /// A material already MToon in the other form is carried across into this one.
-    public func convertMaterialsToMToon(at indices: some Sequence<Int>,
+    public mutating func convertMaterialsToMToon(at indices: some Sequence<GLTFMaterialIndex>,
                                         style: MToonConversionStyle = .init()) throws {
         let materialObjects = json.objects(.materials)
         let vrm0Properties = vrm0MaterialProperties()
         var converted: [ConvertedMaterial] = []
-        for index in indices {
+        for materialIndex in indices {
+            let index = materialIndex.rawValue
             guard materialObjects.indices.contains(index) else {
                 throw VRMError._dataInconsistent(
                     "material index \(index) is out of range for the \(materialObjects.count) materials of the document"
@@ -79,16 +78,16 @@ extension GLTFEditableDocument {
         try setVRM0MaterialProperties(properties)
     }
 
-    private func writeMToonExtensions(_ converted: [ConvertedMaterial]) {
+    private mutating func writeMToonExtensions(_ converted: [ConvertedMaterial]) {
         guard !converted.isEmpty else { return }
-        var materials = json.objects(.materials)
         for (index, _, descriptor) in converted {
-            var extensions = materials[index].object("extensions") ?? [:]
-            extensions[GLTFExtension.materialsMToon.rawValue] = descriptor.mtoonExtension()
-            extensions[GLTFExtension.materialsUnlit.rawValue] = JSONObject()
-            materials[index]["extensions"] = extensions
+            json.updateObject(at: index, in: .materials) { material in
+                var extensions = material.object("extensions") ?? [:]
+                extensions[GLTFExtension.materialsMToon.rawValue] = .object(descriptor.mtoonExtension())
+                extensions[GLTFExtension.materialsUnlit.rawValue] = .object([:])
+                material["extensions"] = .object(extensions)
+            }
         }
-        json[.materials] = materials
 
         var used: Set<String> = [GLTFExtension.materialsMToon.rawValue, GLTFExtension.materialsUnlit.rawValue]
         if converted.contains(where: { $0.descriptor.textures.contains(where: \.needsTextureTransform) }) {
@@ -106,16 +105,15 @@ extension GLTFEditableDocument {
     }
 
     /// VRM 0.x keeps its material settings in an array parallel to `materials`, so
-    /// materials added to such a document need an entry each to keep the two lined
-    /// up. `VRM_USE_GLTFSHADER` says the glTF material describes itself, which is
-    /// what one just written or copied in does.
-    func appendVRM0MaterialProperties(named names: [String?]) throws {
+    /// each added material needs an entry to keep the two lined up.
+    /// `VRM_USE_GLTFSHADER` says the glTF material describes itself.
+    mutating func appendVRM0MaterialProperties(named names: [String?]) throws {
         guard !names.isEmpty, let properties = vrm0MaterialProperties() else { return }
         try setVRM0MaterialProperties(properties + names.map(VRM0MToonProperty.gltfShaderProperty(name:)))
     }
 
-    func setVRM0MaterialProperties(_ properties: [JSONObject]) throws {
-        try updateRootExtension(GLTFExtension.vrm0.rawValue) { $0["materialProperties"] = properties }
+    mutating func setVRM0MaterialProperties(_ properties: [JSONObject]) throws {
+        try updateRootExtension(GLTFExtension.vrm0.rawValue) { $0["materialProperties"] = .objects(properties) }
     }
 }
 
