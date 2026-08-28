@@ -1,12 +1,3 @@
-import CoreGraphics
-import Foundation
-internal import VRMKit
-internal import VRMSceneKit
-
-#if canImport(RealityKit)
-internal import VRMRealityKit
-#endif
-
 enum VRMExampleModel: String, CaseIterable, Identifiable {
     case alicia = "AliciaSolid.vrm"
     case vrm1 = "VRM1_Constraint_Twist_Sample.vrm"
@@ -27,50 +18,3 @@ enum VRMExampleModel: String, CaseIterable, Identifiable {
         }
     }
 }
-
-enum ExampleExpression: String, CaseIterable {
-    case neutral
-    case joy
-    case angry
-    case sorrow
-    case fun
-
-    var expressionPreset: ExpressionPreset {
-        switch self {
-        case .neutral: return .neutral
-        case .joy: return .happy
-        case .angry: return .angry
-        case .sorrow: return .sad
-        case .fun: return .relaxed
-        }
-    }
-
-    func displayName(for model: VRMExampleModel) -> String {
-        switch model {
-        case .alicia:
-            return rawValue.capitalized
-        case .vrm1:
-            switch self {
-            case .neutral: return "Neutral"
-            case .joy: return "Happy"
-            case .angry: return "Angry"
-            case .sorrow: return "Sad"
-            case .fun: return "Relaxed"
-            }
-        }
-    }
-}
-
-extension VRMNode {
-    func setExampleExpression(_ expression: ExampleExpression, value: CGFloat) {
-        setExpression(value: value, for: .preset(expression.expressionPreset))
-    }
-}
-
-#if canImport(RealityKit)
-extension VRMEntity {
-    func setExampleExpression(_ expression: ExampleExpression, value: CGFloat) {
-        setExpression(value: value, for: .preset(expression.expressionPreset))
-    }
-}
-#endif

@@ -23,12 +23,9 @@ package struct VRMFirstPersonPlan: Sendable {
     private let headJointsBySkin: [Int: Set<UInt32>]
 
     package init(vrm: VRM, gltf: GLTF, hierarchy: GLTFNodeHierarchy) {
-        let nodes = gltf.nodes
         switch vrm {
         case .v0(let vrm0):
-            // VRM 0.x names the bone itself, falling back to the humanoid when it names none.
-            let bone = vrm0.firstPerson?.firstPersonBone
-            headNode = bone.flatMap { nodes.indices.contains($0) ? $0 : nil } ?? vrm.nodeIndex(of: .head)
+            headNode = vrm.headNode(in: gltf)
             var byMesh: [Int: FirstPersonAnnotationType?] = [:]
             for annotation in vrm0.firstPerson?.meshAnnotations ?? [] {
                 // A flag VRM 0.x does not name leaves the mesh at `auto`.
@@ -36,7 +33,7 @@ package struct VRMFirstPersonPlan: Sendable {
             }
             annotations = .byMesh(byMesh.compactMapValues { $0 })
         case .v1(let vrm1):
-            headNode = vrm.nodeIndex(of: .head)
+            headNode = vrm.headNode(in: gltf)
             var byNode: [Int: FirstPersonAnnotationType] = [:]
             for annotation in vrm1.firstPerson?.meshAnnotations ?? [] {
                 byNode[annotation.node] = FirstPersonAnnotationType(vrm1Type: annotation.type)

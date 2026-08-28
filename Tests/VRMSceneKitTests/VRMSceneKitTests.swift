@@ -40,6 +40,19 @@ struct VRMSceneKitTests {
         #expect(clips[.preset(.happy)] != nil)
     }
 
+    /// A caller listing expressions gets the name the model itself states, so it
+    /// needs no table of its own to label a VRM 0.x group.
+    @Test
+    func testAvailableExpressionsCarryTheNamesTheModelStates() throws {
+        let expressions = try loadVRM().availableExpressions
+        #expect(expressions.count == 18)
+        // The order the model states its groups in.
+        #expect(expressions.first == ExpressionInfo(key: .preset(.neutral), name: "Neutral"))
+        #expect(expressions.contains(ExpressionInfo(key: .preset(.happy), name: "Joy")))
+        #expect(expressions.contains(ExpressionInfo(key: .custom("><"), name: "><")))
+        #expect(expressions.first { $0.key == .preset(.happy) }?.preset == .happy)
+    }
+
     @Test
     func testExpression_SetAndGet() throws {
         let node = try loadVRM()
@@ -116,6 +129,22 @@ struct VRMSceneKitTests {
         #expect(alone > 0)
         #expect(together > alone)
         #expect(abs(backToOne - alone) < 0.001)
+    }
+
+    /// The deprecated renderer drives the same look-at runtime, and Alicia's VRM 0.x
+    /// curves map 30 degrees of gaze onto 10 degrees of eye.
+    @Test
+    func testTheGazeTurnsTheEyeBones() throws {
+        let node = try loadVRM()
+        let leftEye = try #require(node.humanoid.node(for: .leftEye))
+        let rest = leftEye.simdOrientation
+
+        node.lookAtTarget = .angles(yaw: 15, pitch: 0)
+        let turned = (rest.conjugate * leftEye.simdOrientation).angle * 180 / .pi
+        #expect(abs(turned - 5) < 0.05)
+
+        node.lookAtTarget = nil
+        #expect((rest.conjugate * leftEye.simdOrientation).angle < 1e-3)
     }
 
     func loadVRM() throws -> VRMNode {

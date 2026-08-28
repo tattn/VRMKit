@@ -60,7 +60,8 @@ public enum VRMASampleFixture {
     /// - "tail" (node 7): a bone name outside the VRM humanoid, to be skipped
     /// - expressions `happy` (node 4) STEP weight 0.7, `aa` (node 8) LINEAR
     ///   0 → 1.5 (clamps to 1), custom `wink` (node 5) STEP weight 0.4
-    /// - lookAt (node 6): a rotation channel the runtime does not retarget yet
+    /// - lookAt (node 6): rotation LINEAR identity → 30° around +Y, a gaze 30° to the
+    ///   model's own left
     /// - head (node 3): a scale channel, which the spec forbids on humanoid bones
     /// - leftEye / rightEye (nodes 10, 11): rotation channels a `.vrma` humanoid
     ///   may not carry
@@ -72,6 +73,7 @@ public enum VRMASampleFixture {
         let halfX: Float = sin(.pi / 4)  // 90° around +X, as (x, y, z, w)
         let z45: (s: Float, c: Float) = (sin(.pi / 8), cos(.pi / 8))
         let z30: (s: Float, c: Float) = (sin(.pi / 12), cos(.pi / 12))
+        let y30: (s: Float, c: Float) = (sin(.pi / 12), cos(.pi / 12))  // the same turn about +Y
 
         let times = builder.accessor([0, 1], type: "SCALAR", count: 2, timeBounds: true)
         let hipsRotation = builder.accessor([0, 0, 0, 1, halfX, 0, 0, halfX], type: "VEC4", count: 2)
@@ -82,7 +84,7 @@ public enum VRMASampleFixture {
         let happyWeight = builder.accessor([0.7, 0, 0, 0.7, 0, 0], type: "VEC3", count: 2)
         let aaWeight = builder.accessor([0, 0, 0, 1.5, 0, 0], type: "VEC3", count: 2)
         let winkWeight = builder.accessor([0.4, 0, 0, 0.4, 0, 0], type: "VEC3", count: 2)
-        let lookAtRotation = builder.accessor([0, 0, 0, 1, 0, 0, 0, 1], type: "VEC4", count: 2)
+        let lookAtRotation = builder.accessor([0, 0, 0, 1, 0, y30.s, 0, y30.c], type: "VEC4", count: 2)
         let headScale = builder.accessor([1, 1, 1, 1, 1, 1], type: "VEC3", count: 2)
         let eyeRotation = builder.accessor([z30.s, 0, 0, z30.c, z30.s, 0, 0, z30.c], type: "VEC4", count: 2)
 
@@ -261,6 +263,42 @@ public enum VRMASampleFixture {
                 {"name": "LookRightExpression"}
             ],
             \(builder.resourcesJSON(animationName: "contested expressions"))
+        }
+        """.utf8)
+    }
+
+    /// A one-second STEP fixture stating a gaze `yawDegrees` to the model's own left,
+    /// and a `lookRight` expression at full weight for the gaze to outrank: a file
+    /// stating both says the same thing twice.
+    public static func gazeAndLookExpression(yawDegrees: Float) -> Data {
+        var builder = Builder()
+        let half = yawDegrees * .pi / 360
+        let times = builder.accessor([0, 1], type: "SCALAR", count: 2, timeBounds: true)
+        let gaze = builder.accessor([0, sin(half), 0, cos(half), 0, sin(half), 0, cos(half)],
+                                    type: "VEC4", count: 2)
+        let look = builder.accessor([1, 0, 0, 1, 0, 0], type: "VEC3", count: 2)
+        builder.channel(node: 1, path: "rotation", input: times, output: gaze, interpolation: "STEP")
+        builder.channel(node: 2, path: "translation", input: times, output: look, interpolation: "STEP")
+
+        return Data("""
+        {
+            "asset": {"version": "2.0"},
+            "extensionsUsed": ["VRMC_vrm_animation"],
+            "extensions": {
+                "VRMC_vrm_animation": {
+                    "specVersion": "1.0",
+                    "expressions": {"preset": {"lookRight": {"node": 2}}},
+                    "lookAt": {"node": 1, "offsetFromHeadBone": [0, 0.06, 0]}
+                }
+            },
+            "scene": 0,
+            "scenes": [{"nodes": [0]}],
+            "nodes": [
+                {"name": "Root", "children": [1, 2]},
+                {"name": "LookAt"},
+                {"name": "LookRightExpression"}
+            ],
+            \(builder.resourcesJSON(animationName: "gaze and look expression"))
         }
         """.utf8)
     }

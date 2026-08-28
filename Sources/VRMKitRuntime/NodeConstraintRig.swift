@@ -84,11 +84,6 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
             destinationParentWorldRotation: target.runtimeParent?.worldRotation ?? quat_identity_float,
             destinationWorldPosition: target.worldPosition
         )
-        // A quaternion and its negation are the same rotation, so a node that
-        // is already posed this way is left alone rather than reported moved.
-        let current = target.localRotation.vector
-        guard current != rotation.vector, current != -rotation.vector else { return false }
-        target.setLocalRotation(rotation)
-        return true
+        return target.setLocalRotationIfMoved(rotation)
     }
 }

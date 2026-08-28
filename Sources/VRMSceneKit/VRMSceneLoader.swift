@@ -50,6 +50,7 @@ open class VRMSceneLoader {
                                          hierarchy: hierarchy,
                                          loader: self)
         try vrmNode.setUpSpringBones(loader: self)
+        try vrmNode.setUpLookAt(loader: self)
 
         return VRMScene(node: vrmNode)
     }

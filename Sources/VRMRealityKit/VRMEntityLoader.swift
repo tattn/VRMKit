@@ -71,6 +71,7 @@ public class VRMEntityLoader: GLTFEntityLoader {
                                            hierarchy: nodeHierarchy ?? .none,
                                            loader: self)
         try vrmEntity.setUpSpringBones(loader: self)
+        try vrmEntity.setUpLookAt(loader: self)
     }
 
     /// The VRM extensions this loader implements, on top of the generic glTF ones.

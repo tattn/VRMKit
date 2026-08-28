@@ -9,7 +9,8 @@ internal import VRMKit
 struct ContentView: View {
     @State private var selectedRenderer: MacExampleRenderer = .realityKit
     @State private var selectedModel: MacExampleModel = .alicia
-    @State private var selectedExpression: MacExampleExpression = .neutral
+    @State private var selectedExpression: ExpressionKey = .preset(.neutral)
+    @State private var expressions: [ExpressionInfo] = []
     @State private var isMToonEnabled = true
 
     var body: some View {
@@ -35,8 +36,8 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
 
                 Picker(selection: $selectedExpression) {
-                    ForEach(MacExampleExpression.allCases) { expression in
-                        Text(expression.displayName(for: selectedModel)).tag(expression)
+                    ForEach(expressions, id: \.key) { expression in
+                        Text(expression.name).tag(expression.key)
                     }
                 } label: {
                     Label("Expression", systemImage: "face.smiling")
@@ -55,11 +56,13 @@ struct ContentView: View {
             switch selectedRenderer {
             case .sceneKit:
                 SceneKitRendererView(selectedModel: selectedModel,
-                                     selectedExpression: selectedExpression)
+                                     selectedExpression: selectedExpression,
+                                     expressions: $expressions)
             case .realityKit:
                 RealityKitRendererView(selectedModel: selectedModel,
                                        selectedExpression: selectedExpression,
-                                       isMToonEnabled: isMToonEnabled)
+                                       isMToonEnabled: isMToonEnabled,
+                                       expressions: $expressions)
             }
         }
         .frame(minWidth: 800, minHeight: 600)
@@ -69,8 +72,10 @@ struct ContentView: View {
 private struct RealityKitRendererView: View {
     @State private var viewModel = RealityKitContentViewModel()
     let selectedModel: MacExampleModel
-    let selectedExpression: MacExampleExpression
+    let selectedExpression: ExpressionKey
     let isMToonEnabled: Bool
+    /// Lifted to the picker above, which the loaded model names.
+    @Binding var expressions: [ExpressionInfo]
 
     private var loadConfiguration: RealityKitLoadConfiguration {
         RealityKitLoadConfiguration(model: selectedModel, isMToonEnabled: isMToonEnabled)
@@ -86,6 +91,7 @@ private struct RealityKitRendererView: View {
             await viewModel.loadEntity(model: selectedModel,
                                        expression: selectedExpression,
                                        isMToonEnabled: isMToonEnabled)
+            expressions = viewModel.availableExpressions
         }
         .onChange(of: selectedExpression) { _, expression in
             viewModel.setExpression(expression)
@@ -116,13 +122,16 @@ private struct RealityKitLoadConfiguration: Hashable {
 private struct SceneKitRendererView: View {
     @State private var viewModel = SceneKitContentViewModel()
     let selectedModel: MacExampleModel
-    let selectedExpression: MacExampleExpression
+    let selectedExpression: ExpressionKey
+    /// Lifted to the picker above, which the loaded model names.
+    @Binding var expressions: [ExpressionInfo]
 
     var body: some View {
         SceneKitView(scene: viewModel.scene)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .task(id: selectedModel) {
                 await viewModel.loadScene(model: selectedModel, expression: selectedExpression)
+                expressions = viewModel.availableExpressions
             }
             .onAppear {
                 viewModel.resumeUpdates()
@@ -159,7 +168,7 @@ final class RealityKitContentViewModel {
     private var vrmEntity: VRMEntity?
     private var cameraEntity: PerspectiveCamera?
     private var lightEntity: DirectionalLight?
-    private var currentExpression: MacExampleExpression = .neutral
+    private var currentExpression: ExpressionKey = .preset(.neutral)
     private var orbitDistance: Float = 2
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
     /// A three-quarter view from slightly above, which the iOS example shares.
@@ -168,6 +177,11 @@ final class RealityKitContentViewModel {
     var isVRMAPlaying: Bool { vrmaController != nil }
     private var vrmaAnimation: VRMAnimation?
     private var vrmaController: GLTFAnimationPlaybackController?
+
+    /// The example's emotions the loaded model offers, named the way it names them.
+    var availableExpressions: [ExpressionInfo] {
+        vrmEntity?.availableExpressions.exampleEmotions ?? []
+    }
 
     func makeRenderRootEntity() -> Entity {
         let nextRootEntity = Entity()
@@ -186,7 +200,7 @@ final class RealityKitContentViewModel {
 
     func loadEntity(
         model: MacExampleModel,
-        expression: MacExampleExpression,
+        expression: ExpressionKey,
         isMToonEnabled: Bool
     ) async {
         await Task.yield()
@@ -227,7 +241,7 @@ final class RealityKitContentViewModel {
         }
     }
 
-    func setExpression(_ expression: MacExampleExpression) {
+    func setExpression(_ expression: ExpressionKey) {
         guard expression != currentExpression else { return }
         let previous = currentExpression
         currentExpression = expression
@@ -315,14 +329,14 @@ final class RealityKitContentViewModel {
     }
 
     /// Both weights are sent together so the runtime re-applies its bindings once.
-    private func apply(_ expression: MacExampleExpression,
-                       replacing previous: MacExampleExpression?,
+    private func apply(_ expression: ExpressionKey,
+                       replacing previous: ExpressionKey?,
                        to vrmEntity: VRMEntity) {
-        var weights: [MacExampleExpression: CGFloat] = [expression: 1.0]
+        var weights: [ExpressionKey: CGFloat] = [expression: 1.0]
         if let previous, previous != expression {
             weights[previous] = 0.0
         }
-        vrmEntity.setExampleExpressions(weights)
+        vrmEntity.setExpressions(weights)
     }
 }
 
@@ -352,11 +366,16 @@ final class SceneKitContentViewModel {
     private var time: TimeInterval = 0
     private var lastUpdateTime: Date?
     private var currentModel: MacExampleModel = .alicia
-    private var currentExpression: MacExampleExpression = .neutral
+    private var currentExpression: ExpressionKey = .preset(.neutral)
 
     let updateTimer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
-    func loadScene(model: MacExampleModel, expression: MacExampleExpression) async {
+    /// The example's emotions the loaded model offers, named the way it names them.
+    var availableExpressions: [ExpressionInfo] {
+        vrmNode?.availableExpressions.exampleEmotions ?? []
+    }
+
+    func loadScene(model: MacExampleModel, expression: ExpressionKey) async {
         if currentModel == model, let vrmNode {
             apply(expression, replacing: currentExpression, to: vrmNode)
             currentExpression = expression
@@ -391,7 +410,7 @@ final class SceneKitContentViewModel {
         }
     }
 
-    func setExpression(_ expression: MacExampleExpression) {
+    func setExpression(_ expression: ExpressionKey) {
         guard expression != currentExpression else { return }
         let previous = currentExpression
         currentExpression = expression
@@ -460,13 +479,13 @@ final class SceneKitContentViewModel {
     }
 
     /// Only the replaced expression needs clearing; this UI never has two active at once.
-    private func apply(_ expression: MacExampleExpression,
-                       replacing previous: MacExampleExpression?,
+    private func apply(_ expression: ExpressionKey,
+                       replacing previous: ExpressionKey?,
                        to vrmNode: VRMNode) {
         if let previous, previous != expression {
-            vrmNode.setExampleExpression(previous, value: 0.0)
+            vrmNode.setExpression(value: 0.0, for: previous)
         }
-        vrmNode.setExampleExpression(expression, value: 1.0)
+        vrmNode.setExpression(value: 1.0, for: expression)
     }
 }
 

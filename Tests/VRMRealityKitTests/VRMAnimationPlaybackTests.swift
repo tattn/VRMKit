@@ -30,6 +30,14 @@ struct VRMAnimationPlaybackTests {
         entity.position(relativeTo: root)
     }
 
+    /// The angles the model's gaze is aimed at, as (yaw, pitch) in degrees. Zero for a
+    /// model aimed at nothing, which is also where a gaze of nothing lands.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func gaze(of entity: VRMEntity) -> SIMD2<Float> {
+        guard case .angles(let yaw, let pitch) = entity.lookAtTarget else { return .zero }
+        return SIMD2(yaw, pitch)
+    }
+
     @Test
     func testHipsRotationRetargetsOntoAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -153,21 +161,94 @@ struct VRMAnimationPlaybackTests {
         #expect(abs(entity.expression(for: .preset(.ih)) - 0.6) < 0.001)
     }
 
-    /// The four look presets stay out of a `.vrma` as the eye bones do, gaze
-    /// being look-at's to aim. A file carrying one drives nothing.
+    /// A file stating no gaze of its own says where the model looks through the look
+    /// expressions, which retarget like any other.
     @Test
-    func testLookExpressionsAreLeftToLookAt() async throws {
+    func testLookExpressionsRetargetWhereAFileStatesNoGaze() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        // Seed-san carries the look presets, so a retargeted one would show.
-        entity.setExpression(value: 1, for: .preset(.lookRight))
-        #expect(abs(entity.expression(for: .preset(.lookRight)) - 1) < 0.001)
-        entity.setExpression(value: 0, for: .preset(.lookRight))
 
         try entity.playAnimation(try VRMAnimation(data: VRMASampleFixture.contestedExpressions()))
         entity.updateAnimations(deltaTime: 0.5)
 
+        #expect(abs(entity.expression(for: .preset(.lookRight)) - 1) < 0.001)
+        #expect(entity.lookAtTarget == nil)
+    }
+
+    /// A stated gaze owns the look-at, so the look expressions a file carries as well
+    /// are left to it rather than doubling it.
+    @Test
+    func testAStatedGazeOutranksTheLookExpressionsBesideIt() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+
+        // The gaze goes left; the expression track it comes with says right.
+        let animation = try VRMAnimation(data: VRMASampleFixture.gazeAndLookExpression(yawDegrees: 45))
+        try entity.playAnimation(animation)
+        entity.updateAnimations(deltaTime: 0.5)
+
+        // Seed-san maps 90° of gaze onto a full weight.
+        #expect(abs(entity.expression(for: .preset(.lookLeft)) - 0.5) < 0.001)
         #expect(entity.expression(for: .preset(.lookRight)) == 0)
+    }
+
+    /// A `.vrma` states its gaze as the rotation of its look-at node, and a model whose
+    /// look-at weighs expressions takes it as those weights.
+    @Test
+    func testTheGazeTrackDrivesAVRM1ExpressionLookAt() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+
+        try entity.playAnimation(fixture())
+        entity.updateAnimations(deltaTime: 1.0)
+
+        // The fixture ends 30° to the model's own left, and Seed-san maps 90° onto 1.
+        #expect(gaze(of: entity).isApproximatelyEqual(to: SIMD2(30, 0), tolerance: 0.01))
+        #expect(abs(entity.expression(for: .preset(.lookLeft)) - 1.0 / 3) < 0.001)
+        #expect(entity.expression(for: .preset(.lookRight)) == 0)
+    }
+
+    /// The same gaze on a VRM 0.x model turns the eye bones its own curves state, the
+    /// angles meaning the model's own left whichever way its version faces. The eye bone
+    /// channels a `.vrma` humanoid may not carry stay unretargeted, so what the eyes do
+    /// is the gaze and nothing else. Alicia is the model with eye bones.
+    @Test
+    func testEyeBonesTakeTheGazeRatherThanChannelsOfTheirOwn() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
+        let eyes = [HumanoidBone.leftEye, .rightEye].compactMap { entity.humanoid.node(for: $0) }
+        #expect(eyes.count == 2)
+        let rests = eyes.map(\.transform.rotation)
+
+        // The fixture aims its gaze 30° left and turns both eye bones 30° around +X.
+        try entity.playAnimation(fixture())
+        entity.updateAnimations(deltaTime: 1.0)
+
+        #expect(gaze(of: entity).isApproximatelyEqual(to: SIMD2(30, 0), tolerance: 0.01))
+        // Alicia maps 30° of gaze onto 10° of eye, and turns both toward its own left,
+        // which is a turn about the model's up axis rather than the channels' +X.
+        let left = SIMD3<Float>(-1, 0, 0)
+        for (eye, rest) in zip(eyes, rests) {
+            let turn = rest.conjugate * eye.transform.rotation
+            #expect(abs(turn.angle * 180 / .pi - 10) < 0.05)
+            #expect(abs(simd_dot(turn.axis, SIMD3<Float>(0, 1, 0))) > 0.999)
+            #expect(simd_dot(simd_act(turn, SIMD3<Float>(0, 0, -1)), left) > 0)
+        }
+    }
+
+    /// A file stating no gaze leaves the model's own target alone, so playing one does
+    /// not undo where the caller pointed it.
+    @Test
+    func testAnAnimationWithoutAGazeLeavesTheTargetAlone() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        entity.lookAtTarget = .angles(yaw: 90, pitch: 0)
+
+        try entity.playAnimation(try VRMAnimation(data: VRMASampleFixture.holdingPose(expressionWeight: 0.25)))
+        entity.updateAnimations(deltaTime: 0.5)
+
+        #expect(entity.lookAtTarget == .angles(yaw: 90, pitch: 0))
+        #expect(entity.expression(for: .preset(.lookLeft)) == 1)
     }
 
     /// VRM 0.x spells the thumb chain proximal / intermediate / distal where VRM
@@ -185,25 +266,6 @@ struct VRMAnimationPlaybackTests {
             let rest = thumb.transform.rotation
             try entity.playAnimation(fixture())
             #expect(abs(simd_dot(thumb.transform.rotation, rest)) < 0.999)
-        }
-    }
-
-    /// The eye bones stay out of a `.vrma` humanoid, gaze being look-at's to aim,
-    /// so a file mapping them poses nothing. Alicia is the model with eye bones.
-    @Test
-    func testEyeBonesAreLeftToLookAt() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
-        let eyes = [HumanoidBone.leftEye, .rightEye].compactMap { entity.humanoid.node(for: $0) }
-        #expect(eyes.count == 2)
-        let rests = eyes.map(\.transform.rotation)
-
-        // The fixture turns both eye bones 30° around +X.
-        try entity.playAnimation(fixture())
-        entity.updateAnimations(deltaTime: 1.0)
-
-        for (eye, rest) in zip(eyes, rests) {
-            #expect(abs(simd_dot(eye.transform.rotation, rest)) > 0.9999)
         }
     }
 
@@ -231,6 +293,12 @@ struct VRMAnimationPlaybackTests {
         // By then the arm is back at rest.
         let restored = worldRotation(of: arm, in: entity) * rest.inverse
         #expect(abs(restored.real) > 0.999)
+
+        // At 2.5 s the sample aims its gaze a quarter turn to the model's own left, and
+        // Seed-san's look-at weighs that onto a full lookLeft.
+        controller.seek(to: 2.5)
+        #expect(gaze(of: entity).isApproximatelyEqual(to: SIMD2(90, 0), tolerance: 0.01))
+        #expect(abs(entity.expression(for: .preset(.lookLeft)) - 1.0) < 0.001)
     }
 
     /// The same sample on a VRM 0.x model: the arm swing turns around with the

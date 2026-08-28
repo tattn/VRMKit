@@ -29,6 +29,16 @@ package protocol VRMRuntimeNode: AnyObject {
 }
 
 extension VRMRuntimeNode {
+    /// Writes `rotation` back unless the node already holds it, and answers whether it
+    /// moved: a renderer re-solves its skin pose only for the nodes that did. A
+    /// quaternion and its negation are the same rotation, so neither counts as a move.
+    func setLocalRotationIfMoved(_ rotation: simd_quatf) -> Bool {
+        let current = localRotation.vector
+        guard current != rotation.vector, current != -rotation.vector else { return false }
+        setLocalRotation(rotation)
+        return true
+    }
+
     var worldTransform: SpringBoneWorldTransform {
         SpringBoneWorldTransform(matrix: worldMatrix, rotation: worldRotation)
     }

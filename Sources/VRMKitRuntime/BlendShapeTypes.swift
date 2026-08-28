@@ -1,7 +1,7 @@
 import VRMKit
 
 /// VRM 1.0 Expression Preset.
-public enum ExpressionPreset: String {
+public enum ExpressionPreset: String, Sendable, CaseIterable {
     case neutral
     case happy
     case angry
@@ -26,20 +26,79 @@ public enum ExpressionPreset: String {
     }
 }
 
+public extension ExpressionPreset {
+    /// The VRM 0.x `presetName` this expression is written as, or nil for a
+    /// preset VRM 1.0 introduced.
+    var vrm0PresetName: String? {
+        Self.vrm0PresetNames[self]
+    }
+
+    /// The expression a VRM 0.x `presetName` stands for, whatever its casing.
+    init?(vrm0PresetName: String) {
+        guard let preset = Self.presetsByVRM0PresetName[vrm0PresetName.lowercased()] else { return nil }
+        self = preset
+    }
+
+    private static let vrm0PresetNames: [ExpressionPreset: String] = [
+        .neutral: "neutral",
+        .aa: "a",
+        .ih: "i",
+        .ou: "u",
+        .ee: "e",
+        .oh: "o",
+        .blink: "blink",
+        .happy: "joy",
+        .angry: "angry",
+        .sad: "sorrow",
+        .relaxed: "fun",
+        .lookUp: "lookup",
+        .lookDown: "lookdown",
+        .lookLeft: "lookleft",
+        .lookRight: "lookright",
+        .blinkLeft: "blink_l",
+        .blinkRight: "blink_r"
+    ]
+
+    private static let presetsByVRM0PresetName: [String: ExpressionPreset] =
+        Dictionary(uniqueKeysWithValues: vrm0PresetNames.map { ($0.value, $0.key) })
+}
+
 /// VRM 1.0 Expression key.
 ///
 /// Use this with `setExpression(value:for:)` / `expression(for:)` when working
 /// with native VRM 1.0 expression presets or custom expressions.
-public enum ExpressionKey: Hashable {
+public enum ExpressionKey: Hashable, Sendable {
     case preset(ExpressionPreset)
     case custom(String)
 
-    public var isPreset: Bool {
+    /// The preset this is, or nil for a custom expression.
+    public var preset: ExpressionPreset? {
         switch self {
-        case .preset: return true
-        case .custom: return false
+        case .preset(let preset): return preset
+        case .custom: return nil
         }
     }
+
+    public var isPreset: Bool {
+        preset != nil
+    }
+}
+
+/// One expression a model offers: the key that drives it, and the name the model
+/// itself gives it, which is `Joy` on a VRM 0.x model and `happy` on a 1.0 one.
+public struct ExpressionInfo: Hashable, Sendable {
+    /// The key to pass to `setExpression(value:for:)` / `expression(for:)`.
+    public let key: ExpressionKey
+    /// The VRM 1.0 expression name, or the VRM 0.x blend shape group name.
+    public let name: String
+
+    public init(key: ExpressionKey, name: String) {
+        self.key = key
+        self.name = name
+    }
+
+    /// The preset this is, or nil for a custom expression.
+    public var preset: ExpressionPreset? { key.preset }
 }
 
 package extension ExpressionPreset {
@@ -61,10 +120,7 @@ package extension ExpressionPreset {
 
 package extension ExpressionKey {
     var overrideGroup: ExpressionOverrideGroup? {
-        switch self {
-        case .preset(let preset): return preset.overrideGroup
-        case .custom: return nil
-        }
+        preset?.overrideGroup
     }
 }
 
@@ -73,31 +129,6 @@ package extension VRM0.BlendShapeMaster.BlendShapeGroup {
     /// preset it declares, or failing that the one its name spells, which is how
     /// the models predating `presetName` name their presets.
     var expressionPreset: ExpressionPreset? {
-        ExpressionPreset(vrm0Name: presetName) ?? ExpressionPreset(name: name)
-    }
-}
-
-private extension ExpressionPreset {
-    init?(vrm0Name: String) {
-        switch vrm0Name.lowercased() {
-        case "neutral": self = .neutral
-        case "a": self = .aa
-        case "i": self = .ih
-        case "u": self = .ou
-        case "e": self = .ee
-        case "o": self = .oh
-        case "blink": self = .blink
-        case "joy": self = .happy
-        case "angry": self = .angry
-        case "sorrow": self = .sad
-        case "fun": self = .relaxed
-        case "lookup": self = .lookUp
-        case "lookdown": self = .lookDown
-        case "lookleft": self = .lookLeft
-        case "lookright": self = .lookRight
-        case "blink_l": self = .blinkLeft
-        case "blink_r": self = .blinkRight
-        default: return nil
-        }
+        ExpressionPreset(vrm0PresetName: presetName) ?? ExpressionPreset(name: name)
     }
 }

@@ -1,8 +1,4 @@
-import CoreGraphics
-import Foundation
-internal import VRMKit
 internal import VRMSceneKit
-internal import VRMRealityKit
 
 enum MacExampleRenderer: String, CaseIterable, Identifiable {
     case sceneKit
@@ -39,57 +35,11 @@ enum MacExampleModel: String, CaseIterable, Identifiable {
     }
 }
 
-enum MacExampleExpression: String, CaseIterable, Identifiable {
-    case neutral
-    case joy
-    case angry
-    case sorrow
-    case fun
-
-    var id: String { rawValue }
-
-    var expressionPreset: ExpressionPreset {
-        switch self {
-        case .neutral: return .neutral
-        case .joy: return .happy
-        case .angry: return .angry
-        case .sorrow: return .sad
-        case .fun: return .relaxed
-        }
-    }
-
-    func displayName(for model: MacExampleModel) -> String {
-        switch model {
-        case .alicia:
-            return rawValue.capitalized
-        case .vrm1:
-            switch self {
-            case .neutral: return "Neutral"
-            case .joy: return "Happy"
-            case .angry: return "Angry"
-            case .sorrow: return "Sad"
-            case .fun: return "Relaxed"
-            }
-        }
-    }
-}
-
-extension VRMEntity {
-    func setExampleExpression(_ expression: MacExampleExpression, value: CGFloat) {
-        setExampleExpressions([expression: value])
-    }
-
-    /// Applies several example expressions at once, so the runtime re-applies
-    /// its bindings only once.
-    func setExampleExpressions(_ weights: [MacExampleExpression: CGFloat]) {
-        setExpressions(Dictionary(uniqueKeysWithValues: weights.map {
-            (ExpressionKey.preset($0.key.expressionPreset), $0.value)
-        }))
-    }
-}
-
-extension VRMNode {
-    func setExampleExpression(_ expression: MacExampleExpression, value: CGFloat) {
-        setExpression(value: value, for: .preset(expression.expressionPreset))
+extension [ExpressionInfo] {
+    /// The emotions the example shows, in the order it shows them, dropping the
+    /// ones the model states no expression for.
+    var exampleEmotions: [ExpressionInfo] {
+        let presets: [ExpressionPreset] = [.neutral, .happy, .angry, .sad, .relaxed]
+        return presets.compactMap { preset in first { $0.preset == preset } }
     }
 }

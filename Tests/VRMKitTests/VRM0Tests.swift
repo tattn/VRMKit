@@ -80,6 +80,20 @@ struct VRM0Tests {
         #expect(vrm.firstPerson?.meshAnnotations[0].mesh == 0)
     }
 
+    /// The four curves the gaze passes through, which VRM 1.0 states as range maps.
+    @Test
+    func testFirstPersonLookAtCurves() throws {
+        #expect(vrm.firstPerson?.lookAtTypeName == .bone)
+        let inner = try #require(vrm.firstPerson?.lookAtHorizontalInner)
+        #expect(inner.xRange == 30)
+        #expect(inner.yRange == 10)
+        #expect(inner.curve == [0, 0, 0, 1, 1, 1, 1, 0])
+        #expect(vrm.firstPerson?.lookAtHorizontalOuter?.yRange == 10)
+        #expect(vrm.firstPerson?.lookAtVerticalDown?.yRange == 10)
+        // The one map this model tunes away from the rest.
+        #expect(vrm.firstPerson?.lookAtVerticalUp?.yRange == 8)
+    }
+
     @Test
     func testSecondaryAnimationBoneGroups() {
         let target = vrm.secondaryAnimation.boneGroups[0]

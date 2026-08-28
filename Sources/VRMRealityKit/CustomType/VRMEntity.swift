@@ -42,6 +42,7 @@ public final class VRMEntity: GLTFEntity {
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
     private var springBones = SpringBoneRig<Entity>()
     private var nodeConstraints = NodeConstraintRig<Entity>()
+    private var lookAt = LookAtRig<Entity>()
     // Blend-shape target -> weight-set positions, resolved on first write.
     private var blendShapeSlotCache: [MorphBindingKey: [BlendShapeSlot]] = [:]
 
@@ -202,6 +203,35 @@ public final class VRMEntity: GLTFEntity {
         springBones = try SpringBoneRig.make(vrm: vrm) { try loader.node(withNodeIndex: $0) }
     }
 
+    func setUpLookAt(loader: GLTFEntityLoader) throws {
+        lookAt = try LookAtRig.make(vrm: vrm) { try loader.node(withNodeIndex: $0) }
+    }
+
+    /// What the eyes follow, nil to leave them at rest.
+    ///
+    /// A world-space position is kept on as either it or the model moves, so a model
+    /// looking at the camera only has to be told where the camera is. A model stating no
+    /// look-at keeps its eyes still whatever this is set to.
+    public var lookAtTarget: LookAtTarget? {
+        get { lookAt.target }
+        set {
+            lookAt.target = newValue
+            applyLookAt()
+        }
+    }
+
+    private func applyLookAt() {
+        switch lookAt.apply() {
+        case .unchanged:
+            break
+        case .posedBones:
+            invalidateSkinPose()
+        case .weights(let weights):
+            guard expressions.storeWeights(weights) else { return }
+            expressions.apply(with: expressionApplier)
+        }
+    }
+
     /// The color a `materialColorBind` starts from. A state animating that color keeps
     /// it; everything else reads it from the RealityKit material.
     func currentMaterialColor(withMaterialIndex index: Int,
@@ -223,7 +253,7 @@ public final class VRMEntity: GLTFEntity {
         return try loader.material(withMaterialIndex: index).currentTextureTransform
     }
 
-    /// Advances spring bones, node constraints, and skinning by one frame.
+    /// Advances node constraints, the gaze, spring bones and skinning by one frame.
     ///
     /// ``VRMUpdateSystem`` calls this once per render frame, so set
     /// ``isAutomaticUpdateEnabled`` to `false` before driving the timing manually. The skin
@@ -234,6 +264,9 @@ public final class VRMEntity: GLTFEntity {
         // Skinning runs last so this frame's constraint and spring-bone poses reach the
         // skinned meshes in the same frame they are solved.
         let movedConstraints = nodeConstraints.apply()
+        // After the constraints, which may have posed the head the gaze is measured from,
+        // and before the springs, which nothing about the eyes feeds into.
+        applyLookAt()
         let movedSprings = springBones.update(deltaTime: deltaTime)
         if movedConstraints || movedSprings {
             invalidateSkinPose()
@@ -257,8 +290,12 @@ public final class VRMEntity: GLTFEntity {
         CGFloat(expressions.weight(for: key))
     }
 
-    /// The expressions the model offers, for enumerating what may be set.
-    public var availableExpressions: [ExpressionKey] {
+    /// The expressions the model offers, each paired with the name it states them
+    /// under.
+    ///
+    /// A VRM 0.x model's blend shape groups come in its own order; a VRM 1.0
+    /// model's presets come first, then its custom expressions by name.
+    public var availableExpressions: [ExpressionInfo] {
         expressions.availableExpressions
     }
 

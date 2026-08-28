@@ -12,6 +12,9 @@ import VRMKitRuntime
 /// over after re-expressing it between the two rest orientations, and the hips translation
 /// scales by the rest hips-height ratio. A VRM 0.x model faces the other way than a
 /// `.vrma` is authored in, so its whole animation is turned 180° around Y as well.
+///
+/// The gaze retargets as angles rather than transforms, so it carries over whichever way
+/// either side faces.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 final class VRMAnimationRuntime {
@@ -74,6 +77,10 @@ final class VRMAnimationRuntime {
     private weak var entity: VRMEntity?
     private let boneBindings: [BoneBinding]
     private let expressionBindings: [ExpressionBinding]
+    /// The gaze the animation states as the rotation of its look-at node. Its
+    /// `offsetFromHeadBone` is left unread: it places the source's own gaze origin, which
+    /// only retargeting a point rather than angles would need.
+    private let gazeTrack: GLTFKeyframeTrack<simd_quatf>?
 
     /// Metadata the playback controller shows.
     let name: String?
@@ -105,8 +112,7 @@ final class VRMAnimationRuntime {
         var expressionKeysByNode: [Int: [ExpressionKey]] = [:]
         if let expressions = vrmAnimation.expressions {
             for (name, expression) in expressions.preset ?? [:] {
-                guard let preset = ExpressionPreset(name: name),
-                      !Self.lookAtPresets.contains(preset) else { continue }
+                guard let preset = ExpressionPreset(name: name) else { continue }
                 expressionKeysByNode[expression.node, default: []].append(.preset(preset))
             }
             for (name, expression) in expressions.custom ?? [:] {
@@ -140,9 +146,21 @@ final class VRMAnimationRuntime {
         var rotationTracks: [Int: GLTFKeyframeTrack<simd_quatf>] = [:]
         var translationTracks: [Int: GLTFKeyframeTrack<SIMD3<Float>>] = [:]
         var expressions: [ExpressionBinding] = []
+        var gaze: GLTFKeyframeTrack<simd_quatf>?
 
         for channel in try decoder.validatedChannels(of: animation) {
             let times = try decoder.times(at: channel.sampler.input)
+
+            if channel.nodeIndex == vrmAnimation.lookAt?.node {
+                // The gaze rides on the look-at node's rotation, and nothing else about
+                // that node is stated.
+                guard channel.path == .rotation else { continue }
+                gaze = try .init(times: times,
+                                 interpolation: channel.sampler.interpolation,
+                                 values: decoder.quaternions(at: channel.sampler.output,
+                                                             interpolation: channel.sampler.interpolation))
+                continue
+            }
 
             if let keys = expressionKeysByNode[channel.nodeIndex] {
                 // The expression weight rides on the node's translation X.
@@ -154,8 +172,8 @@ final class VRMAnimationRuntime {
                 continue
             }
 
-            // Channels of nodes mapped to nothing are skipped: look-at, and bones
-            // outside the VRM humanoid.
+            // Channels of nodes mapped to nothing are skipped: bones outside the VRM
+            // humanoid, and whatever else a file animates.
             guard animationRest.contains(channel.nodeIndex),
                   boneByNode[channel.nodeIndex] != nil else { continue }
 
@@ -228,14 +246,18 @@ final class VRMAnimationRuntime {
         }
 
         boneBindings = bones
-        expressionBindings = expressions
+        // A stated gaze owns the look-at, so the look expressions a file carries as well
+        // would only double it: aiming the gaze is what weighs them, on a model whose
+        // look-at is expression-driven.
+        expressionBindings = gaze == nil ? expressions : expressions.compactMap { binding in
+            let keys = binding.keys.filter { $0.overrideGroup != .lookAt }
+            return keys.isEmpty ? nil : ExpressionBinding(keys: keys, track: binding.track)
+        }
+        gazeTrack = gaze
 
         self.name = animation.name
         self.duration = decoder.duration(of: animation)
     }
-
-    /// The presets a `.vrma` may not carry: look-at aims the gaze instead.
-    private static let lookAtPresets: Set<ExpressionPreset> = [.lookUp, .lookDown, .lookLeft, .lookRight]
 
     /// The target model's bone for a `.vrma` humanoid bone name, or nil for one no bone
     /// of the model is to take. A `.vrma` is VRM 1.0, as ``HumanoidBone`` names its
@@ -277,6 +299,7 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
         }
 
         applyExpressions(at: time)
+        applyGaze(at: time)
         return movedTransforms
     }
 
@@ -294,6 +317,12 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
         }
         // Sent together so the entity re-accumulates its bindings once.
         entity.setExpressions(weights)
+    }
+
+    /// Aims the model's gaze where the animation states it.
+    private func applyGaze(at time: Float) {
+        guard let entity, let gazeTrack else { return }
+        entity.lookAtTarget = .rotation(gazeTrack.value(at: time))
     }
 }
 #endif

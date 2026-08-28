@@ -18,7 +18,7 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
     private var cameraAnchor: AnchorEntity?
     private var cameraEntity: PerspectiveCamera?
     private var lightEntity: DirectionalLight?
-    private var expressionSegmentedControl: UISegmentedControl?
+    private let expressionControl = ExampleExpressionControl()
     var leadingBarButtonItems: [UIBarButtonItem] { [vrmaBarButtonItem] }
     private lazy var vrmaBarButtonItem = UIBarButtonItem(image: nil,
                                                          style: .plain,
@@ -32,7 +32,6 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
     private var orbitPitch: Float = 21.5 * .pi / 180
     private var orbitDistance: Float = 2
     private var orbitTarget = SIMD3<Float>(0, 0.8, 0)
-    private var currentExpression: ExampleExpression = .neutral
     private var isMToonEnabled = true
 
     override func viewDidLoad() {
@@ -62,13 +61,9 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
     }
 
     private func setUpUI() {
-        let expressionItems = ExampleExpression.allCases.map { $0.displayName(for: model) }
-        let expressionSegmentedControl = UISegmentedControl(items: expressionItems)
-        expressionSegmentedControl.selectedSegmentIndex = 0
-        expressionSegmentedControl.addTarget(self, action: #selector(expressionSegmentChanged(_:)), for: .valueChanged)
+        let expressionSegmentedControl = expressionControl.segmentedControl
         expressionSegmentedControl.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(expressionSegmentedControl)
-        self.expressionSegmentedControl = expressionSegmentedControl
 
         let mtoonButton = UIButton(type: .system)
         mtoonButton.changesSelectionAsPrimaryAction = true
@@ -121,13 +116,6 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
         vrmaBarButtonItem.image = UIImage(systemName: isPlaying ? "pause.fill" : "play.fill")
     }
 
-    @objc private func expressionSegmentChanged(_ sender: UISegmentedControl) {
-        let expression = ExampleExpression.allCases[sender.selectedSegmentIndex]
-        loadedEntity?.setExampleExpression(currentExpression, value: 0.0)
-        currentExpression = expression
-        loadedEntity?.setExampleExpression(currentExpression, value: 1.0)
-    }
-
     @objc private func mtoonChanged(_ sender: UIButton) {
         isMToonEnabled = sender.isSelected
         loadVRM()
@@ -139,8 +127,6 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
 
     private func loadVRMAsync() async {
         guard let arView = arView else { return }
-
-        updateExpressionLabels()
 
         vrmaController = nil
 
@@ -172,7 +158,7 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
             if let neck = vrmEntity.humanoid.node(for: .neck) {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
             }
-            vrmEntity.setExampleExpression(currentExpression, value: 1.0)
+            expressionControl.attach(to: vrmEntity)
 
             loadedEntity = vrmEntity
             loadedAnchor = anchor
@@ -181,18 +167,6 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
             print(error)
         }
         updateVRMAButton()
-    }
-
-    private func updateExpressionLabels() {
-        guard let expressionSegmentedControl else { return }
-        let selectedIndex = expressionSegmentedControl.selectedSegmentIndex
-        expressionSegmentedControl.removeAllSegments()
-        for (index, expression) in ExampleExpression.allCases.enumerated() {
-            expressionSegmentedControl.insertSegment(withTitle: expression.displayName(for: model),
-                                                     at: index,
-                                                     animated: false)
-        }
-        expressionSegmentedControl.selectedSegmentIndex = selectedIndex >= 0 ? selectedIndex : 0
     }
 
     private func setUpCamera() {

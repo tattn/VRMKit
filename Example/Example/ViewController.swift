@@ -13,8 +13,7 @@ class ViewController: UIViewController, VRMRendererViewController {
 
     private let scnView = SCNView()
     private var vrmNode: VRMNode?
-    private var expressionSegmentedControl: UISegmentedControl?
-    private var currentExpression: ExampleExpression = .neutral
+    private let expressionControl = ExampleExpressionControl()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -40,13 +39,9 @@ class ViewController: UIViewController, VRMRendererViewController {
     }
 
     private func setupUI() {
-        let expressionItems = ExampleExpression.allCases.map { $0.displayName(for: model) }
-        let expressionSegmentedControl = UISegmentedControl(items: expressionItems)
-        expressionSegmentedControl.selectedSegmentIndex = 0
-        expressionSegmentedControl.addTarget(self, action: #selector(expressionSegmentChanged(_:)), for: .valueChanged)
+        let expressionSegmentedControl = expressionControl.segmentedControl
         expressionSegmentedControl.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(expressionSegmentedControl)
-        self.expressionSegmentedControl = expressionSegmentedControl
 
         NSLayoutConstraint.activate([
             expressionSegmentedControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -54,16 +49,8 @@ class ViewController: UIViewController, VRMRendererViewController {
         ])
     }
 
-    @objc private func expressionSegmentChanged(_ sender: UISegmentedControl) {
-        let expression = ExampleExpression.allCases[sender.selectedSegmentIndex]
-        vrmNode?.setExampleExpression(currentExpression, value: 0.0)
-        currentExpression = expression
-        vrmNode?.setExampleExpression(currentExpression, value: 1.0)
-    }
-
     private func loadVRM() {
         do {
-            updateExpressionLabels()
             let loader = try VRMSceneLoader(named: model.rawValue)
             let scene = try loader.loadScene()
             setupScene(scene)
@@ -74,7 +61,7 @@ class ViewController: UIViewController, VRMRendererViewController {
 
             let rotationOffset = CGFloat(model.initialRotation)
             node.eulerAngles = SCNVector3(0, rotationOffset, 0)
-            node.setExampleExpression(currentExpression, value: 1.0)
+            expressionControl.attach(to: node)
 
             node.humanoid.node(for: .neck)?.eulerAngles = SCNVector3(0, 0, 20 * CGFloat.pi / 180)
             let leftArm: SCNNode?
@@ -97,18 +84,6 @@ class ViewController: UIViewController, VRMRendererViewController {
         } catch {
             print(error)
         }
-    }
-
-    private func updateExpressionLabels() {
-        guard let expressionSegmentedControl else { return }
-        let selectedIndex = expressionSegmentedControl.selectedSegmentIndex
-        expressionSegmentedControl.removeAllSegments()
-        for (index, expression) in ExampleExpression.allCases.enumerated() {
-            expressionSegmentedControl.insertSegment(withTitle: expression.displayName(for: model),
-                                                     at: index,
-                                                     animated: false)
-        }
-        expressionSegmentedControl.selectedSegmentIndex = selectedIndex >= 0 ? selectedIndex : 0
     }
 
     private func setupScene(_ scene: SCNScene) {

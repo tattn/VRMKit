@@ -24,6 +24,7 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 - [x] Face morphing (blend shape)
 - [x] Bone animation (skin / joint)
 - [x] Physics (spring bone)
+- [x] Look at (eye bone / expression)
 - [x] MToon rendering and custom material shaders
 - [x] Render plain glTF / GLB with animations
 - [x] VRM animation (.vrma) retargeting
@@ -106,10 +107,23 @@ model.resetSpringBones() // after teleporting the model
 ```swift
 model.setExpression(value: 1.0, for: .preset(.happy))
 model.setExpressions([.preset(.blink): 1.0, .custom("><"): 0.5])
-model.availableExpressions // every expression the model offers
+
+for expression in model.availableExpressions {
+    print(expression.key, expression.name) // preset(.happy) Joy
+}
 ```
 
-VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`. `setExpressions` applies several weights at once, which suits per-frame face tracking.
+VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`, and each listed expression keeps the name the model gives it. `ExpressionPreset.vrm0PresetName` spells it back the 0.x way. `setExpressions` applies several weights at once, which suits per-frame face tracking.
+
+## Look at
+
+```swift
+model.lookAtTarget = .position(SIMD3<Float>(0, 1.4, 1)) // a point in world space
+model.lookAtTarget = .angles(yaw: 15, pitch: -5)        // degrees from the head's forward
+model.lookAtTarget = nil                                // back to rest
+```
+
+The eyes stay on the target as either it or the model moves. VRM 0.x and 1.0 share this API: the model itself states whether the gaze turns its eye bones, through its own curves, or weighs its look expressions.
 
 ## Bone animation
 
@@ -125,7 +139,7 @@ model.invalidateSkinPose()
 
 ## VRM animation (.vrma)
 
-A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike: humanoid bone rotations, the hips motion scaled to the model's size, and expression tracks. An optional bone the model lacks, such as `upperChest`, hands its rotation to the bones that stand in for it.
+A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike: humanoid bone rotations, the hips motion scaled to the model's size, expression tracks, and the gaze, which lands on `lookAtTarget`. An optional bone the model lacks, such as `upperChest`, hands its rotation to the bones that stand in for it.
 
 ```swift
 let animation = try VRMAnimation(named: "walk.vrma")
@@ -296,10 +310,6 @@ try document.serialize().write(to: outputURL)
 The scope is one indexed triangle mesh and one material: positions, optional normals and texture coordinates, a base color factor and a PNG or JPEG image with its wrap and filter modes, unlit, alpha mode and double-sidedness. `addMesh` returns the node it added and takes the same `materials: .mtoon` as `append`.
 
 </details>
-
-# ToDo
-
-- [ ] Look-at playback from vrma
 
 # Contributing
 

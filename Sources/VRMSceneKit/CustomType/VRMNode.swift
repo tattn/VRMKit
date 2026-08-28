@@ -34,6 +34,7 @@ open class VRMNode: SCNNode {
     )
     private var firstPersonPrimitives: [ObjectIdentifier: FirstPersonPrimitive] = [:]
     private var nodeConstraints = NodeConstraintRig<SCNNode>()
+    private var lookAt = LookAtRig<SCNNode>()
 
     public init(vrm: VRM) {
         self.vrm = vrm
@@ -132,6 +133,30 @@ open class VRMNode: SCNNode {
         springBones = try SpringBoneRig.make(vrm: vrm) { try loader.node(withNodeIndex: $0) }
     }
 
+    func setUpLookAt(loader: VRMSceneLoader) throws {
+        lookAt = try LookAtRig.make(vrm: vrm) { try loader.node(withNodeIndex: $0) }
+    }
+
+    /// What the eyes follow, nil to leave them at rest.
+    ///
+    /// A world-space position is kept on as either it or the model moves, so a model
+    /// looking at the camera only has to be told where the camera is. A model stating no
+    /// look-at keeps its eyes still whatever this is set to.
+    public var lookAtTarget: LookAtTarget? {
+        get { lookAt.target }
+        set {
+            lookAt.target = newValue
+            applyLookAt()
+        }
+    }
+
+    private func applyLookAt() {
+        // A bone look-at the rig turns itself, and SceneKit skins from the nodes it left.
+        guard case .weights(let weights) = lookAt.apply(),
+              expressions.storeWeights(weights) else { return }
+        expressions.apply(with: expressionApplier)
+    }
+
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
         setExpressions([key: value])
     }
@@ -148,8 +173,12 @@ open class VRMNode: SCNNode {
         CGFloat(expressions.weight(for: key))
     }
 
-    /// The expressions the model offers, for enumerating what may be set.
-    public var availableExpressions: [ExpressionKey] {
+    /// The expressions the model offers, each paired with the name it states them
+    /// under.
+    ///
+    /// A VRM 0.x model's blend shape groups come in its own order; a VRM 1.0
+    /// model's presets come first, then its custom expressions by name.
+    public var availableExpressions: [ExpressionInfo] {
         expressions.availableExpressions
     }
 
@@ -192,12 +221,15 @@ extension VRMNode {
         springBones.reset()
     }
 
-    /// Advances the node constraints and spring bones to `time`, the timestamp a renderer
-    /// hands its per-frame callback.
+    /// Advances the node constraints, the gaze and the spring bones to `time`, the
+    /// timestamp a renderer hands its per-frame callback.
     public func update(at time: TimeInterval) {
         let seconds = lastUpdateTime.map { max(0, time - $0) } ?? 0
         lastUpdateTime = time
         _ = nodeConstraints.apply()
+        // After the constraints, which may have posed the head the gaze is measured from,
+        // and before the springs, which nothing about the eyes feeds into.
+        applyLookAt()
         springBones.update(deltaTime: seconds)
     }
 }

@@ -203,6 +203,10 @@ struct GLTFSnapshotTests {
                 "a face painted \(expected) came back at \(bytes[center])")
     }
 
+// Where MToon renders as the Unlit approximation, the light it is drawn with is
+// not in the picture: visionOS ships no MToon Metal library, so the two
+// snapshots below come out identical and there is no brightness to compare.
+#if !os(visionOS)
     /// The mean brightness of what was drawn, ignoring the background.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func brightness(_ image: CGImage) throws -> Double {
@@ -233,6 +237,7 @@ struct GLTFSnapshotTests {
 
         #expect(try brightness(try await entity.snapshot(lit)) > (try brightness(try await entity.snapshot(unlit))))
     }
+#endif
 
     /// Lighting the copy is done by aiming the entity's own light and putting
     /// it back, which the caller must not be able to tell happened.

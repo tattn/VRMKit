@@ -18,6 +18,18 @@ public extension VRM {
         case .v1(let vrm1): vrm1.nodeIndex(of: bone)
         }
     }
+
+    /// The node a first-person camera and the gaze hang off. VRM 0.x names the
+    /// bone itself, falling back to the humanoid head where it names none, which
+    /// is all VRM 1.0 states.
+    func headNode(in gltf: GLTF) -> Int? {
+        let bone: Int?
+        switch self {
+        case .v0(let vrm0): bone = vrm0.firstPerson?.firstPersonBone
+        case .v1: bone = nil
+        }
+        return bone.flatMap { gltf.nodes.indices.contains($0) ? $0 : nil } ?? nodeIndex(of: .head)
+    }
 }
 
 public extension VRM0 {

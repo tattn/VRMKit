@@ -199,9 +199,17 @@ public extension VRM0 {
         /// Absent in files with nothing annotated, `prune()` output among them.
         public let meshAnnotations: [MeshAnnotation]
         public let lookAtTypeName: LookAtType
+        /// How far an eye turns toward the nose for a gaze to its side, VRM 0.x's
+        /// equivalent of the VRM 1.0 `rangeMapHorizontalInner`.
+        public let lookAtHorizontalInner: DegreeMap?
+        /// How far an eye turns away from the nose for a gaze to the other side.
+        public let lookAtHorizontalOuter: DegreeMap?
+        public let lookAtVerticalDown: DegreeMap?
+        public let lookAtVerticalUp: DegreeMap?
 
         private enum CodingKeys: String, CodingKey {
             case firstPersonBone, firstPersonBoneOffset, meshAnnotations, lookAtTypeName
+            case lookAtHorizontalInner, lookAtHorizontalOuter, lookAtVerticalDown, lookAtVerticalUp
         }
 
         public init(from decoder: any Decoder) throws {
@@ -213,6 +221,10 @@ public extension VRM0 {
             // An unknown look-at type moves nothing, the way the spec's own "None" does.
             let lookAt = try container.decodeIfPresent(String.self, forKey: .lookAtTypeName)
             lookAtTypeName = lookAt.flatMap(LookAtType.init(rawValue:)) ?? .none
+            lookAtHorizontalInner = try container.decodeIfPresent(DegreeMap.self, forKey: .lookAtHorizontalInner)
+            lookAtHorizontalOuter = try container.decodeIfPresent(DegreeMap.self, forKey: .lookAtHorizontalOuter)
+            lookAtVerticalDown = try container.decodeIfPresent(DegreeMap.self, forKey: .lookAtVerticalDown)
+            lookAtVerticalUp = try container.decodeIfPresent(DegreeMap.self, forKey: .lookAtVerticalUp)
         }
 
         public func encode(to encoder: any Encoder) throws {
@@ -221,6 +233,10 @@ public extension VRM0 {
             try container.encodeSimd3Object(firstPersonBoneOffset, forKey: .firstPersonBoneOffset)
             try container.encode(meshAnnotations, forKey: .meshAnnotations)
             try container.encode(lookAtTypeName, forKey: .lookAtTypeName)
+            try container.encodeIfPresent(lookAtHorizontalInner, forKey: .lookAtHorizontalInner)
+            try container.encodeIfPresent(lookAtHorizontalOuter, forKey: .lookAtHorizontalOuter)
+            try container.encodeIfPresent(lookAtVerticalDown, forKey: .lookAtVerticalDown)
+            try container.encodeIfPresent(lookAtVerticalUp, forKey: .lookAtVerticalUp)
         }
 
         public struct MeshAnnotation: Codable, Sendable {
@@ -231,6 +247,18 @@ public extension VRM0 {
             case none = "None"
             case bone = "Bone"
             case blendShape = "BlendShape"
+        }
+
+        /// One of the four curves a gaze angle passes through, which is how VRM 0.x
+        /// states what VRM 1.0 states as a range map.
+        public struct DegreeMap: Codable, Sendable {
+            /// The Unity animation curve, as keyframes flattened into
+            /// `time, value, inTangent, outTangent` quadruples.
+            public let curve: [Float]?
+            /// The input angle, in degrees, the curve's 0...1 domain spans.
+            public let xRange: Double?
+            /// What the curve's 0...1 output scales to.
+            public let yRange: Double?
         }
     }
 

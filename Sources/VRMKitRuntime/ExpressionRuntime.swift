@@ -80,6 +80,8 @@ package struct ExpressionApplier<Mesh: AnyObject, MaterialRef: Hashable> {
 /// not move since the last apply is not written again.
 package final class ExpressionRuntime<Mesh: AnyObject, MaterialRef: Hashable> {
     package private(set) var clips: [ExpressionKey: ExpressionClip<Mesh>] = [:]
+    /// The expressions the model offers, in the order the plan states them.
+    package private(set) var availableExpressions: [ExpressionInfo] = []
     private var materialColorClips: [ExpressionKey: [ExpressionMaterialColorBinding<MaterialRef>]] = [:]
     private var textureTransformClips: [ExpressionKey: [ExpressionTextureTransformBinding<MaterialRef>]] = [:]
 
@@ -117,10 +119,12 @@ package final class ExpressionRuntime<Mesh: AnyObject, MaterialRef: Hashable> {
     package init() {}
 
     /// Hands the runtime everything the model states, replacing what it had.
-    package func setUp(clips: [ExpressionKey: ExpressionClip<Mesh>],
+    package func setUp(clips statedClips: [ExpressionClip<Mesh>],
                        materialColorClips: [ExpressionKey: [ExpressionMaterialColorBinding<MaterialRef>]],
                        textureTransformClips: [ExpressionKey: [ExpressionTextureTransformBinding<MaterialRef>]]) {
-        self.clips = clips
+        // Two clips sharing a key is malformed; the later one wins.
+        clips = Dictionary(statedClips.map { ($0.key, $0) }, uniquingKeysWith: { $1 })
+        availableExpressions = statedClips.map { ExpressionInfo(key: $0.key, name: $0.name) }
         self.materialColorClips = materialColorClips
         self.textureTransformClips = textureTransformClips
         weights = [:]
@@ -147,7 +151,7 @@ package final class ExpressionRuntime<Mesh: AnyObject, MaterialRef: Hashable> {
                        morphBindings: (VRMExpressionPlan.MorphBind) -> [BlendShapeBinding<Mesh>],
                        materialColorBinding: (String, VRMExpressionPlan.MaterialColorBind) -> ExpressionMaterialColorBinding<MaterialRef>?,
                        textureTransformBinding: (String, VRMExpressionPlan.TextureTransformBind) -> ExpressionTextureTransformBinding<MaterialRef>?) {
-        var clips: [ExpressionKey: ExpressionClip<Mesh>] = [:]
+        var clips: [ExpressionClip<Mesh>] = []
         var materialColorClips: [ExpressionKey: [ExpressionMaterialColorBinding<MaterialRef>]] = [:]
         var textureTransformClips: [ExpressionKey: [ExpressionTextureTransformBinding<MaterialRef>]] = [:]
 
@@ -160,7 +164,7 @@ package final class ExpressionRuntime<Mesh: AnyObject, MaterialRef: Hashable> {
                                       overrideBlink: planned.overrideBlink,
                                       overrideLookAt: planned.overrideLookAt,
                                       overrideMouth: planned.overrideMouth)
-            clips[clip.key] = clip
+            clips.append(clip)
 
             let colors = planned.materialColorBinds.compactMap { materialColorBinding(planned.name, $0) }
             if !colors.isEmpty {
@@ -176,9 +180,6 @@ package final class ExpressionRuntime<Mesh: AnyObject, MaterialRef: Hashable> {
               materialColorClips: materialColorClips,
               textureTransformClips: textureTransformClips)
     }
-
-    /// The expressions the model offers, for a caller enumerating what it may set.
-    package var availableExpressions: [ExpressionKey] { Array(clips.keys) }
 
     /// The key a clip is actually stored under. An expression named after a
     /// preset is that preset, which is how VRM 0.x models predating the presets

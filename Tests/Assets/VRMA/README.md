@@ -36,4 +36,4 @@ worthwhile complement to the identity-rest `VRMASampleFixture`:
 |---|---|---|
 | 0.5 s | `rightUpperArm` rotation | 90° around the bone's local +X, which is the model's +Z, so the arm lifts sideways. Back at rest by 1 s |
 | 1.5 s | `happy` expression | weight 1, zero elsewhere |
-| 2.5 s | look-at rotation | 90° around +Y (not applied by this runtime yet) |
+| 2.5 s | look-at rotation | 90° around +Y, a gaze a quarter turn to the model's own left |
