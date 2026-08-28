@@ -210,10 +210,10 @@ public class GLTFEntity: Entity {
 
     /// The animatable shader parameters are resolved once per material, so every entity
     /// sharing it shares them.
-    func registerMaterialBinding(modelEntity: ModelEntity, materialIndex: Int, loader: GLTFEntityLoader) {
+    func registerMaterialBinding(modelEntity: ModelEntity, materialIndex: Int, builder: GLTFSceneBuilder) {
         if materialStates[materialIndex] == nil {
             materialStates[materialIndex] = MaterialRuntimeState(
-                animatable: loader.makeAnimatableMaterialState(forMaterialIndex: materialIndex)
+                animatable: builder.makeAnimatableMaterialState(forMaterialIndex: materialIndex)
             )
         }
         materialStates[materialIndex]?.modelEntities.append(modelEntity)

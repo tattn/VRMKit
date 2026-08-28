@@ -20,9 +20,10 @@ public protocol GLTFMaterialShader: AnyObject {
     /// pass it on to the next shader in the chain (and ultimately the built-in
     /// Unlit / PBR path).
     ///
-    /// A thrown error fails the material instead of falling through. A shader
-    /// that can degrade gracefully should catch its own errors and return nil,
-    /// unless the document lists its extension in `extensionsRequired`.
+    /// A thrown error fails the material instead of falling through: a plain glTF load
+    /// fails with it, while a VRM draws the material with the default material in its
+    /// place. A shader that can degrade gracefully should catch its own errors and
+    /// return nil, unless the document lists its extension in `extensionsRequired`.
     func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial?
 
     /// glTF extensions this shader implements, merged into the loader's
@@ -89,9 +90,9 @@ public struct GLTFShadedMaterial {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public struct GLTFMaterialShaderContext {
-    /// The loader building the material. The service methods below go through
-    /// its caches, so shaders share decoded textures with the built-in paths.
-    let loader: GLTFEntityLoader
+    /// The load the material is being built for. The service methods below go through
+    /// the loader's caches, so shaders share decoded textures with the built-in paths.
+    let builder: GLTFSceneBuilder
     /// Index of ``material`` in the document's `materials`.
     public let materialIndex: Int
     public let material: GLTF.Material
@@ -101,63 +102,63 @@ public struct GLTFMaterialShaderContext {
 
     /// The document being loaded, the escape hatch for anything the services
     /// below do not cover.
-    public var document: GLTFDocument { loader.document }
+    public var document: GLTFDocument { builder.document }
 
     /// Whether the document declares itself undrawable without `name`, so a shader
     /// that degrades gracefully should still throw.
     public func enforcesRequiredExtension(_ name: String) -> Bool {
-        loader.enforcesRequiredExtension(name)
+        builder.resources.enforcesRequiredExtension(name)
     }
 
     /// The UV set the meshes rendering this material carry, decided by the core
     /// glTF material's textures. A shader sampling any other set renders through
     /// this one, since the mesh carries no second UV channel to sample.
     public var selectedTexCoord: Int {
-        loader.selectedTexCoord(withMaterialIndex: materialIndex)
+        builder.selectedTexCoord(withMaterialIndex: materialIndex)
     }
 
     /// The material the loader's built-in Unlit / PBR path would build, for a
     /// shader that only wants to adjust the standard result.
     public func standardMaterial() throws -> any Material {
-        try loader.standardMaterial(for: self)
+        try builder.standardMaterial(for: self)
     }
 
     /// The glTF sampler the texture at `index` references, or nil when it uses
     /// the defaults. Assigning a texture to a material parameter wants
     /// ``materialTexture(withTextureIndex:semantic:)`` instead.
     func gltfSampler(withTextureIndex index: Int) throws -> GLTF.Sampler? {
-        try loader.gltfSampler(withTextureIndex: index)
+        try builder.gltfSampler(withTextureIndex: index)
     }
 
     /// Logs a limitation warning once per loader, deduplicated by `key`.
     /// The message is only built the first time.
     public func logOnce(_ key: String, _ message: @autoclosure () -> String) {
-        loader.logOnce(key, message())
+        builder.resources.logOnce(key, message())
     }
 
     /// What MToon data ``material`` carries, from the `VRMC_materials_mtoon`
-    /// extension or the VRM 0.x property, decoded and cached by the loader.
+    /// extension or the VRM 0.x property, decoded and cached by the builder.
     func mtoonResolution() throws -> MToonMaterialDescriptor.Resolution {
-        try loader.mtoonResolution(withMaterialIndex: materialIndex)
+        try builder.mtoonResolution(withMaterialIndex: materialIndex)
     }
 
     /// The single UV transform this renderer applies for `textures`. The first
     /// UV-accessed texture's wins, logging once when they disagree.
     func selectedUVTransform(for textures: [GLTFSampledTexture]) -> GLTFUVTransform {
-        loader.selectedUVTransform(withMaterialIndex: materialIndex, textures: textures)
+        builder.selectedUVTransform(withMaterialIndex: materialIndex, textures: textures)
     }
 
     /// The decoded texture at `index`, cached per (index, semantic).
     public func texture(withTextureIndex index: Int,
                         semantic: TextureResource.Semantic = .color) throws -> TextureResource {
-        try loader.texture(withTextureIndex: index, semantic: semantic)
+        try builder.texture(withTextureIndex: index, semantic: semantic)
     }
 
     /// The texture at `index` paired with its sampler, ready to assign to a
     /// material parameter.
     public func materialTexture(withTextureIndex index: Int,
                                 semantic: TextureResource.Semantic = .color) throws -> MaterialParameters.Texture {
-        try loader.materialTexture(withTextureIndex: index, semantic: semantic)
+        try builder.materialTexture(withTextureIndex: index, semantic: semantic)
     }
 }
 

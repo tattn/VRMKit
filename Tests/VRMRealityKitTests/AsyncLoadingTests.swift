@@ -55,9 +55,27 @@ struct AsyncLoadingTests {
         load.cancel()
 
         await #expect(throws: CancellationError.self) { try await load.value }
-        // The loader stays usable, so a cancelled load leaves nothing it prepared behind.
-        #expect(loader.entityData.primitiveGeometries.isEmpty)
-        #expect(loader.entityData.images.allSatisfy { $0 == nil })
+        // A cancelled load drops what it prepared with its builder, so the loader stays
+        // usable.
+        #expect(try await !loader.loadEntity().children.isEmpty)
+    }
+
+    /// A load cancelled while it waits for the one before it gives up its place there
+    /// and then, rather than sitting in the queue until the running load is done.
+    @Test
+    func testALoadCancelledWhileQueuedGivesUpItsPlace() async throws {
+        let queue = GLTFLoadQueue()
+        // Held as a running load would hold it, so the queued call can only come back by
+        // giving up its place.
+        try await queue.begin()
+        let queued = Task { try await queue.run {} }
+        await Task.yield()
+        queued.cancel()
+
+        await #expect(throws: CancellationError.self) { try await queued.value }
+        // The queue is left intact, so the next call still runs once it is free.
+        queue.end()
+        #expect(try await queue.run { true })
     }
 
     /// The texture prepare pass conditions what the scene draws with, as the
@@ -70,11 +88,13 @@ struct AsyncLoadingTests {
             json["scenes"] = .objects(json.objects("scenes") + [["nodes": .array([])]])
         }
 
-        try await loader.prepareTextures(forSceneIndex: 1)
-        #expect(loader.entityData.images.allSatisfy { $0 == nil })
+        let empty = loader.builder(sceneIndex: 1)
+        try await empty.prepareTextures()
+        #expect(empty.prepared.images.isEmpty)
 
-        try await loader.prepareTextures(forSceneIndex: 0)
-        #expect(loader.entityData.images.contains { $0 != nil })
+        let drawn = loader.builder(sceneIndex: 0)
+        try await drawn.prepareTextures()
+        #expect(!drawn.prepared.images.isEmpty)
     }
 
     /// The prepare pass reports what it cannot decode rather than leaving the
@@ -93,7 +113,7 @@ struct AsyncLoadingTests {
                                           rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
 
         await #expect(throws: (any Error).self) {
-            try await loader.prepareGeometry(forSceneIndex: loader.gltf.defaultSceneIndex())
+            try await loader.builder(sceneIndex: loader.gltf.defaultSceneIndex()).prepareGeometry()
         }
         await #expect(throws: (any Error).self) { try await loader.loadEntity() }
     }
@@ -105,14 +125,13 @@ struct AsyncLoadingTests {
     func testPreparingDecodesEveryPrimitiveOfTheSceneOnce() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data)
-        let sceneIndex = loader.gltf.scene ?? 0
+        let builder = loader.builder(sceneIndex: loader.gltf.scene ?? 0)
 
-        try await loader.prepareGeometry(forSceneIndex: sceneIndex)
-        let prepared = loader.entityData.primitiveGeometries.count
-        _ = try await loader.loadEntity(withSceneIndex: sceneIndex)
+        try await builder.prepareGeometry()
+        #expect(!builder.prepared.geometries.isEmpty)
 
-        #expect(prepared > 0)
-        #expect(loader.entityData.primitiveGeometries.isEmpty)
+        _ = try builder.build()
+        #expect(builder.prepared.geometries.isEmpty)
     }
 
     /// A second load of the same scene clones the mesh templates the first one
@@ -124,10 +143,11 @@ struct AsyncLoadingTests {
         let sceneIndex = loader.gltf.scene ?? 0
 
         _ = try await loader.loadEntity(withSceneIndex: sceneIndex)
-        try await loader.prepareGeometry(forSceneIndex: sceneIndex)
+        let builder = loader.builder(sceneIndex: sceneIndex)
+        try await builder.prepareGeometry()
 
-        #expect(loader.entityData.primitiveGeometries.isEmpty)
-        #expect(!loader.entityData.meshTemplates.isEmpty)
+        #expect(builder.prepared.geometries.isEmpty)
+        #expect(!loader.resources.meshTemplates.isEmpty)
     }
 }
 #endif

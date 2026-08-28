@@ -47,10 +47,6 @@ public enum GLTFSceneKind: GLTFIndexKind {
     public static var arrayName: String { "scenes" }
 }
 
-public enum GLTFTextureKind: GLTFIndexKind {
-    public static var arrayName: String { "textures" }
-}
-
 public enum GLTFImageKind: GLTFIndexKind {
     public static var arrayName: String { "images" }
 }
@@ -69,7 +65,6 @@ public typealias GLTFNodeIndex = GLTFIndex<GLTFNodeKind>
 public typealias GLTFMeshIndex = GLTFIndex<GLTFMeshKind>
 public typealias GLTFMaterialIndex = GLTFIndex<GLTFMaterialKind>
 public typealias GLTFSceneIndex = GLTFIndex<GLTFSceneKind>
-public typealias GLTFTextureIndex = GLTFIndex<GLTFTextureKind>
 public typealias GLTFImageIndex = GLTFIndex<GLTFImageKind>
 public typealias VRM0BoneGroupIndex = GLTFIndex<VRM0BoneGroupKind>
 public typealias VRM1SpringIndex = GLTFIndex<VRM1SpringKind>

@@ -120,9 +120,20 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
     package func setUp(clips statedClips: [ExpressionClip<Mesh>],
                        materialColorClips: [ExpressionKey: [ExpressionMaterialColorBinding]],
                        textureTransformClips: [ExpressionKey: [ExpressionTextureTransformBinding]]) {
-        // Two clips sharing a key is malformed; the later one wins.
-        clips = Dictionary(statedClips.map { ($0.key, $0) }, uniquingKeysWith: { $1 })
-        availableExpressions = statedClips.map { ExpressionInfo(key: $0.key, name: $0.name) }
+        // Two clips sharing a key is malformed; the later one wins, in the place the
+        // first one took, so `clips` and `availableExpressions` stay the same set.
+        var stated: [ExpressionClip<Mesh>] = []
+        var positions: [ExpressionKey: Int] = [:]
+        for clip in statedClips {
+            if let position = positions[clip.key] {
+                stated[position] = clip
+            } else {
+                positions[clip.key] = stated.count
+                stated.append(clip)
+            }
+        }
+        clips = Dictionary(uniqueKeysWithValues: stated.map { ($0.key, $0) })
+        availableExpressions = stated.map { ExpressionInfo(key: $0.key, name: $0.name) }
         self.materialColorClips = materialColorClips
         self.textureTransformClips = textureTransformClips
         weights = [:]

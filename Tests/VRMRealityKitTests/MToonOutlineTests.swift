@@ -28,7 +28,7 @@ struct MToonOutlineTests {
 
 #if !os(visionOS)
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private func parameters(of loader: GLTFEntityLoader,
+    private func parameters(of loader: any MaterialInspectingLoader,
                             materialIndex: Int = 0) throws -> MToonMaterialParameters {
         try #require(loader.makeAnimatableMaterialState(forMaterialIndex: materialIndex)
             as? MToonAnimatableMaterialState,

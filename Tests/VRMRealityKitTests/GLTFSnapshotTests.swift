@@ -220,9 +220,8 @@ struct GLTFSnapshotTests {
         return count > 0 ? total / count : 0
     }
 
-    /// MToon shades from a light the materials carry, and a copy carries the
-    /// values but none of the runtime that sets them, so aiming that light at
-    /// the copy after making it would do nothing at all.
+    /// MToon shades from a light the materials carry, and the copy carries rows of
+    /// its own so that the light can be aimed for the camera.
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func mtoonIsLitFromTheCameraRatherThanFromWhereTheEntityPoints() async throws {
@@ -237,10 +236,31 @@ struct GLTFSnapshotTests {
 
         #expect(try brightness(try await entity.snapshot(lit)) > (try brightness(try await entity.snapshot(unlit))))
     }
+
+    /// Writing the entity's own rows to take a picture would relight the model on
+    /// screen, and let two snapshots trade light directions across their awaits.
+    @Test
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    func snapshotWritesNoneOfTheEntitysOwnMToonRows() async throws {
+        let entity = try await entity(.vrm1ConstraintTwist)
+        let materials = entity.materialStates.keys.sorted()
+        func writeCounts() -> [Int] {
+            materials.compactMap { entity.mtoonState(forMaterialIndex: $0)?.parameterTexture?.writeCount }
+        }
+        // The rows reach the GPU on the first flush, so aim the light once to have
+        // anything to count.
+        entity.setMToonLightDirection(SIMD3<Float>(1, 0, 0))
+        let before = writeCounts()
+        #expect(!before.isEmpty)
+
+        _ = try await entity.snapshot(Self.options)
+
+        #expect(writeCounts() == before)
+    }
 #endif
 
-    /// Lighting the copy is done by aiming the entity's own light and putting
-    /// it back, which the caller must not be able to tell happened.
+    /// Only the copy is lit for the camera, so the light the caller set is the
+    /// light the entity is still holding afterwards.
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotLeavesTheEntitysOwnLightWhereItWas() async throws {

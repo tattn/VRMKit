@@ -393,7 +393,7 @@ struct MaterialShaderChainTests {
     @Test
     func testConvertAllKeepsAuthoredMToonMaterials() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        func shadeColor(of loader: GLTFEntityLoader) throws -> SIMD4<Float> {
+        func shadeColor(of loader: any MaterialInspectingLoader) throws -> SIMD4<Float> {
             _ = try loader.material(withMaterialIndex: 0)
             let state = try #require(loader.makeAnimatableMaterialState(forMaterialIndex: 0)
                 as? MToonAnimatableMaterialState)

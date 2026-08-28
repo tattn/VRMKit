@@ -68,8 +68,7 @@ private func grayscaleImage(width: Int, height: Int, pixels: Data) throws -> CGI
 }
 
 extension Data {
-    /// The image the bytes hold, or nil when no decoder on this platform reads
-    /// them. Its size is in pixels, unlike the points a ``VRMImage`` reports.
+    /// The image the bytes hold, or nil when no decoder on this platform reads them.
     var decodedImage: CGImage? {
         guard let source = CGImageSourceCreateWithData(self as CFData, nil) else { return nil }
         // Decoded now, on this thread, rather than lazily on whichever thread

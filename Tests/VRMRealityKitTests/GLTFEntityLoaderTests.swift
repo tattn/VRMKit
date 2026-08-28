@@ -200,6 +200,73 @@ struct GLTFEntityLoaderTests {
         }
     }
 
+    /// A required VRM extension has to be one the loader reads, not one it merely knows
+    /// the name of: a spec version it does not model is read as no spring bones at all,
+    /// which is the load `extensionsRequired` rules out.
+    @Test
+    func testRequiredSpringBonesOfAnUnreadSpecVersionFailTheLoad() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        func requiringSpringBones(specVersion: String) throws -> Data {
+            try TestSupport.modifiedSeedSanData(name: "required VRMC_springBone \(specVersion)") { json in
+                json["extensionsRequired"] = ["VRMC_springBone"]
+                var extensions = json.object("extensions") ?? [:]
+                var springBone = extensions.object("VRMC_springBone") ?? [:]
+                springBone.set("specVersion", specVersion)
+                extensions.set("VRMC_springBone", springBone)
+                json.set("extensions", extensions)
+            }
+        }
+        let modeled = try requiringSpringBones(specVersion: "1.0")
+        let unmodeled = try requiringSpringBones(specVersion: "999.0")
+
+        _ = try await VRMEntityLoader(withData: modeled).loadEntity()
+        await #expect(throws: VRMError.self) {
+            _ = try await VRMEntityLoader(withData: unmodeled).loadEntity()
+        }
+    }
+
+    /// `VRMC_node_constraint` states its spec version per node, so what the load reads of
+    /// it is a question the nodes answer one by one.
+    @Test
+    func testRequiredNodeConstraintsOfAnUnreadSpecVersionFailTheLoad() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        func requiringNodeConstraints(specVersion: String) throws -> Data {
+            try VRMSampleAsset.vrm1ConstraintTwist.rewritingJSON { json in
+                json["extensionsRequired"] = ["VRMC_node_constraint"]
+                json.set("nodes", json.objects("nodes").map { node in
+                    guard var extensions = node.object("extensions"),
+                          var constraint = extensions.object("VRMC_node_constraint") else { return node }
+                    constraint.set("specVersion", specVersion)
+                    extensions.set("VRMC_node_constraint", constraint)
+                    var node = node
+                    node.set("extensions", extensions)
+                    return node
+                })
+            }
+        }
+        let modeled = try requiringNodeConstraints(specVersion: "1.0")
+        let unmodeled = try requiringNodeConstraints(specVersion: "999.0")
+
+        _ = try await VRMEntityLoader(withData: modeled).loadEntity()
+        await #expect(throws: VRMError.self) {
+            _ = try await VRMEntityLoader(withData: unmodeled).loadEntity()
+        }
+    }
+
+    /// VRM 0.x states its spring bones inside `VRM` and knows no node constraints, so a
+    /// 0.x model requiring either 1.0 extension requires one nothing reads off it.
+    @Test(arguments: ["VRMC_springBone", "VRMC_node_constraint"])
+    func testAVRM0ModelRequiringAVRM1ExtensionFailsTheLoad(name: String) async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let modified = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
+            json["extensionsRequired"] = .strings([name])
+        }
+
+        await #expect(throws: VRMError.self) {
+            _ = try await VRMEntityLoader(withData: modified).loadEntity()
+        }
+    }
+
     /// Hand-written: every glTF-Sample-Assets model with a sparse accessor is CC-BY-4.0,
     /// which the test assets avoid.
     @Test
@@ -698,17 +765,17 @@ struct GLTFEntityLoaderTests {
         // (0, 0, 1) straight up, and a normal tilted 45° toward +x.
         let source = try Self.image(rgb: [[128, 128, 255], [218, 128, 218]])
 
-        let unchanged = try Self.pixels(of: GLTFEntityLoader.scaledNormalImage(source, scale: 1))
+        let unchanged = try Self.pixels(of: GLTFSceneBuilder.scaledNormalImage(source, scale: 1))
         #expect(unchanged[0] == [128, 128, 255])
         #expect(unchanged[1] == [218, 128, 218])
 
-        let flattened = try Self.pixels(of: GLTFEntityLoader.scaledNormalImage(source, scale: 0))
+        let flattened = try Self.pixels(of: GLTFSceneBuilder.scaledNormalImage(source, scale: 0))
         // With nothing left of x and y, every texel is the neutral normal.
         #expect(flattened[0] == [128, 128, 255])
         #expect(flattened[1] == [128, 128, 255])
 
         // Half the tilt: x drops from 0.71 to 0.45 once renormalized.
-        let halved = try Self.pixels(of: GLTFEntityLoader.scaledNormalImage(source, scale: 0.5))
+        let halved = try Self.pixels(of: GLTFSceneBuilder.scaledNormalImage(source, scale: 0.5))
         #expect(halved[0] == [128, 128, 255])
         #expect(halved[1] == [185, 128, 242])
     }
@@ -722,13 +789,13 @@ struct GLTFEntityLoaderTests {
         // Fully occluded, half occluded and unoccluded texels.
         let source = try Self.image(rgb: [[0, 0, 0], [128, 0, 0], [255, 0, 0]])
 
-        let unchanged = try Self.pixels(of: GLTFEntityLoader.weakenedOcclusionImage(source, strength: 1))
+        let unchanged = try Self.pixels(of: GLTFSceneBuilder.weakenedOcclusionImage(source, strength: 1))
         #expect(unchanged.map(\.first) == [0, 128, 255])
 
-        let halved = try Self.pixels(of: GLTFEntityLoader.weakenedOcclusionImage(source, strength: 0.5))
+        let halved = try Self.pixels(of: GLTFSceneBuilder.weakenedOcclusionImage(source, strength: 0.5))
         #expect(halved.map(\.first) == [128, 192, 255])
 
-        let disabled = try Self.pixels(of: GLTFEntityLoader.weakenedOcclusionImage(source, strength: 0))
+        let disabled = try Self.pixels(of: GLTFSceneBuilder.weakenedOcclusionImage(source, strength: 0))
         #expect(disabled.map(\.first) == [255, 255, 255])
     }
 

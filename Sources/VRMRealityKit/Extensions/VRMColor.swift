@@ -1,15 +1,24 @@
+#if canImport(RealityKit)
 import CoreGraphics
 import simd
 
+#if os(macOS)
+import AppKit
+typealias VRMColor = NSColor
+#else
+import UIKit
+typealias VRMColor = UIColor
+#endif
+
 extension VRMColor {
-    package convenience init(simd color: SIMD4<Float>) {
+    convenience init(simd color: SIMD4<Float>) {
         self.init(red: CGFloat(color.x),
                   green: CGFloat(color.y),
                   blue: CGFloat(color.z),
                   alpha: CGFloat(color.w))
     }
 
-    package var simd: SIMD4<Float> {
+    var simd: SIMD4<Float> {
         #if os(macOS)
         let color = usingColorSpace(.deviceRGB) ?? self
         return SIMD4<Float>(Float(color.redComponent),
@@ -26,3 +35,4 @@ extension VRMColor {
         #endif
     }
 }
+#endif

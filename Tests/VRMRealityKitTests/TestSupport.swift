@@ -249,4 +249,52 @@ enum TestSupport {
 #endif
 
 }
+
+/// Materials and textures are resolved by ``GLTFSceneBuilder``, so the tests that
+/// inspect one at a time rather than a whole scene reach it through a builder.
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+@MainActor
+protocol MaterialInspectingLoader {
+    var document: GLTFDocument { get }
+    var resources: GLTFResourceCache { get }
+}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+extension GLTFEntityLoader: MaterialInspectingLoader {}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+extension VRMEntityLoader: MaterialInspectingLoader {}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+extension MaterialInspectingLoader {
+    /// A builder over this loader's resources. What it resolves is cached by the loader,
+    /// so a material built here is the one a load would draw with.
+    func builder(sceneIndex: Int = 0) -> GLTFSceneBuilder {
+        GLTFSceneBuilder(resources: resources,
+                         root: GLTFEntity(document: document, sceneIndex: sceneIndex))
+    }
+
+    var inspector: GLTFSceneBuilder { builder() }
+
+    func material(withMaterialIndex index: Int) throws -> Material {
+        try inspector.material(withMaterialIndex: index)
+    }
+
+    func shadedMaterial(withMaterialIndex index: Int) throws -> GLTFShadedMaterial {
+        try inspector.shadedMaterial(withMaterialIndex: index)
+    }
+
+    func makeAnimatableMaterialState(forMaterialIndex index: Int) -> (any VRMAnimatableMaterialState)? {
+        inspector.makeAnimatableMaterialState(forMaterialIndex: index)
+    }
+
+    func texture(withTextureIndex index: Int,
+                 semantic: TextureResource.Semantic = .color) throws -> TextureResource {
+        try inspector.texture(withTextureIndex: index, semantic: semantic)
+    }
+
+    func sampler(withTextureIndex index: Int) throws -> MaterialParameters.Texture.Sampler {
+        try inspector.sampler(withTextureIndex: index)
+    }
+}
 #endif

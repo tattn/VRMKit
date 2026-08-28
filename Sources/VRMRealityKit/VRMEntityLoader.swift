@@ -1,4 +1,5 @@
 #if canImport(RealityKit)
+import CoreGraphics
 import Foundation
 import RealityKit
 import VRMKit
@@ -6,21 +7,31 @@ import VRMKitRuntime
 
 /// Loads a VRM model into a ``VRMEntity``.
 ///
-/// The generic glTF rendering lives in ``GLTFEntityLoader``; this subclass adds the VRM
-/// layers on top: VRM 0.x material properties, humanoid, expressions, first person,
-/// node constraints and spring bones.
+/// The generic glTF rendering is the same one ``GLTFEntityLoader`` runs, read through
+/// ``VRMLoadProfile``; this loader adds the VRM layers on top of the scene it builds:
+/// humanoid, expressions, first person, node constraints, spring bones and look-at.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
-public class VRMEntityLoader: GLTFEntityLoader {
+public final class VRMEntityLoader {
     public let vrm: VRM
-    /// Which meshes a first-person camera cuts, read by every mesh the load builds.
-    private var firstPersonPlan: VRMFirstPersonPlan?
+    public var document: GLTFDocument { vrm.document }
+    /// The material shaders this loader consults, in order.
+    public let shaders: [any GLTFMaterialShader]
+
+    private let profile: VRMLoadProfile
+    let resources: GLTFResourceCache
+    private let queue = GLTFLoadQueue()
+    var gltf: GLTF { vrm.document.gltf }
 
     public init(vrm: VRM,
                 shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) {
         self.vrm = vrm
-        super.init(document: vrm.document, shaders: shaders)
-        entityName = vrm.name
+        self.shaders = shaders
+        let profile = VRMLoadProfile(vrm: vrm)
+        self.profile = profile
+        self.resources = GLTFResourceCache(document: vrm.document,
+                                           shaders: shaders,
+                                           profile: profile)
     }
 
     /// Loads a VRM from a file URL. External resources resolve relative to its directory.
@@ -42,96 +53,60 @@ public class VRMEntityLoader: GLTFEntityLoader {
         self.init(vrm: try VRM(data: data, rootDirectory: rootDirectory), shaders: shaders)
     }
 
-    /// Overridden only to narrow the return type: a VRM is a single avatar, so an
-    /// unnamed default scene is the one scene it holds.
-    override public func loadEntity() async throws -> VRMEntity {
+    /// The chain ``GLTFEntityLoader`` loads through, MToon included.
+    public static var defaultShaders: [any GLTFMaterialShader] { GLTFEntityLoader.defaultShaders }
+
+    /// The glTF and VRM extensions this loader implements, to satisfy `extensionsRequired`.
+    public var supportedRequiredExtensions: Set<String> {
+        resources.supportedRequiredExtensions
+    }
+
+    /// Loads the model. A VRM is a single avatar, so an unnamed default scene is the one
+    /// scene it holds.
+    public func loadEntity() async throws -> VRMEntity {
         try await loadEntity(withSceneIndex: gltf.defaultSceneIndex())
     }
 
-    override public func loadEntity(withSceneIndex index: Int) async throws -> VRMEntity {
-        try await (super.loadEntity(withSceneIndex: index) as? VRMEntity)
-            ??? ._dataInconsistent("the loaded entity is not a VRMEntity")
-    }
-
-    /// The image the model shows itself by, as a platform image.
-    public func loadThumbnail() throws -> VRMImage {
-        VRMImage(cgImage: try image(withImageIndex: vrm.thumbnailImageIndex.rawValue))
-    }
-
-    override func makeRootEntity(sceneIndex: Int) -> GLTFEntity {
-        VRMEntity(vrm: vrm, document: document, sceneIndex: sceneIndex)
-    }
-
-    override func didBuildScene(_ entity: GLTFEntity) throws {
-        guard let vrmEntity = entity as? VRMEntity else { return }
-        vrmEntity.setUpHumanoid(nodes: entityData.nodes)
-        vrmEntity.setUpBlendShapes(nodes: entityData.nodes, meshes: entityData.sceneMeshes, loader: self)
-        vrmEntity.setUpFirstPerson(plan: firstPerson(), nodes: entityData.nodes, meshes: entityData.sceneMeshes)
-        try vrmEntity.setUpNodeConstraints(gltfNodes: gltf.nodes,
-                                           hierarchy: nodeHierarchy ?? .none,
-                                           loader: self)
-        try vrmEntity.setUpSpringBones(loader: self)
-        try vrmEntity.setUpLookAt(loader: self)
-    }
-
-    /// The VRM extensions this loader implements, on top of the generic glTF ones.
-    override public var supportedRequiredExtensions: Set<String> {
-        super.supportedRequiredExtensions.union([
-            GLTFExtension.vrm0.rawValue, GLTFExtension.vrm1.rawValue,
-            GLTFExtension.springBone.rawValue, GLTFExtension.nodeConstraint.rawValue,
-        ])
-    }
-
-    override func firstPersonHeadJoints(ofNodeAt nodeIndex: Int, meshIndex: Int, skinIndex: Int?) -> Set<UInt32> {
-        firstPerson().headJoints(ofNodeAt: nodeIndex, meshIndex: meshIndex, skinIndex: skinIndex)
-    }
-
-    private func firstPerson() -> VRMFirstPersonPlan {
-        if let firstPersonPlan { return firstPersonPlan }
-        // Validated before the first mesh is built, so it is there when asked for.
-        let plan = VRMFirstPersonPlan(vrm: vrm, gltf: gltf, hierarchy: nodeHierarchy ?? .none)
-        firstPersonPlan = plan
-        return plan
-    }
-
-    /// A primitive carrying no morph targets of its own morphs with those of whichever
-    /// primitive of the mesh carries them for its POSITION accessor.
-    override func resolvedPrimitives(of mesh: GLTF.Mesh) -> [GLTF.Mesh.Primitive] {
-        let shared = mesh.morphTargetsByPositionAccessor()
-        guard !shared.isEmpty else { return mesh.primitives }
-        return mesh.primitives.map { primitive in
-            guard primitive.targets?.isEmpty ?? true,
-                  let position = primitive.attributes[.POSITION],
-                  let targets = shared[position] else {
-                return primitive
+    /// Loads one scene of the model as its own entity graph.
+    ///
+    /// Loads run one at a time, so a second call waits rather than discarding the first
+    /// one's work. A call cancelled while it waits gives up its place there and then.
+    public func loadEntity(withSceneIndex index: Int) async throws -> VRMEntity {
+        try await queue.run {
+            let root = VRMEntity(vrm: vrm, document: document, sceneIndex: index)
+            if let name = vrm.name {
+                root.name = name
             }
-            var primitive = primitive
-            primitive.targets = targets
-            return primitive
+            let (builder, built) = try await resources.build(into: root)
+            try setUpVRM(root, built: built, builder: builder)
+            // Skin bindings are registered mid-build, so the rest pose is only solvable
+            // once the graph is complete.
+            root.updateSkinning()
+            return root
         }
     }
 
-    /// Unlike the generic loader, a VRM whose material this renderer cannot shade still
-    /// renders, with the default material in its place. What the document itself gets
-    /// wrong still fails the load: only the shading falls back.
-    override func shadedMaterialFallback(for context: GLTFMaterialShaderContext,
-                                         error: any Error) -> GLTFShadedMaterial? {
-        Self.gltfLogger.error("Failed to build the material \(context.materialIndex, privacy: .public); falling back to the default material: \(String(describing: error), privacy: .public)")
-        return GLTFShadedMaterial(material: defaultMaterial())
+    /// The VRM runtime, hung off the entity graph the glTF build made.
+    private func setUpVRM(_ entity: VRMEntity,
+                          built: GLTFSceneBuilder.BuiltScene,
+                          builder: GLTFSceneBuilder) throws {
+        let hierarchy = try resources.nodeHierarchy()
+        entity.setUpHumanoid(nodes: built.nodes)
+        entity.setUpBlendShapes(nodes: built.nodes, meshes: built.meshes, builder: builder)
+        entity.setUpFirstPerson(plan: profile.firstPerson(hierarchy: hierarchy),
+                                nodes: built.nodes,
+                                meshes: built.meshes)
+        try entity.setUpNodeConstraints(gltfNodes: gltf.nodes, hierarchy: hierarchy, builder: builder)
+        try entity.setUpSpringBones(builder: builder)
+        try entity.setUpLookAt(builder: builder)
     }
 
-    override func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {
-        vrm.vrm0MaterialProperty(at: index)
-    }
-
-    /// VRM 0.x writes a material's MToon textures in the root extension entry beside it
-    /// rather than on the material, so the glTF slots alone would miss them.
-    override func textureIndices(ofMaterialAt index: Int) -> Set<Int> {
-        var indices = super.textureIndices(ofMaterialAt: index)
-        for (_, texture) in vrm0MaterialProperty(atMaterialIndex: index)?.textureProperties ?? [:] {
-            indices.insert(texture)
-        }
-        return indices
+    /// The image the model shows itself by.
+    ///
+    /// Decoded on the spot rather than cached: a thumbnail is drawn by whoever asked for
+    /// it, not by the entity graph a load builds.
+    public func loadThumbnail() throws -> CGImage {
+        try document.image(at: vrm.thumbnailImageIndex.rawValue)
     }
 }
 #endif

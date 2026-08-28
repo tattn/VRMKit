@@ -40,9 +40,10 @@ extension GLTFEditableDocument {
         let parent = newParent?.rawValue
         try requireNode(at: index)
         guard let parent else {
-            _ = try sceneIndexForRoots()
+            // Resolved before the detach, so a move that cannot land changes nothing.
+            let sceneIndex = try sceneIndexForRoots()
             try detachNodeLinks(at: index)
-            try addSceneRoot(index)
+            attachNode(index, at: .sceneRoot(in: sceneIndex))
             return
         }
         try requireNode(at: parent)
@@ -141,10 +142,6 @@ extension GLTFEditableDocument {
     }
 
     /// Adds a root to the document's default scene: a node no scene reaches is not drawn.
-    mutating func addSceneRoot(_ index: Int) throws {
-        attachNode(index, at: .sceneRoot(in: try sceneIndexForRoots()))
-    }
-
     private mutating func attachNode(_ index: Int, at placement: NodePlacement) {
         switch placement {
         case .child(let parent):

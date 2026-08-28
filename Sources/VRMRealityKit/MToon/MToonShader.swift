@@ -467,6 +467,21 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 #endif
     }
 
+#if !os(visionOS)
+    /// The rows as drawn, lit from `direction`, in a texture of their own: a copy
+    /// rendered under its own light samples this rather than ``parameterTexture``.
+    func relitParameterTexture(lightDirection: SIMD3<Float>) -> TextureResource? {
+        var relit = drawnParameters
+        relit.lightDirection = lightDirection
+        do {
+            return try relit.textureResource()
+        } catch {
+            MToonShader.logger.error("Failed to build a relit MToon parameter texture: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+#endif
+
     private var drawnParameters: MToonMaterialParameters {
         guard let outlineOverride else { return parameters }
         var drawn = parameters

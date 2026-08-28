@@ -1203,7 +1203,7 @@ struct VRM1RealityKitTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmLoader = try VRMEntityLoader(withData: TestSupport.seedSanData)
         let vrmEntity = try await vrmLoader.loadEntity()
-        let node = try vrmLoader.node(withNodeIndex: 0)
+        let node = try #require(vrmEntity.entity(forNodeAt: 0))
         let mesh = try #require(node.children.first)
 
         #expect(mesh.isEnabled == true)
@@ -1224,8 +1224,8 @@ struct VRM1RealityKitTests {
         let data = try Self.seedSanSharingMeshZero(copyAnnotatedAs: "both")
         let vrmLoader = try VRMEntityLoader(withData: data)
         let vrmEntity = try await vrmLoader.loadEntity()
-        let annotated = try #require(vrmLoader.node(withNodeIndex: 0).children.first)
-        let copy = try #require(vrmLoader.node(withNodeIndex: Self.seedSanMeshCopyNodeIndex).children.first)
+        let annotated = try #require(vrmEntity.entity(forNodeAt: 0)?.children.first)
+        let copy = try #require(vrmEntity.entity(forNodeAt: Self.seedSanMeshCopyNodeIndex)?.children.first)
 
         vrmEntity.setFirstPersonRenderMode(.firstPerson)
         #expect(annotated.isEnabled == false)
@@ -1251,9 +1251,9 @@ struct VRM1RealityKitTests {
             }
         }
         let vrmLoader = try VRMEntityLoader(withData: data, shaders: [])
-        _ = try await vrmLoader.loadEntity()
-        let annotated = try #require(vrmLoader.node(withNodeIndex: 0).children.first)
-        let copy = try #require(vrmLoader.node(withNodeIndex: Self.seedSanMeshCopyNodeIndex).children.first)
+        let vrmEntity = try await vrmLoader.loadEntity()
+        let annotated = try #require(vrmEntity.entity(forNodeAt: 0)?.children.first)
+        let copy = try #require(vrmEntity.entity(forNodeAt: Self.seedSanMeshCopyNodeIndex)?.children.first)
 
         let cutPrimitives = TestSupport.firstPersonCuts(in: annotated)
         #expect(!cutPrimitives.isEmpty)
@@ -1475,7 +1475,9 @@ struct VRM1RealityKitTests {
         // With MToon disabled, no entity carries MToon runtime state, and
         // expression color binds resolve through the fallback material path.
         #expect(!TestSupport.hasMToonParameters(in: vrmEntity))
-        let fallbackColor = try vrmEntity.currentMaterialColor(withMaterialIndex: 0, type: .color, loader: loader)
+        let fallbackColor = try vrmEntity.currentMaterialColor(withMaterialIndex: 0,
+                                                              type: .color,
+                                                              builder: loader.inspector)
         let fallbackMaterial = try loader.material(withMaterialIndex: 0)
         #expect(fallbackColor.isApproximatelyEqual(to: fallbackMaterial.currentColor(for: .color)))
     }

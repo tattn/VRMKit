@@ -57,7 +57,7 @@ struct VRMEntityTests {
     func testTheLoaderLoadsTheThumbnail() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let thumbnail = try VRMEntityLoader(withData: TestSupport.seedSanData).loadThumbnail()
-        #expect(thumbnail.size.width > 0)
+        #expect(thumbnail.width > 0)
     }
 }
 #endif

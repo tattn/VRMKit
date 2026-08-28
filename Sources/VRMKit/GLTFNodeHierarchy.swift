@@ -7,8 +7,6 @@ package struct GLTFNodeHierarchy {
     /// Node index → parent node index, nil for roots.
     private let parents: [Int?]
 
-    package static let none = GLTFNodeHierarchy(parents: [])
-
     private init(parents: [Int?]) {
         self.parents = parents
     }

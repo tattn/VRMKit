@@ -123,8 +123,8 @@ public final class VRMEntity: GLTFEntity {
 
     /// Called once per entity, right after its node hierarchy is built.
     func setUpBlendShapes(nodes: [Entity?],
-                          meshes: [Int: [EntityData.SceneMesh]],
-                          loader: VRMEntityLoader) {
+                          meshes: [Int: [GLTFSceneBuilder.SceneMesh]],
+                          builder: GLTFSceneBuilder) {
         expressions.setUp(
             plan: VRMExpressionPlan(vrm: vrm),
             morphBindings: { bind in
@@ -142,7 +142,7 @@ public final class VRMEntity: GLTFEntity {
                 // A malformed bind only invalidates itself, never the whole load.
                 guard let baseValue = try? currentMaterialColor(withMaterialIndex: bind.material,
                                                                 type: bind.type,
-                                                                loader: loader) else {
+                                                                builder: builder) else {
                     Self.logger.warning("""
                     Skipping invalid MaterialColorBind. \
                     expression=\(expression, privacy: .public) materialIndex=\(bind.material)
@@ -157,7 +157,7 @@ public final class VRMEntity: GLTFEntity {
             textureTransformBinding: { expression, bind in
                 // As above, a malformed bind only invalidates itself.
                 guard let base = try? currentTextureTransform(withMaterialIndex: bind.material,
-                                                              loader: loader) else {
+                                                              builder: builder) else {
                     Self.logger.warning("""
                     Skipping invalid TextureTransformBind. \
                     expression=\(expression, privacy: .public) materialIndex=\(bind.material)
@@ -178,7 +178,7 @@ public final class VRMEntity: GLTFEntity {
     /// so this only pairs it with the entity drawing it.
     func setUpFirstPerson(plan: VRMFirstPersonPlan,
                           nodes: [Entity?],
-                          meshes: [Int: [EntityData.SceneMesh]]) {
+                          meshes: [Int: [GLTFSceneBuilder.SceneMesh]]) {
         let head = plan.headNode.flatMap { nodes[safe: $0] ?? nil }
         firstPersonAnnotations = meshes.sorted { $0.key < $1.key }.flatMap { meshIndex, sceneMeshes in
             sceneMeshes.map { sceneMesh in
@@ -193,18 +193,18 @@ public final class VRMEntity: GLTFEntity {
 
     func setUpNodeConstraints(gltfNodes: [GLTF.Node],
                               hierarchy: GLTFNodeHierarchy,
-                              loader: GLTFEntityLoader) throws {
+                              builder: GLTFSceneBuilder) throws {
         nodeConstraints = try NodeConstraintRig.make(vrm: vrm, gltfNodes: gltfNodes, hierarchy: hierarchy) {
-            try loader.node(withNodeIndex: $0)
+            try builder.node(withNodeIndex: $0)
         }
     }
 
-    func setUpSpringBones(loader: GLTFEntityLoader) throws {
-        springBones = try SpringBoneRig.make(vrm: vrm) { try loader.node(withNodeIndex: $0) }
+    func setUpSpringBones(builder: GLTFSceneBuilder) throws {
+        springBones = try SpringBoneRig.make(vrm: vrm) { try builder.node(withNodeIndex: $0) }
     }
 
-    func setUpLookAt(loader: GLTFEntityLoader) throws {
-        lookAt = try LookAtRig.make(vrm: vrm) { try loader.node(withNodeIndex: $0) }
+    func setUpLookAt(builder: GLTFSceneBuilder) throws {
+        lookAt = try LookAtRig.make(vrm: vrm) { try builder.node(withNodeIndex: $0) }
     }
 
     /// What the eyes follow, nil to leave them at rest.
@@ -236,21 +236,21 @@ public final class VRMEntity: GLTFEntity {
     /// it; everything else reads it from the RealityKit material.
     func currentMaterialColor(withMaterialIndex index: Int,
                               type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
-                              loader: GLTFEntityLoader) throws -> SIMD4<Float> {
+                              builder: GLTFSceneBuilder) throws -> SIMD4<Float> {
         if let color = materialStates[index]?.animatable?.color(for: type) {
             return color
         }
-        return try loader.material(withMaterialIndex: index).currentColor(for: type)
+        return try builder.material(withMaterialIndex: index).currentColor(for: type)
     }
 
     /// The UV transform a `textureTransformBind` starts from. A state animating it keeps
     /// it; everything else reads it from the RealityKit material.
     func currentTextureTransform(withMaterialIndex index: Int,
-                                 loader: GLTFEntityLoader) throws -> MaterialParameterTypes.TextureCoordinateTransform {
+                                 builder: GLTFSceneBuilder) throws -> MaterialParameterTypes.TextureCoordinateTransform {
         if let transform = materialStates[index]?.animatable?.textureTransform {
             return transform
         }
-        return try loader.material(withMaterialIndex: index).currentTextureTransform
+        return try builder.material(withMaterialIndex: index).currentTextureTransform
     }
 
     /// Advances node constraints, the gaze, spring bones and skinning by one frame.
