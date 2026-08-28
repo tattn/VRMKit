@@ -5,7 +5,7 @@ import VRMKit
 @testable import VRMKitRuntime
 
 /// The rig that swings a whole model's springs. It reads a node's transform through
-/// ``VRMRuntimeNode``, so a plain node stands in for either renderer's.
+/// ``VRMRuntimeNode``, so a plain node stands in for the renderer's.
 @Suite
 struct SpringBoneRigTests {
     private static let setting = SpringBoneJointSetting(stiffnessForce: 0,

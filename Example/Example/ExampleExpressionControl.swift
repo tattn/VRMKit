@@ -1,24 +1,6 @@
 import CoreGraphics
 import UIKit
-internal import VRMSceneKit
-
-#if canImport(RealityKit)
 internal import VRMRealityKit
-#endif
-
-/// A loaded model the example drives expressions on, so one control serves both
-/// renderers.
-@MainActor
-protocol ExampleExpressionTarget: AnyObject {
-    var availableExpressions: [ExpressionInfo] { get }
-    func setExpressions(_ weights: [ExpressionKey: CGFloat])
-}
-
-extension VRMNode: ExampleExpressionTarget {}
-
-#if canImport(RealityKit)
-extension VRMEntity: ExampleExpressionTarget {}
-#endif
 
 /// A segmented control over the emotions a loaded model offers, each segment
 /// titled the way the model itself names the expression.
@@ -31,7 +13,7 @@ final class ExampleExpressionControl {
 
     private var expressions: [ExpressionInfo] = []
     private var selected: ExpressionKey?
-    private weak var target: ExampleExpressionTarget?
+    private weak var target: VRMEntity?
 
     init() {
         segmentedControl.addTarget(self, action: #selector(selectionChanged), for: .valueChanged)
@@ -39,7 +21,7 @@ final class ExampleExpressionControl {
 
     /// Re-titles the segments for a newly loaded model and puts the selected
     /// expression on it, keeping the selection the previous model left.
-    func attach(to target: ExampleExpressionTarget) {
+    func attach(to target: VRMEntity) {
         self.target = target
         let selectedIndex = max(segmentedControl.selectedSegmentIndex, 0)
         let available = target.availableExpressions

@@ -18,6 +18,8 @@ final class EntityData {
 
     /// glTF mesh index → the entities of this scene built from it, one per node.
     var sceneMeshes: [Int: [SceneMesh]] = [:]
+    /// Skin index → this scene's joints in the order RealityKit's skeleton uses.
+    var jointEntitiesBySkin: [Int: [Entity]] = [:]
     /// One glTF mesh as rendered through one skin, cut for a first-person camera or not.
     /// A mesh used by both a skinned and an unskinned node, or drawn by two nodes VRM
     /// annotates differently, needs one template each.
@@ -59,6 +61,7 @@ final class EntityData {
     func beginScene() {
         nodes = Array(repeating: nil, count: nodes.count)
         sceneMeshes = [:]
+        jointEntitiesBySkin = [:]
     }
 
     /// Drops the decoded images once the build has turned them into texture resources,

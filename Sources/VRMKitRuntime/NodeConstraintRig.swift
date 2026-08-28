@@ -8,7 +8,6 @@ import VRMKit
 package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode == Node {
     private struct Binding {
         let targetIndex: Int
-        let sourceIndex: Int
         let descriptor: VRMNodeConstraintDescriptor
         let target: Node
         let source: Node
@@ -20,11 +19,8 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
 
     package init() {}
 
-    package var isEmpty: Bool { bindings.isEmpty }
-
     /// The constraints the glTF nodes declare, or none for a VRM 0.x model. `node`
-    /// resolves a glTF node index to the renderer's node, the only part of this
-    /// that differs between the two renderers.
+    /// resolves a glTF node index to the renderer's node.
     package static func make(vrm: VRM,
                              gltfNodes: [GLTF.Node],
                              hierarchy: GLTFNodeHierarchy,
@@ -47,7 +43,6 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
             let target = try node(targetIndex)
             let source = try node(sourceIndex)
             bindings.append(Binding(targetIndex: targetIndex,
-                                    sourceIndex: sourceIndex,
                                     descriptor: descriptor,
                                     target: target,
                                     source: source,

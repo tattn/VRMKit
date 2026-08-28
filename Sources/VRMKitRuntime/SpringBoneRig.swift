@@ -33,8 +33,8 @@ public struct SpringBoneConfiguration: Sendable {
 
 /// Every spring of one model, and the per-frame solve that swings them.
 ///
-/// Both renderers drive this; ``VRMRuntimeNode`` names the only renderer-specific
-/// part, reading a node's transform and writing its rotation.
+/// ``VRMRuntimeNode`` names the only renderer-specific part, reading a node's
+/// transform and writing its rotation.
 package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode == Node {
     /// One node of a spring, ordered parents first so a single pass composes the
     /// whole spring's world transforms.

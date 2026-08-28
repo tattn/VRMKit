@@ -143,7 +143,7 @@ package struct SpringBoneCenter {
 }
 
 /// One head and tail pair of a spring: the joint that swings, and the state carried
-/// from frame to frame. The scene graph stays outside, so both renderers swing a
+/// from frame to frame. The scene graph stays outside, so the renderer swings a
 /// bone the same way.
 package struct SpringBoneJoint {
     /// Where the tail lies at rest, in the joint's own space: where the stiffness pulls it.

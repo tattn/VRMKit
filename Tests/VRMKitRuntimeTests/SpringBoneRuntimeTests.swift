@@ -4,7 +4,7 @@ import simd
 import VRMKit
 import VRMKitRuntime
 
-/// The spring bone simulation both renderers swing their bones with.
+/// The spring bone simulation the renderer swings its bones with.
 @Suite
 struct SpringBoneRuntimeTests {
     private static let identity = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))

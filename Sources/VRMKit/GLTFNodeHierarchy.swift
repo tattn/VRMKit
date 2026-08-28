@@ -103,6 +103,11 @@ package struct GLTFNodeHierarchy {
     /// reparent it and make the graph depend on the order `scene.nodes` lists.
     package func validateSceneRoots(_ roots: [Int], sceneIndex: Int) throws {
         for root in roots {
+            guard parents.indices.contains(root) else {
+                throw VRMError._dataInconsistent(
+                    "scene \(sceneIndex) has a root node \(root) of \(parents.count) nodes"
+                )
+            }
             if let parent = parent(at: root) {
                 throw VRMError._dataInconsistent(
                     "scene \(sceneIndex) names node \(root) as a root, but it is a child of node \(parent)"

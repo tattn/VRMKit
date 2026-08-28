@@ -63,23 +63,6 @@ package extension JSONObject {
                             values.float(at: 1, default: defaultValue.y))
     }
 
-    func simd3(_ key: String) -> SIMD3<Float>? {
-        self[key]?.arrayValue.map {
-            SIMD3<Float>($0.float(at: 0, default: 0),
-                         $0.float(at: 1, default: 0),
-                         $0.float(at: 2, default: 0))
-        }
-    }
-
-    func simd4(_ key: String) -> SIMD4<Float>? {
-        self[key]?.arrayValue.map {
-            SIMD4<Float>($0.float(at: 0, default: 1),
-                         $0.float(at: 1, default: 1),
-                         $0.float(at: 2, default: 1),
-                         $0.float(at: 3, default: 1))
-        }
-    }
-
     func decode<T: Decodable>(_ type: T.Type) throws -> T {
         try JSONValue.object(self).decode(type)
     }
@@ -135,16 +118,8 @@ package extension JSONObject {
         set(key, value.map(JSONValue.number))
     }
 
-    mutating func set(_ key: String, _ value: Bool?) {
-        set(key, value.map(JSONValue.bool))
-    }
-
     mutating func set(_ key: String, _ value: [Float]?) {
         set(key, value.map(JSONValue.numbers))
-    }
-
-    mutating func set(_ key: String, _ value: [String]?) {
-        set(key, value.map(JSONValue.strings))
     }
 
     /// Leaves the key out at the 0 glTF defaults it to.

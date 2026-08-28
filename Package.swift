@@ -6,7 +6,6 @@ let package = Package(
     platforms: [.iOS(.v15), .macOS(.v12), .watchOS(.v8), .visionOS(.v2)],
     products: [
         .library(name: "VRMKit", targets: ["VRMKit"]),
-        .library(name: "VRMSceneKit", targets: ["VRMSceneKit"]),
         .library(name: "VRMRealityKit", targets: ["VRMRealityKit"])
     ],
     targets: [
@@ -17,10 +16,6 @@ let package = Package(
         .target(
             name: "VRMKitRuntime",
             dependencies: ["VRMKit"]
-        ),
-        .target(
-            name: "VRMSceneKit",
-            dependencies: ["VRMKit", "VRMKitRuntime"]
         ),
         .target(
             name: "VRMRealityKit",
@@ -50,10 +45,6 @@ let package = Package(
         .testTarget(
             name: "VRMKitRuntimeTests",
             dependencies: ["VRMKit", "VRMKitRuntime"]
-        ),
-        .testTarget(
-            name: "VRMSceneKitTests",
-            dependencies: ["VRMSceneKit", "VRMTestSupport"]
         ),
         .testTarget(
             name: "VRMRealityKitTests",

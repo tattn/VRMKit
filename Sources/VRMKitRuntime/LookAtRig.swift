@@ -33,8 +33,8 @@ package enum LookAtResult {
 /// The gaze of one model: the angles from the eyes to what they follow, and the eye
 /// rotations or expression weights VRM makes of them.
 ///
-/// Both renderers drive this. A bone look-at needs nothing but the eyes, so the rig turns
-/// them itself; an expression look-at hands its weights back for the renderer to apply.
+/// A bone look-at needs nothing but the eyes, so the rig turns them itself; an
+/// expression look-at hands its weights back for the renderer to apply.
 package final class LookAtRig<Node: VRMRuntimeNode> where Node.RuntimeNode == Node {
     /// One eye and everything turning it needs, the rest pose read once at set-up.
     private struct Eye {
@@ -72,8 +72,7 @@ package final class LookAtRig<Node: VRMRuntimeNode> where Node.RuntimeNode == No
     }
 
     /// The rig for what `vrm` states, or an empty one for a model that states no look-at.
-    /// `node` resolves a glTF node index to the renderer's node, the only part of driving
-    /// a gaze that differs between the two renderers.
+    /// `node` resolves a glTF node index to the renderer's node.
     package static func make(vrm: VRM, node: (Int) throws -> Node) rethrows -> LookAtRig<Node> {
         try make(plan: VRMLookAtPlan(vrm: vrm), node: node)
     }

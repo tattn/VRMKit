@@ -35,9 +35,9 @@ public final class VRMEntity: GLTFEntity {
 
     public let humanoid = Humanoid()
 
-    /// The expression accumulation and dirty tracking VRM defines, shared with the
-    /// SceneKit renderer; this entity only writes the results out.
-    private let expressions = ExpressionRuntime<Entity, Int>()
+    /// The expression accumulation and dirty tracking VRM defines; this entity
+    /// only writes the results out.
+    private let expressions = ExpressionRuntime<Entity>()
     var expressionClips: [ExpressionKey: ExpressionClip] { expressions.clips }
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
     private var springBones = SpringBoneRig<Entity>()
@@ -46,7 +46,7 @@ public final class VRMEntity: GLTFEntity {
     // Blend-shape target -> weight-set positions, resolved on first write.
     private var blendShapeSlotCache: [MorphBindingKey: [BlendShapeSlot]] = [:]
 
-    private lazy var expressionApplier = ExpressionApplier<Entity, Int>(
+    private lazy var expressionApplier = ExpressionApplier<Entity>(
         setMorphWeight: { [unowned self] weight, targetIndex, mesh in
             applyBlendShapeWeight(weight, targetIndex: targetIndex, on: mesh)
         },
@@ -282,7 +282,7 @@ public final class VRMEntity: GLTFEntity {
     /// re-accumulates every active clip, so prefer this over repeated
     /// ``setExpression(value:for:)`` calls in one frame.
     public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
-        guard expressions.storeWeights(weights.mapValues(Double.init)) else { return }
+        guard expressions.storeWeights(weights) else { return }
         expressions.apply(with: expressionApplier)
     }
 
