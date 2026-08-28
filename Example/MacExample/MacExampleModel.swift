@@ -1,18 +1,4 @@
-internal import VRMSceneKit
-
-enum MacExampleRenderer: String, CaseIterable, Identifiable {
-    case sceneKit
-    case realityKit
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .sceneKit: return "SceneKit"
-        case .realityKit: return "RealityKit"
-        }
-    }
-}
+internal import VRMRealityKit
 
 enum MacExampleModel: String, CaseIterable, Identifiable {
     case alicia = "AliciaSolid.vrm"

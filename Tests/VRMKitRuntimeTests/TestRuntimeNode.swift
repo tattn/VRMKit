@@ -5,7 +5,7 @@ import VRMKit
 /// A scene graph node of nothing but transforms.
 ///
 /// The runtimes reach a renderer's nodes through ``VRMRuntimeNode``, so this
-/// stands in for either renderer's and makes what they do testable without one.
+/// stands in for one and makes what they do testable without a renderer.
 final class TestRuntimeNode: VRMRuntimeNode {
     typealias RuntimeNode = TestRuntimeNode
 

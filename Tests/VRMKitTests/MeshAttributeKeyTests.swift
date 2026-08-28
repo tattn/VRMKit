@@ -43,22 +43,4 @@ struct MeshAttributeKeyTests {
         let targets = try #require(json["targets"]?.arrayValue)
         #expect(targets == [["POSITION": 2]])
     }
-
-    /// A dictionary has no order, and SceneKit resolves a material's UV mapping
-    /// channel by which of the geometry's texcoord sources comes first, so a
-    /// model's UV sets would swap from one run to the next.
-    @Test
-    func testAttributesSortIntoTheOrderGLTFNamesThemIn() {
-        let attributes: [AttributeKey: Int] = [
-            .WEIGHTS_0: 0, .TEXCOORD_1: 1, .POSITION: 2, .texcoord(4): 3,
-            .JOINTS_0: 4, .NORMAL: 5, .TEXCOORD_0: 6, .COLOR_0: 7, .TANGENT: 8,
-        ]
-
-        #expect(attributes.sortedByKey.map(\.key) == [
-            .POSITION, .NORMAL, .TANGENT, .TEXCOORD_0, .TEXCOORD_1,
-            .COLOR_0, .JOINTS_0, .WEIGHTS_0,
-            // One this loader has no constant for sorts after the ones it does.
-            .texcoord(4),
-        ])
-    }
 }

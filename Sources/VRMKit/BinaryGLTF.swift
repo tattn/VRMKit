@@ -59,7 +59,7 @@ extension BinaryGLTF {
         var json: (gltf: GLTF, tree: JSONValue)?
         var binaryBuffer: Data?
         var chunkIndex = 0
-        while reader.bytesRead + Self.chunkHeaderLength <= length {
+        while length - reader.bytesRead >= Self.chunkHeaderLength {
             let rawChunkLength = try reader.readUInt32()
             let chunkType = try reader.readUInt32()
             guard rawChunkLength.isMultiple(of: 4) else {
@@ -68,7 +68,7 @@ extension BinaryGLTF {
                 )
             }
             guard let chunkLength = Int(exactly: rawChunkLength),
-                  reader.bytesRead + chunkLength <= length else {
+                  chunkLength <= length - reader.bytesRead else {
                 throw VRMError._dataInconsistent(
                     "GLB chunk of \(rawChunkLength) bytes overruns the \(length) byte container"
                 )

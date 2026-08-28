@@ -7,10 +7,6 @@ package extension SIMD3 where Scalar == Float {
                   Float(values?[safe: 2] ?? Double(defaultValue.z)))
     }
 
-    init(_ values: [Double], `default` defaultValue: SIMD3<Float>) {
-        self.init(Optional(values), default: defaultValue)
-    }
-
     var normalized: SIMD3 {
         simd_normalize(self)
     }
@@ -21,13 +17,6 @@ package extension SIMD3 where Scalar == Float {
 }
 
 package extension SIMD4 where Scalar == Float {
-    init(_ values: [Double], `default` defaultAlpha: Float) {
-        self.init(Float(values[safe: 0] ?? 0),
-                  Float(values[safe: 1] ?? 0),
-                  Float(values[safe: 2] ?? 0),
-                  Float(values[safe: 3] ?? Double(defaultAlpha)))
-    }
-
     init(_ values: [Double]?, `default` defaultValue: SIMD4<Float>) {
         guard let values else {
             self = defaultValue

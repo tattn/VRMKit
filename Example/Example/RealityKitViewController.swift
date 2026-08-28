@@ -4,8 +4,8 @@ import simd
 internal import VRMKit
 internal import VRMRealityKit
 
-final class RealityKitViewController: UIViewController, VRMRendererViewController, UIGestureRecognizerDelegate {
-    var model: VRMExampleModel = .alicia {
+final class RealityKitViewController: UIViewController, UIGestureRecognizerDelegate {
+    private var model: VRMExampleModel = .alicia {
         didSet {
             guard isViewLoaded, model != oldValue else { return }
             loadVRM()
@@ -19,7 +19,6 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
     private var cameraEntity: PerspectiveCamera?
     private var lightEntity: DirectionalLight?
     private let expressionControl = ExampleExpressionControl()
-    var leadingBarButtonItems: [UIBarButtonItem] { [vrmaBarButtonItem] }
     private lazy var vrmaBarButtonItem = UIBarButtonItem(image: nil,
                                                          style: .plain,
                                                          target: self,
@@ -38,6 +37,7 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
         super.viewDidLoad()
         view.backgroundColor = .black
         setUpARView()
+        setUpNavigationItem()
         setUpUI()
         loadVRM()
     }
@@ -58,6 +58,18 @@ final class RealityKitViewController: UIViewController, VRMRendererViewControlle
         self.arView = arView
         setUpCamera()
         setUpGestures()
+    }
+
+    private func setUpNavigationItem() {
+        let modelControl = UISegmentedControl(items: VRMExampleModel.allCases.map(\.displayName))
+        modelControl.selectedSegmentIndex = VRMExampleModel.allCases.firstIndex(of: model) ?? 0
+        modelControl.addTarget(self, action: #selector(modelChanged(_:)), for: .valueChanged)
+        navigationItem.titleView = modelControl
+        navigationItem.leftBarButtonItem = vrmaBarButtonItem
+    }
+
+    @objc private func modelChanged(_ sender: UISegmentedControl) {
+        model = VRMExampleModel.allCases[sender.selectedSegmentIndex]
     }
 
     private func setUpUI() {

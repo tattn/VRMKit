@@ -8,8 +8,8 @@ import simd
 package struct PackedAccessor: Sendable {
     package let accessor: GLTF.Accessor
     package let data: Data
-    package let componentsPerElement: Int
-    package let bytesPerComponent: Int
+    private let componentsPerElement: Int
+    private let bytesPerComponent: Int
 
     package var count: Int { accessor.count }
     package var componentType: GLTF.Accessor.ComponentType { accessor.componentType }
@@ -68,13 +68,6 @@ package struct PackedAccessor: Sendable {
                 reader.load(base: base, offset: elementOffset + bytesPerComponent * component)
             }
         }
-    }
-
-    /// The packed bytes of a `type` accessor, checking that its components are unsigned integers.
-    package func unsignedData(_ type: GLTF.Accessor.`Type`) throws -> Data {
-        try validate(type)
-        _ = try unsignedReader()
-        return data
     }
 
     /// Every component of every element of a `type` accessor, in order.

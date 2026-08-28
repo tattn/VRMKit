@@ -122,7 +122,8 @@ extension GLTFEditableDocument {
     /// on sharing them. A cluster only moves earlier and only by a multiple of
     /// four, which keeps every view on the boundary its component type needs.
     private func relocating(_ slices: [BinarySlice]) -> (binary: Data, placements: [BinarySliceKey: Int]) {
-        var compacted = Data(capacity: binary.count)
+        // Reserving the old buffer size would keep the memory prune just removed.
+        var compacted = Data()
         var placements: [BinarySliceKey: Int] = [:]
         var clusterEnd = Int.min
         var shift = 0

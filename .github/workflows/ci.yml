@@ -62,7 +62,7 @@ jobs:
           fi
 
   build-examples:
-    name: Build examples (iOS/visionOS/WatchOS/macOS)
+    name: Build examples (iOS/visionOS/macOS)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4

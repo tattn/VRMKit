@@ -112,6 +112,8 @@ public class GLTFEntityLoader {
     /// while reusing resources.
     public func loadEntity(withSceneIndex index: Int) async throws -> GLTFEntity {
         try validateDocument()
+        let scene = try gltf.load(\.scenes, at: index)
+        try nodeHierarchy?.validateSceneRoots(scene.nodes ?? [], sceneIndex: index)
         // The mesh and texture resources carry the prepared data on, so holding it past
         // the load is a second copy of the model. A cancelled load drops it too.
         defer { discardPreparedResources() }
@@ -146,7 +148,6 @@ public class GLTFEntityLoader {
         }
         currentEntity = entity
         defer { currentEntity = nil }
-        try nodeHierarchy?.validateSceneRoots(gltfScene.nodes ?? [], sceneIndex: index)
         for node in gltfScene.nodes ?? [] {
             entity.addChild(try self.node(withNodeIndex: node))
         }
@@ -1303,13 +1304,20 @@ public class GLTFEntityLoader {
             guard let skinIndex = modelEntity.components[GLTFSkinIndexComponent.self]?.skinIndex else {
                 continue
             }
-            let jointNodes = try gltf.load(\.skins, at: skinIndex).joints
-            let jointsInSkinOrder = try jointNodes.map { try node(withNodeIndex: $0) }
-            // The skeleton reorders the joints parents-first, and the pose follows it.
             let skin = try skin(withSkinIndex: skinIndex)
-            var jointEntities = jointsInSkinOrder
-            for (oldIndex, newIndex) in skin.jointIndexRemap.enumerated() {
-                jointEntities[newIndex] = jointsInSkinOrder[oldIndex]
+            let jointEntities: [Entity]
+            if let cached = entityData.jointEntitiesBySkin[skinIndex] {
+                jointEntities = cached
+            } else {
+                let jointNodes = try gltf.load(\.skins, at: skinIndex).joints
+                let jointsInSkinOrder = try jointNodes.map { try node(withNodeIndex: $0) }
+                // The skeleton reorders the joints parents-first, and the pose follows it.
+                var reordered = jointsInSkinOrder
+                for (oldIndex, newIndex) in skin.jointIndexRemap.enumerated() {
+                    reordered[newIndex] = jointsInSkinOrder[oldIndex]
+                }
+                entityData.jointEntitiesBySkin[skinIndex] = reordered
+                jointEntities = reordered
             }
             currentEntity.registerSkinBinding(modelEntity: modelEntity,
                                               skeleton: skin.skeleton,

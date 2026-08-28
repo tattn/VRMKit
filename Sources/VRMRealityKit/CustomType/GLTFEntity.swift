@@ -393,7 +393,7 @@ public class GLTFEntity: Entity {
             if let cached = solvedPoses[binding.skeletonKey], cached.modelWorld == modelWorld {
                 transforms = cached.transforms
             } else {
-                transforms = jointTransforms(for: binding, modelWorld: modelWorld)
+                transforms = jointTransforms(for: binding)
                 solvedPoses[binding.skeletonKey] = (modelWorld, transforms)
             }
             setSkinPose(transforms, for: binding)
@@ -416,8 +416,7 @@ public class GLTFEntity: Entity {
     /// A skeleton pose is each joint read in the space of the joint above it, which a
     /// joint's own transform already is whenever the skeleton and the scene graph agree
     /// about its parent. glTF skins are authored that way, so the common case is free.
-    private func jointTransforms(for binding: SkinBinding,
-                                 modelWorld: simd_float4x4) -> JointTransforms {
+    private func jointTransforms(for binding: SkinBinding) -> JointTransforms {
         let jointEntities = binding.jointEntities
         let joints = binding.skeleton.joints
         var transforms: [Transform] = []

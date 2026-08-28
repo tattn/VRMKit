@@ -30,7 +30,7 @@ package enum FirstPersonAutoMask {
 
     /// The vertices a head joint draws, one influence of any weight at all
     /// being enough.
-    package static func headVertices(joints: [SIMD4<UInt32>],
+    private static func headVertices(joints: [SIMD4<UInt32>],
                                      weights: [SIMD4<Float>],
                                      headJoints: Set<UInt32>) -> Set<Int> {
         guard !headJoints.isEmpty, joints.count == weights.count else { return [] }
@@ -52,24 +52,14 @@ package enum FirstPersonAutoMask {
                              joints: [SIMD4<UInt32>],
                              weights: [SIMD4<Float>],
                              headJoints: Set<UInt32>) -> FirstPersonPrimitiveMask {
-        mask(indices: indices, headVertices: headVertices(joints: joints,
-                                                          weights: weights,
-                                                          headJoints: headJoints))
-    }
-
-    /// The same, for a renderer that already knows the head's vertices.
-    /// `vertex` reads the vertex a drawn index stands for, which is not the
-    /// index itself where flat shading unshared them.
-    package static func mask(indices: [UInt32],
-                             headVertices: Set<Int>,
-                             vertex: (UInt32) -> Int = { Int($0) }) -> FirstPersonPrimitiveMask {
+        let headVertices = headVertices(joints: joints, weights: weights, headJoints: headJoints)
         guard !headVertices.isEmpty else { return .whole }
 
         var kept: [UInt32] = []
         kept.reserveCapacity(indices.count)
         for corner in stride(from: 0, to: indices.count - indices.count % 3, by: 3) {
             let triangle = indices[corner...(corner + 2)]
-            guard !triangle.contains(where: { headVertices.contains(vertex($0)) }) else { continue }
+            guard !triangle.contains(where: { headVertices.contains(Int($0)) }) else { continue }
             kept.append(contentsOf: triangle)
         }
         if kept.count == indices.count - indices.count % 3 { return .whole }

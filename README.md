@@ -33,7 +33,7 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 # Requirements
 
 - Swift 6.0+
-- iOS 15.0+ / macOS 12.0+ / visionOS 2.0+ / watchOS 8.0+ (experimental)
+- VRMKit: iOS 15.0+ / macOS 12.0+ / visionOS 2.0+ / watchOS 8.0+
 - VRMRealityKit: iOS 18.0+ / macOS 15.0+ / visionOS 2.0+
 
 # Installation
@@ -43,6 +43,8 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 ```swift
 .package(url: "https://github.com/tattn/VRMKit.git", from: "0.9.0")
 ```
+
+For SceneKit, use [0.10.0](https://github.com/tattn/VRMKit/releases/tag/0.10.0), the last version that shipped it.
 
 # Usage
 
@@ -97,8 +99,6 @@ The spring bones step at a fixed rate, so the swing is the same at every display
 model.springBoneConfiguration.externalForce = SIMD3<Float>(1, 0, 0) // wind
 model.resetSpringBones() // after teleporting the model
 ```
-
-> VRMSceneKit, the SceneKit renderer, is deprecated. Use VRMRealityKit instead.
 
 ## Expressions / blend shapes
 

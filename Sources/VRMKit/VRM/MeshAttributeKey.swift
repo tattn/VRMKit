@@ -84,34 +84,3 @@ extension GLTF.Mesh.Primitive.AttributeKey: CodingKeyRepresentable {
 extension GLTF.Mesh.Primitive.AttributeKey: CustomStringConvertible {
     public var description: String { rawValue }
 }
-
-extension GLTF.Mesh.Primitive.AttributeKey: Comparable {
-    /// glTF's own order for the attributes it names, and the rest after them by
-    /// name. SceneKit resolves a material's UV mapping channel by the order its
-    /// sources arrive in, which a dictionary does not fix.
-    public static func < (lhs: Self, rhs: Self) -> Bool {
-        let leftRank = lhs.canonicalRank
-        let rightRank = rhs.canonicalRank
-        if leftRank != rightRank { return leftRank < rightRank }
-        return lhs.rawValue < rhs.rawValue
-    }
-
-    private static let canonicalOrder: [Self] = [
-        .POSITION, .NORMAL, .TANGENT,
-        .TEXCOORD_0, .TEXCOORD_1,
-        .COLOR_0,
-        .JOINTS_0, .WEIGHTS_0,
-    ]
-
-    private var canonicalRank: Int {
-        Self.canonicalOrder.firstIndex(of: self) ?? Self.canonicalOrder.count
-    }
-}
-
-public extension Dictionary where Key == GLTF.Mesh.Primitive.AttributeKey {
-    /// The attributes in ``GLTF/Mesh/Primitive/AttributeKey`` order, so that a
-    /// renderer building from them lands on the same layout every run.
-    var sortedByKey: [(key: Key, value: Value)] {
-        sorted { $0.key < $1.key }
-    }
-}
