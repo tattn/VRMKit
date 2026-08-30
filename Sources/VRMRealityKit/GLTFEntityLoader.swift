@@ -75,7 +75,7 @@ public final class GLTFEntityLoader {
         try await queue.run {
             let root = GLTFEntity(document: document, sceneIndex: index)
             _ = try await resources.build(into: root)
-            root.updateSkinning()
+            root.flushSkinPose()
             return root
         }
     }

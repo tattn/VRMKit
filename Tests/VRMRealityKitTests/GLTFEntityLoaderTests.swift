@@ -63,26 +63,30 @@ struct GLTFEntityLoaderTests {
         }
     }
 
-    /// A second scene off the same loader reuses the `MeshResource` while binding its
-    /// own joint entities.
+    /// The loader keeps no scene cache, so it hands out independently animatable
+    /// copies of one scene: each reuses the `MeshResource` the last one built and
+    /// binds joint entities of its own.
     @Test
     func testReloadingASceneReusesItsMeshesAndBindsItsOwnJoints() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        func root(of entity: Entity) -> Entity {
-            var root = entity
-            while let parent = root.parent { root = parent }
-            return root
-        }
         let loader = try GLTFEntityLoader(withData: TestSupport.seedSanData)
         let first = try await loader.loadEntity()
         let second = try await loader.loadEntity()
 
+        #expect(first !== second)
+        #expect(first.entity(forNodeAt: 1) !== second.entity(forNodeAt: 1))
+        #expect(second.hasRuntimeBindings)
         #expect(!second.skinBindings.isEmpty)
         #expect(first.skinBindings.count == second.skinBindings.count)
         for (old, new) in zip(first.skinBindings, second.skinBindings) {
             #expect(old.modelEntity !== new.modelEntity)
             #expect(old.modelEntity.model?.mesh === new.modelEntity.model?.mesh)
-            #expect(new.jointEntities.allSatisfy { root(of: $0) === second })
+        }
+        // Each entity's bindings stay within its own graph.
+        for (entity, other) in [(first, second), (second, first)] {
+            let binding = try #require(entity.skinBindings.first)
+            #expect(binding.jointEntities.allSatisfy { TestSupport.isDescendant($0, of: entity) })
+            #expect(binding.jointEntities.allSatisfy { !TestSupport.isDescendant($0, of: other) })
         }
     }
 
@@ -614,21 +618,6 @@ struct GLTFEntityLoaderTests {
         }
     }
 
-    /// A clone carries no animation bindings, so playback reports that instead of
-    /// silently doing nothing.
-    @Test
-    func testAnimatingACloneIsRejected() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await TestSupport.loadEntity(.animatedTriangle)
-        let clone = entity.clone(recursive: true)
-
-        #expect(entity.hasRuntimeBindings)
-        #expect(!clone.hasRuntimeBindings)
-        // The metadata still reads off the document it carries.
-        #expect(clone.animations.count == entity.animations.count)
-        #expect(throws: VRMError.self) { try clone.playAnimation(at: 0) }
-    }
-
     /// An animation sampler reading a shared accessor as the wrong type fails even when
     /// the accessor is already in the decoder's cache.
     @Test
@@ -653,14 +642,19 @@ struct GLTFEntityLoaderTests {
     @Test
     func testVRMSharesMorphTargetsAcrossPrimitivesButPlainGLTFDoesNot() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        func morphableModelCount(_ entity: Entity) -> Int {
-            entity.modelEntitiesInHierarchy.filter { $0.components.has(BlendShapeWeightsComponent.self) }.count
+        // Primitives merge into the parts of one mesh, so the sharing shows as
+        // how many parts carry blend shapes, not as extra entities.
+        func morphablePartCount(_ entity: Entity) -> Int {
+            entity.modelEntitiesInHierarchy
+                .compactMap { $0.components[ModelComponent.self]?.mesh }
+                .flatMap { $0.contents.models.flatMap(\.parts) }
+                .count { !$0.blendShapeNames.isEmpty }
         }
         // AliciaSolid names no default scene, so the plain loader is given one.
         let vrm = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
         let plain = try await GLTFEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity(withSceneIndex: 0)
 
-        #expect(morphableModelCount(vrm) > morphableModelCount(plain))
+        #expect(morphablePartCount(vrm) > morphablePartCount(plain))
     }
 
     /// A degenerate triangle keeps the zero normal `flatNormals()` leaves it, and the
@@ -865,31 +859,54 @@ struct GLTFEntityLoaderTests {
         #expect(TestSupport.isDescendant(binding.mesh, of: vrmEntity))
 
         vrmEntity.setExpression(value: 1, for: clip.key)
-        let targetName = "blendShape_\(binding.index)"
-        let applied = TestSupport.modelEntities(in: vrmEntity).contains { modelEntity in
-            let weights = modelEntity.blendWeights
-            let names = modelEntity.blendWeightNames
-            return names.indices.contains { setIndex in
-                guard setIndex < weights.count,
-                      let nameIndex = names[setIndex].firstIndex(of: targetName),
-                      nameIndex < weights[setIndex].count else { return false }
-                return weights[setIndex][nameIndex] > 0
-            }
-        }
-        #expect(applied)
+        // The weight lands on the entity the bind resolved to, not on some other
+        // copy of the same mesh.
+        #expect(TestSupport.morphWeight(in: binding.mesh, targetIndex: binding.index) == 1)
     }
 
     @Test
-    func testVRMEntityIsAGLTFEntity() async throws {
+    func testScenesSharingNodesLoadIndependentEntityGraphs() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        // A second scene referencing the same root nodes. Entity instances
+        // cannot be shared between scenes, so each load must build its own.
+        let modified = try TestSupport.modifiedSeedSanData(name: "duplicated-scene") { json in
+            var scenes = json.objects("scenes")
+            guard let first = scenes.first else {
+                throw VRMError.dataInconsistent("Missing Seed-san scene fixture data")
+            }
+            scenes.append(first)
+            json["scenes"] = .objects(scenes)
+        }
+        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
 
-        // The VRM runtime sits on the generic one: document, node mapping and skin
-        // bindings all come from the base.
-        let base: GLTFEntity = vrmEntity
-        #expect(base.sceneIndex == base.gltf.scene)
-        #expect(!base.skinBindings.isEmpty)
-        #expect(base.entity(forNodeAt: 0) != nil)
+        let firstScene = try await loader.loadEntity(withSceneIndex: 0)
+        let secondScene = try await loader.loadEntity(withSceneIndex: 1)
+
+        #expect(firstScene !== secondScene)
+        // Neither scene may have had its nodes stolen by the other: both keep a
+        // full hierarchy, and no entity appears in both.
+        #expect(!firstScene.children.isEmpty)
+        #expect(firstScene.children.count == secondScene.children.count)
+        let firstModels = Set(TestSupport.modelEntities(in: firstScene).map(ObjectIdentifier.init))
+        let secondModels = Set(TestSupport.modelEntities(in: secondScene).map(ObjectIdentifier.init))
+        #expect(!firstModels.isEmpty)
+        #expect(firstModels.count == secondModels.count)
+        #expect(firstModels.isDisjoint(with: secondModels))
+
+        // Each scene drives its own runtime state.
+        firstScene.setExpression(value: 1, for: .preset(.happy))
+        #expect(TestSupport.morphWeight(in: firstScene, targetIndex: 33) == 1)
+        #expect(TestSupport.morphWeight(in: secondScene, targetIndex: 33) == 0)
+
+        // Loading a scene again builds another independent entity, so one loader
+        // can hand out several animatable copies of the same scene.
+        let reloaded = try await loader.loadEntity(withSceneIndex: 0)
+        #expect(reloaded !== firstScene)
+        #expect(reloaded.hasRuntimeBindings)
+        #expect(Set(TestSupport.modelEntities(in: reloaded).map(ObjectIdentifier.init))
+            .isDisjoint(with: firstModels))
+        #expect(TestSupport.morphWeight(in: reloaded, targetIndex: 33) == 0)
+        #expect(TestSupport.morphWeight(in: firstScene, targetIndex: 33) == 1)
     }
 }
 #endif

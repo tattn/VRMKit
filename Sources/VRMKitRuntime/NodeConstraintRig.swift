@@ -17,6 +17,10 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
 
     private var bindings: [Binding] = []
 
+    /// The nodes the constraints write rotations to, so a renderer can re-skin
+    /// only what an apply actually moved.
+    package private(set) var posedNodes: [Node] = []
+
     package init() {}
 
     /// The constraints the glTF nodes declare, or none for a VRM 0.x model. `node`
@@ -54,6 +58,7 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
             targetIndex: { $0.targetIndex },
             dependencies: { $0.descriptor.dependencies(destination: $0.targetIndex, in: hierarchy) }
         )
+        rig.posedNodes = rig.bindings.map(\.target)
         return rig
     }
 

@@ -19,27 +19,12 @@ public struct GLTFNodeComponent: Component {
     public let nodeIndex: Int
 }
 
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-struct GLTFMaterialIndexComponent: Component {
-    let materialIndex: Int
-}
-
-/// Marks a model entity as an additional render pass of its glTF material, such as
-/// MToon's inverted-hull outline, rather than the material itself.
+/// Marks a model entity as an additional render pass of its glTF materials, such as
+/// MToon's inverted-hull outline, rather than the materials themselves. What each
+/// slot starts showing lives in the entity's ``GLTFMergedMeshCatalog``.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct GLTFMaterialPassComponent: Component {
     public let name: String
-    /// What ``GLTFEntity/resetPassEnabled(named:)`` puts back.
-    let isInitiallyEnabled: Bool
-}
-
-/// What a first-person camera draws of a primitive whose mesh VRM annotates `auto`:
-/// the same mesh with the head's triangles taken out.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-struct FirstPersonMeshComponent: Component {
-    let thirdPersonMesh: MeshResource
-    /// Nil when the head draws every triangle, so nothing is left to draw.
-    let firstPersonMesh: MeshResource?
 }
 
 /// The glTF skin a model entity is skinned by. It survives `clone(recursive:)`, so a
@@ -104,12 +89,34 @@ public class GLTFEntity: Entity {
 
     private(set) var skinBindings: [SkinBinding] = []
     private var skeletonKeys: [String: Int] = [:]
-    /// Scratch for one solve, reused so no dictionary is rebuilt per frame.
-    private var solvedPoses: [Int: (modelWorld: simd_float4x4, transforms: JointTransforms)] = [:]
+    /// Joint entity → every (skeleton, joint index) it poses, resolved once at
+    /// registration for the fine-grained dirty path.
+    private var jointSlots: [Entity.ID: [(skeletonKey: Int, jointIndex: Int)]] = [:]
 
-    /// Whether a joint has moved since the skin pose was last solved. Every runtime that
-    /// poses a joint sets this rather than solving the skeleton itself.
+    /// The last pose solved for one skeleton, kept across frames so a solve
+    /// recomputes only the joints that moved.
+    private struct SolvedSkeletonPose {
+        /// The model world the pose was read against, which keeps a binding drawn
+        /// elsewhere from reusing what another solved in the same pass.
+        var modelWorld: simd_float4x4
+        var transforms: [Transform]
+        /// Rows read through the scene graph rather than off the joint's own
+        /// transform: the skeleton's roots and seams. Nodes outside the skeleton
+        /// move them, so every solve re-reads and compares these.
+        var dependentRows: Set<Int>
+    }
+
+    private var solvedPoses: [Int: SolvedSkeletonPose] = [:]
+
+    /// Whether any joint may have moved since the skin pose was last solved. Every
+    /// runtime that poses a joint without saying which sets this rather than solving
+    /// the skeleton itself.
     private var isSkinPoseDirty = false
+    /// The joints known to have moved, per skeleton, for runtimes that do say.
+    private var dirtyJoints: [Int: Set<Int>] = [:]
+    /// Whether a moved node no skeleton owns asks the next solve to re-read the
+    /// rows read through the scene graph, which such a node can sit on.
+    private var needsDependentRowSolve = false
 
     struct MorphBinding {
         var modelEntities: [ModelEntity]
@@ -119,17 +126,24 @@ public class GLTFEntity: Entity {
     /// glTF node index → the blend shapes a `weights` channel writes to.
     private(set) var morphBindings: [Int: MorphBinding] = [:]
 
+    /// One place a glTF material is rendered: which slot of which entity's
+    /// materials array holds it.
+    struct MaterialBinding {
+        let modelEntity: ModelEntity
+        let slot: Int
+    }
+
     /// What the runtime tracks per glTF material, so its shader parameters stay single-source.
     struct MaterialRuntimeState {
-        /// Every entity rendering the material, additional passes included.
-        var modelEntities: [ModelEntity] = []
+        /// Every material slot rendering the material, additional passes included.
+        var bindings: [MaterialBinding] = []
         /// Present when what renders the material makes one, as MToon does.
         var animatable: (any VRMAnimatableMaterialState)?
         var needsFlush = false
 
         @MainActor
         func hasPass(named name: String) -> Bool {
-            modelEntities.contains { $0.components[GLTFMaterialPassComponent.self]?.name == name }
+            bindings.contains { $0.modelEntity.components[GLTFMaterialPassComponent.self]?.name == name }
         }
     }
 
@@ -152,7 +166,8 @@ public class GLTFEntity: Entity {
     @MainActor private static let registerRealityKitTypes: Void = {
         GLTFComponent.registerComponent()
         GLTFNodeComponent.registerComponent()
-        GLTFMaterialIndexComponent.registerComponent()
+        GLTFMaterialSlotsComponent.registerComponent()
+        GLTFMergedMeshComponent.registerComponent()
         GLTFMaterialPassComponent.registerComponent()
         GLTFSkinIndexComponent.registerComponent()
         GLTFAnimationPlaybackComponent.registerComponent()
@@ -184,7 +199,7 @@ public class GLTFEntity: Entity {
         nodeEntities = nodes
     }
 
-    /// The pose is solved by ``updateSkinning()`` once the entity graph is complete.
+    /// The pose is solved by ``flushSkinPose()`` once the entity graph is complete.
     func registerSkinBinding(modelEntity: ModelEntity,
                              skeleton: MeshResource.Skeleton,
                              jointEntities: [Entity]) {
@@ -194,6 +209,11 @@ public class GLTFEntity: Entity {
         } else {
             key = skeletonKeys.count
             skeletonKeys[skeleton.id] = key
+            // Bindings sharing a skeleton share its joint entities, so the lookup is
+            // built once per skeleton.
+            for (jointIndex, joint) in jointEntities.enumerated() {
+                jointSlots[joint.id, default: []].append((key, jointIndex))
+            }
         }
         skinBindings.append(SkinBinding(modelEntity: modelEntity,
                                         skeleton: skeleton,
@@ -210,45 +230,55 @@ public class GLTFEntity: Entity {
 
     /// The animatable shader parameters are resolved once per material, so every entity
     /// sharing it shares them.
-    func registerMaterialBinding(modelEntity: ModelEntity, materialIndex: Int, builder: GLTFSceneBuilder) {
+    func registerMaterialBinding(modelEntity: ModelEntity, slot: Int, materialIndex: Int, builder: GLTFSceneBuilder) {
         if materialStates[materialIndex] == nil {
             materialStates[materialIndex] = MaterialRuntimeState(
                 animatable: builder.makeAnimatableMaterialState(forMaterialIndex: materialIndex)
             )
         }
-        materialStates[materialIndex]?.modelEntities.append(modelEntity)
+        materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
     }
 
     /// The glTF material indices any model entity under `root` renders with, additional
     /// render passes included, for scoping the runtime material APIs to part of a model.
+    /// A model entity draws a whole glTF mesh, so the finest scope is the mesh.
     public func materialIndices(under root: Entity) -> Set<Int> {
         var indices: Set<Int> = []
         for modelEntity in root.modelEntitiesInHierarchy {
-            guard let index = modelEntity.components[GLTFMaterialIndexComponent.self]?.materialIndex,
-                  !indices.contains(index),
-                  let boundEntities = materialStates[index]?.modelEntities,
-                  boundEntities.contains(where: { $0 === modelEntity }) else { continue }
-            indices.insert(index)
+            guard let slots = modelEntity.components[GLTFMaterialSlotsComponent.self] else { continue }
+            for case let index? in slots.materialIndices where !indices.contains(index) {
+                guard let bindings = materialStates[index]?.bindings,
+                      bindings.contains(where: { $0.modelEntity === modelEntity }) else { continue }
+                indices.insert(index)
+            }
         }
         return indices
     }
 
-    /// Shows or hides every entity drawing the additional render pass called `name`, such as
-    /// MToon's outline. A hidden pass keeps its place in the skinning and morph solvers.
-    /// Read from the entity graph, so a `clone(recursive:)` copy works too.
+    /// Shows or hides every material slot drawing the additional render pass called
+    /// `name`, such as MToon's outline. A hidden pass keeps its place in the skinning
+    /// and morph solvers. Read from the entity graph, so a `clone(recursive:)` copy
+    /// works too.
     public func setPassEnabled(_ isEnabled: Bool, named name: String) {
-        forEachPass(named: name) { $0.isEnabled = isEnabled }
+        forEachPass(named: name) { $0.setMergedVisibility(isEnabled) }
     }
 
-    /// Puts every entity drawing `name` back to the state its shader declared, undoing
+    /// Puts every slot drawing `name` back to the state its shader declared, undoing
     /// a ``setPassEnabled(_:named:)``.
     public func resetPassEnabled(named name: String) {
-        forEachPass(named: name) { $0.isEnabled = isInitiallyEnabled($0) }
+        forEachPass(named: name) { $0.resetMergedVisibility() }
     }
 
-    /// Pass visibility a runtime override replaced, keyed by pass name, material and entity.
+    /// One material slot of one pass entity: a pass entity draws several
+    /// materials, so this is the unit pass visibility moves in.
+    private struct PassSlotKey: Hashable {
+        let entity: Entity.ID
+        let slot: Int
+    }
+
+    /// Pass visibility a runtime override replaced, keyed by pass name, material and slot.
     /// Recording it per material lets overrides on different material sets compose.
-    private var passVisibilityBeforeOverride: [String: [Int: [Entity.ID: Bool]]] = [:]
+    private var passVisibilityBeforeOverride: [String: [Int: [PassSlotKey: Bool]]] = [:]
 
     /// Shows or hides the `name` passes of `materials` for as long as an override lasts,
     /// remembering the visibility they replace. Only the first call to cover a material
@@ -256,10 +286,12 @@ public class GLTFEntity: Entity {
     func overridePassEnabled(_ isEnabled: Bool, named name: String, forMaterials materials: Set<Int>) {
         for materialIndex in materials {
             let needsRecord = passVisibilityBeforeOverride[name]?[materialIndex] == nil
-            var replaced: [Entity.ID: Bool] = [:]
-            forEachPass(named: name, ofMaterial: materialIndex) { passEntity in
-                if needsRecord { replaced[passEntity.id] = passEntity.isEnabled }
-                passEntity.isEnabled = isEnabled
+            var replaced: [PassSlotKey: Bool] = [:]
+            forEachPassSlot(named: name, ofMaterial: materialIndex) { passEntity, slot in
+                if needsRecord, let isVisible = passEntity.mergedMesh?.visibleSlots[safe: slot] {
+                    replaced[PassSlotKey(entity: passEntity.id, slot: slot)] = isVisible
+                }
+                passEntity.setMergedSlotVisibility(isEnabled, slots: [slot])
             }
             if needsRecord, !replaced.isEmpty {
                 passVisibilityBeforeOverride[name, default: [:]][materialIndex] = replaced
@@ -274,17 +306,15 @@ public class GLTFEntity: Entity {
             guard let replaced = passVisibilityBeforeOverride[name]?.removeValue(forKey: materialIndex) else {
                 continue
             }
-            forEachPass(named: name, ofMaterial: materialIndex) {
-                $0.isEnabled = replaced[$0.id] ?? isInitiallyEnabled($0)
+            forEachPassSlot(named: name, ofMaterial: materialIndex) { passEntity, slot in
+                let isVisible = replaced[PassSlotKey(entity: passEntity.id, slot: slot)]
+                    ?? passEntity.initialMergedSlotVisibility(at: slot)
+                passEntity.setMergedSlotVisibility(isVisible, slots: [slot])
             }
         }
         if passVisibilityBeforeOverride[name]?.isEmpty == true {
             passVisibilityBeforeOverride[name] = nil
         }
-    }
-
-    private func isInitiallyEnabled(_ passEntity: ModelEntity) -> Bool {
-        passEntity.components[GLTFMaterialPassComponent.self]?.isInitiallyEnabled ?? true
     }
 
     private func forEachPass(named name: String, _ body: (ModelEntity) -> Void) {
@@ -296,10 +326,10 @@ public class GLTFEntity: Entity {
 
     /// Found through the material runtime rather than the entity graph, so an override
     /// follows its materials wherever their subtree is reparented.
-    private func forEachPass(named name: String, ofMaterial materialIndex: Int, _ body: (ModelEntity) -> Void) {
-        for passEntity in materialStates[materialIndex]?.modelEntities ?? []
-        where passEntity.components[GLTFMaterialPassComponent.self]?.name == name {
-            body(passEntity)
+    private func forEachPassSlot(named name: String, ofMaterial materialIndex: Int, _ body: (ModelEntity, Int) -> Void) {
+        for binding in materialStates[materialIndex]?.bindings ?? []
+        where binding.modelEntity.components[GLTFMaterialPassComponent.self]?.name == name {
+            body(binding.modelEntity, binding.slot)
         }
     }
 
@@ -341,13 +371,16 @@ public class GLTFEntity: Entity {
         return didFlushAll
     }
 
+    /// Rewrites the material everywhere it is drawn, touching only its own slots of
+    /// each entity's materials array.
     func mapMaterials(ofMaterial materialIndex: Int,
                       _ transform: (any Material) -> any Material) {
-        guard let modelEntities = materialStates[materialIndex]?.modelEntities else { return }
-        for modelEntity in modelEntities {
-            guard var component = modelEntity.components[ModelComponent.self] else { continue }
-            component.materials = component.materials.map(transform)
-            modelEntity.components.set(component)
+        guard let bindings = materialStates[materialIndex]?.bindings else { return }
+        for binding in bindings {
+            guard var component = binding.modelEntity.components[ModelComponent.self],
+                  component.materials.indices.contains(binding.slot) else { continue }
+            component.materials[binding.slot] = transform(component.materials[binding.slot])
+            binding.modelEntity.components.set(component)
         }
     }
 
@@ -365,39 +398,125 @@ public class GLTFEntity: Entity {
         isSkinPoseDirty = true
     }
 
-    /// Re-solves the skin pose from the current joint transforms.
+    /// ``invalidateSkinPose()`` narrowed to the joints that actually moved: only their
+    /// rows, and the rows read through the scene graph, are re-solved on the next
+    /// update. A node no skeleton owns still schedules that pass, since a skeleton's
+    /// root or seam row may be read through it.
+    public func invalidateSkinPose(for joints: some Sequence<Entity>) {
+        guard !isSkinPoseDirty else { return }
+        for joint in joints {
+            guard let slots = jointSlots[joint.id] else {
+                needsDependentRowSolve = true
+                continue
+            }
+            for slot in slots {
+                dirtyJoints[slot.skeletonKey, default: []].insert(slot.jointIndex)
+            }
+        }
+    }
+
+    /// Re-solves the skin pose of every skin binding from the current joint transforms.
     func flushSkinPose() {
-        guard !skinBindings.isEmpty else {
-            isSkinPoseDirty = false
+        isSkinPoseDirty = true
+        solveSkinPose()
+    }
+
+    /// Re-solves the skin pose only where a joint has moved since the last solve, so a
+    /// model holding a pose stops rewriting every skeleton each frame, and one moving
+    /// its eyes alone rewrites only the skeletons the eyes belong to.
+    func flushSkinPoseIfNeeded() {
+        guard isSkinPoseDirty || needsDependentRowSolve || !dirtyJoints.isEmpty else { return }
+        solveSkinPose()
+    }
+
+    private func solveSkinPose() {
+        let solvesAllJoints = isSkinPoseDirty
+        isSkinPoseDirty = false
+        needsDependentRowSolve = false
+        let dirty = dirtyJoints
+        dirtyJoints.removeAll(keepingCapacity: true)
+        guard !skinBindings.isEmpty else { return }
+
+        // What each skeleton resolved to in this pass, shared by the bindings drawing
+        // it, such as a mesh and its outline twin.
+        var changedPoses: [Int: JointTransforms] = [:]
+        var unchangedKeys: Set<Int> = []
+        for binding in skinBindings {
+            let key = binding.skeletonKey
+            // A skeleton with no moved joint and no row read through the scene graph
+            // cannot have changed, and is skipped before its world is even read.
+            if !solvesAllJoints, dirty[key] == nil,
+               let cached = solvedPoses[key], cached.dependentRows.isEmpty {
+                continue
+            }
+            let modelWorld = binding.modelEntity.transformMatrix(relativeTo: nil)
+            if let cached = solvedPoses[key] {
+                if cached.modelWorld == modelWorld {
+                    if let pose = changedPoses[key] {
+                        setSkinPose(pose, for: binding)
+                        continue
+                    }
+                    if unchangedKeys.contains(key) { continue }
+                }
+                // A moved model world is no reason to solve fully: only the rows read
+                // through the scene graph are read against it, which a partial solve re-reads.
+                if !solvesAllJoints {
+                    solvePartially(cached, dirtyRows: dirty[key], for: binding, modelWorld: modelWorld,
+                                   changedPoses: &changedPoses, unchangedKeys: &unchangedKeys)
+                    continue
+                }
+            }
+            let solved = jointTransforms(for: binding)
+            let pose = JointTransforms(solved.transforms)
+            solvedPoses[key] = SolvedSkeletonPose(modelWorld: modelWorld,
+                                                  transforms: solved.transforms,
+                                                  dependentRows: solved.dependentRows)
+            changedPoses[key] = pose
+            unchangedKeys.remove(key)
+            setSkinPose(pose, for: binding)
+        }
+    }
+
+    /// Recomputes only the moved rows and the scene-graph-read rows of one solved
+    /// skeleton. Joints are posed in their skeleton parent's space, so a moved joint
+    /// rewrites its own row alone: its subtree hangs off it in the skeleton. A pose
+    /// no row of which changed is not written back to any binding.
+    private func solvePartially(_ cached: SolvedSkeletonPose,
+                                dirtyRows: Set<Int>?,
+                                for binding: SkinBinding,
+                                modelWorld: simd_float4x4,
+                                changedPoses: inout [Int: JointTransforms],
+                                unchangedKeys: inout Set<Int>) {
+        var updated = cached
+        updated.modelWorld = modelWorld
+        var changed = false
+        for row in dirtyRows ?? [] where row < updated.transforms.count && !updated.dependentRows.contains(row) {
+            let (transform, isDependent) = jointTransform(at: row, of: binding)
+            if isDependent {
+                // A joint reparented since the last full solve reads through the
+                // scene graph from now on.
+                updated.dependentRows.insert(row)
+            }
+            if transform != updated.transforms[row] {
+                updated.transforms[row] = transform
+                changed = true
+            }
+        }
+        for row in updated.dependentRows where row < updated.transforms.count {
+            let transform = jointTransform(at: row, of: binding).transform
+            if transform != updated.transforms[row] {
+                updated.transforms[row] = transform
+                changed = true
+            }
+        }
+        solvedPoses[binding.skeletonKey] = updated
+        guard changed else {
+            unchangedKeys.insert(binding.skeletonKey)
             return
         }
-        updateSkinning()
-    }
-
-    /// Re-solves the skin pose only when a joint has moved since the last solve, so a
-    /// model holding a pose stops rewriting every skeleton each frame.
-    func flushSkinPoseIfNeeded() {
-        guard isSkinPoseDirty else { return }
-        flushSkinPose()
-    }
-
-    /// Re-applies the skeletal pose of every skin binding from the current joint transforms.
-    func updateSkinning() {
-        isSkinPoseDirty = false
-        // Bindings sharing a skeleton and model world transform, such as a mesh and its
-        // outline twin, resolve to identical joint transforms.
-        solvedPoses.removeAll(keepingCapacity: true)
-        for binding in skinBindings {
-            let modelWorld = binding.modelEntity.transformMatrix(relativeTo: nil)
-            let transforms: JointTransforms
-            if let cached = solvedPoses[binding.skeletonKey], cached.modelWorld == modelWorld {
-                transforms = cached.transforms
-            } else {
-                transforms = jointTransforms(for: binding)
-                solvedPoses[binding.skeletonKey] = (modelWorld, transforms)
-            }
-            setSkinPose(transforms, for: binding)
-        }
+        let pose = JointTransforms(updated.transforms)
+        changedPoses[binding.skeletonKey] = pose
+        setSkinPose(pose, for: binding)
     }
 
     private func setSkinPose(_ transforms: JointTransforms, for binding: SkinBinding) {
@@ -416,29 +535,37 @@ public class GLTFEntity: Entity {
     /// A skeleton pose is each joint read in the space of the joint above it, which a
     /// joint's own transform already is whenever the skeleton and the scene graph agree
     /// about its parent. glTF skins are authored that way, so the common case is free.
-    private func jointTransforms(for binding: SkinBinding) -> JointTransforms {
-        let jointEntities = binding.jointEntities
-        let joints = binding.skeleton.joints
+    private func jointTransforms(for binding: SkinBinding) -> (transforms: [Transform], dependentRows: Set<Int>) {
         var transforms: [Transform] = []
-        transforms.reserveCapacity(jointEntities.count)
-
-        for index in 0..<jointEntities.count {
-            let joint = jointEntities[index]
-            // A joint the skeleton gives no parent is read in the model's space.
-            let base: Entity
-            if index < joints.count, let parentIndex = joints[index].parentIndex, parentIndex < jointEntities.count {
-                base = jointEntities[parentIndex]
-            } else {
-                base = binding.modelEntity
-            }
-            if joint.parent === base {
-                transforms.append(joint.transform)
-            } else {
-                transforms.append(Transform(matrix: joint.transformMatrix(relativeTo: base)))
+        var dependentRows: Set<Int> = []
+        transforms.reserveCapacity(binding.jointEntities.count)
+        for index in 0..<binding.jointEntities.count {
+            let (transform, isDependent) = jointTransform(at: index, of: binding)
+            transforms.append(transform)
+            if isDependent {
+                dependentRows.insert(index)
             }
         }
+        return (transforms, dependentRows)
+    }
 
-        return JointTransforms(transforms)
+    /// One row of a skeleton pose, and whether it was read through the scene graph:
+    /// such a row can move without its joint being touched.
+    private func jointTransform(at index: Int, of binding: SkinBinding) -> (transform: Transform, isDependent: Bool) {
+        let jointEntities = binding.jointEntities
+        let joints = binding.skeleton.joints
+        let joint = jointEntities[index]
+        // A joint the skeleton gives no parent is read in the model's space.
+        let base: Entity
+        if index < joints.count, let parentIndex = joints[index].parentIndex, parentIndex < jointEntities.count {
+            base = jointEntities[parentIndex]
+        } else {
+            base = binding.modelEntity
+        }
+        if joint.parent === base {
+            return (joint.transform, false)
+        }
+        return (Transform(matrix: joint.transformMatrix(relativeTo: base)), true)
     }
 }
 

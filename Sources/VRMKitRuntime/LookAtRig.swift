@@ -63,12 +63,18 @@ package final class LookAtRig<Node: VRMRuntimeNode> where Node.RuntimeNode == No
     /// The angles last written out, so a gaze that has not moved is not applied again.
     private var appliedAngles = SIMD2<Float>.zero
 
+    /// The eye nodes a bone look-at turns, so a renderer can re-skin only them.
+    /// Empty for an expression look-at, which poses no bone.
+    package let posedNodes: [Node]
+
     package init() {
         gaze = nil
+        posedNodes = []
     }
 
     private init(gaze: Gaze) {
         self.gaze = gaze
+        posedNodes = gaze.eyes.map(\.node)
     }
 
     /// The rig for what `vrm` states, or an empty one for a model that states no look-at.

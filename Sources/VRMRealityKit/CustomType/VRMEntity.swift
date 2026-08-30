@@ -44,7 +44,7 @@ public final class VRMEntity: GLTFEntity {
     private var nodeConstraints = NodeConstraintRig<Entity>()
     private var lookAt = LookAtRig<Entity>()
     // Blend-shape target -> weight-set positions, resolved on first write.
-    private var blendShapeSlotCache: [MorphBindingKey: [BlendShapeSlot]] = [:]
+    private var blendShapeSlotCache: [MorphBindingKey: BlendShapeSlots] = [:]
 
     private lazy var expressionApplier = ExpressionApplier<Entity>(
         setMorphWeight: { [unowned self] weight, targetIndex, mesh in
@@ -225,7 +225,7 @@ public final class VRMEntity: GLTFEntity {
         case .unchanged:
             break
         case .posedBones:
-            invalidateSkinPose()
+            invalidateSkinPose(for: lookAt.posedNodes)
         case .weights(let weights):
             guard expressions.storeWeights(weights) else { return }
             expressions.apply(with: expressionApplier)
@@ -262,14 +262,16 @@ public final class VRMEntity: GLTFEntity {
     public func update(deltaTime: TimeInterval) {
         let deltaTime = max(0, deltaTime)
         // Skinning runs last so this frame's constraint and spring-bone poses reach the
-        // skinned meshes in the same frame they are solved.
-        let movedConstraints = nodeConstraints.apply()
+        // skinned meshes in the same frame they are solved. Each runtime hands over the
+        // joints it moved, so only their skeletons are re-solved.
+        if nodeConstraints.apply() {
+            invalidateSkinPose(for: nodeConstraints.posedNodes)
+        }
         // After the constraints, which may have posed the head the gaze is measured from,
         // and before the springs, which nothing about the eyes feeds into.
         applyLookAt()
-        let movedSprings = springBones.update(deltaTime: deltaTime)
-        if movedConstraints || movedSprings {
-            invalidateSkinPose()
+        if springBones.update(deltaTime: deltaTime) {
+            invalidateSkinPose(for: springBones.posedNodes)
         }
         flushSkinPoseIfNeeded()
     }
@@ -309,26 +311,14 @@ public final class VRMEntity: GLTFEntity {
     }
 
     /// Draws `entity` with the triangles `mode` asks for, and says whether it was cut.
+    /// The cut is baked per part, so a mesh worn head to foot keeps its body while
+    /// the head's parts and triangles go.
     private func applyFirstPersonCut(_ mode: FirstPersonRenderMode, to entity: Entity) -> Bool {
         var cut = false
-        var stack = [entity]
-        while let current = stack.popLast() {
-            // The cut is stated on whatever holds one primitive: the model entity, or the
-            // container its render passes share.
-            guard let masked = current.components[FirstPersonMeshComponent.self] else {
-                stack.append(contentsOf: current.children)
-                continue
-            }
+        for modelEntity in entity.modelEntitiesInHierarchy {
+            guard let merged = modelEntity.mergedMesh, merged.catalog.hasFirstPersonCut else { continue }
             cut = true
-            let mesh = mode == .firstPerson ? masked.firstPersonMesh : masked.thirdPersonMesh
-            // Nothing left to draw, so what holds it goes instead.
-            current.isEnabled = mesh != nil
-            guard let mesh else { continue }
-            for model in current.modelEntitiesInHierarchy {
-                guard var component = model.components[ModelComponent.self] else { continue }
-                component.mesh = mesh
-                model.components.set(component)
-            }
+            modelEntity.setMergedFirstPerson(mode == .firstPerson)
         }
         return cut
     }
@@ -368,6 +358,21 @@ public final class VRMEntity: GLTFEntity {
         let positions: [(set: Int, index: Int)]
     }
 
+    /// One resolved target, remembering the meshes it was resolved against: a mesh
+    /// variant re-lays the weight sets, so a resolution outliving any of them is
+    /// made again.
+    private struct BlendShapeSlots {
+        let slots: [BlendShapeSlot]
+        let resolvedMeshes: [(modelEntity: ModelEntity, mesh: ObjectIdentifier?)]
+
+        @MainActor var isCurrent: Bool {
+            resolvedMeshes.allSatisfy { entry in
+                entry.mesh == (entry.modelEntity.components[ModelComponent.self]?.mesh)
+                    .map(ObjectIdentifier.init)
+            }
+        }
+    }
+
     private func applyBlendShapeWeight(_ weight: Float, targetIndex: Int, on mesh: Entity) {
         for slot in blendShapeSlots(targetIndex: targetIndex, on: mesh) {
             var weights = slot.modelEntity.blendWeights
@@ -383,13 +388,17 @@ public final class VRMEntity: GLTFEntity {
     /// a blend-shape name on every write.
     private func blendShapeSlots(targetIndex: Int, on mesh: Entity) -> [BlendShapeSlot] {
         let key = MorphBindingKey(mesh: mesh, targetIndex: targetIndex)
-        if let cached = blendShapeSlotCache[key] {
-            return cached
+        if let cached = blendShapeSlotCache[key], cached.isCurrent {
+            return cached.slots
         }
 
         let targetName = "blendShape_\(targetIndex)"
         var slots: [BlendShapeSlot] = []
+        var resolvedMeshes: [(modelEntity: ModelEntity, mesh: ObjectIdentifier?)] = []
         for modelEntity in mesh.modelEntitiesInHierarchy {
+            resolvedMeshes.append((modelEntity,
+                                   (modelEntity.components[ModelComponent.self]?.mesh)
+                                       .map(ObjectIdentifier.init)))
             ensureBlendShapeComponent(on: modelEntity)
             let weights = modelEntity.blendWeights
             guard !weights.isEmpty else { continue }
@@ -412,7 +421,7 @@ public final class VRMEntity: GLTFEntity {
             guard !positions.isEmpty else { continue }
             slots.append(BlendShapeSlot(modelEntity: modelEntity, positions: positions))
         }
-        blendShapeSlotCache[key] = slots
+        blendShapeSlotCache[key] = BlendShapeSlots(slots: slots, resolvedMeshes: resolvedMeshes)
         return slots
     }
 

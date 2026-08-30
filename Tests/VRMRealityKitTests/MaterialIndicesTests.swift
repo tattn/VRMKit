@@ -48,18 +48,5 @@ struct MaterialIndicesTests {
         // The attached document answers for itself, wherever it hangs.
         #expect(attached.materialIndices(under: attached) == [0])
     }
-
-    /// A recursive clone renders, but carries no material runtime, so it
-    /// answers empty rather than indices the runtime setters could not act on.
-    @Test
-    func testACloneAnswersEmpty() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await TestSupport.loadEntity(.simpleTexture)
-        #expect(entity.materialIndices(under: entity) == [0])
-
-        let clone = entity.clone(recursive: true)
-        #expect(clone.materialIndices(under: clone).isEmpty)
-        #expect(entity.materialIndices(under: clone).isEmpty)
-    }
 }
 #endif

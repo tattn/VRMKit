@@ -166,25 +166,30 @@ extension GLTFEntity {
 #if !os(visionOS)
         var relit: [Int: CustomMaterial.Texture] = [:]
         for modelEntity in subject.modelEntitiesInHierarchy {
-            guard let materialIndex = modelEntity.components[GLTFMaterialIndexComponent.self]?.materialIndex,
+            guard let materialIndices = modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices,
                   var component = modelEntity.components[ModelComponent.self] else { continue }
-            let texture: CustomMaterial.Texture
-            if let cached = relit[materialIndex] {
-                texture = cached
-            } else {
-                guard let resource = mtoonState(forMaterialIndex: materialIndex)?
-                    .relitParameterTexture(lightDirection: direction) else { continue }
-                texture = CustomMaterial.Texture(resource)
-                relit[materialIndex] = texture
-            }
-            // Only the rows are swapped: `custom.value` carries the mesh's outline
-            // budget, which the light has nothing to do with.
-            component.materials = component.materials.map { material in
-                guard var material = material as? CustomMaterial else { return material }
+            var didRelight = false
+            for (slot, materialIndex) in materialIndices.enumerated() {
+                guard let materialIndex, component.materials.indices.contains(slot) else { continue }
+                let texture: CustomMaterial.Texture
+                if let cached = relit[materialIndex] {
+                    texture = cached
+                } else {
+                    guard let resource = mtoonState(forMaterialIndex: materialIndex)?
+                        .relitParameterTexture(lightDirection: direction) else { continue }
+                    texture = CustomMaterial.Texture(resource)
+                    relit[materialIndex] = texture
+                }
+                // Only the rows are swapped: `custom.value` carries the mesh's outline
+                // budget, which the light has nothing to do with.
+                guard var material = component.materials[slot] as? CustomMaterial else { continue }
                 material.custom.texture = texture
-                return material
+                component.materials[slot] = material
+                didRelight = true
             }
-            modelEntity.components.set(component)
+            if didRelight {
+                modelEntity.components.set(component)
+            }
         }
 #endif
     }

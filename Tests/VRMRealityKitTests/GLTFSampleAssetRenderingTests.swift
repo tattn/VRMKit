@@ -206,26 +206,6 @@ struct GLTFSampleAssetRenderingTests {
         }
     }
 
-    /// The loader keeps no scene cache, so one loader can hand out several independently
-    /// animatable copies of the same scene.
-    @Test
-    func testLoadingOneSceneTwiceBuildsIndependentEntities() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleSkin.url)
-        let first = try await loader.loadEntity()
-        let second = try await loader.loadEntity()
-
-        #expect(first !== second)
-        #expect(first.entity(forNodeAt: 1) !== second.entity(forNodeAt: 1))
-        #expect(second.hasRuntimeBindings)
-        // Each entity's bindings stay within its own graph.
-        for (entity, other) in [(first, second), (second, first)] {
-            let binding = try #require(entity.skinBindings.first)
-            #expect(binding.jointEntities.allSatisfy { TestSupport.isDescendant($0, of: entity) })
-            #expect(binding.jointEntities.allSatisfy { !TestSupport.isDescendant($0, of: other) })
-        }
-    }
-
     @Test
     func testKHRTextureTransformReachesPBRMaterials() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

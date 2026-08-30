@@ -61,6 +61,25 @@ enum TestSupport {
         }
     }
 
+    /// Seed-san with the dynamic runtimes stripped: no spring bones, no node
+    /// constraints. Such a model holds whatever pose it was last put in, so a test
+    /// sees exactly which joints a solve touched.
+    static func staticSeedSanData() throws -> Data {
+        try modifiedSeedSanData(name: "no dynamics") { json in
+            var extensions = json.object("extensions") ?? [:]
+            extensions.removeValue(forKey: "VRMC_springBone")
+            json["extensions"] = .object(extensions)
+            json["nodes"] = .objects(json.objects("nodes").map { node in
+                var node = node
+                if var nodeExtensions = node.object("extensions") {
+                    nodeExtensions.removeValue(forKey: "VRMC_node_constraint")
+                    node["extensions"] = .object(nodeExtensions)
+                }
+                return node
+            })
+        }
+    }
+
     /// Rewrites the VRM 0.x fixture's glTF JSON in memory.
     static func modifiedAliciaSolidData(name: String,
                                         modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
@@ -190,28 +209,84 @@ enum TestSupport {
         materialIndexes(in: vrmEntity).contains { vrmEntity.mtoonParameters(forMaterialIndex: $0) != nil }
     }
 
+    /// The MToon runtime parameters of a rendered material, which only the
+    /// platforms carrying the MToon shader produce.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func mtoonParameters(in vrmEntity: VRMEntity, materialIndex: Int) throws -> MToonMaterialParameters {
+        guard let parameters = vrmEntity.mtoonParameters(forMaterialIndex: materialIndex) else {
+            throw VRMError.dataInconsistent("Expected MToon parameters for material \(materialIndex)")
+        }
+        return parameters
+    }
+
+    /// The MToon parameter rows a material is built with, read through a builder
+    /// rather than a loaded scene. Every row a material starts out with is settled
+    /// when the material is built, so a test that only reads them needs no entity
+    /// graph and pays for one material instead of a whole model.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func mtoonParameters(of loader: some MaterialInspectingLoader,
+                                materialIndex: Int) throws -> MToonMaterialParameters {
+        guard let state = loader.makeAnimatableMaterialState(forMaterialIndex: materialIndex)
+                as? MToonAnimatableMaterialState else {
+            throw VRMError.dataInconsistent("Expected MToon parameters for material \(materialIndex)")
+        }
+        return state.parameters
+    }
+
+    /// The blend-shape weight currently applied for a glTF morph target index,
+    /// read back from the model entities the way RealityKit renders it.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func morphWeight(in root: Entity, targetIndex: Int) -> Float? {
+        let targetName = "blendShape_\(targetIndex)"
+        for modelEntity in modelEntities(in: root) {
+            let weights = modelEntity.blendWeights
+            let names = modelEntity.blendWeightNames
+            for setIndex in names.indices where setIndex < weights.count {
+                guard let nameIndex = names[setIndex].firstIndex(of: targetName),
+                      nameIndex < weights[setIndex].count else { continue }
+                return weights[setIndex][nameIndex]
+            }
+        }
+        return nil
+    }
+
     /// Every glTF material index rendered by the hierarchy, in ascending order.
     @MainActor
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     static func materialIndexes(in root: Entity) -> [Int] {
-        Set(modelEntities(in: root).compactMap { $0.components[GLTFMaterialIndexComponent.self]?.materialIndex })
-            .sorted()
+        Set(modelEntities(in: root).flatMap {
+            $0.components[GLTFMaterialSlotsComponent.self]?.materialIndices.compactMap { $0 } ?? []
+        }).sorted()
     }
 
-    /// Every primitive of the hierarchy a first-person camera cuts, with what it
-    /// draws in either mode.
+    /// The materials rendering the glTF material at `materialIndex` under `root`,
+    /// one per slot drawing it, additional render passes included.
     @MainActor
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    static func firstPersonCuts(in root: Entity) -> [(entity: Entity, component: FirstPersonMeshComponent)] {
-        var cuts: [(Entity, FirstPersonMeshComponent)] = []
-        var stack = [root]
-        while let entity = stack.popLast() {
-            stack.append(contentsOf: entity.children)
-            if let component = entity.components[FirstPersonMeshComponent.self] {
-                cuts.append((entity, component))
+    static func materials(ofMaterial materialIndex: Int, in root: Entity) -> [any Material] {
+        modelEntities(in: root).flatMap { modelEntity -> [any Material] in
+            guard let slots = modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices,
+                  let model = modelEntity.components[ModelComponent.self] else { return [] }
+            return slots.enumerated().compactMap { slot, index in
+                index == materialIndex && model.materials.indices.contains(slot)
+                    ? model.materials[slot]
+                    : nil
             }
         }
-        return cuts
+    }
+
+    /// Every model entity of the hierarchy a first-person camera cuts, with the
+    /// catalog its meshes come from.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func firstPersonCuts(in root: Entity) -> [(entity: ModelEntity, catalog: GLTFMergedMeshCatalog)] {
+        modelEntities(in: root).compactMap { modelEntity in
+            guard let merged = modelEntity.mergedMesh, merged.catalog.hasFirstPersonCut else { return nil }
+            return (modelEntity, merged.catalog)
+        }
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

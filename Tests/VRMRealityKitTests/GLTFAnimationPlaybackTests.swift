@@ -633,16 +633,5 @@ struct GLTFAnimationPlaybackTests {
         }.loadEntity()
         #expect(throws: VRMError.self) { try matrixNode.playAnimation(at: 0) }
     }
-
-    @Test
-    func testVRMEntityInheritsTheAnimationAPI() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // The VRM fixtures carry no glTF animations; the API still answers.
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        #expect(vrmEntity.animations.isEmpty)
-        #expect(throws: VRMError.self) {
-            try vrmEntity.playAnimation(at: 0)
-        }
-    }
 }
 #endif

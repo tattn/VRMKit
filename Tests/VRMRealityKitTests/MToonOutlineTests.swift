@@ -16,13 +16,25 @@ struct MToonOutlineTests {
     /// The model entities drawing MToon outline passes, found by component
     /// rather than by the pass entity's name.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private func outlineEntities(in root: Entity, materialIndex: Int? = nil) -> [ModelEntity] {
-        root.modelEntitiesInHierarchy.filter { entity in
-            guard entity.components[GLTFMaterialPassComponent.self]?.name == MToonShader.outlinePassName else {
-                return false
+    private func outlineEntities(in root: Entity) -> [ModelEntity] {
+        root.modelEntitiesInHierarchy.filter {
+            $0.components[GLTFMaterialPassComponent.self]?.name == MToonShader.outlinePassName
+        }
+    }
+
+    /// The visibility of every MToon outline slot under `root`, restricted to the
+    /// slots drawing `materialIndex` when one is given. An outline entity bundles
+    /// the outlines of a whole mesh, so per-material checks read its slots.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func outlineSlotVisibility(in root: Entity, materialIndex: Int? = nil) -> [Bool] {
+        outlineEntities(in: root).flatMap { entity -> [Bool] in
+            guard let merged = entity.mergedMesh,
+                  let slots = entity.components[GLTFMaterialSlotsComponent.self]?.materialIndices else {
+                return []
             }
-            guard let materialIndex else { return true }
-            return entity.components[GLTFMaterialIndexComponent.self]?.materialIndex == materialIndex
+            return zip(slots, merged.visibleSlots).compactMap { index, isVisible in
+                materialIndex == nil || index == materialIndex ? isVisible : nil
+            }
         }
     }
 
@@ -93,12 +105,12 @@ struct MToonOutlineTests {
         }
         let entity = try await VRMEntityLoader(withData: modified,
                                                shaders: [MToonShader(outlinePass: .always)]).loadEntity()
-        let passes = outlineEntities(in: entity, materialIndex: 0)
-        #expect(!passes.isEmpty)
-        #expect(passes.allSatisfy { !$0.isEnabled })
+        let slots = outlineSlotVisibility(in: entity, materialIndex: 0)
+        #expect(!slots.isEmpty)
+        #expect(slots.allSatisfy { !$0 })
 
         let automatic = try await VRMEntityLoader(withData: modified).loadEntity()
-        #expect(outlineEntities(in: automatic, materialIndex: 0).isEmpty)
+        #expect(outlineSlotVisibility(in: automatic, materialIndex: 0).isEmpty)
     }
 
     /// The selection-highlight flow end to end minus the GPU: an override shows
@@ -190,16 +202,15 @@ struct MToonOutlineTests {
         }
         let entity = try await VRMEntityLoader(withData: modified,
                                                shaders: [MToonShader(outlinePass: .always)]).loadEntity()
-        let passes = outlineEntities(in: entity)
-        let authoredVisibility = passes.map(\.isEnabled)
+        let authoredVisibility = outlineSlotVisibility(in: entity)
         #expect(authoredVisibility.contains(true))
         #expect(authoredVisibility.contains(false))
 
         entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004))
-        #expect(passes.allSatisfy { $0.isEnabled })
+        #expect(outlineSlotVisibility(in: entity).allSatisfy { $0 })
 
         entity.setMToonOutlineOverride(nil)
-        #expect(passes.map(\.isEnabled) == authoredVisibility)
+        #expect(outlineSlotVisibility(in: entity) == authoredVisibility)
     }
 
     /// The modifier clamps its offset to the margin the pass is culled by, which
@@ -323,7 +334,8 @@ struct MToonOutlineTests {
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                                shaders: [MToonShader(outlinePass: .always)]).loadEntity()
         let hidden = try #require(outlineEntities(in: entity).first {
-            !$0.isEnabled && $0.components.has(GLTFSkinIndexComponent.self)
+            $0.components.has(GLTFSkinIndexComponent.self)
+                && $0.mergedMesh?.visibleSlots.contains(false) == true
         })
         func pose(of modelEntity: ModelEntity) -> [SIMD4<Float>]? {
             modelEntity.components[SkeletalPosesComponent.self]?.poses.default?
@@ -332,7 +344,7 @@ struct MToonOutlineTests {
 
         let restPose = pose(of: hidden)
         entity.humanoid.node(for: .neck)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 0, 1))
-        entity.updateSkinning()
+        entity.flushSkinPose()
         #expect(pose(of: hidden) != restPose)
     }
 
@@ -428,20 +440,18 @@ struct MToonOutlineTests {
         // Seed-san materials 0 and 1 both have authored outlines, so a
         // zero-width override on one shows as a change and the other holds.
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let selected = outlineEntities(in: entity, materialIndex: 0)
-        let others = outlineEntities(in: entity, materialIndex: 1)
-        #expect(!selected.isEmpty)
-        #expect(!others.isEmpty)
+        #expect(!outlineSlotVisibility(in: entity, materialIndex: 0).isEmpty)
+        #expect(!outlineSlotVisibility(in: entity, materialIndex: 1).isEmpty)
 
         entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0),
                                        forMaterials: [0])
-        #expect(selected.allSatisfy { !$0.isEnabled })
-        #expect(others.allSatisfy { $0.isEnabled })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { $0 })
         #expect(try #require(entity.mtoonState(forMaterialIndex: 0)).outlineOverride != nil)
         #expect(try #require(entity.mtoonState(forMaterialIndex: 1)).outlineOverride == nil)
 
         entity.setMToonOutlineOverride(nil, forMaterials: [0])
-        #expect(selected.allSatisfy { $0.isEnabled })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
         #expect(try #require(entity.mtoonState(forMaterialIndex: 0)).outlineOverride == nil)
     }
 
@@ -460,13 +470,13 @@ struct MToonOutlineTests {
         entity.setMToonOutlineOverride(white, forMaterials: [1])
         #expect(state0.outlineOverride == blue)
         #expect(state1.outlineOverride == white)
-        #expect(outlineEntities(in: entity, materialIndex: 1).allSatisfy { !$0.isEnabled })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { !$0 })
 
         // Material 1 goes back to its authored visibility, not to blue's.
         entity.setMToonOutlineOverride(nil, forMaterials: [1])
         #expect(state0.outlineOverride == blue)
         #expect(state1.outlineOverride == nil)
-        #expect(outlineEntities(in: entity, materialIndex: 1).allSatisfy { $0.isEnabled })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { $0 })
 
         entity.setMToonOutlineOverride(nil, forMaterials: [0])
         #expect(state0.outlineOverride == nil)
@@ -505,11 +515,11 @@ struct MToonOutlineTests {
 
         entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004),
                                        forMaterials: [0])
-        #expect(outlineEntities(in: entity, materialIndex: 0).allSatisfy { $0.isEnabled })
-        #expect(outlineEntities(in: entity, materialIndex: 1).allSatisfy { !$0.isEnabled })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { !$0 })
 
         entity.setMToonOutlineOverride(nil, forMaterials: [0])
-        #expect(outlineEntities(in: entity, materialIndex: 0).allSatisfy { !$0.isEnabled })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
     }
 
     /// A selection of materials the outline runtime does not cover moves no
@@ -520,17 +530,16 @@ struct MToonOutlineTests {
         // Under the default `.automatic` pass policy Seed-san material 3 (an
         // outline-less eye) builds no pass, and material 12 is not MToon.
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let passes = outlineEntities(in: entity)
-        let visibility = passes.map(\.isEnabled)
+        let visibility = outlineSlotVisibility(in: entity)
 
         let highlight = MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004)
         entity.setMToonOutlineOverride(highlight, forMaterials: [3, 12])
         #expect(entity.mtoonState(forMaterialIndex: 3)?.outlineOverride == nil)
         #expect(entity.mtoonState(forMaterialIndex: 12) == nil)
-        #expect(passes.map(\.isEnabled) == visibility)
+        #expect(outlineSlotVisibility(in: entity) == visibility)
 
         entity.setMToonOutlineOverride(highlight, forMaterials: [])
-        #expect(passes.map(\.isEnabled) == visibility)
+        #expect(outlineSlotVisibility(in: entity) == visibility)
     }
 
     /// The unit of a scoped override is the material, so selecting a subtree
@@ -548,10 +557,10 @@ struct MToonOutlineTests {
         entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0),
                                        forMaterials: selection)
         let hair = try #require(entity.entity(forNodeAt: 0))
-        #expect(outlineEntities(in: hair, materialIndex: 0).allSatisfy { !$0.isEnabled })
+        #expect(outlineSlotVisibility(in: hair, materialIndex: 0).allSatisfy { !$0 })
 
         entity.setMToonOutlineOverride(nil, forMaterials: selection)
-        #expect(outlineEntities(in: hair, materialIndex: 0).allSatisfy { $0.isEnabled })
+        #expect(outlineSlotVisibility(in: hair, materialIndex: 0).allSatisfy { $0 })
     }
 #endif
 }

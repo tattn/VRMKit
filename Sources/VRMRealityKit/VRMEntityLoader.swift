@@ -81,7 +81,7 @@ public final class VRMEntityLoader {
             try setUpVRM(root, built: built, builder: builder)
             // Skin bindings are registered mid-build, so the rest pose is only solvable
             // once the graph is complete.
-            root.updateSkinning()
+            root.flushSkinPose()
             return root
         }
     }

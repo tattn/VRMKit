@@ -78,6 +78,10 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     private var centers: [ObjectIdentifier: SpringBoneCenter] = [:]
     private var worlds: [SpringBoneWorldTransform] = []
 
+    /// The nodes the simulation writes rotations to, so a renderer can re-skin
+    /// only what a step actually moved.
+    package private(set) var posedNodes: [Node] = []
+
     package init() {}
 
     /// Forgets the motion the springs carry between frames, so the next update starts
@@ -397,6 +401,7 @@ package extension SpringBoneRig {
     private func append(_ spring: Spring) {
         guard spring.links.contains(where: { $0.joint != nil }) else { return }
         springs.append(spring)
+        posedNodes.append(contentsOf: spring.links.compactMap { $0.joint != nil ? $0.node : nil })
     }
 
     /// VRM 0.x swings every bone below the root: one with children towards the first of

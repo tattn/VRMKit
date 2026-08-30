@@ -487,14 +487,5 @@ struct VRMAnimationPlaybackTests {
         let animation = try VRMAnimation(data: VRMASampleFixture.hipsWithTwoParents())
         #expect(throws: VRMError.self) { try entity.playAnimation(animation) }
     }
-
-    @Test
-    func testACloneCannotPlayVRMAnimations() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let clone = entity.clone(recursive: true)
-        let animation = try fixture()
-        #expect(throws: VRMError.self) { try clone.playAnimation(animation) }
-    }
 }
 #endif

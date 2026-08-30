@@ -81,7 +81,7 @@ struct MaterialShaderChainTests {
         #expect(modelEntities.contains { $0.name.hasSuffix("_halo") })
         // Both passes share the material index, so runtime updates reach them together.
         #expect(modelEntities.allSatisfy {
-            $0.components[GLTFMaterialIndexComponent.self]?.materialIndex == 0
+            $0.components[GLTFMaterialSlotsComponent.self]?.materialIndices == [0]
         })
     }
 
@@ -196,9 +196,7 @@ struct MaterialShaderChainTests {
                                                   shaders: [ColorOnlyShader()]).loadEntity()
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
 
-        let transforms = vrmEntity.modelEntitiesInHierarchy
-            .filter { $0.components[GLTFMaterialIndexComponent.self]?.materialIndex == 11 }
-            .flatMap { $0.components[ModelComponent.self]?.materials ?? [] }
+        let transforms = TestSupport.materials(ofMaterial: 11, in: vrmEntity)
             .compactMap { ($0 as? UnlitMaterial)?.textureCoordinateTransform }
         #expect(!transforms.isEmpty)
         #expect(transforms.allSatisfy { $0.offset.isApproximatelyEqual(to: SIMD2<Float>(0.25, 0)) })
@@ -380,10 +378,9 @@ struct MaterialShaderChainTests {
         }
         // Named after the mesh it belongs to, not after the unnamed model entity.
         let outline = try #require(outlines(in: entity).first)
-        let mesh = try #require(outline.parent?.parent)
+        let mesh = try #require(outline.parent)
         #expect(!mesh.name.isEmpty)
         #expect(outline.name == "\(mesh.name)_\(passName)")
-        #expect(outline.parent?.name == "\(mesh.name)_container")
 
         let noOutline = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
                                                    shaders: [MToonShader(source: .convertAll)]).loadEntity()
