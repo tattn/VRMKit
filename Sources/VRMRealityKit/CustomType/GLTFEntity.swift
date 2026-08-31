@@ -126,6 +126,17 @@ public class GLTFEntity: Entity {
     /// glTF node index → the blend shapes a `weights` channel writes to.
     private(set) var morphBindings: [Int: MorphBinding] = [:]
 
+    /// Counts the mesh variants swapped in under this model. A variant re-lays the
+    /// weight sets and the parts, so whatever was resolved against a mesh is stale
+    /// once this moves.
+    private(set) var meshVariantGeneration = 0
+
+    /// Called by the entity that swapped a variant in, so resolutions made against
+    /// the mesh it replaced are not reused.
+    func didSwapMeshVariant() {
+        meshVariantGeneration &+= 1
+    }
+
     /// One place a glTF material is rendered: which slot of which entity's
     /// materials array holds it.
     struct MaterialBinding {

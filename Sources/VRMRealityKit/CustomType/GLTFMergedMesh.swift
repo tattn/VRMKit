@@ -201,6 +201,13 @@ extension ModelEntity {
         model.mesh = mesh
         components.set(model)
         refreshBlendShapes(for: mesh)
+        owningGLTFEntity?.didSwapMeshVariant()
+    }
+
+    /// The model this entity is drawn as part of, which counts the mesh variants
+    /// swapped in under it.
+    private var owningGLTFEntity: GLTFEntity? {
+        sequence(first: self, next: \.parent).lazy.compactMap { $0 as? GLTFEntity }.first
     }
 
     /// A fresh weights component for the swapped-in mesh, carrying the weights the

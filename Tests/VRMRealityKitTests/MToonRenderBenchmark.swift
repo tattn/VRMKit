@@ -6,6 +6,10 @@ import Testing
 import VRMKit
 @testable import VRMRealityKit
 
+// visionOS has no `CustomMaterial`, so MToon falls back to Unlit there and there is
+// no MToon cost to measure.
+#if !os(visionOS)
+
 /// Measures what a VRM costs the GPU per frame, at the resolutions a consumer
 /// renders at. Not part of a normal test run: set `VRMKIT_BENCH=1` to run it.
 ///
@@ -89,4 +93,5 @@ struct MToonRenderBenchmark {
         return (CFAbsoluteTimeGetCurrent() - start) * 1000 / Double(frames)
     }
 }
+#endif
 #endif

@@ -45,6 +45,9 @@ public final class VRMEntity: GLTFEntity {
     private var lookAt = LookAtRig<Entity>()
     // Blend-shape target -> weight-set positions, resolved on first write.
     private var blendShapeSlotCache: [MorphBindingKey: BlendShapeSlots] = [:]
+    // Scratch for one apply: the weight sets each mesh is written back with, so a
+    // frame's morph writes cost one read and one write per mesh, not per target.
+    private var stagedBlendWeights: [StagedBlendWeights] = []
 
     private lazy var expressionApplier = ExpressionApplier<Entity>(
         setMorphWeight: { [unowned self] weight, targetIndex, mesh in
@@ -57,6 +60,7 @@ public final class VRMEntity: GLTFEntity {
             applyTextureTransform(scale: scale, offset: offset, rotation: rotation, materialIndex: materialIndex)
         },
         didApply: { [unowned self] in
+            flushStagedBlendWeights()
             flushDirtyMaterialStates()
         }
     )
@@ -358,47 +362,63 @@ public final class VRMEntity: GLTFEntity {
         let positions: [(set: Int, index: Int)]
     }
 
-    /// One resolved target, remembering the meshes it was resolved against: a mesh
-    /// variant re-lays the weight sets, so a resolution outliving any of them is
-    /// made again.
+    /// One mesh's weight sets, read once and written back once per apply.
+    private struct StagedBlendWeights {
+        let modelEntity: ModelEntity
+        var sets: [[Float]]
+    }
+
+    /// One resolved target, remembering the mesh variant it was resolved against: a
+    /// variant re-lays the weight sets, so a resolution outliving one is made again.
     private struct BlendShapeSlots {
         let slots: [BlendShapeSlot]
-        let resolvedMeshes: [(modelEntity: ModelEntity, mesh: ObjectIdentifier?)]
+        let generation: Int
+    }
 
-        @MainActor var isCurrent: Bool {
-            resolvedMeshes.allSatisfy { entry in
-                entry.mesh == (entry.modelEntity.components[ModelComponent.self]?.mesh)
-                    .map(ObjectIdentifier.init)
+    /// Stages the write rather than making it: `blendWeights` copies every set both
+    /// read and written, so writing straight through would pay for that copy once per
+    /// target. The staged sets are mutated where they sit, for the same reason.
+    private func applyBlendShapeWeight(_ weight: Float, targetIndex: Int, on mesh: Entity) {
+        for slot in blendShapeSlots(targetIndex: targetIndex, on: mesh) {
+            let index = stagedIndex(of: slot.modelEntity)
+            for position in slot.positions {
+                guard position.set < stagedBlendWeights[index].sets.count,
+                      position.index < stagedBlendWeights[index].sets[position.set].count else { continue }
+                stagedBlendWeights[index].sets[position.set][position.index] = weight
             }
         }
     }
 
-    private func applyBlendShapeWeight(_ weight: Float, targetIndex: Int, on mesh: Entity) {
-        for slot in blendShapeSlots(targetIndex: targetIndex, on: mesh) {
-            var weights = slot.modelEntity.blendWeights
-            for position in slot.positions where position.set < weights.count
-                && position.index < weights[position.set].count {
-                weights[position.set][position.index] = weight
-            }
-            slot.modelEntity.blendWeights = weights
+    /// Where one mesh's staged sets sit, read out of the mesh on first use. A model
+    /// has a handful of them, so they are searched rather than hashed.
+    private func stagedIndex(of modelEntity: ModelEntity) -> Int {
+        if let index = stagedBlendWeights.firstIndex(where: { $0.modelEntity === modelEntity }) {
+            return index
         }
+        stagedBlendWeights.append(StagedBlendWeights(modelEntity: modelEntity,
+                                                     sets: modelEntity.blendWeights))
+        return stagedBlendWeights.count - 1
+    }
+
+    /// Writes back what one apply staged, once per mesh.
+    private func flushStagedBlendWeights() {
+        for staged in stagedBlendWeights {
+            staged.modelEntity.blendWeights = staged.sets
+        }
+        stagedBlendWeights.removeAll(keepingCapacity: true)
     }
 
     /// Resolves the target's weight-set positions once per mesh, rather than looking up
     /// a blend-shape name on every write.
     private func blendShapeSlots(targetIndex: Int, on mesh: Entity) -> [BlendShapeSlot] {
         let key = MorphBindingKey(mesh: mesh, targetIndex: targetIndex)
-        if let cached = blendShapeSlotCache[key], cached.isCurrent {
+        if let cached = blendShapeSlotCache[key], cached.generation == meshVariantGeneration {
             return cached.slots
         }
 
         let targetName = "blendShape_\(targetIndex)"
         var slots: [BlendShapeSlot] = []
-        var resolvedMeshes: [(modelEntity: ModelEntity, mesh: ObjectIdentifier?)] = []
         for modelEntity in mesh.modelEntitiesInHierarchy {
-            resolvedMeshes.append((modelEntity,
-                                   (modelEntity.components[ModelComponent.self]?.mesh)
-                                       .map(ObjectIdentifier.init)))
             ensureBlendShapeComponent(on: modelEntity)
             let weights = modelEntity.blendWeights
             guard !weights.isEmpty else { continue }
@@ -421,7 +441,7 @@ public final class VRMEntity: GLTFEntity {
             guard !positions.isEmpty else { continue }
             slots.append(BlendShapeSlot(modelEntity: modelEntity, positions: positions))
         }
-        blendShapeSlotCache[key] = BlendShapeSlots(slots: slots, resolvedMeshes: resolvedMeshes)
+        blendShapeSlotCache[key] = BlendShapeSlots(slots: slots, generation: meshVariantGeneration)
         return slots
     }
 

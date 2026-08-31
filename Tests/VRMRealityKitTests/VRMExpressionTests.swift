@@ -261,5 +261,37 @@ struct VRMExpressionTests {
             .uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0, 0)))
     }
 #endif
+
+    /// A mesh variant re-lays the weight sets, so where a morph target lives has to
+    /// be resolved again once one is swapped in. Driving an expression across a
+    /// first-person switch is what a stale resolution shows up in.
+    @Test
+    func testExpressionsKeepReachingTheirTargetsAcrossAMeshVariantSwitch() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData,
+                                                  shaders: TestSupport.noOutlineShaders).loadEntity()
+        // An expression whose morph target can be read back, taken in the order the
+        // model states its expressions: a dictionary's order differs between runs.
+        var driven: (key: ExpressionKey, target: Int)?
+        for expression in vrmEntity.availableExpressions {
+            guard let clip = vrmEntity.expressionClips[expression.key],
+                  let binding = clip.values.first(where: { $0.weight == 1 }) else { continue }
+            vrmEntity.setExpression(value: 1, for: expression.key)
+            if TestSupport.morphWeight(in: vrmEntity, targetIndex: binding.index) == 1 {
+                driven = (expression.key, binding.index)
+                break
+            }
+            vrmEntity.setExpression(value: 0, for: expression.key)
+        }
+        let (key, target) = try #require(driven)
+
+        vrmEntity.setFirstPersonRenderMode(.firstPerson)
+        vrmEntity.setExpression(value: 0.5, for: key)
+        #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: target) == 0.5)
+
+        vrmEntity.setFirstPersonRenderMode(.thirdPerson)
+        vrmEntity.setExpression(value: 1, for: key)
+        #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: target) == 1)
+    }
 }
 #endif
