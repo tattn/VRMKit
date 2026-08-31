@@ -38,6 +38,35 @@ struct VRMAnimationPlaybackTests {
         return SIMD2(yaw, pitch)
     }
 
+    /// A running animation invalidates only the bones it moved, so a joint posed
+    /// without being named stays out of the skin exactly as it does with no animation
+    /// playing. The fixture drives the hips, spine and left thumb, never a toe.
+    @Test
+    func testARunningAnimationKeepsTheInvalidationFineGrained() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        func posedRotations(poseToe: Bool, nameToe: Bool) async throws -> [SIMD4<Float>] {
+            let entity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+            try entity.playAnimation(fixture(), loops: true)
+            let toe = try #require(entity.humanoid.node(for: .leftToes))
+            for _ in 0..<4 {
+                if poseToe {
+                    toe.transform.rotation *= simd_quatf(angle: 0.2, axis: SIMD3<Float>(1, 0, 0))
+                    if nameToe {
+                        entity.invalidateSkinPose(for: [toe])
+                    }
+                }
+                entity.updateAnimations(deltaTime: 1.0 / 60.0)
+                entity.update(deltaTime: 1.0 / 60.0)
+            }
+            return TestSupport.jointRotations(in: entity)
+        }
+
+        let untouched = try await posedRotations(poseToe: false, nameToe: false)
+        #expect(!untouched.isEmpty)
+        #expect(try await posedRotations(poseToe: true, nameToe: false) == untouched)
+        #expect(try await posedRotations(poseToe: true, nameToe: true) != untouched)
+    }
+
     @Test
     func testHipsRotationRetargetsOntoAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

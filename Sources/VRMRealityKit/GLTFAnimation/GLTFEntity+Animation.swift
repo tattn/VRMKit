@@ -18,9 +18,9 @@ public struct GLTFAnimation: Sendable {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 protocol GLTFAnimationApplying: AnyObject {
-    /// Poses the bound targets for `time`, reporting whether any node transform changed.
-    @discardableResult
-    func apply(at time: Float) -> Bool
+    /// Poses the bound targets for `time`, appending every node whose transform it
+    /// changed to `movedNodes`, so the caller re-solves those joints alone.
+    func apply(at time: Float, movedNodes: inout [Entity])
 }
 
 /// Controls one running glTF or VRM animation, in the spirit of RealityKit's
@@ -83,16 +83,15 @@ public final class GLTFAnimationPlaybackController {
         isComplete = true
     }
 
-    @discardableResult
-    func advance(deltaTime: TimeInterval) -> Bool {
-        guard !isComplete else { return false }
+    func advance(deltaTime: TimeInterval, movedNodes: inout [Entity]) {
+        guard !isComplete else { return }
         let duration = animation.duration
         // A zero-length animation holds a single pose, which looping cannot change: it
         // completes rather than reapplying it every frame.
         guard duration > 0 else {
-            let moved = apply()
+            apply(movedNodes: &movedNodes)
             isComplete = true
-            return moved
+            return
         }
         // Pausing stops time, not the playback: the pose is re-applied every frame so an
         // animation this one outranks cannot take its targets over.
@@ -106,13 +105,12 @@ public final class GLTFAnimationPlaybackController {
                 isComplete = true
             }
         }
-        return apply()
+        apply(movedNodes: &movedNodes)
     }
 
-    /// Poses the model for the current time, reporting whether joints moved.
-    @discardableResult
-    func apply() -> Bool {
-        runtime?.apply(at: Float(time)) ?? false
+    /// Poses the model for the current time, collecting the joints it moved.
+    func apply(movedNodes: inout [Entity]) {
+        runtime?.apply(at: Float(time), movedNodes: &movedNodes)
     }
 }
 
@@ -196,7 +194,9 @@ extension GLTFEntity {
                                                          speed: speed)
         activeAnimationControllers.append(controller)
         components.set(GLTFAnimationPlaybackComponent())
-        if controller.apply() {
+        var movedNodes: [Entity] = []
+        controller.apply(movedNodes: &movedNodes)
+        if !movedNodes.isEmpty {
             flushSkinPose()
         }
         return controller
@@ -216,13 +216,14 @@ extension GLTFEntity {
             components.remove(GLTFAnimationPlaybackComponent.self)
             return
         }
-        var movedTransforms = false
+        movedAnimationNodes.removeAll(keepingCapacity: true)
         for controller in activeAnimationControllers {
-            movedTransforms = controller.advance(deltaTime: deltaTime) || movedTransforms
+            controller.advance(deltaTime: deltaTime, movedNodes: &movedAnimationNodes)
         }
-        // A paused or held pose leaves the skeleton where the last solve put it.
-        if movedTransforms {
-            invalidateSkinPose()
+        // A paused or held pose leaves the skeleton where the last solve put it, and a
+        // looping animation that rests moves only the joints something else has taken.
+        if !movedAnimationNodes.isEmpty {
+            invalidateSkinPose(for: movedAnimationNodes)
             // A model driving its own per-frame update solves the pose at the end of it,
             // after this frame's constraints and spring bones.
             if !refreshesSkinningPerFrame {
@@ -237,11 +238,12 @@ extension GLTFEntity {
     func applyPose(seekedBy controller: GLTFAnimationPlaybackController) {
         // A stopped controller has left the list, so everything running outranks it.
         let first = activeAnimationControllers.firstIndex { $0 === controller }.map { $0 + 1 } ?? 0
-        var moved = controller.apply()
+        var movedNodes: [Entity] = []
+        controller.apply(movedNodes: &movedNodes)
         for outranking in activeAnimationControllers[first...] {
-            moved = outranking.apply() || moved
+            outranking.apply(movedNodes: &movedNodes)
         }
-        if moved {
+        if !movedNodes.isEmpty {
             flushSkinPose()
         }
     }

@@ -273,13 +273,9 @@ final class VRMAnimationRuntime {
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension VRMAnimationRuntime: GLTFAnimationApplying {
-    /// Poses the bound bones and expressions for `time`.
-    ///
-    /// - Returns: whether any bone transform actually changed, so the caller
-    ///   can skip re-solving skin poses for a held pose.
-    @discardableResult
-    func apply(at time: Float) -> Bool {
-        var movedTransforms = false
+    /// Poses the bound bones and expressions for `time`, collecting the bones it moved
+    /// so the caller re-solves those joints alone and skips a held pose entirely.
+    func apply(at time: Float, movedNodes: inout [Entity]) {
         for binding in boneBindings {
             // The current transform is the base, so paths this animation does not drive
             // keep whatever else wrote them.
@@ -295,12 +291,11 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
             // transforms, so a held pose must not write at all.
             guard transform != current else { continue }
             binding.target.transform = transform
-            movedTransforms = true
+            movedNodes.append(binding.target)
         }
 
         applyExpressions(at: time)
         applyGaze(at: time)
-        return movedTransforms
     }
 
     /// Sampled weights go to the entity in full every frame, so an animation started

@@ -400,17 +400,23 @@ struct GLTFAnimationPlaybackTests {
         let entity = try await TestSupport.loadEntity(.animatedTriangle)
         let controller = try entity.playAnimation(at: 0, loops: true)
 
+        func movedNodes(deltaTime: TimeInterval) -> [Entity] {
+            var moved: [Entity] = []
+            controller.advance(deltaTime: deltaTime, movedNodes: &moved)
+            return moved
+        }
+
         // A real advance moves the node...
-        #expect(controller.advance(deltaTime: 0.1))
+        #expect(!movedNodes(deltaTime: 0.1).isEmpty)
         // ...but re-applying the same time does not.
-        #expect(!controller.advance(deltaTime: 0))
+        #expect(movedNodes(deltaTime: 0).isEmpty)
 
         controller.isPaused = true
-        #expect(!controller.advance(deltaTime: 0.5))
+        #expect(movedNodes(deltaTime: 0.5).isEmpty)
         controller.isPaused = false
 
         controller.speed = 0
-        #expect(!controller.advance(deltaTime: 0.5))
+        #expect(movedNodes(deltaTime: 0.5).isEmpty)
     }
 
     @Test

@@ -161,6 +161,9 @@ public class GLTFEntity: Entity {
     private var cachedRestPose: GLTFRestPose?
     var animationRuntimes: [Int: GLTFAnimationRuntime] = [:]
     var activeAnimationControllers: [GLTFAnimationPlaybackController] = []
+    /// The nodes this frame's animation tick moved, reused across frames so the hot
+    /// path collects them without allocating.
+    var movedAnimationNodes: [Entity] = []
 
     /// Registers the components this entity relies on, exactly once per process.
     @MainActor private static let registerRealityKitTypes: Void = {

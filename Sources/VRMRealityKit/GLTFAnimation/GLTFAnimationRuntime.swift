@@ -225,14 +225,10 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
         weightBindings = weights
     }
 
-    /// Poses the bound entities for `time`.
-    ///
-    /// - Returns: whether any node transform actually changed, so the caller can
-    ///   skip re-solving skin poses for a held pose.
+    /// Poses the bound entities for `time`, collecting the nodes it moved so the caller
+    /// re-solves those joints alone and skips a held pose entirely.
     @MainActor
-    @discardableResult
-    func apply(at time: Float) -> Bool {
-        var movedTransforms = false
+    func apply(at time: Float, movedNodes: inout [Entity]) {
         for binding in transformBindings {
             // The current transform is the base, so paths this animation does not drive
             // keep whatever else wrote them.
@@ -245,7 +241,7 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
             // transforms, so a held pose must not write at all.
             guard transform != current else { continue }
             binding.target.transform = transform
-            movedTransforms = true
+            movedNodes.append(binding.target)
         }
         for binding in weightBindings {
             let weights = binding.track.value(at: time)
@@ -253,7 +249,6 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
                 modelEntity.applyMorphWeights(weights)
             }
         }
-        return movedTransforms
     }
 }
 #endif
