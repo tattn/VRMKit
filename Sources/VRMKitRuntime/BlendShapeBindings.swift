@@ -116,11 +116,18 @@ package extension Dictionary {
     /// ordinary custom expressions untouched.
     func canonicalKey<Mesh>(for key: ExpressionKey) -> ExpressionKey?
         where Key == ExpressionKey, Value == ExpressionClip<Mesh> {
-        if self[key] != nil { return key }
+        canonicalClip(for: key)?.key
+    }
+
+    /// ``canonicalKey(for:)`` with the clip it resolved to, so a caller that needs both
+    /// pays one lookup rather than two: a tracker hands over dozens of keys a frame.
+    func canonicalClip<Mesh>(for key: ExpressionKey) -> (key: ExpressionKey, clip: ExpressionClip<Mesh>)?
+        where Key == ExpressionKey, Value == ExpressionClip<Mesh> {
+        if let clip = self[key] { return (key, clip) }
         guard case .custom(let name) = key,
               let preset = ExpressionPreset(name: name),
-              self[.preset(preset)] != nil else { return nil }
-        return .preset(preset)
+              let clip = self[.preset(preset)] else { return nil }
+        return (.preset(preset), clip)
     }
 }
 

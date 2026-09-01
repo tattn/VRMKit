@@ -791,11 +791,15 @@ final class GLTFSceneBuilder {
         guard !work.isEmpty else { return }
 
         let document = self.document
+        let maxTextureDimension = resources.maxTextureDimension
         let decoded = try await withThrowingTaskGroup(of: PreparedTexture.self) { group in
             for item in work.values {
                 group.addTask {
                     try Task.checkCancellation()
-                    let image = try document.image(at: item.imageIndex)
+                    // Before the bakes and the metallic/roughness split read it, so every
+                    // texture derived from this image shrinks with it.
+                    let image = try Self.clamped(document.image(at: item.imageIndex),
+                                                 to: maxTextureDimension)
                     return PreparedTexture(
                         imageIndex: item.imageIndex,
                         image: image,
@@ -885,9 +889,35 @@ final class GLTFSceneBuilder {
     /// be read as several textures.
     func image(withImageIndex index: Int) throws -> CGImage {
         if let cache = prepared.images[index] { return cache }
-        let image = try document.image(at: index)
+        let image = try Self.clamped(document.image(at: index), to: resources.maxTextureDimension)
         prepared.images[index] = image
         return image
+    }
+
+    /// An image no larger than `limit` on its longest side, redrawn at that size when it is.
+    ///
+    /// Whether a document's textures are oversized is a question about the app's output
+    /// resolution rather than about the document, so nothing is resized without a limit.
+    nonisolated static func clamped(_ image: @autoclosure () throws -> CGImage, to limit: Int?) rethrows -> CGImage {
+        let image = try image()
+        guard let limit, limit > 0, max(image.width, image.height) > limit else { return image }
+        let scale = Double(limit) / Double(max(image.width, image.height))
+        let width = max(1, Int((Double(image.width) * scale).rounded()))
+        let height = max(1, Int((Double(image.height) * scale).rounded()))
+        guard let context = CGContext(data: nil,
+                                      width: width,
+                                      height: height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: 0,
+                                      space: image.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: image.bitmapInfo.rawValue),
+              // A failed resize is not worth failing the load over.
+              let resized: CGImage = {
+                  context.interpolationQuality = .high
+                  context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+                  return context.makeImage()
+              }() else { return image }
+        return resized
     }
 
     /// The normal map a material samples, with `normalTexture.scale` applied.

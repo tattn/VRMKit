@@ -208,7 +208,7 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
     package func storeWeights<Value: BinaryFloatingPoint>(_ values: [ExpressionKey: Value]) -> Bool {
         var changed = false
         for (key, value) in values {
-            guard let key = canonicalKey(for: key), let clip = clips[key] else { continue }
+            guard let (key, clip) = clips.canonicalClip(for: key) else { continue }
             let normalized = clip.normalizedWeight(Double(value))
             let weight = normalized > 0 ? Float(normalized) : nil
             guard weight != weights[key] else { continue }

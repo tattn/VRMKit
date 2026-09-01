@@ -31,15 +31,21 @@ public struct VRMUpdateSystem: System {
     public init(scene: Scene) {}
 
     public func update(context: SceneUpdateContext) {
+        // Taking the queried component off an entity mid-walk is not something RealityKit
+        // defines, so it waits until the walk is done. Nil while every entity ticks.
+        var untickable: [VRMEntity]?
         for entity in context.entities(matching: Self.query, updatingSystemWhen: .rendering) {
             guard let vrmEntity = entity as? VRMEntity else { continue }
             // A clone inherits the marker component but not the runtime bindings
             // `update(deltaTime:)` drives, so it has nothing left to tick.
             guard vrmEntity.hasRuntimeBindings else {
-                vrmEntity.components.remove(VRMUpdateComponent.self)
+                untickable == nil ? untickable = [vrmEntity] : untickable?.append(vrmEntity)
                 continue
             }
             vrmEntity.update(deltaTime: context.deltaTime)
+        }
+        for entity in untickable ?? [] {
+            entity.components.remove(VRMUpdateComponent.self)
         }
     }
 }

@@ -17,15 +17,19 @@ final class GLTFResourceCache {
     /// The material shaders a load consults, in order.
     let shaders: [any GLTFMaterialShader]
     let profile: any GLTFLoadProfile
+    /// See ``GLTFEntityLoader/maxTextureDimension``.
+    let maxTextureDimension: Int?
 
     static let gltfLogger = Logger(subsystem: "dev.tattn.VRMKit", category: "glTF")
 
     init(document: GLTFDocument,
          shaders: [any GLTFMaterialShader],
-         profile: any GLTFLoadProfile) {
+         profile: any GLTFLoadProfile,
+         maxTextureDimension: Int? = nil) {
         self.document = document
         self.shaders = shaders
         self.profile = profile
+        self.maxTextureDimension = maxTextureDimension
         self.skins = Array(repeating: nil, count: document.gltf.skins.count)
         self.materials = Array(repeating: nil, count: document.gltf.materials.count)
     }

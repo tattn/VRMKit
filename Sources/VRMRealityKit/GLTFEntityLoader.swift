@@ -24,33 +24,48 @@ public final class GLTFEntityLoader {
     /// shader instances.
     public static var defaultShaders: [any GLTFMaterialShader] { [MToonShader()] }
 
+    /// The largest side a texture keeps, or nil to upload every image as authored.
+    ///
+    /// There is no default limit: how large a texture is ever drawn is the app's question,
+    /// not the document's. Setting one trades sharpness for GPU memory — a 4096x4096 RGBA
+    /// image costs about 85 MB with its mipmaps, and models routinely carry several.
+    public let maxTextureDimension: Int?
+
     public init(document: GLTFDocument,
-                shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) {
+                shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
+                maxTextureDimension: Int? = nil) {
         self.document = document
         self.shaders = shaders
+        self.maxTextureDimension = maxTextureDimension
         self.resources = GLTFResourceCache(document: document,
                                            shaders: shaders,
-                                           profile: GLTFDefaultLoadProfile())
+                                           profile: GLTFDefaultLoadProfile(),
+                                           maxTextureDimension: maxTextureDimension)
     }
 
     /// Loads a `.glb` / `.gltf` file. External resources resolve relative to its directory.
     public convenience init(withURL url: URL,
-                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(document: try GLTFDocument(withURL: url), shaders: shaders)
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
+                            maxTextureDimension: Int? = nil) throws {
+        self.init(document: try GLTFDocument(withURL: url), shaders: shaders,
+                  maxTextureDimension: maxTextureDimension)
     }
 
     /// Loads a bundled glTF resource.
     public convenience init(named: String,
-                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(document: try GLTFDocument(named: named), shaders: shaders)
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
+                            maxTextureDimension: Int? = nil) throws {
+        self.init(document: try GLTFDocument(named: named), shaders: shaders,
+                  maxTextureDimension: maxTextureDimension)
     }
 
     /// Loads in-memory glTF data, resolving external resources against `rootDirectory`.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
-                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
+                            maxTextureDimension: Int? = nil) throws {
         self.init(document: try GLTFDocument(data: data, rootDirectory: rootDirectory),
-                  shaders: shaders)
+                  shaders: shaders, maxTextureDimension: maxTextureDimension)
     }
 
     /// glTF extensions this loader implements, to satisfy `extensionsRequired`.

@@ -23,34 +23,44 @@ public final class VRMEntityLoader {
     private let queue = GLTFLoadQueue()
     var gltf: GLTF { vrm.document.gltf }
 
+    /// See ``GLTFEntityLoader/maxTextureDimension``.
+    public let maxTextureDimension: Int?
+
     public init(vrm: VRM,
-                shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) {
+                shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
+                maxTextureDimension: Int? = nil) {
         self.vrm = vrm
         self.shaders = shaders
+        self.maxTextureDimension = maxTextureDimension
         let profile = VRMLoadProfile(vrm: vrm)
         self.profile = profile
         self.resources = GLTFResourceCache(document: vrm.document,
                                            shaders: shaders,
-                                           profile: profile)
+                                           profile: profile,
+                                           maxTextureDimension: maxTextureDimension)
     }
 
     /// Loads a VRM from a file URL. External resources resolve relative to its directory.
     public convenience init(withURL url: URL,
-                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(vrm: try VRM(withURL: url), shaders: shaders)
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
+                            maxTextureDimension: Int? = nil) throws {
+        self.init(vrm: try VRM(withURL: url), shaders: shaders, maxTextureDimension: maxTextureDimension)
     }
 
     /// Loads a bundled VRM resource.
     public convenience init(named: String,
-                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(vrm: try VRM(named: named), shaders: shaders)
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
+                            maxTextureDimension: Int? = nil) throws {
+        self.init(vrm: try VRM(named: named), shaders: shaders, maxTextureDimension: maxTextureDimension)
     }
 
     /// Loads a VRM from in-memory data, resolving external resources against `rootDirectory`.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
-                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders) throws {
-        self.init(vrm: try VRM(data: data, rootDirectory: rootDirectory), shaders: shaders)
+                            shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
+                            maxTextureDimension: Int? = nil) throws {
+        self.init(vrm: try VRM(data: data, rootDirectory: rootDirectory), shaders: shaders,
+                  maxTextureDimension: maxTextureDimension)
     }
 
     /// The chain ``GLTFEntityLoader`` loads through, MToon included.

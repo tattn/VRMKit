@@ -60,7 +60,25 @@ struct ExpressionCostBenchmark {
         for (label, keys) in [("model keys", ownKeys), ("tracker keys", trackedKeys)] {
             print(String(format: "BENCH %@ (%d): %.1f µs/frame",
                          label, keys.count, microsecondsPerFrame(driving: entity, keys: keys)))
+            print(String(format: "BENCH %@ (%d) held: %.1f µs/frame",
+                         label, keys.count, microsecondsPerFrame(holding: entity, keys: keys)))
         }
+    }
+
+    /// Times a frame that hands over weights none of which moved: `storeWeights` still
+    /// looks every key up, then reports nothing changed and skips the write. What is left
+    /// is the cost of the keys themselves.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func microsecondsPerFrame(holding entity: VRMEntity, keys: [ExpressionKey], frames requested: Int = 4000) -> Double {
+        let frames = ProcessInfo.processInfo.environment["VRMKIT_BENCH_FRAMES"].flatMap(Int.init) ?? requested
+        var weights: [ExpressionKey: CGFloat] = [:]
+        weights.reserveCapacity(keys.count)
+        for (offset, key) in keys.enumerated() { weights[key] = CGFloat(offset % 7) / 100 }
+
+        for _ in 0..<(frames / 4) { entity.setExpressions(weights) }
+        let start = CFAbsoluteTimeGetCurrent()
+        for _ in 0..<frames { entity.setExpressions(weights) }
+        return (CFAbsoluteTimeGetCurrent() - start) * 1_000_000 / Double(frames)
     }
 
     /// Times the whole per-frame call an app makes: build the weights, hand them over,

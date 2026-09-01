@@ -464,7 +464,8 @@ public class GLTFEntity: Entity {
                 continue
             }
             let modelWorld = binding.modelEntity.transformMatrix(relativeTo: nil)
-            if let cached = solvedPoses[key] {
+            let previous = solvedPoses[key]
+            if let cached = previous {
                 if cached.modelWorld == modelWorld {
                     if let pose = changedPoses[key] {
                         setSkinPose(pose, for: binding)
@@ -481,10 +482,17 @@ public class GLTFEntity: Entity {
                 }
             }
             let solved = jointTransforms(for: binding)
-            let pose = JointTransforms(solved.transforms)
             solvedPoses[key] = SolvedSkeletonPose(modelWorld: modelWorld,
                                                   transforms: solved.transforms,
                                                   dependentRows: solved.dependentRows)
+            // An app that cannot say which joint it posed asks for a full solve every
+            // frame, so the pose is often the one the skeleton already holds — and
+            // writing it back is the expensive half, not solving it.
+            if let previous, previous.transforms == solved.transforms {
+                unchangedKeys.insert(key)
+                continue
+            }
+            let pose = JointTransforms(solved.transforms)
             changedPoses[key] = pose
             unchangedKeys.remove(key)
             setSkinPose(pose, for: binding)
