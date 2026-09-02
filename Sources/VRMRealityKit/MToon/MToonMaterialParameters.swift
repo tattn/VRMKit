@@ -100,10 +100,14 @@ struct MToonMaterialParameters {
         normalParameters = SIMD4<Float>(mtoon.normalScale, 0, 0, 0)
     }
 
-    /// What does not belong in the packed texture: the outline budget, which
-    /// belongs to the mesh a pass draws rather than to the material.
+    /// See ``MToonShader/compensatesToneMapping``.
+    var compensatesToneMapping = true
+
+    /// What does not belong in the packed texture: the renderer's tone-mapping
+    /// flag rather than the material's, and the outline budget, which belongs to
+    /// the mesh a pass draws.
     func customValue(outlineBudget: Float) -> SIMD4<Float> {
-        SIMD4<Float>(0, 0, 0, outlineBudget)
+        SIMD4<Float>(compensatesToneMapping ? 1 : 0, 0, 0, outlineBudget)
     }
 
     mutating func setColor(_ color: SIMD4<Float>,

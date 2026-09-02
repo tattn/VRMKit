@@ -62,10 +62,19 @@ public final class MToonShader: GLTFMaterialShader {
 
     public let source: Source
     public let outlinePass: OutlinePass
+    /// Whether the shader pre-inverts RealityKit's tone mapping so the toon color
+    /// survives it. That is what a `RealityView` needs. A `RealityRenderer` that
+    /// has turned tone mapping off (`cameraSettings.isToneMappingEnabled`) passes
+    /// `false` and gets the color as is, which also sidesteps the inversion table
+    /// being calibrated for one platform's tone curve.
+    public let compensatesToneMapping: Bool
 
-    public init(source: Source = .authoredOnly, outlinePass: OutlinePass = .automatic) {
+    public init(source: Source = .authoredOnly,
+                outlinePass: OutlinePass = .automatic,
+                compensatesToneMapping: Bool = true) {
         self.source = source
         self.outlinePass = outlinePass
+        self.compensatesToneMapping = compensatesToneMapping
     }
 
 #if !os(visionOS)
@@ -280,6 +289,7 @@ public final class MToonShader: GLTFMaterialShader {
                             textureTransform: MaterialParameterTypes.TextureCoordinateTransform,
                             context: GLTFMaterialShaderContext) throws -> MToonMaterialParameters {
         var parameters = MToonMaterialParameters(descriptor)
+        parameters.compensatesToneMapping = compensatesToneMapping
         parameters.setTextureTransform(scale: textureTransform.scale,
                                        offset: textureTransform.offset,
                                        rotation: textureTransform.rotation)

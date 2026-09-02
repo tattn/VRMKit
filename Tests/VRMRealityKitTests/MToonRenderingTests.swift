@@ -34,8 +34,9 @@ struct MToonRenderingTests {
         #expect(customMaterial.clearcoat.texture == nil)
 
         // The light direction rides in the parameter texture; custom.value only
-        // carries the outline budget.
-        #expect(customMaterial.custom.value.isApproximatelyEqual(to: SIMD4<Float>(0, 0, 0, 0)))
+        // carries the tone-mapping compensation flag (on by default) and the
+        // outline budget.
+        #expect(customMaterial.custom.value.isApproximatelyEqual(to: SIMD4<Float>(1, 0, 0, 0)))
     }
 
     @Test
@@ -525,18 +526,37 @@ struct MToonRenderingTests {
         #expect(checkedStates > 0)
         #expect(mtoonParameterWriteCounts(in: vrmEntity) != writesBefore)
 
-        // The materials still hold the shared parameter texture, with only the
-        // outline budget in custom.value.
+        // The materials still hold the shared parameter texture; custom.value
+        // carries only the renderer's tone-mapping flag and the outline budget.
         for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
             guard let model = modelEntity.components[ModelComponent.self] else { continue }
             let isOutlinePass = modelEntity.components.has(GLTFMaterialPassComponent.self)
             for material in model.materials.compactMap({ $0 as? CustomMaterial }) {
                 let value = material.custom.value
-                #expect(SIMD3<Float>(value.x, value.y, value.z) == .zero)
+                #expect(value.x == 1)
+                #expect(SIMD2<Float>(value.y, value.z) == .zero)
                 #expect(isOutlinePass ? value.w > 0 : value.w == 0)
                 #expect(material.custom.texture != nil)
             }
         }
+    }
+
+    @Test
+    func testCompensatesToneMappingFlagReachesCustomValue() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData,
+                                         shaders: [MToonShader(compensatesToneMapping: false)])
+        let vrmEntity = try await loader.loadEntity()
+
+        var checkedMaterials = 0
+        for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
+            guard let model = modelEntity.components[ModelComponent.self] else { continue }
+            for material in model.materials.compactMap({ $0 as? CustomMaterial }) {
+                #expect(material.custom.value.x == 0)
+                checkedMaterials += 1
+            }
+        }
+        #expect(checkedMaterials > 0)
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

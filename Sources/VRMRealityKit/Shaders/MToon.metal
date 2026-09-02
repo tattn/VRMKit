@@ -10,30 +10,21 @@ using namespace metal;
 
 // Metal allows at most 16 constant samplers per shader entry point, and the
 // budget is shared with the shaders RealityKit generates. Exceeding it only
-// shows up at runtime, as a pipeline that never builds, so the samplers below
-// are spent on addressing alone: a coordinate wrapped in the shader and handed
-// to a clamping sampler cannot filter across a REPEAT seam. glTF's
-// magnification, minification and mip filters are applied to the sample
-// instead; see mtoonFilteredSample.
+// shows up at runtime, as a pipeline that never builds: with one sampler per
+// addressing mode (nine) the depth-only technique of the outline pass, whose
+// vertex stage runs the geometry modifier below, failed to build on iPhone.
+// So the shader owns two samplers -- one for the parameter rows and one
+// repeating sampler for every texture -- and applies glTF's wrap modes
+// (mtoonWrappedCoordinate) and filter modes (mtoonWrappedSample) to the
+// coordinate and the sample instead.
 constexpr sampler mtoonParameterSampler(coord::normalized,
                                         address::clamp_to_edge,
                                         filter::nearest,
                                         mip_filter::none);
 
-#define MTOON_SAMPLER(name, sMode, tMode)                                            \
-    constexpr sampler name(coord::normalized,                                        \
-                           s_address::sMode, t_address::tMode,                       \
-                           mag_filter::linear, min_filter::linear, mip_filter::linear);
-
-MTOON_SAMPLER(mtoonRepeatRepeat, repeat, repeat)
-MTOON_SAMPLER(mtoonRepeatClamp, repeat, clamp_to_edge)
-MTOON_SAMPLER(mtoonRepeatMirror, repeat, mirrored_repeat)
-MTOON_SAMPLER(mtoonClampRepeat, clamp_to_edge, repeat)
-MTOON_SAMPLER(mtoonClampClamp, clamp_to_edge, clamp_to_edge)
-MTOON_SAMPLER(mtoonClampMirror, clamp_to_edge, mirrored_repeat)
-MTOON_SAMPLER(mtoonMirrorRepeat, mirrored_repeat, repeat)
-MTOON_SAMPLER(mtoonMirrorClamp, mirrored_repeat, clamp_to_edge)
-MTOON_SAMPLER(mtoonMirrorMirror, mirrored_repeat, mirrored_repeat)
+constexpr sampler mtoonTextureSampler(coord::normalized,
+                                      address::repeat,
+                                      mag_filter::linear, min_filter::linear, mip_filter::linear);
 
 constant float mtoonParameterTextureWidth = 27.0;
 
@@ -85,48 +76,86 @@ half4 mtoonSamplerParameter(realitykit::texture::textures textures, float slot)
     return mtoonParameter(textures, mtoonSamplerParameterStart + slot);
 }
 
-// The LOD a sample resolves to. The query needs the screen-space derivatives only
-// a fragment function has, so specializing -- rather than branching -- keeps the
-// derivative instruction out of the code the vertex stage links against.
+// The LOD a sample resolves to, clamped to the texture's mip range like
+// calculate_clamped_lod. It needs the screen-space derivatives only a fragment
+// function has, so specializing -- rather than branching -- keeps the derivative
+// instructions out of the code the vertex stage links against.
+//
+// Computed from the derivatives by hand rather than with calculate_clamped_lod:
+// on an iPhone 17 Pro running iOS 27.0 the on-device Metal compiler crashes
+// (EXC_ARM_MTE_TAGCHECK_FAIL inside libLLVM's AGX backend) while linking a
+// surface shader that uses the query into RealityKit's fragment pipeline, and
+// RealityKit then silently draws the material with its fallback technique. The
+// hand-written form is the isotropic LOD the query computes for these samplers,
+// which set no anisotropy.
 template <bool ImplicitLOD>
 struct MToonSampledLOD {
-    static float of(texture2d<half> texture, sampler textureSampler, float2 uv);
+    static float of(texture2d<half> texture, float2 uv);
 };
 
 template <>
 struct MToonSampledLOD<true> {
-    static float of(texture2d<half> texture, sampler textureSampler, float2 uv)
+    static float of(texture2d<half> texture, float2 uv)
     {
-        return texture.calculate_clamped_lod(textureSampler, uv);
+        const float2 size = float2(texture.get_width(), texture.get_height());
+        const float2 dx = dfdx(uv * size);
+        const float2 dy = dfdy(uv * size);
+        const float footprint = max(dot(dx, dx), dot(dy, dy));
+        const float lod = 0.5 * log2(max(footprint, 1e-8));
+        return clamp(lod, 0.0, float(texture.get_num_mip_levels()) - 1.0);
     }
 };
 
 template <>
 struct MToonSampledLOD<false> {
-    static float of(texture2d<half>, sampler, float2)
+    static float of(texture2d<half>, float2)
     {
         return 0.0;
     }
 };
 
-// glTF's filter modes, applied to the sample rather than baked into sampler
-// state. `filterIndex` is MToonSamplerFilter.index on the Swift side:
-// (magnification * 2 + minification) * 3 + mip, where the texel filters are
-// 0 = linear, 1 = nearest and the mip filter is 0 = none, 1 = nearest,
-// 2 = linear.
-template <bool ImplicitLOD>
-half4 mtoonFilteredSample(texture2d<half> texture,
-                          sampler textureSampler,
-                          float2 uv,
-                          int filterIndex)
+// glTF's wrap modes, applied to one coordinate before it reaches the repeating
+// sampler. `mode` is MToonShader.wrapMode(_:): 0 = repeat, 1 = clamp to edge,
+// 2 = mirrored repeat. `levelSize` is the size of the coarsest mip level the
+// sample touches: a clamped coordinate stays inside that level's outer texel
+// centres, so the repeating sampler never filters across the seam, which is
+// exactly what clamp_to_edge does. A mirrored coordinate is folded into [0, 1]
+// first; at its seams the mirrored neighbour is the edge texel itself, so the
+// same clamp reproduces mirrored_repeat too.
+float mtoonWrappedCoordinate(float coordinate, int mode, float levelSize)
 {
+    if (mode == 0) {
+        return coordinate;
+    }
+    float folded = coordinate;
+    if (mode == 2) {
+        const float period = coordinate - 2.0 * floor(coordinate * 0.5);
+        folded = 1.0 - abs(period - 1.0);
+    }
+    const float halfTexel = 0.5 / max(levelSize, 1.0);
+    return clamp(folded, halfTexel, 1.0 - halfTexel);
+}
+
+// One texture sample with glTF's wrap and filter modes applied. The sampler
+// parameter row is (wrapS, wrapT, filterIndex, 0), where filterIndex is
+// MToonSamplerFilter.index on the Swift side:
+// (magnification * 2 + minification) * 3 + mip, with the texel filters
+// 0 = linear, 1 = nearest and the mip filter 0 = none, 1 = nearest, 2 = linear.
+template <bool ImplicitLOD>
+half4 mtoonWrappedSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
+{
+    const int wrapS = int(float(samplerParameters.x) + 0.5);
+    const int wrapT = int(float(samplerParameters.y) + 0.5);
+    const int filterIndex = int(float(samplerParameters.z) + 0.5);
     const int mipFilter = filterIndex % 3;
     const bool nearestMinification = (filterIndex / 3) % 2 != 0;
     const bool nearestMagnification = filterIndex / 6 != 0;
 
-    // Sampling at an explicit LOD leaves the mip filter to this function. The
+    // The LOD comes from the unwrapped coordinate: folding a mirrored coordinate
+    // flips its derivatives but not their size, and the sample below takes the
+    // level explicitly, so the sampler never sees the wrapped derivatives. The
     // outline geometry modifier has no implicit LOD at all, so it samples level 0.
-    const float sampledLod = MToonSampledLOD<ImplicitLOD>::of(texture, textureSampler, uv);
+    const float sampledLod = MToonSampledLOD<ImplicitLOD>::of(texture, uv);
     // glTF's NEAREST and LINEAR minFilters do not mipmap, so they are level 0;
     // the MIPMAP_NEAREST filters take the nearest level; the MIPMAP_LINEAR
     // filters blend the two levels the fractional LOD falls between.
@@ -135,41 +164,20 @@ half4 mtoonFilteredSample(texture2d<half> texture,
     // sampler resolved is what decides which of the two applies here.
     const bool nearest = sampledLod > 0.0 ? nearestMinification : nearestMagnification;
 
-    float2 sampleUV = uv;
+    // A blended sample touches the level above the fractional LOD as well, and
+    // its texels are the larger ones, so its size sets the clamp.
+    const uint coarsestLevel = uint(ceil(lod));
+    const float2 coarsestSize = float2(texture.get_width(coarsestLevel), texture.get_height(coarsestLevel));
+    float2 sampleUV = float2(mtoonWrappedCoordinate(uv.x, wrapS, coarsestSize.x),
+                             mtoonWrappedCoordinate(uv.y, wrapT, coarsestSize.y));
     if (nearest) {
         // A linear sampler returns one texel exactly when the coordinate sits at
         // that texel's centre, so NEAREST costs a coordinate snap instead of a
         // sampler of its own. It is approximate only where two levels are blended.
         const float2 levelSize = float2(texture.get_width(uint(lod)), texture.get_height(uint(lod)));
-        sampleUV = (floor(uv * levelSize) + 0.5) / levelSize;
+        sampleUV = (floor(sampleUV * levelSize) + 0.5) / levelSize;
     }
-    return texture.sample(textureSampler, sampleUV, level(lod));
-}
-
-// The sampler parameter row is (wrapS, wrapT, filterIndex, 0). The wrap modes
-// are encoded as 0 = repeat, 1 = clamp to edge, 2 = mirrored repeat by
-// MToonShader.wrapMode(_:), and filterIndex by MToonSamplerFilter.
-#define MTOON_SAMPLE_CASE(name, index)                                               \
-    case (index): return mtoonFilteredSample<ImplicitLOD>(texture, name, uv, filterIndex);
-
-template <bool ImplicitLOD>
-half4 mtoonWrappedSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
-{
-    const int wrapS = int(float(samplerParameters.x) + 0.5);
-    const int wrapT = int(float(samplerParameters.y) + 0.5);
-    const int filterIndex = int(float(samplerParameters.z) + 0.5);
-    switch (wrapS * 3 + wrapT) {
-        MTOON_SAMPLE_CASE(mtoonRepeatRepeat, 0)
-        MTOON_SAMPLE_CASE(mtoonRepeatClamp, 1)
-        MTOON_SAMPLE_CASE(mtoonRepeatMirror, 2)
-        MTOON_SAMPLE_CASE(mtoonClampRepeat, 3)
-        MTOON_SAMPLE_CASE(mtoonClampClamp, 4)
-        MTOON_SAMPLE_CASE(mtoonClampMirror, 5)
-        MTOON_SAMPLE_CASE(mtoonMirrorRepeat, 6)
-        MTOON_SAMPLE_CASE(mtoonMirrorClamp, 7)
-        MTOON_SAMPLE_CASE(mtoonMirrorMirror, 8)
-        default: return mtoonFilteredSample<ImplicitLOD>(texture, mtoonRepeatRepeat, uv, filterIndex);
-    }
+    return texture.sample(mtoonTextureSampler, sampleUV, level(lod));
 }
 
 // Fragment-stage sampling: the LOD comes from the screen-space derivatives.
@@ -214,6 +222,15 @@ float3 realityKitInverseToneMap(float3 color)
     return float3(realityKitInverseToneMapChannel(color.x),
                   realityKitInverseToneMapChannel(color.y),
                   realityKitInverseToneMapChannel(color.z));
+}
+
+// The inversion assumes the render pass tone maps. A renderer that has turned
+// tone mapping off (RealityRenderer.cameraSettings.isToneMappingEnabled) says
+// so through custom_parameter().x == 0 and gets the color as is; the table is
+// calibrated for one tone curve and does not hold on every platform.
+float3 mtoonOutputColor(float4 customParameter, float3 color)
+{
+    return customParameter.x > 0.5f ? realityKitInverseToneMap(color) : color;
 }
 
 // MToon's rim term is modulated by the *lighting*, never by the surface's own
@@ -485,7 +502,7 @@ void mtoonSurface(realitykit::surface_parameters params)
     float opacity = mtoonOpacity(material.opacity_threshold(), baseSample, baseColorFactor, extraFlags, shadeParams);
 
     surface.set_base_color(half3(0.0h));
-    surface.set_emissive_color(half3(realityKitInverseToneMap(color)));
+    surface.set_emissive_color(half3(mtoonOutputColor(params.uniforms().custom_parameter(), color)));
     surface.set_opacity(half(opacity));
     surface.set_roughness(1.0h);
     surface.set_metallic(0.0h);
@@ -531,7 +548,7 @@ void mtoonOutlineSurface(realitykit::surface_parameters params)
     float3 finalColor = float3(outlineColor.rgb) * outlineLit;
 
     surface.set_base_color(half3(0.0h));
-    surface.set_emissive_color(half3(realityKitInverseToneMap(finalColor)));
+    surface.set_emissive_color(half3(mtoonOutputColor(params.uniforms().custom_parameter(), finalColor)));
     surface.set_opacity(half(opacity));
     surface.set_roughness(1.0h);
     surface.set_metallic(0.0h);
