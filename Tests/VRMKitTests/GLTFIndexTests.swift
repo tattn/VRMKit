@@ -21,7 +21,6 @@ struct GLTFIndexTests {
 
         let saved = try GLTFDocument(data: try document.serialize()).gltf
         #expect(saved.nodes.map(\.name) == ["third"])
-        // The two detached nodes went, and the one still drawn moved down into their place.
         #expect(result.newIndex(of: first) == nil)
         #expect(result.newIndex(of: second) == nil)
         let moved = try #require(result.newIndex(of: third))

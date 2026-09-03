@@ -9,9 +9,8 @@ extension VRMEntity {
     /// humanoid bones and expressions, and returns its controller.
     ///
     /// Any VRM drives this way, 1.0 and 0.x alike, whatever model the
-    /// animation was authored on. Channels the model cannot follow are
-    /// skipped: bones it does not have, and the animation's look-at, which this
-    /// runtime does not implement yet.
+    /// animation was authored on. Channels the model cannot follow, such as
+    /// bones it does not have, are skipped.
     ///
     /// Multiple animations can run at once, glTF ones included; targets they
     /// share apply in playback-start order, so the one started last wins.

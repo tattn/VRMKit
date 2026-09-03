@@ -49,7 +49,6 @@ public struct VRM1: Sendable {
     }
 }
 
-// VRMC_vrm
 public extension VRM1 {
     struct Meta: Codable, Sendable {
         public let name: String
@@ -317,7 +316,6 @@ public extension VRM1 {
     }
 }
 
-// VRMC_springBone
 extension VRM1 {
     public struct SpringBone: Codable, Sendable {
         /// The `VRMC_springBone` spec versions this type models, which the extension

@@ -91,7 +91,6 @@ struct GLTFEditableDocumentTests {
         #expect(nodes[index.rawValue].name == "hand item")
         #expect(nodes[index.rawValue].translation.x == 1)
         #expect(nodes[index.rawValue].scale.y == 2)
-        // Everything that was there is still where it was.
         #expect(zip(nodesBefore, nodes).allSatisfy { $0.name == $1.name })
     }
 

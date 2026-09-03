@@ -50,7 +50,6 @@ public struct GLTFSnapshotOptions: Sendable {
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public enum GLTFSnapshotError: Error {
-    /// The machine has no Metal device to render with.
     case noMetalDevice
     case encodingFailed
     /// The entity draws nothing, so there is no frame to fit a camera to.

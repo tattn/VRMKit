@@ -6,7 +6,6 @@ import simd
 /// VRM 0.x names the nodes a swing starts at and swings everything below each of them,
 /// on the one set of parameters the group states. ``VRM1Spring`` is the VRM 1.0 shape.
 public struct VRM0SpringBoneGroup: Equatable, Sendable {
-    /// The nodes the swing starts at. Everything below each of them swings.
     public var rootBones: [GLTFNodeIndex]
     /// How strongly a bone returns to the pose it was authored in.
     public var stiffness: Float

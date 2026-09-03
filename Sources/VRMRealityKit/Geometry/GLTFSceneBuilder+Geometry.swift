@@ -35,13 +35,85 @@ extension GLTFSceneBuilder {
                                    jointIndexRemaps: remaps)
     }
 
-    /// The geometry of one primitive: what the prepare pass decoded, or a decode on the
-    /// spot for one it did not reach. Taken rather than read, since the build turns it
-    /// into a `MeshResource` and holding it past that is a second copy of the model.
-    func decodedGeometry(forKey key: PrimitiveGeometryKey,
-                         primitive: GLTF.Mesh.Primitive) throws -> GLTFPrimitiveGeometry? {
-        if let decoded = prepared.geometries.removeValue(forKey: key) { return decoded }
-        return try geometryDecoder().decode(primitive, skinIndex: key.skinIndex)
+    /// One primitive conditioned for the build: what the prepare pass made of it, or made
+    /// on the spot for one it did not reach. Taken rather than read, since the build turns
+    /// it into a `MeshResource` and holding it past that is a second copy of the model.
+    func preparedPrimitive(forKey key: PrimitiveGeometryKey,
+                           primitive: GLTF.Mesh.Primitive,
+                           headJoints: Set<UInt32>) throws -> GLTFPreparedPrimitive? {
+        if let prepared = prepared.primitives.removeValue(forKey: key) {
+            guard let prepared else { return nil }
+            if prepared.cutsHead == !headJoints.isEmpty { return prepared }
+            // The other template of the same primitive: same vertices, its own cut.
+            return GLTFPreparedPrimitive(geometry: prepared.geometry,
+                                         cutsHead: !headJoints.isEmpty,
+                                         firstPersonMask: Self.firstPersonMask(of: prepared.geometry, headJoints: headJoints),
+                                         jointInfluences: prepared.jointInfluences)
+        }
+        guard let geometry = try geometryDecoder().decode(primitive, skinIndex: key.skinIndex) else { return nil }
+        return try Self.conditioned(geometry, headJoints: headJoints)
+    }
+
+    /// What the build derives from a decoded primitive, computed off the actor: these
+    /// walk every vertex or triangle, which costs as much as the decode itself.
+    nonisolated static func conditioned(_ geometry: GLTFPrimitiveGeometry,
+                                        headJoints: Set<UInt32>) throws -> GLTFPreparedPrimitive {
+        GLTFPreparedPrimitive(geometry: geometry,
+                              cutsHead: !headJoints.isEmpty,
+                              firstPersonMask: firstPersonMask(of: geometry, headJoints: headJoints),
+                              jointInfluences: geometry.isSkinned ? try jointInfluences(of: geometry) : nil)
+    }
+
+    private nonisolated static func firstPersonMask(of geometry: GLTFPrimitiveGeometry,
+                                                    headJoints: Set<UInt32>) -> FirstPersonPrimitiveMask {
+        FirstPersonAutoMask.mask(indices: geometry.indices,
+                                 joints: geometry.joints,
+                                 weights: geometry.weights,
+                                 headJoints: headJoints)
+    }
+
+    /// A skinned primitive's vertex influences in the skin's joint order, four per vertex
+    /// with the weights renormalized.
+    private nonisolated static func jointInfluences(of geometry: GLTFPrimitiveGeometry) throws -> [MeshJointInfluence] {
+        let joints = geometry.joints
+        let weights = geometry.weights
+        let remap = geometry.jointIndexRemap
+        guard joints.count == weights.count else {
+            throw VRMError._dataInconsistent("JOINTS_0 and WEIGHTS_0 counts do not match")
+        }
+        guard joints.count == geometry.positions.count else {
+            throw VRMError._dataInconsistent("joint influence count \(joints.count) does not match vertex count \(geometry.positions.count)")
+        }
+
+        var influences: [MeshJointInfluence] = []
+        influences.reserveCapacity(joints.count * 4)
+        func remapped(_ jointIndex: UInt32) throws -> Int {
+            guard remap.indices.contains(Int(jointIndex)) else {
+                throw VRMError._dataInconsistent(
+                    "joint index \(jointIndex) is out of range for \(remap.count) skin joints"
+                )
+            }
+            return remap[Int(jointIndex)]
+        }
+        for i in 0..<joints.count {
+            let joint = joints[i]
+            var w0 = weights[i].x
+            var w1 = weights[i].y
+            var w2 = weights[i].z
+            var w3 = weights[i].w
+            let sum = w0 + w1 + w2 + w3
+            if sum > 0 {
+                w0 /= sum
+                w1 /= sum
+                w2 /= sum
+                w3 /= sum
+            }
+            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.x), weight: w0))
+            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.y), weight: w1))
+            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.z), weight: w2))
+            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.w), weight: w3))
+        }
+        return influences
     }
 
     private func geometryDecoder() throws -> GLTFGeometryDecoder {
@@ -63,31 +135,34 @@ extension GLTFSceneBuilder {
         let decoder = try geometryDecoder()
 
         let decoded = try await withThrowingTaskGroup(
-            of: (PrimitiveGeometryKey, GLTFPrimitiveGeometry?).self
+            of: (PrimitiveGeometryKey, GLTFPreparedPrimitive?).self
         ) { group in
             for item in work {
                 group.addTask {
                     try Task.checkCancellation()
-                    return (item.key, try decoder.decode(item.primitive, skinIndex: item.key.skinIndex))
+                    guard let geometry = try decoder.decode(item.primitive, skinIndex: item.key.skinIndex) else {
+                        return (item.key, nil)
+                    }
+                    return (item.key, try Self.conditioned(geometry, headJoints: item.headJoints))
                 }
             }
-            var results: [(PrimitiveGeometryKey, GLTFPrimitiveGeometry?)] = []
+            var results: [(PrimitiveGeometryKey, GLTFPreparedPrimitive?)] = []
             results.reserveCapacity(work.count)
             for try await result in group {
                 results.append(result)
             }
             return results
         }
-        for (key, geometry) in decoded {
-            prepared.geometries[key] = geometry
+        for (key, primitive) in decoded {
+            prepared.primitives[key] = primitive
         }
     }
 
     /// Every primitive the scene has still to build, paired with the skin it is drawn
     /// with. A mesh whose template the loader already holds is left out, since the build
     /// clones the template rather than reading a vertex of it.
-    private func geometryWork() throws -> [(key: PrimitiveGeometryKey, primitive: GLTF.Mesh.Primitive)] {
-        var work: [(key: PrimitiveGeometryKey, primitive: GLTF.Mesh.Primitive)] = []
+    private func geometryWork() throws -> [(key: PrimitiveGeometryKey, primitive: GLTF.Mesh.Primitive, headJoints: Set<UInt32>)] {
+        var work: [(key: PrimitiveGeometryKey, primitive: GLTF.Mesh.Primitive, headJoints: Set<UInt32>)] = []
         var seen: Set<PrimitiveGeometryKey> = []
         for drawn in try drawnMeshes() {
             let headJoints = try headJoints(ofNodeAt: drawn.nodeIndex,
@@ -102,7 +177,7 @@ extension GLTFSceneBuilder {
                                                primitiveIndex: primitiveIndex,
                                                skinIndex: drawn.skinIndex)
                 guard seen.insert(key).inserted else { continue }
-                work.append((key, primitive))
+                work.append((key, primitive, headJoints))
             }
         }
         return work

@@ -85,7 +85,6 @@ public struct VRMAnimation: Sendable {
     }
 }
 
-// VRMC_vrm_animation
 public extension VRMAnimation {
     struct Humanoid: Codable, Sendable {
         /// VRM humanoid bone name → the node its animation channels target.

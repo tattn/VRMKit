@@ -23,14 +23,11 @@ inline float mtoonShading(float3 normal, float3 lightDirection, float shadingShi
                            metal::dot(normal, lightDirection) + shadingShift);
 }
 
-// Direct lighting: base and shade colors are mixed by the shading value and
-// modulated by the light color.
 inline float3 mtoonDirectLighting(float3 litColor, float3 shadeColor, float shading, float3 lightColor)
 {
     return metal::mix(shadeColor, litColor, shading) * lightColor;
 }
 
-// Global illumination: the lit color is modulated by the (equalized) GI color.
 inline float3 mtoonIndirectLighting(float3 litColor, float3 giColor)
 {
     return litColor * giColor;

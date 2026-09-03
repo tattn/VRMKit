@@ -22,7 +22,6 @@ struct GLTFAuthoringTests {
         let saved = try GLTFDocument(data: try document.serialize())
         let gltf = saved.gltf
         #expect(gltf.asset.version == "2.0")
-        // The scene the document was given, named as the one it draws.
         #expect(gltf.scene == 0)
         let scene = try #require(gltf.scenes[safe: 0])
         #expect(scene.nodes == [nodeIndex.rawValue])
@@ -254,7 +253,6 @@ struct GLTFAuthoringTests {
         #expect(saved.materialProperties.count == materials.count)
         #expect(saved.materialProperties.last?.vrmShader == .gltfShader)
         #expect(saved.materialProperties.last?.name == "picture")
-        // The entries the model came with are untouched.
         #expect(saved.materialProperties.dropLast().allSatisfy { $0.vrmShader != .gltfShader })
     }
 

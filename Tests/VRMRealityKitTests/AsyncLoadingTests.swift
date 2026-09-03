@@ -128,10 +128,10 @@ struct AsyncLoadingTests {
         let builder = loader.builder(sceneIndex: loader.gltf.scene ?? 0)
 
         try await builder.prepareGeometry()
-        #expect(!builder.prepared.geometries.isEmpty)
+        #expect(!builder.prepared.primitives.isEmpty)
 
         _ = try builder.build()
-        #expect(builder.prepared.geometries.isEmpty)
+        #expect(builder.prepared.primitives.isEmpty)
     }
 
     /// A second load of the same scene clones the mesh templates the first one
@@ -146,7 +146,7 @@ struct AsyncLoadingTests {
         let builder = loader.builder(sceneIndex: sceneIndex)
         try await builder.prepareGeometry()
 
-        #expect(builder.prepared.geometries.isEmpty)
+        #expect(builder.prepared.primitives.isEmpty)
         #expect(!loader.resources.meshTemplates.isEmpty)
     }
 }

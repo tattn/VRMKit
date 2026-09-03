@@ -486,7 +486,7 @@ public class GLTFEntity: Entity {
                                                   transforms: solved.transforms,
                                                   dependentRows: solved.dependentRows)
             // An app that cannot say which joint it posed asks for a full solve every
-            // frame, so the pose is often the one the skeleton already holds — and
+            // frame, so the pose is often the one the skeleton already holds, and
             // writing it back is the expensive half, not solving it.
             if let previous, previous.transforms == solved.transforms {
                 unchangedKeys.insert(key)

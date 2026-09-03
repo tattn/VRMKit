@@ -27,7 +27,7 @@ public final class GLTFEntityLoader {
     /// The largest side a texture keeps, or nil to upload every image as authored.
     ///
     /// There is no default limit: how large a texture is ever drawn is the app's question,
-    /// not the document's. Setting one trades sharpness for GPU memory — a 4096x4096 RGBA
+    /// not the document's. Setting one trades sharpness for GPU memory: a 4096x4096 RGBA
     /// image costs about 85 MB with its mipmaps, and models routinely carry several.
     public let maxTextureDimension: Int?
 
@@ -103,8 +103,23 @@ extension GLTFResourceCache {
     func build(into root: GLTFEntity) async throws -> (GLTFSceneBuilder, GLTFSceneBuilder.BuiltScene) {
         let builder = GLTFSceneBuilder(resources: self, root: root)
         try builder.validateDocument()
+        let started = ContinuousClock.now
         try await builder.prepare()
-        return (builder, try builder.build())
+        let buildStarted = ContinuousClock.now
+        let built = try builder.build()
+        let timings = builder.timings
+        Self.gltfLogger.info("""
+            Built scene \(root.sceneIndex, privacy: .public) in \(ContinuousClock.now - started, privacy: .public): \
+            prepare geometry \(timings.prepareGeometry, privacy: .public), \
+            prepare textures \(timings.prepareTextures, privacy: .public) \
+            (uploads \(timings.textureUploads, privacy: .public)), \
+            build \(ContinuousClock.now - buildStarted, privacy: .public) \
+            (materials \(timings.materials, privacy: .public) x\(timings.materialCount, privacy: .public), \
+            meshes \(timings.meshResources, privacy: .public) x\(timings.meshResourceCount, privacy: .public), \
+            late textures \(timings.textureResources, privacy: .public) x\(timings.textureResourceCount, privacy: .public))
+            """)
+        builder.prewarmFirstPersonMeshesInBackground()
+        return (builder, built)
     }
 }
 #endif

@@ -123,7 +123,6 @@ extension GLTFEditableDocument {
         try json.updateObject(at: index, in: .nodes, body)
     }
 
-    /// Checks that the document holds a node at `index`.
     func requireNode(at index: Int) throws {
         let count = json.count(.nodes)
         guard index >= 0, index < count else {

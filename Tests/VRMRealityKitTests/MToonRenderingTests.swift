@@ -721,7 +721,6 @@ struct MToonRenderingTests {
         throw VRMError.dataInconsistent("Expected CustomMaterial for material \(materialIndex)")
     }
 
-
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func firstCustomMaterial(in root: Entity) throws -> CustomMaterial {
         for modelEntity in TestSupport.modelEntities(in: root) {

@@ -96,7 +96,6 @@ struct SpringBoneRigTests {
         for _ in 0..<30 { rig.update(deltaTime: 1.0 / 60.0) }
 
         #expect(skipped.localRotation == skippedRotation)
-        // The joints on either side still swing, and still reach as far as they were drawn.
         #expect(nodes[3].worldPosition.y < -0.2)
         #expect(abs(simd_distance(nodes[2].worldPosition, nodes[3].worldPosition) - 1) < 1e-3)
     }

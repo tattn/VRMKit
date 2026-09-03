@@ -309,7 +309,6 @@ struct MToonWritingTests {
         return try material.decode(GLTF.Material.self)
     }
 
-    /// A material with a color, a cutout and a normal map, and the image it needs.
     private static let textureLessSource = """
     {
         "asset": {"version": "2.0"},
@@ -325,6 +324,7 @@ struct MToonWritingTests {
     }
     """
 
+    /// A material with a color, a cutout and a normal map, and the image it needs.
     private static let coloredCutoutSource = """
     {
         "asset": {"version": "2.0"},

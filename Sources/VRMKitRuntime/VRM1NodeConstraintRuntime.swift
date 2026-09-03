@@ -151,9 +151,8 @@ package enum VRMNodeConstraintRuntime {
 }
 
 /// Orders constraints so that every node a constraint reads is posed before it
-/// runs, rejecting duplicate targets and dependency cycles independently of the
-/// rendering backend that owns each binding. `dependencies` names the nodes one
-/// binding reads, of which only the constrained ones order anything.
+/// runs, rejecting duplicate targets and dependency cycles. `dependencies` names
+/// the nodes one binding reads, of which only the constrained ones order anything.
 package func orderNodeConstraints<Binding>(
     _ bindings: [Binding],
     targetIndex: (Binding) -> Int,

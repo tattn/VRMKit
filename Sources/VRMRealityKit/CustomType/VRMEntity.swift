@@ -159,7 +159,6 @@ public final class VRMEntity: GLTFEntity {
                                                       baseValue: baseValue)
             },
             textureTransformBinding: { expression, bind in
-                // As above, a malformed bind only invalidates itself.
                 guard let base = try? currentTextureTransform(withMaterialIndex: bind.material,
                                                               builder: builder) else {
                     Self.logger.warning("""
@@ -455,7 +454,6 @@ public final class VRMEntity: GLTFEntity {
     }
 }
 
-
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 /// Identifies one morph target on one mesh entity, both to accumulate expression
 /// weights and to cache where the target lives in the blend-shape weight sets.
@@ -530,8 +528,7 @@ extension Material {
                 return material.baseColor.tint.simd
             case .emissionColor:
                 return material.emissiveColor.color.simd
-            // shadeColor / matcapColor / rimColor / outlineColor are MToon-only, so they
-            // have no meaning on the PBR fallback material.
+            // MToon-only colors have no meaning on the PBR fallback material.
             case .shadeColor, .matcapColor, .rimColor, .outlineColor:
                 return SIMD4<Float>(1, 1, 1, 1)
             }

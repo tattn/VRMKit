@@ -27,6 +27,32 @@ final class GLTFSceneBuilder {
 
     var prepared = GLTFPreparedResources()
 
+    /// Where one load's time goes. The loader logs it: a slow load is one of these, and
+    /// which one decides what to fix.
+    struct Timings {
+        /// The prepare pass: vertex decoding and its derived data, off the actor.
+        var prepareGeometry: Duration = .zero
+        /// The prepare pass: image decoding and the texture uploads, off the actor.
+        var prepareTextures: Duration = .zero
+        /// The upload part of ``prepareTextures``: what RealityKit spends making the
+        /// texture resources once the images are decoded.
+        var textureUploads: Duration = .zero
+        /// Textures the build had to make on the actor, for a material asking for one the
+        /// prepare pass did not foresee.
+        var textureResources: Duration = .zero
+        var textureResourceCount = 0
+        /// Shading only: the textures a material makes on the way are counted above.
+        var materials: Duration = .zero
+        var materialCount = 0
+        var meshResources: Duration = .zero
+        var meshResourceCount = 0
+    }
+    private(set) var timings = Timings()
+
+    /// The merged meshes a first-person camera cuts, whose cut variant is generated
+    /// after the load rather than during it.
+    private(set) var firstPersonCatalogs: [GLTFMergedMeshCatalog] = []
+
     /// The scene's entities, by glTF node index.
     private(set) var nodes: [Entity?]
 
@@ -67,10 +93,44 @@ final class GLTFSceneBuilder {
     /// Conditions the vertex data and the images the build draws with, off the actor the
     /// entity graph is built on.
     func prepare() async throws {
+        // Vertex decoding is CPU-bound and the texture uploads wait on the GPU, so the
+        // two passes overlap rather than queue.
+        async let geometry: Void = prepareGeometryPass()
+        async let textures: Void = prepareTexturePass()
+        _ = try await (geometry, textures)
+        try Task.checkCancellation()
+    }
+
+    private func prepareGeometryPass() async throws {
+        let started = ContinuousClock.now
         try await prepareGeometry()
-        try Task.checkCancellation()
+        timings.prepareGeometry = ContinuousClock.now - started
+    }
+
+    private func prepareTexturePass() async throws {
+        let started = ContinuousClock.now
         try await prepareTextures()
-        try Task.checkCancellation()
+        let uploadsStarted = ContinuousClock.now
+        try await makeTextureResources()
+        timings.textureUploads = ContinuousClock.now - uploadsStarted
+        timings.prepareTextures = ContinuousClock.now - started
+    }
+
+    /// Generates the first-person variant of every cut mesh once the load has returned,
+    /// off the actor, so the first camera switch finds it ready without the load paying
+    /// for a mesh most sessions never draw. A switch landing first generates it on the spot.
+    func prewarmFirstPersonMeshesInBackground() {
+        let catalogs = firstPersonCatalogs
+        guard !catalogs.isEmpty else { return }
+        Task(priority: .utility) { @MainActor in
+            for catalog in catalogs {
+                do {
+                    try await catalog.prewarmFirstPersonVariant()
+                } catch {
+                    GLTFResourceCache.gltfLogger.error("Failed to generate a first-person mesh: \(String(describing: error), privacy: .public)")
+                }
+            }
+        }
     }
 
     func build() throws -> BuiltScene {
@@ -358,12 +418,13 @@ final class GLTFSceneBuilder {
                                  skinIndex: Int?,
                                  headJoints: Set<UInt32>) throws -> MergedPrimitive? {
         let key = PrimitiveGeometryKey(meshIndex: meshIndex, primitiveIndex: primitiveIndex, skinIndex: skinIndex)
-        guard let geometry = try decodedGeometry(forKey: key, primitive: primitive) else {
+        guard let prepared = try preparedPrimitive(forKey: key, primitive: primitive, headJoints: headJoints) else {
             resources.logOnce("primitiveMode-\(primitive.mode)", """
                 A \(primitive.mode) primitive was skipped; RealityKit meshes render triangles only.
                 """)
             return nil
         }
+        let geometry = prepared.geometry
         for warning in geometry.warnings {
             resources.logOnce(warning.key, warning.message)
         }
@@ -371,14 +432,10 @@ final class GLTFSceneBuilder {
         let shaded = try primitive.material.map { try shadedMaterial(withMaterialIndex: $0) }
             ?? GLTFShadedMaterial(material: Self.defaultMaterial())
 
-        // A skinned primitive binds its vertex influences to the skin's skeleton.
         var jointInfluences: MeshResource.JointInfluences?
         var skeletonID: String?
-        if let skinIndex, geometry.isSkinned {
-            jointInfluences = try makeJointInfluences(joints: geometry.joints,
-                                                      weights: geometry.weights,
-                                                      vertexCount: geometry.positions.count,
-                                                      jointIndexRemap: geometry.jointIndexRemap)
+        if let skinIndex, let influences = prepared.jointInfluences {
+            jointInfluences = MeshResource.JointInfluences(influences: MeshBuffer(influences), influencesPerVertex: 4)
             skeletonID = try skin(withSkinIndex: skinIndex).skeleton.id
         }
         return MergedPrimitive(materialIndex: primitive.material,
@@ -387,10 +444,7 @@ final class GLTFSceneBuilder {
                                               geometry: geometry,
                                               skeletonID: skeletonID,
                                               jointInfluences: jointInfluences),
-                               firstPersonMask: FirstPersonAutoMask.mask(indices: geometry.indices,
-                                                                         joints: geometry.joints,
-                                                                         weights: geometry.weights,
-                                                                         headJoints: headJoints),
+                               firstPersonMask: prepared.firstPersonMask,
                                hasBlendShapes: !geometry.blendShapeOffsets.isEmpty,
                                isSkinned: geometry.isSkinned)
     }
@@ -437,8 +491,7 @@ final class GLTFSceneBuilder {
             entity.applyMergedMesh()
         }
         if catalog.hasFirstPersonCut {
-            // Generated at load, so the first camera switch does not pay for it.
-            _ = try catalog.mesh(visibleSlots: initiallyVisibleSlots, isFirstPerson: true)
+            firstPersonCatalogs.append(catalog)
         }
         return entity
     }
@@ -503,6 +556,8 @@ final class GLTFSceneBuilder {
         // Resolving is not shading: an index the document does not hold fails the load
         // rather than reaching a fallback.
         let context = try makeMaterialShaderContext(withMaterialIndex: index)
+        let started = ContinuousClock.now
+        let texturesBefore = timings.textureResources
         let shaded: GLTFShadedMaterial
         do {
             shaded = try shadeMaterial(for: context)
@@ -510,6 +565,8 @@ final class GLTFSceneBuilder {
             guard let fallback = resources.profile.shadedMaterialFallback(for: context, error: error) else { throw error }
             shaded = fallback
         }
+        timings.materials += (ContinuousClock.now - started) - (timings.textureResources - texturesBefore)
+        timings.materialCount += 1
         if resources.materials.indices.contains(index) {
             resources.materials[index] = shaded
         }
@@ -840,14 +897,90 @@ final class GLTFSceneBuilder {
         }
     }
 
+    /// The textures the drawn materials read, by image and semantic, as far as the
+    /// document tells ahead of shading. A material asking for one not listed here makes
+    /// it on the actor; the answer is only wrong by speed.
+    private func requestedTextureKeys() throws -> Set<GLTFResourceCache.ImageTextureKey> {
+        var keys: Set<GLTFResourceCache.ImageTextureKey> = []
+        func request(_ textureIndex: Int, _ semantic: TextureResource.Semantic) {
+            guard let imageIndex = try? gltf.imageIndex(ofTextureAt: textureIndex) else { return }
+            keys.insert(.init(imageIndex: imageIndex, semantic: semantic))
+        }
+        for materialIndex in try drawnMaterialIndices() {
+            guard let material = gltf.materials[safe: materialIndex] else { continue }
+            if let mtoon = try? mtoonDescriptor(withMaterialIndex: materialIndex) {
+                for slot in MToonTextureSlot.allCases {
+                    if let texture = mtoon.texture(for: slot) { request(texture.index, slot.semantic) }
+                }
+                continue
+            }
+            if let base = material.pbrMetallicRoughness?.baseColorTexture { request(base.index, .color) }
+            if let emissive = material.emissiveTexture { request(emissive.index, .color) }
+            // Scaled normals and weakened occlusion are baked into their own images first.
+            if let normal = material.normalTexture, normal.scale == 1 { request(normal.index, .normal) }
+            if let occlusion = material.occlusionTexture, occlusion.strength == 1 { request(occlusion.index, .raw) }
+        }
+        return keys
+    }
+
+    private struct TextureUpload: @unchecked Sendable {
+        let key: GLTFResourceCache.ImageTextureKey
+        let image: CGImage
+    }
+
+    private struct UploadedTexture: @unchecked Sendable {
+        let key: GLTFResourceCache.ImageTextureKey
+        let texture: TextureResource
+    }
+
+    /// Makes the textures the build will ask for, all at once and off the actor, so the
+    /// build finds them cached: uploaded one at a time on the actor, they are the larger
+    /// part of building a textured model.
+    private func makeTextureResources() async throws {
+        var uploads: [TextureUpload] = []
+        for key in try requestedTextureKeys() where resources.textureCache[key] == nil {
+            uploads.append(TextureUpload(key: key, image: try image(withImageIndex: key.imageIndex)))
+        }
+        guard !uploads.isEmpty else { return }
+        let uploaded = try await withThrowingTaskGroup(of: UploadedTexture.self) { group in
+            for upload in uploads {
+                group.addTask {
+                    try Task.checkCancellation()
+                    let texture = try await TextureResource(image: upload.image,
+                                                            withName: nil,
+                                                            options: .init(semantic: upload.key.semantic))
+                    return UploadedTexture(key: upload.key, texture: texture)
+                }
+            }
+            var results: [UploadedTexture] = []
+            results.reserveCapacity(uploads.count)
+            for try await result in group {
+                results.append(result)
+            }
+            return results
+        }
+        for result in uploaded {
+            resources.textureCache[result.key] = result.texture
+        }
+    }
+
     func texture(withTextureIndex index: Int, semantic: TextureResource.Semantic = .color) throws -> TextureResource {
         let key = GLTFResourceCache.ImageTextureKey(imageIndex: try gltf.imageIndex(ofTextureAt: index),
                                                     semantic: semantic)
         if let cache = resources.textureCache[key] { return cache }
         let cgImage = try image(withImageIndex: key.imageIndex)
-        let texture = try TextureResource(image: cgImage, options: .init(semantic: semantic))
+        let texture = try makeTextureResource(cgImage, semantic: semantic)
         resources.textureCache[key] = texture
         return texture
+    }
+
+    private func makeTextureResource(_ image: CGImage, semantic: TextureResource.Semantic) throws -> TextureResource {
+        let started = ContinuousClock.now
+        defer {
+            timings.textureResources += ContinuousClock.now - started
+            timings.textureResourceCount += 1
+        }
+        return try TextureResource(image: image, options: .init(semantic: semantic))
     }
 
     func materialTexture(withTextureIndex index: Int,
@@ -959,7 +1092,7 @@ final class GLTFSceneBuilder {
             // Baked by the prepare pass off-actor, or now for a texture it missed.
             let baked = try prepared.bakedImages[key]
                 ?? bake(try image(withImageIndex: key.imageIndex), factor)
-            resource = try TextureResource(image: baked, options: .init(semantic: semantic))
+            resource = try makeTextureResource(baked, semantic: semantic)
             resources.bakedTextureCache[key] = resource
         }
         return MaterialParameters.Texture(resource, sampler: try sampler(withTextureIndex: index))
@@ -1048,8 +1181,8 @@ final class GLTFSceneBuilder {
             let images = try prepared.metallicRoughnessImages[imageIndex]
                 ?? metallicRoughnessImages(from: try image(withImageIndex: imageIndex))
             // Metallic / roughness are linear data; .color would apply an sRGB conversion.
-            let textures = (try TextureResource(image: images.metal, options: .init(semantic: .raw)),
-                            try TextureResource(image: images.rough, options: .init(semantic: .raw)))
+            let textures = (try makeTextureResource(images.metal, semantic: .raw),
+                            try makeTextureResource(images.rough, semantic: .raw))
             resources.metallicRoughnessCache[imageIndex] = textures
             split = textures
         }
@@ -1072,50 +1205,6 @@ final class GLTFSceneBuilder {
         let settings = GLTFAlphaModeSettings(mode, alphaCutoff: alphaCutoff)
         material.blending = settings.isTransparent ? .transparent(opacity: .init(scale: 1.0)) : .opaque
         material.opacityThreshold = settings.opacityThreshold
-    }
-
-    private func makeJointInfluences(joints: [SIMD4<UInt32>],
-                                     weights: [SIMD4<Float>],
-                                     vertexCount: Int,
-                                     jointIndexRemap remap: [Int]) throws -> MeshResource.JointInfluences {
-        guard joints.count == weights.count else {
-            throw VRMError._dataInconsistent("JOINTS_0 and WEIGHTS_0 counts do not match")
-        }
-        guard joints.count == vertexCount else {
-            throw VRMError._dataInconsistent("joint influence count \(joints.count) does not match vertex count \(vertexCount)")
-        }
-
-        var influences: [MeshJointInfluence] = []
-        influences.reserveCapacity(joints.count * 4)
-        func remapped(_ jointIndex: UInt32) throws -> Int {
-            guard remap.indices.contains(Int(jointIndex)) else {
-                throw VRMError._dataInconsistent(
-                    "joint index \(jointIndex) is out of range for \(remap.count) skin joints"
-                )
-            }
-            return remap[Int(jointIndex)]
-        }
-        for i in 0..<joints.count {
-            let joint = joints[i]
-            var w0 = weights[i].x
-            var w1 = weights[i].y
-            var w2 = weights[i].z
-            var w3 = weights[i].w
-            let sum = w0 + w1 + w2 + w3
-            if sum > 0 {
-                w0 /= sum
-                w1 /= sum
-                w2 /= sum
-                w3 /= sum
-            }
-            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.x), weight: w0))
-            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.y), weight: w1))
-            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.z), weight: w2))
-            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.w), weight: w3))
-        }
-
-        let buffer = MeshBuffer(influences)
-        return MeshResource.JointInfluences(influences: buffer, influencesPerVertex: 4)
     }
 
     /// The skin at `index` resolved for RealityKit. Its skeleton and joint remap come
@@ -1260,6 +1349,11 @@ final class GLTFSceneBuilder {
             contents.skeletons = skeletons
         }
 
+        let started = ContinuousClock.now
+        defer {
+            timings.meshResources += ContinuousClock.now - started
+            timings.meshResourceCount += 1
+        }
         return try MeshResource.generate(from: contents)
     }
 

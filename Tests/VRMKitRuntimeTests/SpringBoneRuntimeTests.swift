@@ -136,8 +136,6 @@ struct SpringBoneRuntimeTests {
                                     colliders: [])
         }
 
-        // The bone still reaches as far as it did, and now hangs below where
-        // it started.
         let tail = rotation * SIMD3<Float>(0, 0, 1)
         #expect(abs(simd_length(tail) - 1) < 1e-4)
         #expect(tail.y < 0)

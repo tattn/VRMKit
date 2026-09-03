@@ -286,8 +286,7 @@ final class ContentViewModel {
 }
 
 private enum MacExampleLighting {
-    /// Direction from the model toward the light, as `setMToonLightDirection(_:)`
-    /// expects. The directional light is placed here.
+    /// Direction from the model toward the light, as `setMToonLightDirection(_:)` expects.
     static let towardLight = simd_normalize(SIMD3<Float>(-0.35, -0.55, -0.75))
 }
 

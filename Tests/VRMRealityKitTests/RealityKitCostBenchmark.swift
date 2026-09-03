@@ -371,7 +371,7 @@ struct RealityKitCostBenchmark {
         })
 
         // The springs step at a fixed 60 Hz, so a renderer drawing slower runs several
-        // steps per update — where anything read per step rather than per update is paid
+        // steps per update, where anything read per step rather than per update is paid
         // again. 1/30 s is two steps.
         let idle30 = try await loadSettled()
         report("idle 30fps", microsecondsPerUpdate {

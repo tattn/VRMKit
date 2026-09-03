@@ -173,7 +173,6 @@ package extension JSONObject {
         self["byteOffset"] = .int(rebased.partialValue)
     }
 
-    /// Adds one index to the list of indices at `key`.
     mutating func appendIndex(_ index: Int, to key: String) {
         self[key] = .numbers((ints(key) ?? []) + [index])
     }

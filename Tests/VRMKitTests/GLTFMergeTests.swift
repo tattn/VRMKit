@@ -50,7 +50,6 @@ struct GLTFMergeTests {
         #expect(merged.materialProperties.count == materials.count)
         #expect(merged.materialProperties.last?.shader == "VRM_USE_GLTFSHADER")
         #expect(merged.materialProperties.last?.name == materials.last?.name ?? "")
-        // The entries the model came with are untouched.
         #expect(merged.materialProperties.dropLast().allSatisfy { $0.shader != "VRM_USE_GLTFSHADER" })
     }
 

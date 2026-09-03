@@ -530,7 +530,6 @@ void mtoonOutlineSurface(realitykit::surface_parameters params)
     // chain and the base-color sample only run for MASK / BLEND materials.
     float opacity = 1.0;
     if (extraFlags.w > 0.5h) {
-        // UV animation time comes from RealityKit's per-frame uniforms.
         float2 uv = mtoonAnimatedUV(textures,
                                     params.uniforms().time(),
                                     mtoonTextureUV(params.geometry().uv0()),

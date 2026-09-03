@@ -435,7 +435,6 @@ package extension VRM0MToonProperty {
         ]
     }
 
-
     private static func blendMode(of descriptor: MToonMaterialDescriptor) -> Int {
         switch descriptor.alphaMode {
         case .MASK: return 1
@@ -443,5 +442,4 @@ package extension VRM0MToonProperty {
         case .OPAQUE: return 0
         }
     }
-
 }

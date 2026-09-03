@@ -70,18 +70,47 @@ final class GLTFMergedMeshCatalog {
         if !key.isFirstPerson, !key.visibleSlots.contains(false) { return fullMesh }
         if let cached = variants[key] { return cached }
 
-        let variant = try generateVariant(for: key)
+        let variant = try variantContents(for: key).map { try MeshResource.generate(from: $0) }
+        cache(variant, for: key)
+        return variant
+    }
+
+    /// Generates the mesh a first-person camera draws with every slot at its initial
+    /// visibility, off the actor. Loads call it once they have returned, so the first
+    /// camera switch finds the variant ready without the load having paid for it; a
+    /// switch landing first generates the same mesh on the spot.
+    func prewarmFirstPersonVariant() async throws {
+        let key = VariantKey(visibleSlots: initiallyVisibleSlots, isFirstPerson: true)
+        guard key.isFirstPerson, variants[key] == nil else { return }
+        guard let contents = variantContents(for: key) else {
+            cache(nil, for: key)
+            return
+        }
+        let variant = try await Self.generate(VariantContents(contents: contents))
+        guard variants[key] == nil else { return }
+        cache(variant, for: key)
+    }
+
+    /// The contents are a value copy of the full mesh's, so nothing shared leaves the actor.
+    private struct VariantContents: @unchecked Sendable {
+        let contents: MeshResource.Contents
+    }
+
+    private nonisolated static func generate(_ variant: VariantContents) async throws -> MeshResource {
+        try await MeshResource(from: variant.contents)
+    }
+
+    private func cache(_ variant: MeshResource?, for key: VariantKey) {
         if variants.count >= Self.maxCachedVariants {
             variants.removeAll(keepingCapacity: true)
         }
         variants[key] = variant
-        return variant
     }
 
-    /// The full mesh's contents with the hidden and cut parts taken out, generated
-    /// as a resource of its own. Part and model ids survive, so the materials and
-    /// the skeletal pose keep addressing the result.
-    private func generateVariant(for key: VariantKey) throws -> MeshResource? {
+    /// The full mesh's contents with the hidden and cut parts taken out, for a
+    /// resource of their own. Part and model ids survive, so the materials and
+    /// the skeletal pose keep addressing the result. Nil is nothing left to draw.
+    private func variantContents(for key: VariantKey) -> MeshResource.Contents? {
         var contents = fullMesh.contents
         var models = MeshModelCollection()
         for model in contents.models {
@@ -112,7 +141,7 @@ final class GLTFMergedMeshCatalog {
         }
         guard !models.isEmpty else { return nil }
         contents.models = models
-        return try MeshResource.generate(from: contents)
+        return contents
     }
 }
 
@@ -168,7 +197,7 @@ extension ModelEntity {
         mergedMesh?.catalog.slots[safe: slot]?.isInitiallyVisible ?? true
     }
 
-    /// Draws the mesh as `mode`'s camera sees it, cutting the parts the head draws.
+    /// Draws the mesh as a first- or third-person camera sees it, cutting the parts the head draws.
     func setMergedFirstPerson(_ isFirstPerson: Bool) {
         guard var merged = mergedMesh, merged.isFirstPerson != isFirstPerson else { return }
         merged.isFirstPerson = isFirstPerson
