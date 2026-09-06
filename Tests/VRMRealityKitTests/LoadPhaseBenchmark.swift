@@ -59,6 +59,7 @@ struct LoadPhaseBenchmark {
     }
 }
 
+@available(iOS 16.0, macOS 13.0, *)
 private extension Duration {
     var milliseconds: Int {
         Int(Double(components.seconds) * 1000 + Double(components.attoseconds) / 1e15)
