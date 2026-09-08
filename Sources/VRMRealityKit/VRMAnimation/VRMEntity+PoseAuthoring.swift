@@ -47,28 +47,50 @@ extension VRMEntity {
         }
         try document.setVRMAnimationHumanoid(skeleton.bones)
 
-        let worn = availableExpressions.compactMap { info -> (info: ExpressionInfo, weight: Float)? in
-            let weight = Float(expression(for: info.key))
-            return weight > 0 ? (info, weight) : nil
-        }
+        let worn = wornExpressions()
         if !worn.isEmpty {
-            let nodes = try document.addExpressionNodes(
-                preset: worn.compactMap { $0.info.preset?.rawValue },
-                custom: worn.compactMap { $0.info.preset == nil ? $0.info.name : nil }
-            )
-            for (info, weight) in worn {
-                let node = info.preset.flatMap { nodes.preset[$0.rawValue] } ?? nodes.custom[info.name]
+            let nodes = try document.addExpressionNodes(preset: worn.compactMap(\.presetName),
+                                                        custom: worn.compactMap(\.customName))
+            for expression in worn {
+                let node = expression.presetName.flatMap { nodes.preset[$0] }
+                    ?? expression.customName.flatMap { nodes.custom[$0] }
                 guard let node else { continue }
                 // The weight rides on the node's translation X.
+                let weight = SIMD3(expression.weight, 0, 0)
                 tracks.append(GLTFAnimationTrack(node: node,
                                                  times: times,
-                                                 values: .translation(times.map { _ in SIMD3(weight, 0, 0) })))
+                                                 values: .translation(times.map { _ in weight })))
             }
             try document.setVRMAnimationExpressions(nodes)
         }
 
         try document.addAnimation(name: name, tracks: tracks)
         return try document.serialize()
+    }
+
+    /// An expression worn at a weight above zero, named the way a `.vrma` names it.
+    private struct WornExpression {
+        let presetName: String?
+        let customName: String?
+        let weight: Float
+    }
+
+    // Kept apart from the authoring loop: the optimizer of Swift 6.3 miscompiles
+    // `ExpressionInfo.preset` switched on inside that loop's closures.
+    @inline(never)
+    private func wornExpressions() -> [WornExpression] {
+        var worn: [WornExpression] = []
+        for info in availableExpressions {
+            let weight = Float(expression(for: info.key))
+            guard weight > 0 else { continue }
+            switch info.key {
+            case .preset(let preset):
+                worn.append(WornExpression(presetName: preset.rawValue, customName: nil, weight: weight))
+            case .custom(let name):
+                worn.append(WornExpression(presetName: nil, customName: name, weight: weight))
+            }
+        }
+        return worn
     }
 }
 #endif
