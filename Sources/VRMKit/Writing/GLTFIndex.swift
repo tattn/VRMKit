@@ -52,6 +52,10 @@ public enum GLTFImageKind: GLTFIndexKind {
 }
 
 /// A VRM 0.x bone group, in the `VRM` extension's `secondaryAnimation.boneGroups`.
+public enum GLTFAnimationKind: GLTFIndexKind {
+    public static var arrayName: String { "animations" }
+}
+
 public enum VRM0BoneGroupKind: GLTFIndexKind {
     public static var arrayName: String { "secondaryAnimation.boneGroups" }
 }
@@ -66,5 +70,6 @@ public typealias GLTFMeshIndex = GLTFIndex<GLTFMeshKind>
 public typealias GLTFMaterialIndex = GLTFIndex<GLTFMaterialKind>
 public typealias GLTFSceneIndex = GLTFIndex<GLTFSceneKind>
 public typealias GLTFImageIndex = GLTFIndex<GLTFImageKind>
+public typealias GLTFAnimationIndex = GLTFIndex<GLTFAnimationKind>
 public typealias VRM0BoneGroupIndex = GLTFIndex<VRM0BoneGroupKind>
 public typealias VRM1SpringIndex = GLTFIndex<VRM1SpringKind>

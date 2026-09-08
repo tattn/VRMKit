@@ -105,25 +105,26 @@ extension GLTFEditableDocument {
                                target: .elementArrayBuffer)
     }
 
-    /// The `target` a buffer view names the GPU buffer it belongs in with.
-    private enum BufferViewTarget: Int {
+    /// The `target` a buffer view names the GPU buffer it belongs in with. Data that
+    /// never reaches a GPU buffer, such as animation keyframes, names none.
+    enum BufferViewTarget: Int {
         case arrayBuffer = 34962
         case elementArrayBuffer = 34963
     }
 
-    private struct AccessorPayload {
+    struct AccessorPayload {
         let data: Data
         let type: GLTF.Accessor.`Type`
         let componentType: GLTF.Accessor.ComponentType
         let count: Int
-        let target: BufferViewTarget
+        let target: BufferViewTarget?
         var bounds: (min: [Float], max: [Float])?
 
         init(data: Data,
              type: GLTF.Accessor.`Type`,
              componentType: GLTF.Accessor.ComponentType,
              count: Int,
-             target: BufferViewTarget,
+             target: BufferViewTarget?,
              bounds: (min: [Float], max: [Float])? = nil) {
             self.data = data
             self.type = type
@@ -137,7 +138,7 @@ extension GLTFEditableDocument {
     /// Appends each payload to the BIN buffer as a buffer view of its own, with
     /// an accessor over the whole of it. Tightly packed, so no `byteStride`: glTF
     /// reads a missing one as the accessor's element size.
-    private mutating func appendAccessors(_ payloads: [AccessorPayload]) -> [Int] {
+    mutating func appendAccessors(_ payloads: [AccessorPayload]) -> [Int] {
         let viewBase = json.count(.bufferViews)
         let accessorBase = json.count(.accessors)
         var views: [JSONObject] = []
@@ -146,10 +147,11 @@ extension GLTFEditableDocument {
         accessors.reserveCapacity(payloads.count)
 
         for payload in payloads {
-            views.append(["buffer": 0,
-                          "byteOffset": .int(appendToBinary(payload.data)),
-                          "byteLength": .int(payload.data.count),
-                          "target": .int(payload.target.rawValue)])
+            var view: JSONObject = ["buffer": 0,
+                                    "byteOffset": .int(appendToBinary(payload.data)),
+                                    "byteLength": .int(payload.data.count)]
+            view.set("target", payload.target?.rawValue)
+            views.append(view)
             var accessor: JSONObject = ["bufferView": .int(viewBase + views.count - 1),
                                         "componentType": .int(payload.componentType.rawValue),
                                         "count": .int(payload.count),
@@ -165,21 +167,21 @@ extension GLTFEditableDocument {
         return payloads.indices.map { accessorBase + $0 }
     }
 
-    private static func packed<Vector: SIMD>(_ values: [Vector]) -> Data where Vector.Scalar == Float {
-        let byteCount = values.count * Vector.scalarCount * MemoryLayout<UInt32>.size
-        var data = Data(count: byteCount)
+    /// Little-endian floats, tightly packed: the layout every FLOAT accessor reads.
+    static func packed(_ values: [Float]) -> Data {
+        var data = Data(count: values.count * MemoryLayout<UInt32>.size)
         data.withUnsafeMutableBytes { buffer in
-            var offset = 0
-            for value in values {
-                for component in 0..<Vector.scalarCount {
-                    buffer.storeBytes(of: value[component].bitPattern.littleEndian,
-                                      toByteOffset: offset,
-                                      as: UInt32.self)
-                    offset += MemoryLayout<UInt32>.size
-                }
+            for (index, value) in values.enumerated() {
+                buffer.storeBytes(of: value.bitPattern.littleEndian,
+                                  toByteOffset: index * MemoryLayout<UInt32>.size,
+                                  as: UInt32.self)
             }
         }
         return data
+    }
+
+    static func packed<Vector: SIMD>(_ values: [Vector]) -> Data where Vector.Scalar == Float {
+        packed(values.flatMap { value in (0..<Vector.scalarCount).map { value[$0] } })
     }
 
     private static func packedIntegers<Integer: FixedWidthInteger>(_ values: [UInt32], as: Integer.Type) -> Data {

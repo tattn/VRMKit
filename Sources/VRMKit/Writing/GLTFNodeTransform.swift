@@ -65,6 +65,22 @@ extension GLTFNodeTransform {
         }
     }
 
+    /// The transform a decoded node describes, TRS or matrix, as ``init(node:)`` reads
+    /// it off the JSON.
+    package init(node: GLTF.Node) {
+        if let matrix = node.matrix {
+            let v = matrix.values
+            self.init(matrix: float4x4(SIMD4(v[0], v[1], v[2], v[3]),
+                                       SIMD4(v[4], v[5], v[6], v[7]),
+                                       SIMD4(v[8], v[9], v[10], v[11]),
+                                       SIMD4(v[12], v[13], v[14], v[15])))
+            return
+        }
+        self.init(translation: node.translation,
+                  rotation: simd_quatf(vector: node.rotation),
+                  scale: node.scale)
+    }
+
     /// The transform a node JSON object describes, TRS or matrix. glTF forbids mixing
     /// the two, and the matrix wins if one does.
     init(node: JSONObject) {
