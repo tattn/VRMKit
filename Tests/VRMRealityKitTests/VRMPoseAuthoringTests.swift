@@ -84,6 +84,11 @@ struct VRMPoseAuthoringTests {
         let expressions = try #require(animation.expressions)
         #expect(Set(expressions.preset?.keys.map { $0 } ?? []) == ["happy", "aa"])
         #expect(expressions.custom == nil)
+        // The expression channels come last, in the order of their nodes.
+        let channels = try #require(animation.document.gltf.animations.first?.channels)
+        let expressionChannels = channels.suffix(2).compactMap(\.target.node)
+        #expect(expressionChannels == expressionChannels.sorted())
+        #expect(Set(expressionChannels) == Set([expressions.preset?["happy"]?.node, expressions.preset?["aa"]?.node].compactMap { $0 }))
         let played = try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity()
         _ = try played.playAnimation(animation)
         played.updateAnimations(deltaTime: 0.5)

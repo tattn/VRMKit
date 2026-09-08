@@ -111,16 +111,23 @@ public struct GLTFExpressionNodes: Sendable {
 }
 
 extension GLTFEditableDocument {
-    /// Adds a node for each expression named, each named as the expression is, under one
-    /// node holding them all; a track on a node's translation X is what carries the
-    /// weight. A name in both lists, or an empty one, is refused and nothing added.
+    /// Adds a node for each expression named, each named as the expression is and each a
+    /// root of the scene, in the order given with the presets first; a track on a node's
+    /// translation X is what carries the weight. A name in both lists, or an empty one,
+    /// is refused and nothing added.
+    ///
+    /// The nodes are roots of their own, with nothing above or below them, because a
+    /// reader is free to strip them out of the node list before it builds the skeleton:
+    /// UniVRM drops every scene root but the first and removes the nodes the expression
+    /// channels name, so a node that held them would be left naming nodes that are gone.
+    /// Add them after the skeleton, and write their tracks last and in this order, for
+    /// the same reason.
     public mutating func addExpressionNodes(preset: [String], custom: [String]) throws -> GLTFExpressionNodes {
         try Self.validateExpressionNames(preset: preset, custom: custom)
         return try atomically { document in
-            let holder = try document.addNode(name: "expressions")
             func add(_ names: [String]) throws -> [String: GLTFNodeIndex] {
                 try names.reduce(into: [:]) { nodes, name in
-                    nodes[name] = try document.addNode(name: name, parent: holder)
+                    nodes[name] = try document.addNode(name: name)
                 }
             }
             return GLTFExpressionNodes(preset: try add(preset), custom: try add(custom))

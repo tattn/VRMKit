@@ -47,6 +47,8 @@ extension VRMEntity {
         }
         try document.setVRMAnimationHumanoid(skeleton.bones)
 
+        // The expression tracks go last, in the order their nodes were added, so a reader
+        // that strips the expression nodes off the end of the node list can pair them up.
         let worn = wornExpressions()
         if !worn.isEmpty {
             let nodes = try document.addExpressionNodes(preset: worn.compactMap(\.presetName),
@@ -79,18 +81,20 @@ extension VRMEntity {
     // `ExpressionInfo.preset` switched on inside that loop's closures.
     @inline(never)
     private func wornExpressions() -> [WornExpression] {
-        var worn: [WornExpression] = []
+        var presets: [WornExpression] = []
+        var customs: [WornExpression] = []
         for info in availableExpressions {
             let weight = Float(expression(for: info.key))
             guard weight > 0 else { continue }
             switch info.key {
             case .preset(let preset):
-                worn.append(WornExpression(presetName: preset.rawValue, customName: nil, weight: weight))
+                presets.append(WornExpression(presetName: preset.rawValue, customName: nil, weight: weight))
             case .custom(let name):
-                worn.append(WornExpression(presetName: nil, customName: name, weight: weight))
+                customs.append(WornExpression(presetName: nil, customName: name, weight: weight))
             }
         }
-        return worn
+        // Presets first, as the nodes are added.
+        return presets + customs
     }
 }
 #endif

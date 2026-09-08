@@ -236,10 +236,14 @@ struct GLTFAnimationAuthoringTests {
         #expect(expressions.custom?["Wink"]?.node == nodes.custom["Wink"]?.rawValue)
         let gltfNodes = animation.document.gltf.nodes
         #expect(gltfNodes[safe: try #require(nodes.custom["Wink"]).rawValue]?.name == "Wink")
-        // The three hang under one node of their own, apart from the skeleton.
-        let holder = try #require(gltfNodes.first { $0.name == "expressions" })
-        #expect(Set(holder.children ?? []) == Set((Array(nodes.preset.values) + Array(nodes.custom.values)).map(\.rawValue)))
-        #expect(animation.document.gltf.scenes.first?.nodes?.count == 2)
+        // Each is a scene root of its own after the skeleton, the presets first and in
+        // the order given, so a reader that strips them off the end pairs them up.
+        let skeletonNodeCount = gltfNodes.count - 3
+        #expect(nodes.preset["happy"]?.rawValue == skeletonNodeCount)
+        #expect(nodes.preset["blink"]?.rawValue == skeletonNodeCount + 1)
+        #expect(nodes.custom["Wink"]?.rawValue == skeletonNodeCount + 2)
+        #expect(animation.document.gltf.scenes.first?.nodes == [skeleton.root.rawValue] + (skeletonNodeCount..<gltfNodes.count).map { $0 })
+        #expect(gltfNodes.suffix(3).allSatisfy { $0.children == nil })
     }
 
     /// Two expressions cannot share a name, an expression cannot go nameless, and a
