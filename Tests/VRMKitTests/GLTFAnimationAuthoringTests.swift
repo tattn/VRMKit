@@ -212,6 +212,57 @@ struct GLTFAnimationAuthoringTests {
         #expect(animation.document.gltf.extensionsUsed.contains("VRMC_vrm_animation"))
     }
 
+    /// Each expression gets a node named as it is, and the extension names them by
+    /// preset and custom name, which is how a reader finds the weight tracks.
+    @Test
+    func testExpressionNodesAreDeclaredAsVRMAnimationExpressions() throws {
+        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
+        var document = GLTFEditableDocument()
+        let skeleton = try document.addRestSkeleton(of: vrm)
+
+        let nodes = try document.addExpressionNodes(preset: ["happy", "blink"], custom: ["Wink"])
+        try document.addAnimation(tracks: [
+            GLTFAnimationTrack(node: try #require(nodes.preset["happy"]), times: [0],
+                               values: .translation([SIMD3(0.75, 0, 0)])),
+        ])
+        try document.setVRMAnimationHumanoid(skeleton.bones)
+        try document.setVRMAnimationExpressions(nodes)
+
+        let animation = try VRMAnimation(data: try document.serialize())
+        #expect(animation.humanoid?.humanBones.count == skeleton.bones.count)
+        let expressions = try #require(animation.expressions)
+        #expect(expressions.preset?["happy"]?.node == nodes.preset["happy"]?.rawValue)
+        #expect(expressions.preset?["blink"]?.node == nodes.preset["blink"]?.rawValue)
+        #expect(expressions.custom?["Wink"]?.node == nodes.custom["Wink"]?.rawValue)
+        let gltfNodes = animation.document.gltf.nodes
+        #expect(gltfNodes[safe: try #require(nodes.custom["Wink"]).rawValue]?.name == "Wink")
+        // The three hang under one node of their own, apart from the skeleton.
+        let holder = try #require(gltfNodes.first { $0.name == "expressions" })
+        #expect(Set(holder.children ?? []) == Set((Array(nodes.preset.values) + Array(nodes.custom.values)).map(\.rawValue)))
+        #expect(animation.document.gltf.scenes.first?.nodes?.count == 2)
+    }
+
+    /// Two expressions cannot share a name, an expression cannot go nameless, and a
+    /// node has to exist to be declared.
+    @Test
+    func testMalformedExpressionsAreRefused() throws {
+        var document = GLTFEditableDocument()
+        let node = try document.addNode()
+        let before = document
+
+        #expect(throws: VRMError.self) {
+            try document.addExpressionNodes(preset: ["happy"], custom: ["happy"])
+        }
+        #expect(throws: VRMError.self) {
+            try document.addExpressionNodes(preset: [""], custom: [])
+        }
+        #expect(throws: VRMError.self) {
+            try document.setVRMAnimationExpressions(GLTFExpressionNodes(preset: ["happy": 7], custom: [:]))
+        }
+        #expect(document.json == before.json)
+        _ = node
+    }
+
     @Test
     func testAHumanoidWithoutHipsOrWithAMissingNodeIsRefused() throws {
         var document = GLTFEditableDocument()

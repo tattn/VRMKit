@@ -96,3 +96,80 @@ extension GLTFEditableDocument {
         }
     }
 }
+
+/// The nodes a `.vrma` carries its expression weights on, one per expression, keyed
+/// the way `VRMC_vrm_animation` keys them: by VRM 1.0 preset name, and by name for a
+/// custom expression.
+public struct GLTFExpressionNodes: Sendable {
+    public let preset: [String: GLTFNodeIndex]
+    public let custom: [String: GLTFNodeIndex]
+
+    public init(preset: [String: GLTFNodeIndex], custom: [String: GLTFNodeIndex]) {
+        self.preset = preset
+        self.custom = custom
+    }
+}
+
+extension GLTFEditableDocument {
+    /// Adds a node for each expression named, each named as the expression is, under one
+    /// node holding them all; a track on a node's translation X is what carries the
+    /// weight. A name in both lists, or an empty one, is refused and nothing added.
+    public mutating func addExpressionNodes(preset: [String], custom: [String]) throws -> GLTFExpressionNodes {
+        try Self.validateExpressionNames(preset: preset, custom: custom)
+        return try atomically { document in
+            let holder = try document.addNode(name: "expressions")
+            func add(_ names: [String]) throws -> [String: GLTFNodeIndex] {
+                try names.reduce(into: [:]) { nodes, name in
+                    nodes[name] = try document.addNode(name: name, parent: holder)
+                }
+            }
+            return GLTFExpressionNodes(preset: try add(preset), custom: try add(custom))
+        }
+    }
+
+    /// Declares the nodes whose translation X carries each expression's weight, which
+    /// is what lets a reader drive the expressions of any VRM from the animation.
+    ///
+    /// The `expressions` of the `VRMC_vrm_animation` extension are replaced with every
+    /// other field of it left as it was; the extension is added when the document has
+    /// none.
+    public mutating func setVRMAnimationExpressions(_ nodes: GLTFExpressionNodes) throws {
+        try Self.validateExpressionNames(preset: Array(nodes.preset.keys), custom: Array(nodes.custom.keys))
+        for (name, node) in nodes.preset.merging(nodes.custom, uniquingKeysWith: { first, _ in first }) {
+            do {
+                try requireNode(at: node.rawValue)
+            } catch {
+                throw VRMError._invalidArgument("expression \(name) is mapped to \(node), which does not exist")
+            }
+        }
+        if let existing = try rootExtensionObject(GLTFExtension.vrmAnimation.rawValue),
+           existing["specVersion"] != nil {
+            try requireWritableSpecVersion(of: existing, named: GLTFExtension.vrmAnimation.rawValue)
+        }
+
+        func object(_ nodes: [String: GLTFNodeIndex]) -> JSONObject {
+            nodes.reduce(into: JSONObject()) { object, entry in
+                object[entry.key] = ["node": .int(entry.value.rawValue)]
+            }
+        }
+        var expressions = JSONObject()
+        if !nodes.preset.isEmpty { expressions["preset"] = .object(object(nodes.preset)) }
+        if !nodes.custom.isEmpty { expressions["custom"] = .object(object(nodes.custom)) }
+        try updateRootExtension(GLTFExtension.vrmAnimation.rawValue) { extensionObject in
+            extensionObject["specVersion"] = .string(Self.writableAnimationSpecVersion)
+            extensionObject["expressions"] = .object(expressions)
+        }
+    }
+
+    private static func validateExpressionNames(preset: [String], custom: [String]) throws {
+        var seen = Set<String>()
+        for name in preset + custom {
+            guard !name.isEmpty else {
+                throw VRMError._invalidArgument("an expression cannot be named by the empty string")
+            }
+            guard seen.insert(name).inserted else {
+                throw VRMError._invalidArgument("expression \(name) is named more than once")
+            }
+        }
+    }
+}

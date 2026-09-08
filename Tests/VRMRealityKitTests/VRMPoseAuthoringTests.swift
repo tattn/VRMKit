@@ -70,6 +70,36 @@ struct VRMPoseAuthoringTests {
         #expect(channels.filter { $0.target.targetPath == .translation }.count == 1)
     }
 
+    /// The expressions the model wears come along, each on a node of its own, and land
+    /// on a fresh copy at the weight they were written at; the ones it does not wear are
+    /// left unstated, so nothing about them is forced on playback.
+    @Test(arguments: [VRMSampleAsset.seedSan, .aliciaSolid])
+    func testTheExpressionsWornAreWrittenAndTheRestLeftUnstated(asset: VRMSampleAsset) async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let posed = try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity()
+        posed.setExpressions([.preset(.happy): 0.75, .preset(.aa): 0.4])
+
+        let animation = try VRMAnimation(data: try posed.poseAnimationData(duration: 1))
+
+        let expressions = try #require(animation.expressions)
+        #expect(Set(expressions.preset?.keys.map { $0 } ?? []) == ["happy", "aa"])
+        #expect(expressions.custom == nil)
+        let played = try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity()
+        _ = try played.playAnimation(animation)
+        played.updateAnimations(deltaTime: 0.5)
+        // Read back through the model, since a binary expression holds 0 or 1 whatever
+        // weight it was given.
+        for key in [ExpressionKey.preset(.happy), .preset(.aa)] {
+            #expect(Double(played.expression(for: key)).isApproximatelyEqual(to: Double(posed.expression(for: key))))
+            #expect(played.expression(for: key) > 0)
+        }
+        #expect(played.expression(for: .preset(.blink)) == 0)
+
+        // A face wearing nothing writes no expressions at all.
+        let plain = try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity()
+        #expect(try VRMAnimation(data: try plain.poseAnimationData()).expressions == nil)
+    }
+
     /// Zero duration writes a single keyframe rather than two at the same time, which
     /// glTF forbids.
     @Test
