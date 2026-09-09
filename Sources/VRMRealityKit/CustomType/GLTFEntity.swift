@@ -261,6 +261,9 @@ public class GLTFEntity: Entity {
     /// there. Like any clone it carries no animation bindings. Before a one-off render of
     /// the copy, call ``waitForMToonParameterWrites()`` on it.
     public func cloneWithOwnMaterialParameters() -> Self {
+        // The copy carries the meshes as they are skinned now, so they are solved against
+        // the joints it is about to copy.
+        updateSkinPose()
         let copy = clone(recursive: true)
         for modelEntity in copy.modelEntitiesInHierarchy {
             guard let indices = modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices else {
@@ -456,6 +459,17 @@ public class GLTFEntity: Entity {
                 dirtyJoints[slot.skeletonKey, default: []].insert(slot.jointIndex)
             }
         }
+    }
+
+    /// Solves the skinned meshes against the joints as they stand, where they have moved
+    /// since the last solve.
+    ///
+    /// The update loop does this once a frame, so this is for a caller reading or copying
+    /// the model between updates: a `clone(recursive: true)` taken while a joint has moved
+    /// carries the mesh as the last solve left it, which is a pose the joints no longer
+    /// describe. ``cloneWithOwnMaterialParameters()`` does it for you.
+    public func updateSkinPose() {
+        flushSkinPoseIfNeeded()
     }
 
     /// Re-solves the skin pose of every skin binding from the current joint transforms.

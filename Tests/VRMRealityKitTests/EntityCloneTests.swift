@@ -94,6 +94,26 @@ struct EntityCloneTests {
 #endif
     }
 
+    /// A joint posed since the last update reaches the copy's meshes: the copy is drawn
+    /// as its joints describe, not as the last solve left them.
+    @Test
+    func testACloneWithOwnMaterialParametersCarriesThePoseItsJointsDescribe() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        vrmEntity.update(deltaTime: 1.0 / 60.0)
+        let solved = TestSupport.jointRotations(in: vrmEntity)
+
+        // Posed the way a caller drives a humanoid bone, without an update to solve it.
+        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        head.transform.rotation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(0, 1, 0))
+        vrmEntity.invalidateSkinPose()
+        #expect(TestSupport.jointRotations(in: vrmEntity) == solved)
+
+        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        #expect(TestSupport.jointRotations(in: copy) != solved)
+        #expect(TestSupport.jointRotations(in: copy) == TestSupport.jointRotations(in: vrmEntity))
+    }
+
     /// The copy keeps what the original's expressions had written to its materials
     /// at the call, however the original moves on.
     @Test
