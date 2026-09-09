@@ -198,6 +198,9 @@ public protocol VRMAnimatableMaterialState: AnyObject {
     /// The material updated to this state, or the material unchanged when it is
     /// not one this state describes.
     func apply(to material: any Material) -> any Material
+    /// A state with this one's current values that shares nothing it writes to,
+    /// or nil for a state that cannot be split off.
+    func detached() -> (any VRMAnimatableMaterialState)?
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -218,5 +221,7 @@ public extension VRMAnimatableMaterialState {
     func prepareFlush() -> Bool { true }
 
     var updatesMaterialsOnFlush: Bool { true }
+
+    func detached() -> (any VRMAnimatableMaterialState)? { nil }
 }
 #endif

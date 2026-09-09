@@ -231,7 +231,7 @@ let controller = try entity.playAnimation(at: 0, loops: true)  // same controlle
 
 `loadEntity()` renders the asset's default scene and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. It reads the model's vertex data off the main thread, a primitive at a time in parallel.
 
-A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance.
+A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance. It also draws with the original's material parameters; `cloneWithOwnMaterialParameters()` gives the copy its own, a few hundred bytes per material, so it can be lit or recolored by itself.
 
 <details>
 <summary>Renderer limitations</summary>

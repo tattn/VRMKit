@@ -253,6 +253,35 @@ public class GLTFEntity: Entity {
         materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
     }
 
+    /// A `clone(recursive:)` copy with material parameters of its own.
+    ///
+    /// A plain clone samples this entity's parameters, so it stays lit and colored as this
+    /// entity is and the material setters do nothing on it. This copy takes the values this
+    /// entity draws with now, a few hundred bytes per material, and moves on its own from
+    /// there. Like any clone it carries no animation bindings. Before a one-off render of
+    /// the copy, call ``waitForMToonParameterWrites()`` on it.
+    public func cloneWithOwnMaterialParameters() -> Self {
+        let copy = clone(recursive: true)
+        for modelEntity in copy.modelEntitiesInHierarchy {
+            guard let indices = modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices else {
+                continue
+            }
+            for case let (slot, materialIndex?) in indices.enumerated() {
+                if copy.materialStates[materialIndex] == nil {
+                    let detached = materialStates[materialIndex]?.animatable?.detached()
+                    copy.materialStates[materialIndex] = MaterialRuntimeState(animatable: detached,
+                                                                              needsFlush: detached != nil)
+                }
+                copy.materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
+            }
+        }
+        copy.mtoonLightDirection = mtoonLightDirection
+        copy.mtoonLightColor = mtoonLightColor
+        copy.mtoonAmbientColor = mtoonAmbientColor
+        copy.flushDirtyMaterialStates()
+        return copy
+    }
+
     /// The glTF material indices any model entity under `root` renders with, additional
     /// render passes included, for scoping the runtime material APIs to part of a model.
     /// A model entity draws a whole glTF mesh, so the finest scope is the mesh.

@@ -53,5 +53,61 @@ struct EntityCloneTests {
         // The update system reaches the clone too, so updating it has to stay harmless.
         clone.update(deltaTime: 1.0 / 60.0)
     }
+
+    /// A copy with its own material parameters starts from the original's and then
+    /// takes lighting on its own, each holding parameter rows of its own.
+    @Test
+    func testACloneWithOwnMaterialParametersIsLitOnItsOwn() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
+                                                  shaders: TestSupport.noOutlineShaders).loadEntity()
+        let original = SIMD3<Float>(1, 0, 0)
+        vrmEntity.setMToonLightDirection(original)
+        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        let index = try #require(vrmEntity.materialIndices(under: vrmEntity).sorted().first {
+            vrmEntity.mtoonParameters(forMaterialIndex: $0) != nil
+        })
+
+        #expect(!copy.hasRuntimeBindings)
+        #expect(copy.materialIndices(under: copy) == vrmEntity.materialIndices(under: vrmEntity))
+        #expect(copy.mtoonParameters(forMaterialIndex: index)?.lightDirection == original)
+
+        let relit = SIMD3<Float>(0, 0, 1)
+        copy.setMToonLightDirection(relit)
+        #expect(copy.mtoonParameters(forMaterialIndex: index)?.lightDirection == relit)
+        #expect(vrmEntity.mtoonParameters(forMaterialIndex: index)?.lightDirection == original)
+        vrmEntity.setMToonLightColor(SIMD3(0.5, 0.5, 0.5))
+        #expect(copy.mtoonParameters(forMaterialIndex: index)?.lightColor == SIMD4(1, 1, 1, 1))
+
+#if !os(visionOS)
+        // The rows are a texture of its own, installed on its own materials, and writing to
+        // them leaves the original's where they were. Compared as the states hold them:
+        // a material hands back a new resource wrapper on every read.
+        let ownRows = try #require(copy.mtoonState(forMaterialIndex: index)?.parameterTexture)
+        let sourceRows = try #require(vrmEntity.mtoonState(forMaterialIndex: index)?.parameterTexture)
+        #expect(ownRows !== sourceRows)
+        #expect(copy.mtoonState(forMaterialIndex: index)?.updatesMaterialsOnFlush == false)
+        let writesBefore = sourceRows.writeCount
+        copy.setMToonLightDirection(SIMD3<Float>(0, 1, 0))
+        #expect(sourceRows.writeCount == writesBefore)
+        #expect(ownRows.writeCount > 0)
+#endif
+    }
+
+    /// The copy keeps what the original's expressions had written to its materials
+    /// at the call, however the original moves on.
+    @Test
+    func testACloneWithOwnMaterialParametersKeepsWhatExpressionsHadWritten() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
+                                                  shaders: TestSupport.noOutlineShaders).loadEntity()
+        // Seed-san's happy expression shifts the UV of material 11.
+        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+
+        #expect(try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0))
+        #expect(try TestSupport.mtoonParameters(in: copy, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0.25))
+    }
 }
 #endif

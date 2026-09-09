@@ -5,6 +5,9 @@ import simd
 /// The MToon runtime of a loaded entity. It lives here rather than on
 /// ``VRMEntity`` because MToon is a material extension a plain glTF can render
 /// too, through ``MToonShader/Source/convertAll(_:)``.
+///
+/// The setters act on a loaded entity or a ``GLTFEntity/cloneWithOwnMaterialParameters()``
+/// copy; a plain `clone(recursive:)` keeps drawing as its original does.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension GLTFEntity {
     /// The MToon parameter rows a material renders with, or nil when it does
@@ -47,9 +50,10 @@ extension GLTFEntity {
         updateMToonLightingRows()
     }
 
-    /// Blocks until every MToon parameter write has reached the GPU, for a
-    /// caller about to render on another queue: the snapshot.
-    func waitForMToonParameterWrites() {
+    /// Blocks until every MToon parameter write has reached the GPU. The rows are
+    /// blitted on a queue of their own, so a one-off render on a `RealityRenderer`
+    /// waits here first; a view catches up on its next frame anyway.
+    public func waitForMToonParameterWrites() {
         for index in materialStates.keys {
             mtoonState(forMaterialIndex: index)?.waitForParameterWrites()
         }

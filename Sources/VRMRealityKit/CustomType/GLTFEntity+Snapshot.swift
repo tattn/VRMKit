@@ -119,16 +119,16 @@ extension GLTFEntity {
         // a light beside the camera is the way the camera is offset.
         let towardCamera = simd_normalize(camera.position - bounds.center)
 
-        // The render encodes on its own queue, so any rows the copy still shares
-        // must be on the GPU before it does.
-        waitForMToonParameterWrites()
-        let subject = clone(recursive: true)
+        // Lit on its own, so picturing a model relights neither the one on screen nor
+        // another snapshot in flight.
+        let subject = cloneWithOwnMaterialParameters()
         // The bounds were measured in this entity's own space, so the copy goes there
         // too rather than wherever the entity stands in its scene.
         subject.transform = .identity
         if options.mtoonLitFromCamera {
-            relightMToonMaterials(of: subject, towardLight: towardCamera)
+            subject.setMToonLightDirection(towardCamera)
         }
+        subject.waitForMToonParameterWrites()
 
         let renderer = try RealityRenderer()
         renderer.entities.append(subject)
@@ -156,41 +156,6 @@ extension GLTFEntity {
             }
         }
         return try await Self.makeImage(of: texture, device: device)
-    }
-
-    /// Gives the copy MToon parameter rows of its own, lit from `direction` and
-    /// otherwise this entity's, so picturing a model neither relights the one on
-    /// screen nor collides with another snapshot across its await.
-    private func relightMToonMaterials(of subject: Entity, towardLight direction: SIMD3<Float>) {
-#if !os(visionOS)
-        var relit: [Int: CustomMaterial.Texture] = [:]
-        for modelEntity in subject.modelEntitiesInHierarchy {
-            guard let materialIndices = modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices,
-                  var component = modelEntity.components[ModelComponent.self] else { continue }
-            var didRelight = false
-            for (slot, materialIndex) in materialIndices.enumerated() {
-                guard let materialIndex, component.materials.indices.contains(slot) else { continue }
-                let texture: CustomMaterial.Texture
-                if let cached = relit[materialIndex] {
-                    texture = cached
-                } else {
-                    guard let resource = mtoonState(forMaterialIndex: materialIndex)?
-                        .relitParameterTexture(lightDirection: direction) else { continue }
-                    texture = CustomMaterial.Texture(resource)
-                    relit[materialIndex] = texture
-                }
-                // Only the rows are swapped: `custom.value` carries the mesh's outline
-                // budget, which the light has nothing to do with.
-                guard var material = component.materials[slot] as? CustomMaterial else { continue }
-                material.custom.texture = texture
-                component.materials[slot] = material
-                didRelight = true
-            }
-            if didRelight {
-                modelEntity.components.set(component)
-            }
-        }
-#endif
     }
 
     /// ``snapshot(_:)`` encoded as a PNG, which is what a VRM thumbnail is
