@@ -57,12 +57,33 @@ struct SpringBoneRigTests {
     func testSolvingAChainReadsOneWorldTransformWhateverItsLength() throws {
         let (root, nodes) = Self.chain(length: 8)
         let rig = try Self.vrm1Rig(nodes)
+        // The first update also settles the tails, which reads the root once more.
+        rig.update(deltaTime: 1.0 / 60.0)
         root.resetWorldReads()
 
         rig.update(deltaTime: 1.0 / 60.0)
 
         #expect(root.worldReads == 2)
         #expect(nodes.allSatisfy { $0.worldReads == 0 })
+    }
+
+    /// The rig is built where the model was loaded, and a model is usually moved into
+    /// place before its first frame, so the first update starts the tails where the
+    /// model is drawn rather than swinging them back towards where it was built.
+    @Test
+    func testTheFirstUpdateStartsTheTailsWhereTheModelIsDrawn() throws {
+        let (root, nodes) = Self.chain(length: 4)
+        let rig = try Self.vrm1Rig(nodes)
+        root.translation = SIMD3(10, 0, 0)
+        rig.update(deltaTime: 1.0 / 60.0)
+
+        let (placedRoot, placedNodes) = Self.chain(length: 4)
+        placedRoot.translation = SIMD3(10, 0, 0)
+        try Self.vrm1Rig(placedNodes).update(deltaTime: 1.0 / 60.0)
+
+        for (moved, placed) in zip(nodes, placedNodes) {
+            #expect(simd_distance(moved.worldPosition, placed.worldPosition) < 1e-4)
+        }
     }
 
     /// A rig holds the joints it swings, and a model holding the rig must not be held

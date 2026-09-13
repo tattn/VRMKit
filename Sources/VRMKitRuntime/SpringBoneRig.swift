@@ -69,6 +69,11 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     private var springs: [Spring] = []
     private var colliderEntries: [ColliderEntry] = []
     private var pendingReset = false
+    /// Whether the tails have been put where the model is drawn. The rig is built where
+    /// the model was loaded, and a model is usually moved, turned or scaled into place
+    /// before its first frame, so the tails read at build time would swing towards where
+    /// it used to be: hair or a skirt flung through its colliders on the first frame.
+    private var isSettled = false
     /// Time handed to ``update(deltaTime:)`` and not yet simulated.
     private var accumulator: TimeInterval = 0
 
@@ -100,14 +105,20 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         guard !springs.isEmpty else { return false }
         if pendingReset {
             pendingReset = false
+            isSettled = true
             accumulator = 0
             settle()
             return true
         }
+        var posed = false
+        if !isSettled {
+            isSettled = true
+            posed = settle()
+        }
         let step = SpringBoneSimulation.step
         accumulator = min(max(0, accumulator + deltaTime),
                           step * TimeInterval(SpringBoneSimulation.maximumStepsPerUpdate))
-        guard accumulator >= step else { return false }
+        guard accumulator >= step else { return posed }
 
         // The renderer's state stands still within one update, so read it once however
         // many steps the frame takes.
@@ -177,7 +188,10 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     }
 
     /// Puts every joint back at rest: the authored rotation, and tails carrying no motion.
-    private func settle() {
+    /// Returns whether a rotation was written.
+    @discardableResult
+    private func settle() -> Bool {
+        var posed = false
         refreshCenters()
         for springIndex in springs.indices {
             let center = springs[springIndex].center.map { centers[ObjectIdentifier($0)] } ?? nil
@@ -189,7 +203,9 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                     ?? link.node.runtimeParent?.worldTransform
                     ?? .identity
                 if var joint = link.joint {
-                    link.node.setLocalRotation(joint.restLocalRotation)
+                    if link.node.setLocalRotationIfMoved(joint.restLocalRotation) {
+                        posed = true
+                    }
                     let world = link.node.worldTransform(under: parentWorld)
                     joint.settle(head: world.translation,
                                  parentRotation: parentWorld.rotation,
@@ -201,6 +217,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                 }
             }
         }
+        return posed
     }
 }
 
