@@ -719,6 +719,34 @@ struct VRM1Tests {
         }
     }
 
+    @Test
+    func testConstraintTwistSampleContainsRollAndAimConstraints() throws {
+        let twist = try VRM1(data: VRMSampleAsset.vrm1ConstraintTwist.data)
+        var rollCount = 0
+        var aimCount = 0
+
+        for node in twist.document.gltf.nodes {
+            guard let constraint = node.extensions?.nodeConstraint,
+                  let parsed = constraint.constraint else { continue }
+            #expect(parsed.source >= 0)
+            #expect(parsed.source < twist.document.gltf.nodes.count)
+            #expect(parsed.weight >= 0)
+            #expect(parsed.weight <= 1)
+
+            switch parsed {
+            case .roll:
+                rollCount += 1
+            case .aim:
+                aimCount += 1
+            case .rotation:
+                break
+            }
+        }
+
+        #expect(rollCount > 0)
+        #expect(aimCount > 0)
+    }
+
     /// The version decides how everything else is read, so a document carrying both
     /// extensions, or neither, is refused rather than guessed at.
     @Test

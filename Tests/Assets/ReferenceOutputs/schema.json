@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/argus1/VRMKit/blob/main/Tests/Assets/ReferenceOutputs/schema.json",
+  "title": "VRMKit conformance reference output",
+  "type": "object",
+  "required": ["schemaVersion", "source", "fixture", "coordinateSystem", "tolerances", "samples"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1"
+    },
+    "source": {
+      "type": "object",
+      "required": ["name", "version", "commit"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "fixture": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "coordinateSystem": {
+      "type": "object",
+      "required": ["handedness", "upAxis", "forwardAxis", "units"],
+      "properties": {
+        "handedness": { "enum": ["right", "left"] },
+        "upAxis": { "enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"] },
+        "forwardAxis": { "enum": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"] },
+        "units": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "tolerances": {
+      "type": "object",
+      "required": ["translation", "rotation", "scalar"],
+      "properties": {
+        "translation": { "type": "number", "exclusiveMinimum": 0 },
+        "rotation": { "type": "number", "exclusiveMinimum": 0 },
+        "scalar": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "samples": {
+      "type": "object",
+      "required": ["bones", "expressions", "lookAt", "constraints", "springPositions", "vrma"],
+      "properties": {
+        "bones": { "$ref": "#/$defs/sampleList" },
+        "expressions": { "$ref": "#/$defs/sampleList" },
+        "lookAt": { "$ref": "#/$defs/sampleList" },
+        "constraints": { "$ref": "#/$defs/sampleList" },
+        "springPositions": { "$ref": "#/$defs/sampleList" },
+        "vrma": { "$ref": "#/$defs/sampleList" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "sampleList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["time", "values"],
+        "properties": {
+          "time": { "type": "number", "minimum": 0 },
+          "values": { "type": "object" },
+          "notes": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
