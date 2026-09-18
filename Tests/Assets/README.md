@@ -3,9 +3,9 @@
 Fixtures shared by every test target, and by the Example apps.
 
 | Directory | Contents |
-|---|---|
+| --- | --- |
 | [`GLTF/`](GLTF/README.md) | CC0-1.0 models from KhronosGroup/glTF-Sample-Assets |
-| `VRM/` | `.vrm` models for the VRM 0.x / 1.0 loading paths |
+| `VRM/` | `.vrm` models for the VRM 0.x / 1.0 loading paths, including Seed-san, the VRM specification constraint sample, and AvatarSample_M |
 | [`VRMA/`](VRMA/README.md) | The MIT-licensed `.vrma` sample from pixiv/three-vrm |
 
 `VRMTestSupport` owns this directory as its resources (see `Package.swift`), so

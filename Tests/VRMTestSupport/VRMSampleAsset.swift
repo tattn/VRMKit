@@ -9,6 +9,9 @@ public enum VRMSampleAsset: String, CaseIterable, Sendable {
     case seedSan = "Seed-san.vrm"
     /// A VRM 1.0 model exercising `VRMC_node_constraint`.
     case vrm1ConstraintTwist = "VRM1_Constraint_Twist_Sample.vrm"
+    /// A VRM 1.0 model with a full humanoid map, optional bones, expressions,
+    /// look-at, spring bones and MToon materials.
+    case avatarSampleM = "AvatarSample_M.vrm"
 
     public var url: URL {
         TestAssetBundle.url(forFixture: "VRM/\(rawValue)")
