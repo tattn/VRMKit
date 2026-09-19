@@ -11,6 +11,7 @@ enum VRMExampleModel: String, CaseIterable, Identifiable {
         }
     }
 
+    /// VRM 0.x and 1.0 models face opposite ways, so one of them is turned to face the viewer.
     var initialRotation: Float {
         switch self {
         case .alicia: return 0

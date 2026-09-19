@@ -98,7 +98,6 @@ final class ImmersiveViewModel {
             let vrmEntity = try await loader.loadEntity()
             
             vrmEntity.transform.translation = SIMD3<Float>(0, 0, -1.5)
-            // Alicia (VRM0) needs 180 degree rotation to face camera, VRM1 samples often don't
             vrmEntity.transform.rotation = simd_quatf(angle: model.initialRotation, axis: SIMD3<Float>(0, 1, 0))
             rootEntity.addChild(vrmEntity)
 

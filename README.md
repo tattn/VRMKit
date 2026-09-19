@@ -44,7 +44,7 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 .package(url: "https://github.com/tattn/VRMKit.git", from: "0.9.0")
 ```
 
-For SceneKit, use [0.10.0](https://github.com/tattn/VRMKit/releases/tag/0.10.0), the last version that shipped it.
+For SceneKit rendering, use [0.10.0](https://github.com/tattn/VRMKit/releases/tag/0.10.0).
 
 # Usage
 

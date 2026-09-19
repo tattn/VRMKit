@@ -50,7 +50,6 @@ enum MToonShaderLibraryLoader {
             return try cachedResult.get()
         }
         let result = Result { () throws -> MTLLibrary in
-            // Check the statically-known failure before creating a device.
             guard resourceName != nil else {
                 throw MToonShaderLibraryLoaderError.unsupportedPlatform
             }
