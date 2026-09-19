@@ -143,9 +143,13 @@ public final class MToonShader: GLTFMaterialShader {
         // The rows the expression runtime animates are built here; the state factory
         // only hands every entity graph its own copy.
         let parameters = state.parameters
+        let descriptor = state.descriptor
         var shaded = GLTFShadedMaterial(material: try customMToonMaterial(state, context: context),
+                                        renderQueue: context.renderQueue(alphaMode: descriptor.alphaMode,
+                                                                         transparentWithZWrite: descriptor.transparentWithZWrite,
+                                                                         offset: descriptor.renderQueueOffsetNumber),
                                         makeAnimatableState: { MToonAnimatableMaterialState(parameters: parameters) })
-        let hasOutline = state.descriptor.hasOutline
+        let hasOutline = descriptor.hasOutline
         if outlinePass.buildsPass(hasAuthoredOutline: hasOutline) {
             // A pass created only for runtime outlines draws nothing yet, so it
             // starts disabled rather than spending a draw call per frame.
@@ -163,7 +167,6 @@ public final class MToonShader: GLTFMaterialShader {
         let library = try MToonShaderLibraryLoader.loadDefault()
         let textureTransform = try textureTransform(for: context, descriptor: descriptor)
         let parameters = try parameters(for: descriptor, textureTransform: textureTransform, context: context)
-        logUnsupportedFeatures(of: descriptor, index: context.materialIndex)
         return MToonState(descriptor: descriptor,
                           parameters: parameters,
                           parameterTexture: CustomMaterial.Texture(try parameters.textureResource()),
@@ -194,12 +197,6 @@ public final class MToonShader: GLTFMaterialShader {
             return StandardMToonConverter.convert(material: context.material,
                                                  vrm0Property: context.vrm0MaterialProperty,
                                                  style: style)
-        }
-    }
-
-    private func logUnsupportedFeatures(of descriptor: MToonMaterialDescriptor, index: Int) {
-        if descriptor.renderQueueOffsetNumber != 0 {
-            Self.logger.warning("MToon material \(index, privacy: .public) requests renderQueueOffsetNumber \(descriptor.renderQueueOffsetNumber); RealityKit has no material-level draw-order hook, so it is ignored.")
         }
     }
 

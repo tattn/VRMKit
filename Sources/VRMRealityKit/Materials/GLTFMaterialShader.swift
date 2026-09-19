@@ -70,6 +70,13 @@ public struct GLTFShadedMaterial {
     public var material: any Material
     /// Extra passes, added to the scene before the main model entity.
     public var additionalPasses: [Pass]
+    /// Where a blended material draws among the other blended materials of its
+    /// mesh, on Unity's render-queue scale (lower draws first): what VRM 0.x
+    /// records per material, or MToon's base queue plus `renderQueueOffsetNumber`.
+    /// Nil for a material that is not blended, which the depth buffer orders.
+    /// ``GLTFMaterialShaderContext/renderQueue(alphaMode:transparentWithZWrite:offset:)``
+    /// derives it.
+    public var renderQueue: Int?
     /// Lets VRM expressions (`materialColorBind` / `textureTransformBind`) drive
     /// this material the way MToon does. Called once per material per loaded
     /// entity graph. Anything the state does not claim falls back to mutating
@@ -78,9 +85,11 @@ public struct GLTFShadedMaterial {
 
     public init(material: any Material,
                 additionalPasses: [Pass] = [],
+                renderQueue: Int? = nil,
                 makeAnimatableState: (@MainActor () -> any VRMAnimatableMaterialState)? = nil) {
         self.material = material
         self.additionalPasses = additionalPasses
+        self.renderQueue = renderQueue
         self.makeAnimatableState = makeAnimatableState
     }
 }
@@ -103,6 +112,34 @@ public struct GLTFMaterialShaderContext {
     /// The document being loaded, the escape hatch for anything the services
     /// below do not cover.
     public var document: GLTFDocument { builder.document }
+
+    /// How ``material`` cuts out or blends, with the VRM 0.x shader metadata
+    /// taking priority over the glTF alpha mode as UniVRM reads it.
+    public var resolvedAlphaMode: GLTF.Material.AlphaMode {
+        GLTF.Material.AlphaMode(vrm0: vrm0MaterialProperty, fallback: material.alphaMode)
+    }
+
+    /// The ``GLTFShadedMaterial/renderQueue`` of ``material`` drawn as `alphaMode`:
+    /// the queue VRM 0.x recorded, or the mode's base queue (a depth-writing blend
+    /// draws ahead of the rest) moved by MToon's `offset`. Nil unless blended.
+    public func renderQueue(alphaMode: GLTF.Material.AlphaMode,
+                            transparentWithZWrite: Bool = false,
+                            offset: Int = 0) -> Int? {
+        guard alphaMode == .BLEND else { return nil }
+        if let vrm0MaterialProperty { return vrm0MaterialProperty.renderQueue }
+        return alphaMode.vrm0RenderQueue(transparentWithZWrite: transparentWithZWrite) + offset
+    }
+
+    /// The ``GLTFShadedMaterial/renderQueue`` of ``material`` drawn as authored,
+    /// whichever shader draws it: the queue its MToon data places it at, or the
+    /// plain one of ``resolvedAlphaMode``. A platform that renders MToon through
+    /// the Unlit approximation still draws the model in its authored order.
+    public func resolvedRenderQueue() throws -> Int? {
+        let descriptor = try mtoonResolution().descriptor
+        return renderQueue(alphaMode: resolvedAlphaMode,
+                           transparentWithZWrite: descriptor?.transparentWithZWrite ?? false,
+                           offset: descriptor?.renderQueueOffsetNumber ?? 0)
+    }
 
     /// Whether the document declares itself undrawable without `name`, so a shader
     /// that degrades gracefully should still throw.

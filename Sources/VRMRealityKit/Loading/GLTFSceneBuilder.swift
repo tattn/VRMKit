@@ -374,14 +374,33 @@ final class GLTFSceneBuilder {
             meshEntity.addChild(passEntity)
         }
 
-        meshEntity.addChild(try makeMergedModelEntity(
-            name: "\(meshEntity.name)_model",
-            modelID: "mesh_\(index)",
-            primitives: primitives,
-            materials: primitives.map(\.shaded.material),
-            initiallyVisibleSlots: primitives.map { _ in true },
-            skeleton: skeleton,
-            skinIndex: skinIndex))
+        // RealityKit orders the blended parts of one model entity back to front by
+        // their bounds, which flips parts an author stacked on purpose (an eye
+        // highlight a few millimetres over its iris) once the view tilts. Parts whose
+        // materials ask for different render queues draw from entities of their own,
+        // in a sort group that keeps the queue order.
+        let renderQueues = Set(primitives.compactMap(\.shaded.renderQueue)).sorted()
+        var groups: [(queue: Int?, primitives: [MergedPrimitive])] = [(nil, primitives)]
+        var sortGroup: ModelSortGroup?
+        if renderQueues.count > 1 {
+            groups = renderQueues.map { queue in (queue, primitives.filter { $0.shaded.renderQueue == queue }) }
+                + [(nil, primitives.filter { $0.shaded.renderQueue == nil })]
+            sortGroup = ModelSortGroup()
+        }
+        for (queue, grouped) in groups where !grouped.isEmpty {
+            let modelEntity = try makeMergedModelEntity(
+                name: "\(meshEntity.name)_model\(queue.map { "_\($0)" } ?? "")",
+                modelID: "mesh_\(index)\(queue.map { "_queue\($0)" } ?? "")",
+                primitives: grouped,
+                materials: grouped.map(\.shaded.material),
+                initiallyVisibleSlots: grouped.map { _ in true },
+                skeleton: skeleton,
+                skinIndex: skinIndex)
+            if let queue, let sortGroup {
+                modelEntity.components.set(ModelSortGroupComponent(group: sortGroup, order: Int32(queue)))
+            }
+            meshEntity.addChild(modelEntity)
+        }
         return meshEntity
     }
 
@@ -579,7 +598,8 @@ final class GLTFSceneBuilder {
         for shader in resources.shaders {
             if let shaded = try shader.makeMaterial(for: context) { return shaded }
         }
-        return GLTFShadedMaterial(material: try standardMaterial(for: context))
+        return GLTFShadedMaterial(material: try standardMaterial(for: context),
+                                  renderQueue: try context.resolvedRenderQueue())
     }
 
     func makeMaterialShaderContext(withMaterialIndex index: Int) throws -> GLTFMaterialShaderContext {
@@ -610,8 +630,7 @@ final class GLTFSceneBuilder {
         let isUnlit = shaderName?.contains("unlit") == true || gltfMaterial.extensions?.materialsUnlit != nil
         // MToon and Unlit variants are not PBR, so both render through UnlitMaterial.
         let useUnlit = isMToon || isUnlit
-        let resolvedAlphaMode = GLTF.Material.AlphaMode(vrm0: materialProperty,
-                                                        fallback: gltfMaterial.alphaMode)
+        let resolvedAlphaMode = context.resolvedAlphaMode
         let tint = gltfMaterial.pbrMetallicRoughness
             .map { VRMColor(simd: $0.baseColorFactor) } ?? .white
 
