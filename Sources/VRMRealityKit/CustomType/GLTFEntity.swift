@@ -400,6 +400,10 @@ public class GLTFEntity: Entity {
     /// and reports whether every one of them landed.
     @discardableResult
     func flushDirtyMaterialStates() -> Bool {
+        MToonParameterTexture.batchWrites { flushDirtyMaterialStatesNow() }
+    }
+
+    private func flushDirtyMaterialStatesNow() -> Bool {
         var didFlushAll = true
         for (materialIndex, state) in materialStates where state.needsFlush {
             guard let animatable = state.animatable, animatable.prepareFlush() else {

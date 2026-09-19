@@ -295,6 +295,37 @@ struct MToonRenderingTests {
         #expect(parameters.lightDirection.isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
     }
 
+    /// Relighting a model per frame touches every material, so one call writes each
+    /// material's rows once, the writes of that flush share a command buffer, and the
+    /// same values again write nothing.
+    @Test
+    func testSetMToonLightingWritesEachMaterialOnceThroughOneCommandBuffer() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        vrmEntity.setMToonLighting(direction: SIMD3<Float>(0, 1, 0), color: SIMD3<Float>(1, 1, 1), ambient: .zero)
+        let textures = vrmEntity.materialStates.keys.compactMap {
+            vrmEntity.mtoonState(forMaterialIndex: $0)?.parameterTexture
+        }
+        #expect(textures.count > 1)
+        let writes = textures.map(\.writeCount)
+
+        let direction = SIMD3<Float>(1, 0, 0)
+        let color = SIMD3<Float>(0.5, 0.5, 0.5)
+        let ambient = SIMD3<Float>(0.1, 0.1, 0.1)
+        vrmEntity.setMToonLighting(direction: direction, color: color, ambient: ambient)
+
+        #expect(textures.map(\.writeCount) == writes.map { $0 + 1 })
+        let commandBuffers = Set(textures.compactMap { $0.lastWrite.map { ObjectIdentifier($0) } })
+        #expect(commandBuffers.count == 1)
+        let parameters = try firstMToonParameters(in: vrmEntity)
+        #expect(parameters.lightDirection.isApproximatelyEqual(to: direction))
+        #expect(parameters.lightColor.isApproximatelyEqual(to: SIMD4<Float>(color, 1)))
+        #expect(parameters.ambientColor.isApproximatelyEqual(to: SIMD4<Float>(ambient, 1)))
+
+        vrmEntity.setMToonLighting(direction: direction, color: color, ambient: ambient)
+        #expect(textures.map(\.writeCount) == writes.map { $0 + 1 })
+    }
+
     @Test
     func testSetMToonLightAndAmbientColorUpdateParameterRows() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

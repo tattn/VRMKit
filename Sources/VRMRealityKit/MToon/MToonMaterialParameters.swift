@@ -242,7 +242,7 @@ final class MToonParameterTexture {
 
     /// The last write's command buffer, kept so a caller about to render on
     /// another queue can wait for the rows to reach the GPU.
-    private var lastWrite: MTLCommandBuffer?
+    private(set) var lastWrite: MTLCommandBuffer?
 
     /// Blocks until every committed write has executed.
     func waitForWrites() {
@@ -253,6 +253,51 @@ final class MToonParameterTexture {
     /// One queue carries every parameter texture's blits, since the writes are
     /// all main-actor.
     private static var sharedCommandQueue: MTLCommandQueue?
+
+    /// The command buffer every write inside ``batchWrites(_:)`` encodes into, opened by
+    /// the first write of the batch. Nil outside a batch, and nil inside one until a
+    /// texture writes.
+    private static var openBatch: WriteBatch?
+    private static var isBatching = false
+
+    private struct WriteBatch {
+        let commandBuffer: MTLCommandBuffer
+        let blit: MTLBlitCommandEncoder
+        let device: MTLDevice
+    }
+
+    /// Runs `body` with every parameter texture write it makes encoded into one command
+    /// buffer, committed when `body` returns. A flush that relights a model touches every
+    /// material, and committing a command buffer per material costs more than the rows
+    /// themselves. A nested call joins the batch already open.
+    static func batchWrites<T>(_ body: () throws -> T) rethrows -> T {
+        guard !isBatching else { return try body() }
+        isBatching = true
+        defer {
+            isBatching = false
+            if let batch = openBatch {
+                openBatch = nil
+                batch.blit.endEncoding()
+                batch.commandBuffer.commit()
+            }
+        }
+        return try body()
+    }
+
+    /// The batch's blit encoder when a batch is open and shares this texture's device,
+    /// opening the batch's command buffer on the first call. A texture on another device
+    /// (a multi-GPU machine) writes on its own.
+    private func batchBlit() -> WriteBatch? {
+        guard Self.isBatching else { return nil }
+        if let batch = Self.openBatch {
+            return batch.device === device ? batch : nil
+        }
+        guard let commandBuffer = commandQueue.makeCommandBuffer(),
+              let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
+        let batch = WriteBatch(commandBuffer: commandBuffer, blit: blit, device: device)
+        Self.openBatch = batch
+        return batch
+    }
 
     init(rows: [SIMD4<Float>]) throws {
         var descriptor = LowLevelTexture.Descriptor()
@@ -283,26 +328,35 @@ final class MToonParameterTexture {
             throw VRMError._dataInconsistent("failed to allocate the MToon parameter staging buffer")
         }
 
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
-            throw VRMError._dataInconsistent("failed to make a command buffer for the MToon parameter texture")
+        if let batch = batchBlit() {
+            encodeCopy(of: buffer, rowCount: rows.count, using: batch.blit, on: batch.commandBuffer)
+            lastWrite = batch.commandBuffer
+        } else {
+            guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+                throw VRMError._dataInconsistent("failed to make a command buffer for the MToon parameter texture")
+            }
+            guard let blit = commandBuffer.makeBlitCommandEncoder() else {
+                throw VRMError._dataInconsistent("failed to encode the MToon parameter texture write")
+            }
+            encodeCopy(of: buffer, rowCount: rows.count, using: blit, on: commandBuffer)
+            blit.endEncoding()
+            commandBuffer.commit()
+            lastWrite = commandBuffer
         }
-        let destination = texture.replace(using: commandBuffer)
-        guard let blit = commandBuffer.makeBlitCommandEncoder() else {
-            throw VRMError._dataInconsistent("failed to encode the MToon parameter texture write")
-        }
+        writeCount += 1
+    }
+
+    private func encodeCopy(of buffer: MTLBuffer, rowCount: Int,
+                            using blit: MTLBlitCommandEncoder, on commandBuffer: MTLCommandBuffer) {
         blit.copy(from: buffer,
                   sourceOffset: 0,
                   sourceBytesPerRow: Self.bytesPerRow,
                   sourceBytesPerImage: Self.bytesPerRow,
-                  sourceSize: MTLSize(width: rows.count, height: 1, depth: 1),
-                  to: destination,
+                  sourceSize: MTLSize(width: rowCount, height: 1, depth: 1),
+                  to: texture.replace(using: commandBuffer),
                   destinationSlice: 0,
                   destinationLevel: 0,
                   destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
-        blit.endEncoding()
-        commandBuffer.commit()
-        lastWrite = commandBuffer
-        writeCount += 1
     }
 
     private static func commandQueue(for device: MTLDevice) throws -> MTLCommandQueue {
