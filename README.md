@@ -194,6 +194,8 @@ let custom = try VRMEntityLoader(withData: data, shaders: [MyShader(), MToonShad
 
 `GLTFShadedMaterial` also carries extra render passes, MToon's outline being one, and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. See the `GLTFMaterialShader` documentation comments.
 
+A blended material also carries a `renderQueue`, the Unity-scale draw order that VRM 0.x's `renderQueue` and MToon's `renderQueueOffsetNumber` express; `context.renderQueue(alphaMode:transparentWithZWrite:offset:)` derives it. RealityKit orders the blended parts of one model entity by distance, which flips parts an author stacked on purpose as the view moves, so a mesh whose blended materials sit at different queues draws them from model entities of their own, sorted in queue order.
+
 A pass can be built hidden and shown later with `entity.setPassEnabled(_:named:)`, which is how MToon outlines double as a selection highlight. An override outranks the authored values, and releasing it puts them back.
 
 ```swift
@@ -244,7 +246,6 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 - Tangents for a primitive without `TANGENT` are averaged from its UV gradients, not generated with MikkTSpace, so a normal map baked against MikkTSpace can differ along UV seams.
 - Blend shapes morph `POSITION` only, since RealityKit blend shapes have no `NORMAL` / `TANGENT` channel.
 - Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints.
-- MToon's `renderQueueOffsetNumber` is ignored, because RealityKit has no material-level draw-order hook; `transparentWithZWrite` works through `CustomMaterial.writesDepth`.
 - MToon's outline is clamped to a culling margin of the mesh's radius, so an outline asking for more caps out there.
 - MToon's outline takes its lit color from the runtime light color, not from the surface's fully evaluated shading, which RealityKit does not expose to a `CustomMaterial`.
 
