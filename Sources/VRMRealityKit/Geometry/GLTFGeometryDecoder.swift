@@ -31,6 +31,37 @@ struct GLTFPrimitiveGeometry: Sendable {
     var warnings: [GLTFGeometryWarning] = []
 
     var isSkinned: Bool { !joints.isEmpty }
+
+    /// Removes the vertices no triangle references and renumbers the indices, keeping
+    /// the vertices in first-use order. Orphan vertices are common: a VRM 0.x export
+    /// shares one vertex buffer across the primitives of a mesh, so each primitive
+    /// decodes every vertex of the mesh and draws its own slice of them (the
+    /// `AliciaSolid` fixture decodes 80,169 vertices that way for 21,995 drawn), and
+    /// merged or baked exports leave hidden parts behind as vertices no triangle uses.
+    /// RealityKit skins and morphs every vertex in the buffer whether or not a
+    /// triangle draws it. Call it before the tangent frame is built.
+    mutating func dropUnreferencedVertices() {
+        var renumbered = [UInt32](repeating: .max, count: positions.count)
+        var kept: [Int] = []
+        kept.reserveCapacity(positions.count)
+        for index in indices where renumbered[Int(index)] == .max {
+            renumbered[Int(index)] = UInt32(kept.count)
+            kept.append(Int(index))
+        }
+        guard kept.count < positions.count else { return }
+        func gathered<Element>(_ values: [Element]) -> [Element] {
+            values.isEmpty ? values : kept.map { values[$0] }
+        }
+        positions = gathered(positions)
+        normals = gathered(normals)
+        tangents = gathered(tangents)
+        bitangents = gathered(bitangents)
+        texcoords = gathered(texcoords)
+        joints = gathered(joints)
+        weights = gathered(weights)
+        blendShapeOffsets = blendShapeOffsets.map(gathered)
+        indices = indices.map { renumbered[Int($0)] }
+    }
 }
 
 /// Turns a glTF primitive into the vertex buffers a renderer draws.
@@ -163,6 +194,7 @@ struct GLTFGeometryDecoder: Sendable {
         geometry.indices = indexData
         geometry.blendShapeOffsets = targetOffsets
         geometry.normals = normals ?? Self.flatNormals(positions: geometry.positions)
+        geometry.dropUnreferencedVertices()
 
         let frame = tangentFrame(rawTangents: rawTangents,
                                  positions: geometry.positions,

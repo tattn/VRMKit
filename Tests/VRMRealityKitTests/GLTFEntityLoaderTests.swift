@@ -107,7 +107,6 @@ struct GLTFEntityLoaderTests {
     @Test
     func testInitialMorphWeightsComeFromNodeThenMesh() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Find a node whose mesh has morph targets, then give it starting weights.
         let document = try GLTFDocument(data: TestSupport.seedSanData)
         let gltf = document.gltf
         let morphed = gltf.nodes.enumerated().compactMap { index, node -> (Int, Int)? in
