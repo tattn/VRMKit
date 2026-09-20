@@ -22,6 +22,34 @@ struct GLTFEditableDocumentTests {
         try expectSameBufferViews(original, reloaded)
     }
 
+    /// A synthetic, unrecognized extension is not the same as one of VRMKit's own; a
+    /// round trip has to carry both a root-level and a node-level one through untouched,
+    /// with the field names and nesting a real exporter might use.
+    @Test
+    func testAnUnrecognizedExtensionRoundTripsUntouched() throws {
+        let json = try VRMSampleAsset.seedSan.rewritingJSON { json in
+            json.withObject("extensions") { extensions in
+                extensions["EXAMPLE_totally_unmodeled"] = [
+                    "aString": "kept as written",
+                    "aNumber": 42,
+                    "nested": ["array": [1, 2, 3]]
+                ]
+            }
+            var nodes = json.objects("nodes")
+            var nodeExtensions = nodes[0].object("extensions") ?? [:]
+            nodeExtensions["EXAMPLE_per_node_thing"] = ["tag": "unchanged"]
+            nodes[0].set("extensions", nodeExtensions)
+            json.set("nodes", nodes)
+        }
+
+        let reloaded = try GLTFDocument(data: try GLTFEditableDocument(data: json).serialize())
+        let rawExtensions = try reloaded.rawJSON().object("extensions")
+        #expect(rawExtensions?.object("EXAMPLE_totally_unmodeled") ==
+                ["aString": "kept as written", "aNumber": 42, "nested": ["array": [1, 2, 3]]])
+        let nodeExtensions = try reloaded.rawJSON().objects("nodes")[0].object("extensions")
+        #expect(nodeExtensions?.object("EXAMPLE_per_node_thing") == ["tag": "unchanged"])
+    }
+
     /// A `.gltf` with external resources becomes a self-contained GLB: its buffers and
     /// images move into the one buffer a GLB carries, and nothing else changes.
     @Test(arguments: GLTFSampleAsset.allCases)

@@ -117,8 +117,8 @@ public final class VRMEntity: GLTFEntity {
     /// coordinates, so the entity faces whichever way its VRM does.
     public override var frontDirection: SIMD3<Float> { vrm.forwardDirection }
 
-    func setUpHumanoid(nodes: [Entity?]) {
-        humanoid.setUp(boneNodes: vrm.boneNodes, nodes: nodes)
+    func setUpHumanoid(nodes: [Entity?]) throws {
+        try humanoid.setUp(boneNodes: vrm.boneNodes, nodes: nodes)
     }
 
     /// Called once per entity, right after its node hierarchy is built.

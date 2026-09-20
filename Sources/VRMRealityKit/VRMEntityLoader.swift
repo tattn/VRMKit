@@ -102,7 +102,7 @@ public final class VRMEntityLoader {
                           built: GLTFSceneBuilder.BuiltScene,
                           builder: GLTFSceneBuilder) throws {
         let hierarchy = try resources.nodeHierarchy()
-        entity.setUpHumanoid(nodes: built.nodes)
+        try entity.setUpHumanoid(nodes: built.nodes)
         entity.setUpBlendShapes(nodes: built.nodes, meshes: built.meshes, builder: builder)
         entity.setUpFirstPerson(plan: profile.firstPerson(hierarchy: hierarchy),
                                 nodes: built.nodes,
