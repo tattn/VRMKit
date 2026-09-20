@@ -61,4 +61,31 @@ inline float mtoonParametricRim(float3 normal, float3 viewDirection, float rimFr
     return metal::pow(rimBase, metal::max(rimFresnelPower, mtoonEpsilon));
 }
 
+// A rim light from a direction, not part of the specification. The shape follows
+// the backlight of anime-style shaders rather than a Fresnel gradient:
+//   - the light is bent away from the viewer (shape.w) so a backlight lines the
+//     near edges of the silhouette too, not only the surfaces facing it;
+//   - a half-Lambert with a wrap range (shape.z) carries the band around the
+//     shadowed side instead of cutting it off at the terminator;
+//   - the Fresnel edge times that facing is cut into a band of set width (shape.x)
+//     with a soft inner edge (shape.y).
+// shape = (width, softness, wrap, viewBend), all in 0...1.
+//
+// A back face of a double-sided material carries a normal pointing away from the
+// viewer, which would read as the sharpest edge there is; it is flipped to face
+// the viewer so that only real silhouettes light up.
+inline float mtoonRimLightTerm(float3 normal, float3 viewDirection, float3 lightDirection, float4 shape)
+{
+    if (metal::dot(normal, viewDirection) < 0.0) {
+        normal = -normal;
+    }
+    const float3 bentLight = metal::normalize(lightDirection - viewDirection * shape.w);
+    const float halfLambert = metal::dot(normal, bentLight) * 0.5 + 0.5;
+    const float facing = metal::saturate((halfLambert + shape.z) / (1.0 + shape.z));
+    const float edge = 1.0 - metal::saturate(metal::dot(normal, viewDirection));
+    const float band = edge * facing;
+    const float border = 1.0 - shape.x;
+    return mtoonLinearstep(border - shape.y * 0.5, border + shape.y * 0.5, band);
+}
+
 #endif

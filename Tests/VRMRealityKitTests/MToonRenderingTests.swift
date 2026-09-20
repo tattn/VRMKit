@@ -66,9 +66,9 @@ struct MToonRenderingTests {
         let texture = try parameters.textureResource()
         let shader = TestSupport.mtoonShaderSource
 
-        #expect(MToonMaterialParameters.baseParameterRowCount == 18)
+        #expect(MToonMaterialParameters.baseParameterRowCount == 21)
         #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
-        #expect(MToonMaterialParameters.textureRowCount == 27)
+        #expect(MToonMaterialParameters.textureRowCount == 30)
         #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
         #expect(texture.width == MToonMaterialParameters.textureRowCount)
         #expect(texture.height == 1)
@@ -324,6 +324,42 @@ struct MToonRenderingTests {
 
         vrmEntity.setMToonLighting(direction: direction, color: color, ambient: ambient)
         #expect(textures.map(\.writeCount) == writes.map { $0 + 1 })
+    }
+
+    @Test
+    func testSetMToonRimLightUpdatesParameterRowsAndNilTurnsItOff() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let rim = MToonRimLight(color: SIMD3<Float>(1.5, 0.8, 0.4), direction: SIMD3<Float>(0, 0, -2),
+                                width: 0.4, softness: 0.2, wrap: 0.6, viewBend: 1.5, blend: 0.25)
+
+        vrmEntity.setMToonRimLight(rim)
+
+        var parameters = try firstMToonParameters(in: vrmEntity)
+        #expect(parameters.rimLightColor.isApproximatelyEqual(to: SIMD4<Float>(1.5, 0.8, 0.4, 0.25)))
+        #expect(parameters.rimLightDirection.isApproximatelyEqual(to: SIMD4<Float>(0, 0, -1, 0)))
+        // The shape is clamped to 0...1
+        #expect(parameters.rimLightShape.isApproximatelyEqual(to: SIMD4<Float>(0.4, 0.2, 0.6, 1)))
+
+        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        #expect(try firstMToonParameters(in: copy).rimLightColor.isApproximatelyEqual(to: SIMD4<Float>(1.5, 0.8, 0.4, 0.25)))
+
+        vrmEntity.setMToonRimLight(nil)
+        parameters = try firstMToonParameters(in: vrmEntity)
+        #expect(parameters.rimLightColor == SIMD4<Float>(0, 0, 0, 0))
+        #expect(parameters.rimLightShape == SIMD4<Float>(0, 0, 0, 0))
+
+        // Scoped to a material set, the others keep their rows. Only MToon materials carry the
+        // rows, so the one checked is picked among them rather than from the whole material set.
+        let mtoonIndexes = TestSupport.materialIndexes(in: vrmEntity).filter {
+            vrmEntity.mtoonParameters(forMaterialIndex: $0) != nil
+        }
+        let others = Array(mtoonIndexes.dropFirst())
+        let other = try #require(others.first)
+        vrmEntity.setMToonRimLight(rim, forMaterials: Set(others))
+        #expect(try firstMToonParameters(in: vrmEntity).rimLightColor == SIMD4<Float>(0, 0, 0, 0))
+        #expect(try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: other).rimLightColor
+            .isApproximatelyEqual(to: SIMD4<Float>(1.5, 0.8, 0.4, 0.25)))
     }
 
     @Test
