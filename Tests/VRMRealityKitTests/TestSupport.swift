@@ -173,8 +173,7 @@ enum TestSupport {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     static func jointRotations(in root: Entity) -> [SIMD4<Float>] {
         modelEntities(in: root).flatMap { modelEntity in
-            modelEntity.components[SkeletalPosesComponent.self]?.poses.default?
-                .jointTransforms.map(\.rotation.vector) ?? []
+            modelEntity.deformedMesh?.jointTransforms?.map(\.rotation.vector) ?? []
         }
     }
 
@@ -236,19 +235,14 @@ enum TestSupport {
     }
 
     /// The blend-shape weight currently applied for a glTF morph target index,
-    /// read back from the model entities the way RealityKit renders it.
+    /// read back from the mesh the way it is deformed.
     @MainActor
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     static func morphWeight(in root: Entity, targetIndex: Int) -> Float? {
-        let targetName = "blendShape_\(targetIndex)"
         for modelEntity in modelEntities(in: root) {
-            let weights = modelEntity.blendWeights
-            let names = modelEntity.blendWeightNames
-            for setIndex in names.indices where setIndex < weights.count {
-                guard let nameIndex = names[setIndex].firstIndex(of: targetName),
-                      nameIndex < weights[setIndex].count else { continue }
-                return weights[setIndex][nameIndex]
-            }
+            guard let mesh = modelEntity.deformedMesh,
+                  mesh.blendShapeWeights.indices.contains(targetIndex) else { continue }
+            return mesh.blendShapeWeights[targetIndex]
         }
         return nil
     }
@@ -278,23 +272,17 @@ enum TestSupport {
         }
     }
 
-    /// Every model entity of the hierarchy a first-person camera cuts, with the
-    /// catalog its meshes come from.
+    /// Every model entity of the hierarchy a first-person camera cuts.
     @MainActor
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    static func firstPersonCuts(in root: Entity) -> [(entity: ModelEntity, catalog: GLTFMergedMeshCatalog)] {
-        modelEntities(in: root).compactMap { modelEntity in
-            guard let merged = modelEntity.mergedMesh, merged.catalog.hasFirstPersonCut else { return nil }
-            return (modelEntity, merged.catalog)
-        }
+    static func firstPersonCuts(in root: Entity) -> [ModelEntity] {
+        modelEntities(in: root).filter { $0.deformedMesh?.hasFirstPersonCut == true }
     }
 
+    /// The indices every slot of `geometry` draws, whole or cut for a first-person camera.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @MainActor
-    static func triangleIndexCount(of mesh: MeshResource) -> Int {
-        mesh.contents.models.reduce(0) { count, model in
-            count + model.parts.reduce(0) { $0 + ($1.triangleIndices?.count ?? 0) }
-        }
+    static func triangleIndexCount(of geometry: GLTFMeshGeometry, isFirstPerson: Bool = false) -> Int {
+        geometry.slots.indices.reduce(0) { $0 + geometry.triangleIndices(ofSlot: $1, isFirstPerson: isFirstPerson).count }
     }
 
     /// What the primitive under `entity` is drawing now.
@@ -302,8 +290,7 @@ enum TestSupport {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     static func drawnTriangleIndexCount(of entity: Entity) -> Int {
         modelEntities(in: entity)
-            .compactMap { $0.components[ModelComponent.self]?.mesh }
-            .map(triangleIndexCount)
+            .compactMap { $0.deformedMesh?.drawnIndexCount }
             .max() ?? 0
     }
 

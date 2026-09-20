@@ -58,14 +58,14 @@ struct GLTFEntityLoaderTests {
 
         #expect(!entity.skinBindings.isEmpty)
         for binding in entity.skinBindings {
-            #expect(binding.modelEntity.components.has(SkeletalPosesComponent.self))
+            #expect(binding.deformedMesh?.jointTransforms != nil)
             #expect(!binding.jointEntities.isEmpty)
         }
     }
 
     /// The loader keeps no scene cache, so it hands out independently animatable
-    /// copies of one scene: each reuses the `MeshResource` the last one built and
-    /// binds joint entities of its own.
+    /// copies of one scene: each deforms a mesh of its own from the vertex data the
+    /// last one built and binds joint entities of its own.
     @Test
     func testReloadingASceneReusesItsMeshesAndBindsItsOwnJoints() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -80,7 +80,8 @@ struct GLTFEntityLoaderTests {
         #expect(first.skinBindings.count == second.skinBindings.count)
         for (old, new) in zip(first.skinBindings, second.skinBindings) {
             #expect(old.modelEntity !== new.modelEntity)
-            #expect(old.modelEntity.model?.mesh === new.modelEntity.model?.mesh)
+            #expect(old.modelEntity.model?.mesh !== new.modelEntity.model?.mesh)
+            #expect(old.deformedMesh?.source === new.deformedMesh?.source)
         }
         // Each entity's bindings stay within its own graph.
         for (entity, other) in [(first, second), (second, first)] {
@@ -99,7 +100,7 @@ struct GLTFEntityLoaderTests {
         for (nodeIndex, binding) in entity.morphBindings {
             #expect(entity.entity(forNodeAt: nodeIndex) != nil)
             for modelEntity in binding.modelEntities {
-                #expect(modelEntity.components.has(BlendShapeWeightsComponent.self))
+                #expect(modelEntity.deformedMesh?.geometry.hasBlendShapes == true)
             }
         }
     }
@@ -132,9 +133,7 @@ struct GLTFEntityLoaderTests {
         let binding = try #require(entity.morphBindings[nodeIndex])
         #expect(binding.targetCount == targetCount)
         let applied = binding.modelEntities.contains { modelEntity in
-            modelEntity.blendWeights.contains { set in
-                set.first.map { abs($0 - 0.5) < 0.0001 } ?? false
-            }
+            modelEntity.deformedMesh?.blendShapeWeights.first.map { abs($0 - 0.5) < 0.0001 } ?? false
         }
         #expect(applied)
     }
@@ -319,8 +318,7 @@ struct GLTFEntityLoaderTests {
         """
 
         let entity = try await GLTFEntityLoader(withData: Data(json.utf8)).loadEntity()
-        let model = try #require(entity.modelEntitiesInHierarchy.first?.components[ModelComponent.self])
-        let positions = try #require(model.mesh.contents.models.first?.parts.first?.positions.elements)
+        let positions = try #require(entity.modelEntitiesInHierarchy.first?.gltfMeshGeometry?.positions)
 
         #expect(positions.count == 3)
         #expect(positions[2].isApproximatelyEqual(to: SIMD3<Float>(0, 5, 0)))
@@ -368,8 +366,7 @@ struct GLTFEntityLoaderTests {
         """
 
         let entity = try await GLTFEntityLoader(withData: Data(json.utf8)).loadEntity()
-        let model = try #require(entity.modelEntitiesInHierarchy.first?.components[ModelComponent.self])
-        let uvs = try #require(model.mesh.contents.models.first?.parts.first?.textureCoordinates?.elements)
+        let uvs = try #require(entity.modelEntitiesInHierarchy.first?.gltfMeshGeometry?.texcoords)
 
         #expect(uvs.count == 3)
         // The loader flips V (RealityKit's UV origin is bottom-left), so the TEXCOORD_1
@@ -641,13 +638,13 @@ struct GLTFEntityLoaderTests {
     @Test
     func testVRMSharesMorphTargetsAcrossPrimitivesButPlainGLTFDoesNot() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Primitives merge into the parts of one mesh, so the sharing shows as
-        // how many parts carry blend shapes, not as extra entities.
+        // Primitives merge into the slots of one mesh, so the sharing shows as
+        // how many slots carry blend shapes, not as extra entities.
         func morphablePartCount(_ entity: Entity) -> Int {
             entity.modelEntitiesInHierarchy
-                .compactMap { $0.components[ModelComponent.self]?.mesh }
-                .flatMap { $0.contents.models.flatMap(\.parts) }
-                .count { !$0.blendShapeNames.isEmpty }
+                .compactMap(\.gltfMeshGeometry)
+                .flatMap(\.slots)
+                .count(where: \.hasBlendShapes)
         }
         // AliciaSolid names no default scene, so the plain loader is given one.
         let vrm = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
@@ -691,10 +688,9 @@ struct GLTFEntityLoaderTests {
         }
 
         let entity = try await loader.loadEntity()
-        let model = try #require(entity.modelEntitiesInHierarchy.first?.components[ModelComponent.self])
-        let part = try #require(model.mesh.contents.models.first?.parts.first)
-        let tangents = try #require(part.tangents?.elements)
-        let bitangents = try #require(part.bitangents?.elements)
+        let geometry = try #require(entity.modelEntitiesInHierarchy.first?.gltfMeshGeometry)
+        let tangents = geometry.tangents
+        let bitangents = geometry.bitangents
 
         #expect(tangents.count == 6)
         #expect(tangents.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
@@ -734,12 +730,11 @@ struct GLTFEntityLoaderTests {
         """
 
         let entity = try await GLTFEntityLoader(withData: Data(json.utf8)).loadEntity()
-        let model = try #require(entity.modelEntitiesInHierarchy.first?.components[ModelComponent.self])
-        let part = try #require(model.mesh.contents.models.first?.parts.first)
-        let normals = try #require(part.normals?.elements)
+        let geometry = try #require(entity.modelEntitiesInHierarchy.first?.gltfMeshGeometry)
+        let normals = geometry.normals
 
         // Flat shading needs a vertex per triangle corner.
-        #expect(part.positions.elements.count == 6)
+        #expect(geometry.positions.count == 6)
         #expect(normals.count == 6)
         for normal in normals[0..<3] {
             #expect(normal.isApproximatelyEqual(to: SIMD3<Float>(0, 0, 1)))

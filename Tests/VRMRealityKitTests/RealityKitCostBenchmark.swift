@@ -158,23 +158,6 @@ struct RealityKitCostBenchmark {
                          allEntities(scaled).count))
         }
 
-        // The marginal cost of one `SkeletalPosesComponent` write. The joint hierarchy
-        // is gone and the pose is written back unchanged, so nothing but the write is timed.
-        for count in [0, 1, 5, 10] {
-            let writer = try await load()
-            _ = detachJointHierarchy(from: writer)
-            let targets: [(ModelEntity, SkeletalPosesComponent)] = writer.skinBindings.prefix(count).compactMap { binding in
-                binding.modelEntity.components[SkeletalPosesComponent.self].map { (binding.modelEntity, $0) }
-            }
-            print(String(format: "BENCH skeleton writes %2d: %.3f ms/frame",
-                         targets.count,
-                         try millisecondsPerFrame(rendering: writer, frames: 200, warmup: 60) {
-                             for (modelEntity, component) in targets {
-                                 modelEntity.components.set(component)
-                             }
-                         }))
-        }
-
         // Driven through the entity hierarchy, as an app posing humanoid bones every
         // frame does: write the bones, then let the model solve constraints, gaze,
         // spring bones and the skin.
@@ -192,32 +175,6 @@ struct RealityKitCostBenchmark {
                      },
                      bones.count))
 
-        // The same motion reaching the skin without a joint hierarchy at all: the
-        // ceiling a backend holding poses in arrays could reach.
-        let drivenPacked = try await load()
-        _ = detachJointHierarchy(from: drivenPacked)
-        var poses: [(ModelEntity, SkeletalPosesComponent)] = drivenPacked.skinBindings.compactMap { binding in
-            binding.modelEntity.components[SkeletalPosesComponent.self].map { (binding.modelEntity, $0) }
-        }
-        var packedTick: Float = 0
-        print(String(format: "BENCH driven  packed:   %.3f ms/frame (skeletons %d)",
-                     try millisecondsPerFrame(rendering: drivenPacked, frames: 200, warmup: 60) {
-                         packedTick += 0.01
-                         let rotation = simd_quatf(angle: sin(packedTick) * 0.05, axis: SIMD3<Float>(1, 0, 0))
-                         for index in poses.indices {
-                             var component = poses[index].1
-                             if var pose = component.poses.default {
-                                 for jointIndex in pose.jointTransforms.indices {
-                                     pose.jointTransforms[jointIndex].rotation = rotation
-                                 }
-                                 component.poses[pose.id] = pose
-                                 component.poses.default = pose
-                             }
-                             poses[index].1 = component
-                             poses[index].0.components.set(component)
-                         }
-                     },
-                     poses.count))
     }
 
     // MARK: - The first frame after a load
@@ -461,8 +418,8 @@ struct RealityKitCostBenchmark {
             }
         })
 
-        // Every skeleton is drawn by a model entity and its outline twin, each carrying
-        // its own `SkeletalPosesComponent`: what the second write per skeleton costs.
+        // Every skeleton is drawn by a model entity and its outline twin, each deforming a
+        // mesh of its own: what the second mesh per skeleton costs.
         let bare = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                              shaders: [MToonShader(outlinePass: .never)]).loadEntity()
         bare.isAutomaticUpdateEnabled = false

@@ -90,7 +90,8 @@ public final class GLTFEntityLoader {
         try await queue.run {
             let root = GLTFEntity(document: document, sceneIndex: index)
             _ = try await resources.build(into: root)
-            root.flushSkinPose()
+            root.invalidateSkinPose()
+            root.flushDeformation()
             return root
         }
     }
@@ -118,7 +119,6 @@ extension GLTFResourceCache {
             meshes \(timings.meshResources, privacy: .public) x\(timings.meshResourceCount, privacy: .public), \
             late textures \(timings.textureResources, privacy: .public) x\(timings.textureResourceCount, privacy: .public))
             """)
-        builder.prewarmFirstPersonMeshesInBackground()
         return (builder, built)
     }
 }

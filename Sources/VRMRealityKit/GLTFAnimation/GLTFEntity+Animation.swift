@@ -196,9 +196,8 @@ extension GLTFEntity {
         components.set(GLTFAnimationPlaybackComponent())
         var movedNodes: [Entity] = []
         controller.apply(movedNodes: &movedNodes)
-        if !movedNodes.isEmpty {
-            flushSkinPose()
-        }
+        invalidateSkinPose(for: movedNodes)
+        flushDeformation()
         return controller
     }
 
@@ -222,13 +221,11 @@ extension GLTFEntity {
         }
         // A paused or held pose leaves the skeleton where the last solve put it, and a
         // looping animation that rests moves only the joints something else has taken.
-        if !movedAnimationNodes.isEmpty {
-            invalidateSkinPose(for: movedAnimationNodes)
-            // A model driving its own per-frame update solves the pose at the end of it,
-            // after this frame's constraints and spring bones.
-            if !refreshesSkinningPerFrame {
-                flushSkinPoseIfNeeded()
-            }
+        invalidateSkinPose(for: movedAnimationNodes)
+        // A model driving its own per-frame update solves the pose and submits the
+        // deformation at the end of it, after this frame's constraints and spring bones.
+        if !refreshesSkinningPerFrame {
+            flushDeformation()
         }
         pruneCompletedAnimations()
     }
@@ -243,9 +240,8 @@ extension GLTFEntity {
         for outranking in activeAnimationControllers[first...] {
             outranking.apply(movedNodes: &movedNodes)
         }
-        if !movedNodes.isEmpty {
-            flushSkinPose()
-        }
+        invalidateSkinPose(for: movedNodes)
+        flushDeformation()
     }
 
     func pruneCompletedAnimations() {

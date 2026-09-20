@@ -74,7 +74,7 @@ extension GLTFSceneBuilder {
 
     /// A skinned primitive's vertex influences in the skin's joint order, four per vertex
     /// with the weights renormalized.
-    private nonisolated static func jointInfluences(of geometry: GLTFPrimitiveGeometry) throws -> [MeshJointInfluence] {
+    private nonisolated static func jointInfluences(of geometry: GLTFPrimitiveGeometry) throws -> GLTFJointInfluences {
         let joints = geometry.joints
         let weights = geometry.weights
         let remap = geometry.jointIndexRemap
@@ -85,35 +85,30 @@ extension GLTFSceneBuilder {
             throw VRMError._dataInconsistent("joint influence count \(joints.count) does not match vertex count \(geometry.positions.count)")
         }
 
-        var influences: [MeshJointInfluence] = []
-        influences.reserveCapacity(joints.count * 4)
-        func remapped(_ jointIndex: UInt32) throws -> Int {
+        var remappedJoints: [SIMD4<UInt32>] = []
+        var normalizedWeights: [SIMD4<Float>] = []
+        remappedJoints.reserveCapacity(joints.count)
+        normalizedWeights.reserveCapacity(joints.count)
+        func remapped(_ jointIndex: UInt32) throws -> UInt32 {
             guard remap.indices.contains(Int(jointIndex)) else {
                 throw VRMError._dataInconsistent(
                     "joint index \(jointIndex) is out of range for \(remap.count) skin joints"
                 )
             }
-            return remap[Int(jointIndex)]
+            return UInt32(remap[Int(jointIndex)])
         }
         for i in 0..<joints.count {
             let joint = joints[i]
-            var w0 = weights[i].x
-            var w1 = weights[i].y
-            var w2 = weights[i].z
-            var w3 = weights[i].w
-            let sum = w0 + w1 + w2 + w3
+            var weight = weights[i]
+            let sum = weight.sum()
             if sum > 0 {
-                w0 /= sum
-                w1 /= sum
-                w2 /= sum
-                w3 /= sum
+                weight /= sum
             }
-            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.x), weight: w0))
-            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.y), weight: w1))
-            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.z), weight: w2))
-            influences.append(MeshJointInfluence(jointIndex: try remapped(joint.w), weight: w3))
+            remappedJoints.append(SIMD4(try remapped(joint.x), try remapped(joint.y),
+                                        try remapped(joint.z), try remapped(joint.w)))
+            normalizedWeights.append(weight)
         }
-        return influences
+        return GLTFJointInfluences(joints: remappedJoints, weights: normalizedWeights)
     }
 
     private func geometryDecoder() throws -> GLTFGeometryDecoder {

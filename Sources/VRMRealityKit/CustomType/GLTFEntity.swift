@@ -1,5 +1,6 @@
 #if canImport(RealityKit)
 import Foundation
+import Metal
 import RealityKit
 import simd
 import VRMKit
@@ -85,6 +86,16 @@ public class GLTFEntity: Entity {
         let jointEntities: [Entity]
         /// Stands in for `skeleton.id`, so the per-frame solve dedups without hashing strings.
         let skeletonKey: Int
+        /// The mesh the solved pose is written to.
+        let deformedMesh: GLTFDeformedMesh?
+    }
+
+    /// Every mesh this entity's own document deforms, whose pending skinning and
+    /// morphing ``flushDeformation()`` submits.
+    private(set) var deformedMeshes: [GLTFDeformedMesh] = []
+
+    func registerDeformedMesh(_ mesh: GLTFDeformedMesh) {
+        deformedMeshes.append(mesh)
     }
 
     private(set) var skinBindings: [SkinBinding] = []
@@ -125,17 +136,6 @@ public class GLTFEntity: Entity {
 
     /// glTF node index → the blend shapes a `weights` channel writes to.
     private(set) var morphBindings: [Int: MorphBinding] = [:]
-
-    /// Counts the mesh variants swapped in under this model. A variant re-lays the
-    /// weight sets and the parts, so whatever was resolved against a mesh is stale
-    /// once this moves.
-    private(set) var meshVariantGeneration = 0
-
-    /// Called by the entity that swapped a variant in, so resolutions made against
-    /// the mesh it replaced are not reused.
-    func didSwapMeshVariant() {
-        meshVariantGeneration &+= 1
-    }
 
     /// One place a glTF material is rendered: which slot of which entity's
     /// materials array holds it.
@@ -182,6 +182,7 @@ public class GLTFEntity: Entity {
         GLTFNodeComponent.registerComponent()
         GLTFMaterialSlotsComponent.registerComponent()
         GLTFMergedMeshComponent.registerComponent()
+        GLTFDeformedMeshComponent.registerComponent()
         GLTFMaterialPassComponent.registerComponent()
         GLTFSkinIndexComponent.registerComponent()
         GLTFAnimationPlaybackComponent.registerComponent()
@@ -213,7 +214,7 @@ public class GLTFEntity: Entity {
         nodeEntities = nodes
     }
 
-    /// The pose is solved by ``flushSkinPose()`` once the entity graph is complete.
+    /// The pose is solved by ``flushDeformation()`` once the entity graph is complete.
     func registerSkinBinding(modelEntity: ModelEntity,
                              skeleton: MeshResource.Skeleton,
                              jointEntities: [Entity]) {
@@ -232,11 +233,12 @@ public class GLTFEntity: Entity {
         skinBindings.append(SkinBinding(modelEntity: modelEntity,
                                         skeleton: skeleton,
                                         jointEntities: jointEntities,
-                                        skeletonKey: key))
+                                        skeletonKey: key,
+                                        deformedMesh: modelEntity.deformedMesh))
     }
 
     func registerMorphBindings(forNodeAt nodeIndex: Int, modelEntities: [ModelEntity], targetCount: Int) {
-        let morphable = modelEntities.filter { $0.components.has(BlendShapeWeightsComponent.self) }
+        let morphable = modelEntities.filter { $0.deformedMesh?.geometry.hasBlendShapes == true }
         guard !morphable.isEmpty else { return }
         morphBindings[nodeIndex, default: MorphBinding(modelEntities: [], targetCount: targetCount)]
             .modelEntities.append(contentsOf: morphable)
@@ -253,18 +255,19 @@ public class GLTFEntity: Entity {
         materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
     }
 
-    /// A `clone(recursive:)` copy with material parameters of its own.
+    /// A `clone(recursive:)` copy with material parameters and meshes of its own.
     ///
-    /// A plain clone samples this entity's parameters, so it stays lit and colored as this
-    /// entity is and the material setters do nothing on it. This copy takes the values this
-    /// entity draws with now, a few hundred bytes per material, and moves on its own from
-    /// there. Like any clone it carries no animation bindings. Before a one-off render of
-    /// the copy, call ``waitForMToonParameterWrites()`` on it.
+    /// A plain clone shares this entity's parameters and meshes, so it is lit, colored
+    /// and posed as this entity is, and the material setters do nothing on it. This copy
+    /// takes both as they are now and holds them on its own from there. Like any clone it
+    /// carries no animation bindings. Before a one-off render of the copy, call
+    /// ``waitForMToonParameterWrites()`` on it.
     public func cloneWithOwnMaterialParameters() -> Self {
         // The copy carries the meshes as they are skinned now, so they are solved against
         // the joints it is about to copy.
         updateSkinPose()
         let copy = clone(recursive: true)
+        copy.freezeDeformedMeshes()
         // A glTF entity attached under this one (an accessory) is a document of its own,
         // whose material indices mean nothing in this entity's states; each takes its
         // parameters from its own original. A clone keeps the children in order, so the
@@ -273,6 +276,20 @@ public class GLTFEntity: Entity {
             cloned.adoptMaterialParameters(of: original)
         }
         return copy
+    }
+
+    /// Gives every model entity under this clone a still copy of the mesh it shares with
+    /// its original, so the original's next pose does not reach it.
+    private func freezeDeformedMeshes() {
+        for modelEntity in modelEntitiesInHierarchy {
+            guard let shared = modelEntity.deformedMesh, !shared.isFrozen else { continue }
+            do {
+                modelEntity.setDeformedMesh(try shared.makeFrozenCopy())
+            } catch {
+                // The clone keeps drawing the shared mesh, which at least draws.
+                GLTFResourceCache.gltfLogger.error("Failed to copy a mesh for a clone: \(String(describing: error), privacy: .public)")
+            }
+        }
     }
 
     /// Gives this clone rows of its own copied from `original`'s, bound to the model
@@ -506,20 +523,59 @@ public class GLTFEntity: Entity {
     }
 
     /// Solves the skinned meshes against the joints as they stand, where they have moved
-    /// since the last solve.
+    /// since the last solve, and submits their deformation.
     ///
     /// The update loop does this once a frame, so this is for a caller reading or copying
     /// the model between updates: a `clone(recursive: true)` taken while a joint has moved
     /// carries the mesh as the last solve left it, which is a pose the joints no longer
     /// describe. ``cloneWithOwnMaterialParameters()`` does it for you.
     public func updateSkinPose() {
-        flushSkinPoseIfNeeded()
+        flushDeformation()
     }
 
-    /// Re-solves the skin pose of every skin binding from the current joint transforms.
-    func flushSkinPose() {
-        isSkinPoseDirty = true
-        solveSkinPose()
+    /// Solves the skeletons whose joints moved, then submits the skinning and morphing
+    /// of every mesh whose pose or weights moved since the last submit, in one command
+    /// buffer. Nothing is submitted for a held pose.
+    ///
+    /// The entities drawing one glTF mesh (its render passes and its render-queue
+    /// groups) hold the same pose and weights, so the first of them deforms the
+    /// vertices and the rest copy its result. Every dispatch shares one compute encoder
+    /// and every copy one blit encoder: an encoder costs the GPU more than a copy does.
+    func flushDeformation() {
+        flushSkinPoseIfNeeded()
+        guard let pending = deformedMeshes.first(where: \.isDeformationPending) else { return }
+        let context = pending.source.context
+        guard let commandBuffer = context.commandQueue.makeCommandBuffer() else { return }
+        commandBuffer.label = "VRMKit deformation"
+        var deformations: [(mesh: GLTFDeformedMesh, output: MTLBuffer)] = []
+        var copies: [(from: MTLBuffer, to: MTLBuffer)] = []
+        var deformedBySource: [ObjectIdentifier: MTLBuffer] = [:]
+        for mesh in deformedMeshes {
+            guard let output = mesh.beginDeformation(using: commandBuffer) else { continue }
+            let source = ObjectIdentifier(mesh.source)
+            if let deformed = deformedBySource[source] {
+                copies.append((deformed, output))
+            } else {
+                deformedBySource[source] = output
+                deformations.append((mesh, output))
+            }
+        }
+        if let encoder = commandBuffer.makeComputeCommandEncoder() {
+            encoder.label = "VRMKit deformation"
+            encoder.setComputePipelineState(context.pipeline)
+            for (mesh, output) in deformations {
+                mesh.encodeDeformation(into: output, with: encoder)
+            }
+            encoder.endEncoding()
+        }
+        if !copies.isEmpty, let blit = commandBuffer.makeBlitCommandEncoder() {
+            blit.label = "VRMKit deformation copy"
+            for (from, to) in copies {
+                GLTFDeformedMesh.encodeCopy(from: from, to: to, with: blit)
+            }
+            blit.endEncoding()
+        }
+        commandBuffer.commit()
     }
 
     /// Re-solves the skin pose only where a joint has moved since the last solve, so a
@@ -629,16 +685,7 @@ public class GLTFEntity: Entity {
     }
 
     private func setSkinPose(_ transforms: JointTransforms, for binding: SkinBinding) {
-        let existing = binding.modelEntity.components[SkeletalPosesComponent.self]
-        var pose = existing?.poses[binding.skeleton.id]
-            ?? existing?.poses.default
-            ?? SkeletalPose(id: binding.skeleton.id, from: binding.skeleton)
-        pose.jointTransforms = transforms
-
-        var component = existing ?? SkeletalPosesComponent(poses: [pose])
-        component.poses[pose.id] = pose
-        component.poses.default = pose
-        binding.modelEntity.components.set(component)
+        binding.deformedMesh?.setJointTransforms(transforms)
     }
 
     /// A skeleton pose is each joint read in the space of the joint above it, which a
@@ -675,32 +722,6 @@ public class GLTFEntity: Entity {
             return (joint.transform, false)
         }
         return (Transform(matrix: joint.transformMatrix(relativeTo: base)), true)
-    }
-}
-
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-extension ModelEntity {
-    /// Writes `weights` onto the blend-shape targets positionally, as glTF defines for
-    /// `mesh.weights`, `node.weights` and `weights` channels alike.
-    func applyMorphWeights(_ weights: [Float]) {
-        let current = blendWeights
-        guard !current.isEmpty else { return }
-        // Compared before any copy: a held pose is the common case, and writing the sets
-        // would re-upload the weights.
-        func differs(_ set: [Float]) -> Bool {
-            weights.enumerated().contains { targetIndex, weight in
-                targetIndex < set.count && set[targetIndex] != weight
-            }
-        }
-        guard current.contains(where: differs) else { return }
-
-        var sets = current
-        for setIndex in sets.indices {
-            for (targetIndex, weight) in weights.enumerated() where targetIndex < sets[setIndex].count {
-                sets[setIndex][targetIndex] = weight
-            }
-        }
-        blendWeights = sets
     }
 }
 

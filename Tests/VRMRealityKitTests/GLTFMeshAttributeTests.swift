@@ -20,14 +20,16 @@ struct GLTFMeshAttributeTests {
 
         var checkedParts = 0
         for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
-            guard let mesh = modelEntity.components[ModelComponent.self]?.mesh else { continue }
-            for part in mesh.contents.models.flatMap(\.parts) {
-                guard let tangents = part.tangents?.elements, !tangents.isEmpty else { continue }
-                // MToon.metal falls back to the geometry normal unless both
-                // buffers are present and non-degenerate.
-                let bitangents = try #require(part.bitangents?.elements)
-                #expect(tangents.count == part.positions.count)
-                #expect(bitangents.count == tangents.count)
+            guard let geometry = modelEntity.gltfMeshGeometry, !geometry.tangents.isEmpty else { continue }
+            #expect(geometry.tangents.count == geometry.positions.count)
+            #expect(geometry.bitangents.count == geometry.tangents.count)
+            // A slot whose material samples no normal map carries zero tangents; the
+            // others must be complete, since MToon.metal falls back to the geometry
+            // normal unless both buffers are present and non-degenerate.
+            for slot in geometry.slots {
+                let tangents = geometry.tangents[slot.vertexRange]
+                let bitangents = geometry.bitangents[slot.vertexRange]
+                guard tangents.contains(where: { simd_length_squared($0) > 0 }) else { continue }
                 #expect(tangents.allSatisfy { simd_length_squared($0) > 0.5 })
                 #expect(bitangents.allSatisfy { simd_length_squared($0) > 0.5 })
                 checkedParts += 1
@@ -50,12 +52,13 @@ struct GLTFMeshAttributeTests {
         var checkedTriangles = 0
         var agreeingTriangles = 0
         for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
-            guard let mesh = modelEntity.components[ModelComponent.self]?.mesh else { continue }
-            for part in mesh.contents.models.flatMap(\.parts) {
-                guard let bitangents = part.bitangents?.elements, !bitangents.isEmpty,
-                      let texcoords = part.textureCoordinates?.elements,
-                      let indices = part.triangleIndices?.elements else { continue }
-                let positions = part.positions.elements
+            guard let geometry = modelEntity.gltfMeshGeometry, !geometry.bitangents.isEmpty,
+                  !geometry.texcoords.isEmpty else { continue }
+            let bitangents = geometry.bitangents
+            let texcoords = geometry.texcoords
+            let positions = geometry.positions
+            for slot in geometry.slots.indices {
+                let indices = Array(geometry.triangleIndices(ofSlot: slot))
                 for triangle in stride(from: 0, to: indices.count - 2, by: 3) {
                     let i0 = Int(indices[triangle])
                     let i1 = Int(indices[triangle + 1])
@@ -69,7 +72,9 @@ struct GLTFMeshAttributeTests {
                     let edge1 = positions[i1] - positions[i0]
                     let edge2 = positions[i2] - positions[i0]
                     let expected = (edge2 * deltaUV1.x - edge1 * deltaUV2.x) / determinant
-                    guard simd_length_squared(expected) > 1e-10 else { continue }
+                    // A slot without a normal map has no basis to agree with.
+                    guard simd_length_squared(expected) > 1e-10,
+                          simd_length_squared(bitangents[i0]) > 0.5 else { continue }
                     checkedTriangles += 1
                     if simd_dot(simd_normalize(expected), bitangents[i0]) > 0 {
                         agreeingTriangles += 1
@@ -259,14 +264,12 @@ struct GLTFMeshAttributeTests {
         var checkedParts = 0
         for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
             guard let slots = modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices,
-                  let mesh = modelEntity.components[ModelComponent.self]?.mesh else { continue }
-            for part in mesh.contents.models.flatMap(\.parts)
-            where part.materialIndex < slots.count && slots[part.materialIndex] == materialIndex {
-                let tangents = try #require(part.tangents?.elements)
-                let bitangents = try #require(part.bitangents?.elements)
-                #expect(tangents.count == part.positions.count)
-                #expect(bitangents.count == tangents.count)
-                #expect(tangents.contains { simd_length_squared($0) > 0.5 })
+                  let geometry = modelEntity.gltfMeshGeometry else { continue }
+            for (slot, slotGeometry) in geometry.slots.enumerated()
+            where slot < slots.count && slots[slot] == materialIndex {
+                #expect(geometry.tangents.count == geometry.positions.count)
+                #expect(geometry.bitangents.count == geometry.tangents.count)
+                #expect(geometry.tangents[slotGeometry.vertexRange].contains { simd_length_squared($0) > 0.5 })
                 checkedParts += 1
             }
         }

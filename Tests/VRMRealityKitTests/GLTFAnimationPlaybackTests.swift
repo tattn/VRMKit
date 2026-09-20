@@ -77,13 +77,13 @@ struct GLTFAnimationPlaybackTests {
         // (0,0) (0,1) (1,1) (1,0) (0,0); mesh.weights started them at 0.5.
         let controller = try entity.playAnimation(at: 0)
         entity.updateAnimations(deltaTime: 1.0)
-        var weights = try #require(modelEntity.blendWeights.first)
+        var weights = try #require(modelEntity.deformedMesh?.blendShapeWeights)
         #expect(weights[0].isApproximatelyEqual(to: 0))
         #expect(weights[1].isApproximatelyEqual(to: 1))
 
         // Halfway between keyframes 1 and 2 both targets interpolate.
         controller.seek(to: 1.5)
-        weights = try #require(modelEntity.blendWeights.first)
+        weights = try #require(modelEntity.deformedMesh?.blendShapeWeights)
         #expect(weights[0].isApproximatelyEqual(to: 0.5))
         #expect(weights[1].isApproximatelyEqual(to: 1))
     }
@@ -95,8 +95,7 @@ struct GLTFAnimationPlaybackTests {
         let binding = try #require(entity.skinBindings.first)
 
         func pose() throws -> JointTransforms {
-            let component = try #require(binding.modelEntity.components[SkeletalPosesComponent.self])
-            return try #require(component.poses.default?.jointTransforms)
+            try #require(binding.deformedMesh?.jointTransforms)
         }
 
         let initialPose = try pose()
@@ -209,7 +208,7 @@ struct GLTFAnimationPlaybackTests {
         let entity = try await GLTFEntityLoader(withData: twoWeightAnimationsFixture()).loadEntity()
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
         func weight() throws -> Float {
-            try #require(modelEntity.blendWeights.first?.first)
+            try #require(modelEntity.deformedMesh?.blendShapeWeights.first)
         }
 
         let first = try entity.playAnimation(at: 0, loops: true)   // holds 0.25
@@ -234,7 +233,7 @@ struct GLTFAnimationPlaybackTests {
         let entity = try await GLTFEntityLoader(withData: twoWeightAnimationsFixture()).loadEntity()
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
         func weight() throws -> Float {
-            try #require(modelEntity.blendWeights.first?.first)
+            try #require(modelEntity.deformedMesh?.blendShapeWeights.first)
         }
 
         let first = try entity.playAnimation(at: 0, loops: true)   // holds 0.25
@@ -361,7 +360,7 @@ struct GLTFAnimationPlaybackTests {
         #expect(controller.animation.duration == 0)
 
         entity.updateAnimations(deltaTime: 1.0 / 60)
-        #expect(try #require(modelEntity.blendWeights.first?.first).isApproximatelyEqual(to: 0.5))
+        #expect(try #require(modelEntity.deformedMesh?.blendShapeWeights.first).isApproximatelyEqual(to: 0.5))
         #expect(controller.isComplete)
         // With nothing left to advance, the entity leaves the animation system.
         #expect(!entity.components.has(GLTFAnimationPlaybackComponent.self))
@@ -375,8 +374,7 @@ struct GLTFAnimationPlaybackTests {
         let entity = try await TestSupport.loadEntity(.simpleSkin)
         let binding = try #require(entity.skinBindings.first)
         func pose() throws -> JointTransforms {
-            let component = try #require(binding.modelEntity.components[SkeletalPosesComponent.self])
-            return try #require(component.poses.default?.jointTransforms)
+            try #require(binding.deformedMesh?.jointTransforms)
         }
 
         let controller = try entity.playAnimation(at: 0)

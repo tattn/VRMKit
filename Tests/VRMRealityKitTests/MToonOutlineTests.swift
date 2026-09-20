@@ -338,13 +338,13 @@ struct MToonOutlineTests {
                 && $0.mergedMesh?.visibleSlots.contains(false) == true
         })
         func pose(of modelEntity: ModelEntity) -> [SIMD4<Float>]? {
-            modelEntity.components[SkeletalPosesComponent.self]?.poses.default?
-                .jointTransforms.map(\.rotation.vector)
+            modelEntity.deformedMesh?.jointTransforms?.map(\.rotation.vector)
         }
 
         let restPose = pose(of: hidden)
         entity.humanoid.node(for: .neck)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 0, 1))
-        entity.flushSkinPose()
+        entity.invalidateSkinPose()
+        entity.updateSkinPose()
         #expect(pose(of: hidden) != restPose)
     }
 

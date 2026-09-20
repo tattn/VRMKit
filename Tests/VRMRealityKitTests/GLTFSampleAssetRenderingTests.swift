@@ -23,7 +23,7 @@ struct GLTFSampleAssetRenderingTests {
         for modelEntity in modelEntities {
             let model = try #require(modelEntity.components[ModelComponent.self])
             #expect(!model.materials.isEmpty)
-            #expect(model.mesh.contents.models.contains { !$0.parts.isEmpty })
+            #expect(modelEntity.deformedMesh?.drawnIndexCount ?? 0 > 0)
         }
     }
 
@@ -47,11 +47,10 @@ struct GLTFSampleAssetRenderingTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         for asset in [GLTFSampleAsset.triangle, .triangleWithoutIndices] {
             let entity = try await TestSupport.loadEntity(asset)
-            let model = try #require(entity.modelEntitiesInHierarchy.first?.components[ModelComponent.self])
-            let part = try #require(model.mesh.contents.models.first?.parts.first)
+            let geometry = try #require(entity.modelEntitiesInHierarchy.first?.gltfMeshGeometry)
 
-            #expect(part.positions.count == 3, "\(asset.rawValue)")
-            #expect(part.triangleIndices?.count == 3, "\(asset.rawValue)")
+            #expect(geometry.positions.count == 3, "\(asset.rawValue)")
+            #expect(geometry.triangleIndices(ofSlot: 0).count == 3, "\(asset.rawValue)")
         }
     }
 
@@ -90,7 +89,7 @@ struct GLTFSampleAssetRenderingTests {
         #expect(binding.jointEntities.count == 2)
         #expect(binding.jointEntities[0] === entity.entity(forNodeAt: 1))
         #expect(binding.jointEntities[1] === entity.entity(forNodeAt: 2))
-        #expect(binding.modelEntity.components.has(SkeletalPosesComponent.self))
+        #expect(binding.deformedMesh?.jointTransforms != nil)
     }
 
     /// SimpleMorph declares `mesh.weights = [0.5, 0.5]` and no node weights, so it is the
@@ -102,7 +101,7 @@ struct GLTFSampleAssetRenderingTests {
 
         let binding = try #require(entity.morphBindings[0])
         #expect(binding.targetCount == 2)
-        let weights = try #require(binding.modelEntities.first?.blendWeights.first)
+        let weights = try #require(binding.modelEntities.first?.deformedMesh?.blendShapeWeights)
         #expect(weights.count == 2)
         #expect(weights.allSatisfy { $0.isApproximatelyEqual(to: 0.5) })
     }
@@ -150,7 +149,7 @@ struct GLTFSampleAssetRenderingTests {
         let nodeIndex = try #require(channel.target.node)
         let binding = try #require(entity.morphBindings[nodeIndex])
         #expect(!binding.modelEntities.isEmpty)
-        #expect(binding.modelEntities.allSatisfy { !$0.blendWeights.isEmpty })
+        #expect(binding.modelEntities.allSatisfy { $0.deformedMesh?.geometry.hasBlendShapes == true })
     }
 
     /// glTF puts no restriction on where a skinned mesh sits, so it may hang below one of
