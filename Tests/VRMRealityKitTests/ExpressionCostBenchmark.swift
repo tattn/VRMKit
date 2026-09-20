@@ -45,6 +45,16 @@ struct ExpressionCostBenchmark {
         print("BENCH   names: \(available.map(\.name).joined(separator: ", "))")
     }
 
+    /// The agreed per-frame budget for a full batched `setExpressions` call, worst case
+    /// being a Perfect Sync tracker driving every key every frame (~70 keys). Set with
+    /// >6x margin over the ~31 µs measured on Apple Silicon, so slower devices at the
+    /// bottom of the support matrix still have headroom, and to keep pace with UniVRM's
+    /// and three-vrm's per-shape blend-weight application cost for an equivalent count.
+    private static let drivingBudgetMicroseconds: Double = 250
+    /// The budget for a frame that hands over weights, none of which moved: the common
+    /// steady-state case between tracked pose changes.
+    private static let heldBudgetMicroseconds: Double = 100
+
     @Test
     func benchmarkPerFrameWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -58,10 +68,14 @@ struct ExpressionCostBenchmark {
         let trackedKeys = ownKeys + Self.perfectSyncNames.map { ExpressionKey.custom($0) }
 
         for (label, keys) in [("model keys", ownKeys), ("tracker keys", trackedKeys)] {
-            print(String(format: "BENCH %@ (%d): %.1f µs/frame",
-                         label, keys.count, microsecondsPerFrame(driving: entity, keys: keys)))
-            print(String(format: "BENCH %@ (%d) held: %.1f µs/frame",
-                         label, keys.count, microsecondsPerFrame(holding: entity, keys: keys)))
+            let driving = microsecondsPerFrame(driving: entity, keys: keys)
+            let held = microsecondsPerFrame(holding: entity, keys: keys)
+            print(String(format: "BENCH %@ (%d): %.1f µs/frame", label, keys.count, driving))
+            print(String(format: "BENCH %@ (%d) held: %.1f µs/frame", label, keys.count, held))
+            #expect(driving < Self.drivingBudgetMicroseconds,
+                     "\(label) (\(keys.count)) drove a frame in \(driving) µs, over the \(Self.drivingBudgetMicroseconds) µs budget")
+            #expect(held < Self.heldBudgetMicroseconds,
+                     "\(label) (\(keys.count)) held a frame in \(held) µs, over the \(Self.heldBudgetMicroseconds) µs budget")
         }
     }
 
