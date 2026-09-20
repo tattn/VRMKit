@@ -20,7 +20,7 @@ struct VRMComponent: Component {
 /// owns it, and ``VRMUpdateSystem`` animates it while it stays in the scene.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public final class VRMEntity: GLTFEntity {
-    private static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "Expression")
+    private static let logger = Logger(subsystem: "com.github.tattn.VRMKit", category: "Expression")
 
     /// The VRM this entity was loaded from.
     ///

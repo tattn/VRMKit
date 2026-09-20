@@ -18,7 +18,7 @@ import VRMKitRuntime
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public final class MToonShader: GLTFMaterialShader {
-    static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "MToon")
+    static let logger = Logger(subsystem: "com.github.tattn.VRMKit", category: "MToon")
     static let extensionName = GLTFExtension.materialsMToon.rawValue
 
     /// Which materials this shader renders as MToon.

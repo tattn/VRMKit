@@ -20,7 +20,7 @@ final class GLTFResourceCache {
     /// See ``GLTFEntityLoader/maxTextureDimension``.
     let maxTextureDimension: Int?
 
-    static let gltfLogger = Logger(subsystem: "dev.tattn.VRMKit", category: "glTF")
+    static let gltfLogger = Logger(subsystem: "com.github.tattn.VRMKit", category: "glTF")
 
     init(document: GLTFDocument,
          shaders: [any GLTFMaterialShader],

@@ -1,6 +1,7 @@
 #if canImport(RealityKit)
 import Foundation
 import Metal
+import OSLog
 import RealityKit
 import simd
 import VRMKit
@@ -533,6 +534,8 @@ public class GLTFEntity: Entity {
         flushDeformation()
     }
 
+    private static let signposter = OSSignposter(subsystem: "com.github.tattn.VRMKit", category: "Deformation")
+
     /// Solves the skeletons whose joints moved, then submits the skinning and morphing
     /// of every mesh whose pose or weights moved since the last submit, in one command
     /// buffer. Nothing is submitted for a held pose.
@@ -550,6 +553,9 @@ public class GLTFEntity: Entity {
         var deformations: [(mesh: GLTFDeformedMesh, output: MTLBuffer)] = []
         var copies: [(from: MTLBuffer, to: MTLBuffer)] = []
         var deformedBySource: [ObjectIdentifier: MTLBuffer] = [:]
+        // The interval is the CPU side of a submit, for a trace to set against the GPU's.
+        let interval = Self.signposter.beginInterval("VRMKit deformation")
+        defer { Self.signposter.endInterval("VRMKit deformation", interval) }
         for mesh in deformedMeshes {
             guard let output = mesh.beginDeformation(using: commandBuffer) else { continue }
             let source = ObjectIdentifier(mesh.source)

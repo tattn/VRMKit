@@ -208,8 +208,11 @@ final class GLTFDeformedMesh {
         encoder.setBytes(&uniforms, length: MemoryLayout<GLTFDeformationUniforms>.stride, index: 10)
         encoder.setBuffer(output, offset: 0, index: 11)
         let width = min(context.pipeline.maxTotalThreadsPerThreadgroup, 64)
-        encoder.dispatchThreads(MTLSize(width: geometry.vertexCount, height: 1, depth: 1),
-                                threadsPerThreadgroup: MTLSize(width: width, height: 1, depth: 1))
+        // Whole threadgroups rather than `dispatchThreads`: the simulator's Metal device rejects
+        // non-uniform threadgroup sizes, and the kernel already ignores threads past the last vertex.
+        let groups = (geometry.vertexCount + width - 1) / width
+        encoder.dispatchThreadgroups(MTLSize(width: groups, height: 1, depth: 1),
+                                     threadsPerThreadgroup: MTLSize(width: width, height: 1, depth: 1))
     }
 
     /// Writes the matrices the kernel skins with, each joint's model-space pose times
