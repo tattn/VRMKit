@@ -34,7 +34,8 @@ let package = Package(
             resources: [
                 .copy("../Assets/GLTF"),
                 .copy("../Assets/VRM"),
-                .copy("../Assets/VRMA")
+                .copy("../Assets/VRMA"),
+                .copy("../Assets/ReferenceOutputs")
             ]
         ),
 
