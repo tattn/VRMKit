@@ -94,6 +94,37 @@ struct EntityCloneTests {
 #endif
     }
 
+    /// A glTF entity attached under the model (an accessory) is a document of its own: its
+    /// copy takes rows from its own materials, not from the model's material of the same
+    /// index, and is lit on its own too.
+    @Test
+    func testACloneWithOwnMaterialParametersKeepsANestedEntitysOwnMaterials() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
+                                                  shaders: TestSupport.noOutlineShaders).loadEntity()
+        let accessory = try await GLTFEntityLoader(withURL: GLTFSampleAsset.animatedMorphCube.url,
+                                                   shaders: [MToonShader(source: .convertAll(MToonConversionStyle()))]).loadEntity()
+        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        head.addChild(accessory)
+        let tint = SIMD3<Float>(0.2, 0.4, 0.6)
+        accessory.setMToonLightColor(tint)
+        let accessoryIndex = try #require(accessory.materialIndices(under: accessory).first)
+        let accessoryBase = try #require(accessory.mtoonParameters(forMaterialIndex: accessoryIndex)?.baseColor)
+
+        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        let copiedAccessory = try #require(copy.findEntity(named: accessory.name) as? GLTFEntity)
+
+        // The accessory's copy draws with the accessory's rows, left out of the model's states
+        #expect(copiedAccessory.mtoonParameters(forMaterialIndex: accessoryIndex)?.baseColor == accessoryBase)
+        #expect(copiedAccessory.mtoonParameters(forMaterialIndex: accessoryIndex)?.lightColor == SIMD4(tint, 1))
+        #expect(copy.materialIndices(under: copiedAccessory).isEmpty)
+        #expect(copiedAccessory.materialIndices(under: copiedAccessory) == [accessoryIndex])
+
+        // and takes lighting on its own from there
+        copiedAccessory.setMToonLightColor(SIMD3(1, 1, 1))
+        #expect(accessory.mtoonParameters(forMaterialIndex: accessoryIndex)?.lightColor == SIMD4(tint, 1))
+    }
+
     /// A joint posed since the last update reaches the copy's meshes: the copy is drawn
     /// as its joints describe, not as the last solve left them.
     @Test

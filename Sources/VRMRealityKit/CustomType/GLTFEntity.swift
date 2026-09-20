@@ -265,24 +265,64 @@ public class GLTFEntity: Entity {
         // the joints it is about to copy.
         updateSkinPose()
         let copy = clone(recursive: true)
-        for modelEntity in copy.modelEntitiesInHierarchy {
+        // A glTF entity attached under this one (an accessory) is a document of its own,
+        // whose material indices mean nothing in this entity's states; each takes its
+        // parameters from its own original. A clone keeps the children in order, so the
+        // two hierarchies pair up entity by entity.
+        for (original, cloned) in zip(gltfEntitiesInHierarchy, copy.gltfEntitiesInHierarchy) {
+            cloned.adoptMaterialParameters(of: original)
+        }
+        return copy
+    }
+
+    /// Gives this clone rows of its own copied from `original`'s, bound to the model
+    /// entities of this entity's own document (not those of a glTF entity nested under it).
+    private func adoptMaterialParameters(of original: GLTFEntity) {
+        for modelEntity in ownModelEntities {
             guard let indices = modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices else {
                 continue
             }
             for case let (slot, materialIndex?) in indices.enumerated() {
-                if copy.materialStates[materialIndex] == nil {
-                    let detached = materialStates[materialIndex]?.animatable?.detached()
-                    copy.materialStates[materialIndex] = MaterialRuntimeState(animatable: detached,
-                                                                              needsFlush: detached != nil)
+                if materialStates[materialIndex] == nil {
+                    let detached = original.materialStates[materialIndex]?.animatable?.detached()
+                    materialStates[materialIndex] = MaterialRuntimeState(animatable: detached,
+                                                                         needsFlush: detached != nil)
                 }
-                copy.materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
+                materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
             }
         }
-        copy.mtoonLightDirection = mtoonLightDirection
-        copy.mtoonLightColor = mtoonLightColor
-        copy.mtoonAmbientColor = mtoonAmbientColor
-        copy.flushDirtyMaterialStates()
-        return copy
+        mtoonLightDirection = original.mtoonLightDirection
+        mtoonLightColor = original.mtoonLightColor
+        mtoonAmbientColor = original.mtoonAmbientColor
+        flushDirtyMaterialStates()
+    }
+
+    /// This entity and every glTF entity nested under it, in a fixed traversal order.
+    private var gltfEntitiesInHierarchy: [GLTFEntity] {
+        var result: [GLTFEntity] = []
+        var stack: [Entity] = [self]
+        while let entity = stack.popLast() {
+            if let gltfEntity = entity as? GLTFEntity {
+                result.append(gltfEntity)
+            }
+            stack.append(contentsOf: entity.children)
+        }
+        return result
+    }
+
+    /// The model entities of this entity's own document: its hierarchy minus the subtrees
+    /// of glTF entities nested under it.
+    private var ownModelEntities: [ModelEntity] {
+        var result: [ModelEntity] = []
+        var stack: [Entity] = [self]
+        while let entity = stack.popLast() {
+            if entity !== self, entity is GLTFEntity { continue }
+            if let modelEntity = entity as? ModelEntity {
+                result.append(modelEntity)
+            }
+            stack.append(contentsOf: entity.children)
+        }
+        return result
     }
 
     /// The glTF material indices any model entity under `root` renders with, additional
