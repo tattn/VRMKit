@@ -55,10 +55,20 @@ struct MToonRimLightRenderingTests {
                       width: 0.9, softness: 0, wrap: wrap, viewBend: 0)
     }
 
+    /// The unlit render doubles as the machine's capability check: the visionOS
+    /// simulator hands back a blank frame wherever RealityKit's pipelines fail to compile.
+    private func drawsTheCube(_ brightness: (left: Float, right: Float)) -> Bool {
+        brightness.left > 0 && brightness.right > 0
+    }
+
     @Test
     func testRimLightBrightensTheEdgeFacingTheLightOnly() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable else { return }
         let bare = halfBrightness(try OffscreenRenderer.render(await cube(rimLight: nil), size: Self.size))
+#if os(visionOS)
+        guard drawsTheCube(bare) else { return }
+#endif
+        #expect(drawsTheCube(bare), "the unlit cube must be drawn")
         let lit = halfBrightness(try OffscreenRenderer.render(await cube(rimLight: rim(wrap: 0)), size: Self.size))
 
         #expect(lit.right > bare.right + 20, "right face: \(bare.right) -> \(lit.right)")
@@ -70,6 +80,10 @@ struct MToonRimLightRenderingTests {
     func testWrapCarriesTheRimAroundTheShadowedSide() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable else { return }
         let bare = halfBrightness(try OffscreenRenderer.render(await cube(rimLight: nil), size: Self.size))
+#if os(visionOS)
+        guard drawsTheCube(bare) else { return }
+#endif
+        #expect(drawsTheCube(bare), "the unlit cube must be drawn")
         let wrapped = halfBrightness(try OffscreenRenderer.render(await cube(rimLight: rim(wrap: 1)), size: Self.size))
 
         #expect(wrapped.right > bare.right + 20, "right face: \(bare.right) -> \(wrapped.right)")
