@@ -49,10 +49,6 @@ final class GLTFSceneBuilder {
     }
     private(set) var timings = Timings()
 
-    /// The merged meshes a first-person camera cuts, whose cut variant is generated
-    /// after the load rather than during it.
-    private(set) var firstPersonCatalogs: [GLTFMergedMeshCatalog] = []
-
     /// The scene's entities, by glTF node index.
     private(set) var nodes: [Entity?]
 
@@ -114,23 +110,6 @@ final class GLTFSceneBuilder {
         try await makeTextureResources()
         timings.textureUploads = ContinuousClock.now - uploadsStarted
         timings.prepareTextures = ContinuousClock.now - started
-    }
-
-    /// Generates the first-person variant of every cut mesh once the load has returned,
-    /// off the actor, so the first camera switch finds it ready without the load paying
-    /// for a mesh most sessions never draw. A switch landing first generates it on the spot.
-    func prewarmFirstPersonMeshesInBackground() {
-        let catalogs = firstPersonCatalogs
-        guard !catalogs.isEmpty else { return }
-        Task(priority: .utility) { @MainActor in
-            for catalog in catalogs {
-                do {
-                    try await catalog.prewarmFirstPersonVariant()
-                } catch {
-                    GLTFResourceCache.gltfLogger.error("Failed to generate a first-person mesh: \(String(describing: error), privacy: .public)")
-                }
-            }
-        }
     }
 
     func build() throws -> BuiltScene {
@@ -259,8 +238,8 @@ final class GLTFSceneBuilder {
         let nodeWeights = try validated(gltfNode.weights, "a node rendering mesh \(meshIndex)")
 
         guard let weights = nodeWeights ?? meshWeights, weights.contains(where: { $0 != 0 }) else { return }
-        for modelEntity in modelEntities where modelEntity.components.has(BlendShapeWeightsComponent.self) {
-            modelEntity.applyMorphWeights(weights)
+        for modelEntity in modelEntities {
+            modelEntity.deformedMesh?.setBlendShapeWeights(weights)
         }
     }
 
@@ -299,11 +278,12 @@ final class GLTFSceneBuilder {
     /// The entity one node renders a glTF mesh through, one per call.
     func mesh(withMeshIndex index: Int, skinIndex: Int?, nodeIndex: Int) throws -> Entity {
         let headJoints = try headJoints(ofNodeAt: nodeIndex, meshIndex: index, skinIndex: skinIndex)
-        // Built once per template and cloned per node: the clones share the `MeshResource`
-        // and carry their own pose and weights.
+        // Built once per template and cloned per node: the clones share the vertex data
+        // and each deform a mesh of their own with their own pose and weights.
         let meshEntity = try meshTemplate(withMeshIndex: index,
                                           skinIndex: skinIndex,
                                           headJoints: headJoints).clone(recursive: true)
+        try instantiateDeformedMeshes(in: meshEntity)
         try registerSkinBindings(in: meshEntity)
         registerMaterialBindings(in: meshEntity)
         sceneMeshes[index, default: []].append(.init(nodeIndex: nodeIndex, entity: meshEntity))
@@ -343,33 +323,47 @@ final class GLTFSceneBuilder {
         guard !primitives.isEmpty else { return meshEntity }
 
         // A skinned mesh's primitives all bind the one skin the node names, so the
-        // merged parts share its skeleton.
+        // merged slots share its skeleton.
         let skeleton = primitives.contains(where: \.isSkinned)
             ? try skinIndex.map { try skin(withSkinIndex: $0).skeleton }
             : nil
+        // One vertex array for the whole mesh: every entity drawing it (its render
+        // passes and its render-queue groups) deforms from the same source and draws
+        // its own slots of it, so the vertices are skinned once per frame, not once
+        // per entity.
+        let started = ContinuousClock.now
+        let context = try GLTFDeformationContext.shared()
+        let geometry = try GLTFMeshGeometry(primitives: primitives.map(\.prepared),
+                                            isSkinned: skeleton != nil,
+                                            blendShapeTargetCount: try morphTargetCount(ofMeshAt: index),
+                                            context: context)
+        let source = try GLTFMeshSource(geometry: geometry, skeleton: skeleton, context: context)
+        timings.meshResources += ContinuousClock.now - started
+        timings.meshResourceCount += 1
 
         // Each distinct pass of the mesh's materials becomes one sibling model entity
-        // bundling every primitive whose material draws it, in first-appearance order.
+        // drawing every slot whose material has the pass, in first-appearance order.
         var passNames: [String] = []
-        var passSlots: [String: [(primitive: MergedPrimitive, pass: GLTFShadedMaterial.Pass)]] = [:]
         for primitive in primitives {
-            for pass in primitive.shaded.additionalPasses {
-                if passSlots[pass.name] == nil { passNames.append(pass.name) }
-                passSlots[pass.name, default: []].append((primitive, pass))
+            for pass in primitive.shaded.additionalPasses where !passNames.contains(pass.name) {
+                passNames.append(pass.name)
             }
         }
         for name in passNames {
-            guard let slots = passSlots[name] else { continue }
-            let passEntity = try makeMergedModelEntity(
-                name: "\(meshEntity.name)_\(name)",
-                modelID: "mesh_\(index)_\(name)",
-                primitives: slots.map(\.primitive),
-                materials: slots.map(\.pass.material),
-                initiallyVisibleSlots: slots.map(\.pass.isInitiallyEnabled),
-                skeleton: skeleton,
-                skinIndex: skinIndex)
+            var drawing: [SlotDrawing] = []
+            var passes: [GLTFShadedMaterial.Pass] = []
+            for (slot, primitive) in primitives.enumerated() {
+                guard let pass = primitive.shaded.additionalPasses.first(where: { $0.name == name }) else { continue }
+                drawing.append(SlotDrawing(slot: slot, material: pass.material, isInitiallyVisible: pass.isInitiallyEnabled))
+                passes.append(pass)
+            }
+            let passEntity = try makeModelEntity(name: "\(meshEntity.name)_\(name)",
+                                                 source: source,
+                                                 primitives: primitives,
+                                                 drawing: drawing,
+                                                 skinIndex: skinIndex)
             passEntity.components.set(GLTFMaterialPassComponent(name: name))
-            grantBoundsBudget(to: passEntity, passes: slots.map(\.pass))
+            grantBoundsBudget(to: passEntity, passes: passes)
             // The passes go on before the main model entity, keeping their draw order.
             meshEntity.addChild(passEntity)
         }
@@ -380,21 +374,22 @@ final class GLTFSceneBuilder {
         // materials ask for different render queues draw from entities of their own,
         // in a sort group that keeps the queue order.
         let renderQueues = Set(primitives.compactMap(\.shaded.renderQueue)).sorted()
-        var groups: [(queue: Int?, primitives: [MergedPrimitive])] = [(nil, primitives)]
+        var groups: [(queue: Int?, slots: [Int])] = [(nil, Array(primitives.indices))]
         var sortGroup: ModelSortGroup?
         if renderQueues.count > 1 {
-            groups = renderQueues.map { queue in (queue, primitives.filter { $0.shaded.renderQueue == queue }) }
-                + [(nil, primitives.filter { $0.shaded.renderQueue == nil })]
+            groups = (renderQueues.map(Optional.some) + [nil]).map { queue in
+                (queue, primitives.indices.filter { primitives[$0].shaded.renderQueue == queue })
+            }
             sortGroup = ModelSortGroup()
         }
-        for (queue, grouped) in groups where !grouped.isEmpty {
-            let modelEntity = try makeMergedModelEntity(
+        for (queue, slots) in groups where !slots.isEmpty {
+            let modelEntity = try makeModelEntity(
                 name: "\(meshEntity.name)_model\(queue.map { "_\($0)" } ?? "")",
-                modelID: "mesh_\(index)\(queue.map { "_queue\($0)" } ?? "")",
-                primitives: grouped,
-                materials: grouped.map(\.shaded.material),
-                initiallyVisibleSlots: grouped.map { _ in true },
-                skeleton: skeleton,
+                source: source,
+                primitives: primitives,
+                drawing: slots.map {
+                    SlotDrawing(slot: $0, material: primitives[$0].shaded.material, isInitiallyVisible: true)
+                },
                 skinIndex: skinIndex)
             if let queue, let sortGroup {
                 modelEntity.components.set(ModelSortGroupComponent(group: sortGroup, order: Int32(queue)))
@@ -419,15 +414,12 @@ final class GLTFSceneBuilder {
     }
 
     /// One primitive of a mesh, decoded and shaded, ready to merge into the mesh's
-    /// model entities as one part each.
+    /// model entities as one slot each.
     private struct MergedPrimitive {
         let materialIndex: Int?
         let shaded: GLTFShadedMaterial
-        /// The part's `materialIndex` is set to its slot by the entity taking it.
-        let part: MeshResource.Part
-        /// What a first-person camera draws of the part.
-        let firstPersonMask: FirstPersonPrimitiveMask
-        let hasBlendShapes: Bool
+        let prepared: GLTFPreparedPrimitive
+        /// Whether the node draws the primitive through a skin.
         let isSkinned: Bool
     }
 
@@ -443,76 +435,61 @@ final class GLTFSceneBuilder {
                 """)
             return nil
         }
-        let geometry = prepared.geometry
-        for warning in geometry.warnings {
+        for warning in prepared.geometry.warnings {
             resources.logOnce(warning.key, warning.message)
         }
 
         let shaded = try primitive.material.map { try shadedMaterial(withMaterialIndex: $0) }
             ?? GLTFShadedMaterial(material: Self.defaultMaterial())
 
-        var jointInfluences: MeshResource.JointInfluences?
-        var skeletonID: String?
-        if let skinIndex, let influences = prepared.jointInfluences {
-            jointInfluences = MeshResource.JointInfluences(influences: MeshBuffer(influences), influencesPerVertex: 4)
-            skeletonID = try skin(withSkinIndex: skinIndex).skeleton.id
-        }
         return MergedPrimitive(materialIndex: primitive.material,
                                shaded: shaded,
-                               part: makePart(id: "primitive_\(primitiveIndex)",
-                                              geometry: geometry,
-                                              skeletonID: skeletonID,
-                                              jointInfluences: jointInfluences),
-                               firstPersonMask: prepared.firstPersonMask,
-                               hasBlendShapes: !geometry.blendShapeOffsets.isEmpty,
-                               isSkinned: geometry.isSkinned)
+                               prepared: prepared,
+                               isSkinned: skinIndex != nil && prepared.jointInfluences != nil)
     }
 
-    /// One model entity drawing `primitives` as the parts of one mesh, each
-    /// addressing its material by slot.
-    private func makeMergedModelEntity(name: String,
-                                       modelID: String,
-                                       primitives: [MergedPrimitive],
-                                       materials: [Material],
-                                       initiallyVisibleSlots: [Bool],
-                                       skeleton: MeshResource.Skeleton?,
-                                       skinIndex: Int?) throws -> ModelEntity {
-        var parts: [MeshResource.Part] = []
-        parts.reserveCapacity(primitives.count)
-        for (slot, primitive) in primitives.enumerated() {
-            var part = primitive.part
-            part.materialIndex = slot
-            parts.append(part)
-        }
-        let mesh = try meshResource(modelID: modelID, parts: parts, skeleton: skeleton)
+    /// How one model entity draws one slot of its mesh.
+    private struct SlotDrawing {
+        let slot: Int
+        let material: Material
+        let isInitiallyVisible: Bool
+    }
 
-        let entity = ModelEntity(mesh: mesh, materials: materials)
+    /// One model entity drawing the slots of `source` that `drawing` names, each
+    /// addressing its material by its position in `drawing`.
+    private func makeModelEntity(name: String,
+                                 source: GLTFMeshSource,
+                                 primitives: [MergedPrimitive],
+                                 drawing: [SlotDrawing],
+                                 skinIndex: Int?) throws -> ModelEntity {
+        let deformedMesh = try GLTFDeformedMesh(source: source, drawnSlots: drawing.map(\.slot))
+        let entity = ModelEntity(mesh: deformedMesh.meshResource, materials: drawing.map(\.material))
         entity.name = name
-        entity.components.set(GLTFMaterialSlotsComponent(materialIndices: primitives.map(\.materialIndex)))
-        if primitives.contains(where: \.hasBlendShapes) {
-            entity.components.set(BlendShapeWeightsComponent(weightsMapping: BlendShapeWeightsMapping(meshResource: mesh)))
-        }
-        if let skinIndex, skeleton != nil {
+        entity.components.set(GLTFMaterialSlotsComponent(materialIndices: drawing.map { primitives[$0.slot].materialIndex }))
+        if let skinIndex, source.skin != nil {
             // The binding is registered per clone, once its joints exist.
             entity.components.set(GLTFSkinIndexComponent(skinIndex: skinIndex))
+            // The parts carry the rest bounds, and a posed joint can carry its vertices
+            // outside them; the mesh's own radius covers a pose of the body.
+            if var component = entity.components[ModelComponent.self] {
+                component.boundsMargin = source.geometry.bounds.boundingRadius
+                entity.components.set(component)
+            }
         }
-
-        let catalog = GLTFMergedMeshCatalog(
-            fullMesh: mesh,
-            slots: zip(primitives, initiallyVisibleSlots).map { primitive, isVisible in
-                .init(partID: primitive.part.id,
-                      firstPersonMask: primitive.firstPersonMask,
-                      isInitiallyVisible: isVisible)
-            })
-        entity.components.set(GLTFMergedMeshComponent(catalog: catalog,
-                                                      visibleSlots: initiallyVisibleSlots))
-        if initiallyVisibleSlots.contains(false) {
-            entity.applyMergedMesh()
-        }
-        if catalog.hasFirstPersonCut {
-            firstPersonCatalogs.append(catalog)
-        }
+        entity.components.set(GLTFMergedMeshComponent(initiallyVisibleSlots: drawing.map(\.isInitiallyVisible)))
+        entity.setDeformedMesh(deformedMesh)
         return entity
+    }
+
+    /// Gives every model entity cloned off a template a deformed mesh of its own, drawn
+    /// from the template's vertex data, so each node and each load poses its own.
+    private func instantiateDeformedMeshes(in meshRoot: Entity) throws {
+        for modelEntity in meshRoot.modelEntitiesInHierarchy {
+            guard let template = modelEntity.deformedMesh else { continue }
+            let own = try GLTFDeformedMesh(source: template.source, drawnSlots: template.drawnSlots)
+            modelEntity.setDeformedMesh(own)
+            root.registerDeformedMesh(own)
+        }
     }
 
     /// Widens the bounding box RealityKit culls `passEntity` by, so a geometry modifier
@@ -521,11 +498,12 @@ final class GLTFSceneBuilder {
     private func grantBoundsBudget(to passEntity: ModelEntity,
                                    passes: [GLTFShadedMaterial.Pass]) {
         guard passes.contains(where: { $0.applyBoundsBudget != nil }),
+              let geometry = passEntity.gltfMeshGeometry,
               var component = passEntity.components[ModelComponent.self] else { return }
         // The budget covers the whole merged mesh, hidden slots included, so a slot
         // shown later still fits it.
-        let budget = (passEntity.mergedMesh?.catalog.fullMesh ?? component.mesh).bounds.boundingRadius
-        component.boundsMargin = budget
+        let budget = geometry.bounds.boundingRadius
+        component.boundsMargin = max(component.boundsMargin, budget)
         for (slot, pass) in passes.enumerated() {
             guard let applyBudget = pass.applyBoundsBudget,
                   component.materials.indices.contains(slot) else { continue }
@@ -1317,63 +1295,6 @@ final class GLTFSceneBuilder {
         }
 
         return (parentIndices, order, remap)
-    }
-
-    private func makePart(id: String,
-                          geometry: GLTFPrimitiveGeometry,
-                          skeletonID: String?,
-                          jointInfluences: MeshResource.JointInfluences?) -> MeshResource.Part {
-        var part = MeshResource.Part(id: id, materialIndex: 0)
-        part.positions = MeshBuffer(geometry.positions)
-        if !geometry.normals.isEmpty {
-            part.normals = MeshBuffer(geometry.normals)
-        }
-        if !geometry.tangents.isEmpty {
-            part.tangents = MeshBuffer(geometry.tangents)
-            part.bitangents = MeshBuffer(geometry.bitangents)
-        }
-        if !geometry.texcoords.isEmpty {
-            part.textureCoordinates = MeshBuffer(geometry.texcoords)
-        }
-        part.triangleIndices = MeshBuffer(geometry.indices)
-        if !geometry.blendShapeOffsets.isEmpty {
-            for (targetIndex, offsets) in geometry.blendShapeOffsets.enumerated() {
-                let name = "blendShape_\(targetIndex)"
-                part.setBlendShapeOffsets(named: name, buffer: MeshBuffer(offsets))
-            }
-            _ = part.blendShapeNames
-        }
-        if let skeletonID, let jointInfluences {
-            part.skeletonID = skeletonID
-            part.jointInfluences = jointInfluences
-        }
-        return part
-    }
-
-    private func meshResource(modelID: String,
-                              parts: [MeshResource.Part],
-                              skeleton: MeshResource.Skeleton?) throws -> MeshResource {
-        var models = MeshModelCollection()
-        _ = models.insert(MeshResource.Model(id: modelID, parts: parts))
-
-        var instances = MeshInstanceCollection()
-        _ = instances.insert(MeshResource.Instance(id: modelID, model: modelID))
-
-        var contents = MeshResource.Contents()
-        contents.models = models
-        contents.instances = instances
-        if let skeleton {
-            var skeletons = MeshSkeletonCollection()
-            _ = skeletons.insert(skeleton)
-            contents.skeletons = skeletons
-        }
-
-        let started = ContinuousClock.now
-        defer {
-            timings.meshResources += ContinuousClock.now - started
-            timings.meshResourceCount += 1
-        }
-        return try MeshResource.generate(from: contents)
     }
 
     /// Binds the skinned models of a freshly cloned mesh to this scene's joints.

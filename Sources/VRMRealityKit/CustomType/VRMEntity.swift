@@ -43,11 +43,8 @@ public final class VRMEntity: GLTFEntity {
     private var springBones = SpringBoneRig<Entity>()
     private var nodeConstraints = NodeConstraintRig<Entity>()
     private var lookAt = LookAtRig<Entity>()
-    // Blend-shape target -> weight-set positions, resolved on first write.
-    private var blendShapeSlotCache: [MorphBindingKey: BlendShapeSlots] = [:]
-    // Scratch for one apply: the weight sets each mesh is written back with, so a
-    // frame's morph writes cost one read and one write per mesh, not per target.
-    private var stagedBlendWeights: [StagedBlendWeights] = []
+    /// Mesh entity → the deformed meshes under it, resolved on the first write to each.
+    private var deformedMeshesByMeshEntity: [Entity.ID: [GLTFDeformedMesh]] = [:]
 
     private lazy var expressionApplier = ExpressionApplier<Entity>(
         setMorphWeight: { [unowned self] weight, targetIndex, mesh in
@@ -60,7 +57,6 @@ public final class VRMEntity: GLTFEntity {
             applyTextureTransform(scale: scale, offset: offset, rotation: rotation, materialIndex: materialIndex)
         },
         didApply: { [unowned self] in
-            flushStagedBlendWeights()
             flushDirtyMaterialStates()
         }
     )
@@ -276,7 +272,7 @@ public final class VRMEntity: GLTFEntity {
         if springBones.update(deltaTime: deltaTime) {
             invalidateSkinPose(for: springBones.posedNodes)
         }
-        flushSkinPoseIfNeeded()
+        flushDeformation()
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
@@ -319,7 +315,7 @@ public final class VRMEntity: GLTFEntity {
     private func applyFirstPersonCut(_ mode: FirstPersonRenderMode, to entity: Entity) -> Bool {
         var cut = false
         for modelEntity in entity.modelEntitiesInHierarchy {
-            guard let merged = modelEntity.mergedMesh, merged.catalog.hasFirstPersonCut else { continue }
+            guard modelEntity.deformedMesh?.hasFirstPersonCut == true else { continue }
             cut = true
             modelEntity.setMergedFirstPerson(mode == .firstPerson)
         }
@@ -354,116 +350,19 @@ public final class VRMEntity: GLTFEntity {
         }
     }
 
-    /// Where one blend-shape target lives in a model entity's weight sets.
-    private struct BlendShapeSlot {
-        let modelEntity: ModelEntity
-        /// (weight set, index within it) pairs the target writes to.
-        let positions: [(set: Int, index: Int)]
-    }
-
-    /// One mesh's weight sets, read once and written back once per apply.
-    private struct StagedBlendWeights {
-        let modelEntity: ModelEntity
-        var sets: [[Float]]
-    }
-
-    /// One resolved target, remembering the mesh variant it was resolved against: a
-    /// variant re-lays the weight sets, so a resolution outliving one is made again.
-    private struct BlendShapeSlots {
-        let slots: [BlendShapeSlot]
-        let generation: Int
-    }
-
-    /// Stages the write rather than making it: `blendWeights` copies every set both
-    /// read and written, so writing straight through would pay for that copy once per
-    /// target. The staged sets are mutated where they sit, for the same reason.
     private func applyBlendShapeWeight(_ weight: Float, targetIndex: Int, on mesh: Entity) {
-        for slot in blendShapeSlots(targetIndex: targetIndex, on: mesh) {
-            let index = stagedIndex(of: slot.modelEntity)
-            for position in slot.positions {
-                guard position.set < stagedBlendWeights[index].sets.count,
-                      position.index < stagedBlendWeights[index].sets[position.set].count else { continue }
-                stagedBlendWeights[index].sets[position.set][position.index] = weight
-            }
+        for deformedMesh in deformedMeshes(under: mesh) {
+            deformedMesh.setBlendShapeWeight(weight, forTarget: targetIndex)
         }
     }
 
-    /// Where one mesh's staged sets sit, read out of the mesh on first use. A model
-    /// has a handful of them, so they are searched rather than hashed.
-    private func stagedIndex(of modelEntity: ModelEntity) -> Int {
-        if let index = stagedBlendWeights.firstIndex(where: { $0.modelEntity === modelEntity }) {
-            return index
-        }
-        stagedBlendWeights.append(StagedBlendWeights(modelEntity: modelEntity,
-                                                     sets: modelEntity.blendWeights))
-        return stagedBlendWeights.count - 1
-    }
-
-    /// Writes back what one apply staged, once per mesh.
-    private func flushStagedBlendWeights() {
-        for staged in stagedBlendWeights {
-            staged.modelEntity.blendWeights = staged.sets
-        }
-        stagedBlendWeights.removeAll(keepingCapacity: true)
-    }
-
-    /// Resolves the target's weight-set positions once per mesh, rather than looking up
-    /// a blend-shape name on every write.
-    private func blendShapeSlots(targetIndex: Int, on mesh: Entity) -> [BlendShapeSlot] {
-        let key = MorphBindingKey(mesh: mesh, targetIndex: targetIndex)
-        if let cached = blendShapeSlotCache[key], cached.generation == meshVariantGeneration {
-            return cached.slots
-        }
-
-        let targetName = "blendShape_\(targetIndex)"
-        var slots: [BlendShapeSlot] = []
-        for modelEntity in mesh.modelEntitiesInHierarchy {
-            ensureBlendShapeComponent(on: modelEntity)
-            let weights = modelEntity.blendWeights
-            guard !weights.isEmpty else { continue }
-            let names = modelEntity.blendWeightNames
-            var positions: [(set: Int, index: Int)] = []
-            if !names.isEmpty {
-                for setIndex in names.indices {
-                    if let nameIndex = names[setIndex].firstIndex(of: targetName),
-                       nameIndex < weights[setIndex].count {
-                        positions.append((setIndex, nameIndex))
-                    }
-                }
-            }
-            if positions.isEmpty {
-                // Meshes without blend-shape names address targets positionally.
-                for setIndex in weights.indices where targetIndex < weights[setIndex].count {
-                    positions.append((setIndex, targetIndex))
-                }
-            }
-            guard !positions.isEmpty else { continue }
-            slots.append(BlendShapeSlot(modelEntity: modelEntity, positions: positions))
-        }
-        blendShapeSlotCache[key] = BlendShapeSlots(slots: slots, generation: meshVariantGeneration)
-        return slots
-    }
-
-    private func ensureBlendShapeComponent(on modelEntity: ModelEntity) {
-        if modelEntity.components[BlendShapeWeightsComponent.self] != nil {
-            return
-        }
-        guard let model = modelEntity.components[ModelComponent.self] else { return }
-        let mapping = BlendShapeWeightsMapping(meshResource: model.mesh)
-        modelEntity.components.set(BlendShapeWeightsComponent(weightsMapping: mapping))
-    }
-}
-
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-/// Identifies one morph target on one mesh entity, both to accumulate expression
-/// weights and to cache where the target lives in the blend-shape weight sets.
-private struct MorphBindingKey: Hashable {
-    let mesh: ObjectIdentifier
-    let targetIndex: Int
-
-    init(mesh: Entity, targetIndex: Int) {
-        self.mesh = ObjectIdentifier(mesh)
-        self.targetIndex = targetIndex
+    /// The deformed meshes a mesh entity draws, found once rather than by walking the
+    /// entity's hierarchy on every write.
+    private func deformedMeshes(under mesh: Entity) -> [GLTFDeformedMesh] {
+        if let cached = deformedMeshesByMeshEntity[mesh.id] { return cached }
+        let meshes = mesh.modelEntitiesInHierarchy.compactMap(\.deformedMesh)
+        deformedMeshesByMeshEntity[mesh.id] = meshes
+        return meshes
     }
 }
 

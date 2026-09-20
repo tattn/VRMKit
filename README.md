@@ -233,7 +233,9 @@ let controller = try entity.playAnimation(at: 0, loops: true)  // same controlle
 
 `loadEntity()` renders the asset's default scene and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. It reads the model's vertex data off the main thread, a primitive at a time in parallel.
 
-A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance. It also draws with the original's material parameters; `cloneWithOwnMaterialParameters()` gives the copy its own, a few hundred bytes per material, so it can be lit or recolored by itself.
+A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance. It moves and is lit as the original is; `cloneWithOwnMaterialParameters()` gives the copy meshes and material parameters of its own, posed as the original is at the call, so it holds still and can be lit or recolored by itself.
+
+Skinning and morphing run in the loader's own compute kernel into a `LowLevelMesh` per model entity, and only when a pose or weight moved. The rest-pose vertex data behind a model entity is readable through `gltfMeshGeometry`.
 
 <details>
 <summary>Renderer limitations</summary>
@@ -244,7 +246,7 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 - `COLOR_0` vertex colors are ignored: the mesh buffers this renderer builds carry no vertex-color channel.
 - One UV set and one `KHR_texture_transform` per material: the first UV-accessed texture decides both. A glTF load requiring more is rejected rather than drawn wrong; a VRM load renders the approximation.
 - Tangents for a primitive without `TANGENT` are averaged from its UV gradients, not generated with MikkTSpace, so a normal map baked against MikkTSpace can differ along UV seams.
-- Blend shapes morph `POSITION` only, since RealityKit blend shapes have no `NORMAL` / `TANGENT` channel.
+- Blend shapes morph `POSITION` only; a target's `NORMAL` / `TANGENT` deltas are not read.
 - Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints.
 - MToon's outline is clamped to a culling margin of the mesh's radius, so an outline asking for more caps out there.
 - MToon's outline takes its lit color from the runtime light color, not from the surface's fully evaluated shading, which RealityKit does not expose to a `CustomMaterial`.

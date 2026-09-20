@@ -25,11 +25,11 @@ struct VRMSpringBoneEntityTests {
         vrmEntity.update(deltaTime: 1.0 / 60.0)
 
         var checkedJoints = 0
-        for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
-            guard let model = modelEntity.components[ModelComponent.self],
-                  let skeleton = model.mesh.contents.skeletons.first,
-                  let pose = modelEntity.components[SkeletalPosesComponent.self]?.poses.default,
-                  pose.jointTransforms.count == skeleton.joints.count else {
+        for binding in vrmEntity.skinBindings {
+            let modelEntity = binding.modelEntity
+            let skeleton = binding.skeleton
+            guard let jointTransforms = binding.deformedMesh?.jointTransforms,
+                  jointTransforms.count == skeleton.joints.count else {
                 continue
             }
             let jointEntities = skeleton.joints.map { vrmEntity.findEntity(named: $0.name) }
@@ -47,7 +47,7 @@ struct VRMSpringBoneEntityTests {
                 }
                 // The pose must describe the hierarchy as it stands after
                 // update(), not as it stood before the spring bones ran.
-                #expect(pose.jointTransforms[index].matrix.isApproximatelyEqual(to: expected, tolerance: 0.0005))
+                #expect(jointTransforms[index].matrix.isApproximatelyEqual(to: expected, tolerance: 0.0005))
                 checkedJoints += 1
             }
         }

@@ -14,17 +14,13 @@ import VRMTestSupport
 struct AsyncLoadingTests {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func meshShape(of entity: Entity) -> [(name: String, vertices: Int, triangles: Int)] {
-        var shape: [(name: String, vertices: Int, triangles: Int)] = []
-        var stack = [entity]
-        while let next = stack.popLast() {
-            stack.append(contentsOf: next.children)
-            guard let model = next.components[ModelComponent.self] else { continue }
-            let parts = model.mesh.contents.models.flatMap { Array($0.parts) }
-            shape.append((next.name,
-                          parts.reduce(0) { $0 + $1.positions.count },
-                          parts.reduce(0) { $0 + ($1.triangleIndices?.count ?? 0) / 3 }))
-        }
-        return shape.sorted { $0.name < $1.name }
+        TestSupport.modelEntities(in: entity)
+            .compactMap { modelEntity in
+                modelEntity.gltfMeshGeometry.map {
+                    (modelEntity.name, $0.positions.count, TestSupport.triangleIndexCount(of: $0) / 3)
+                }
+            }
+            .sorted { $0.name < $1.name }
     }
 
     /// The primitives are decoded concurrently, so what a load builds must not

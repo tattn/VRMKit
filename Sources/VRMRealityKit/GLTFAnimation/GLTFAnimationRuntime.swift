@@ -246,7 +246,7 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
         for binding in weightBindings {
             let weights = binding.track.value(at: time)
             for modelEntity in binding.modelEntities {
-                modelEntity.applyMorphWeights(weights)
+                modelEntity.deformedMesh?.setBlendShapeWeights(weights)
             }
         }
     }

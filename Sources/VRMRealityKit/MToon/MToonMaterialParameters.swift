@@ -349,9 +349,7 @@ final class MToonParameterTexture {
         precondition(rows.count == MToonMaterialParameters.textureRowCount)
         // A buffer of its own per write: the GPU reads it whenever it runs the
         // blit, and a few hundred bytes cost less than synchronizing a shared one.
-        guard let buffer = rows.withUnsafeBytes({
-            device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)
-        }) else {
+        guard let buffer = device.makeBuffer(rows) else {
             throw VRMError._dataInconsistent("failed to allocate the MToon parameter staging buffer")
         }
 

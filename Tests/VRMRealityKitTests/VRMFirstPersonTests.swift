@@ -123,25 +123,25 @@ struct VRMFirstPersonTests {
         let vrmLoader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data, shaders: [])
         let vrmEntity = try await vrmLoader.loadEntity()
         let cut = TestSupport.firstPersonCuts(in: vrmEntity)
-        func firstPersonMesh(of catalog: GLTFMergedMeshCatalog) throws -> MeshResource? {
-            try catalog.mesh(visibleSlots: catalog.initiallyVisibleSlots, isFirstPerson: true)
+        func headlessIndexCount(of entity: ModelEntity) throws -> Int {
+            TestSupport.triangleIndexCount(of: try #require(entity.gltfMeshGeometry), isFirstPerson: true)
         }
-        let trimmed = try #require(try cut.first { try firstPersonMesh(of: $0.catalog) != nil })
-        let dropped = try #require(try cut.first { try firstPersonMesh(of: $0.catalog) == nil })
+        let trimmed = try #require(try cut.first { try headlessIndexCount(of: $0) > 0 })
+        let dropped = try #require(try cut.first { try headlessIndexCount(of: $0) == 0 })
 
         // The trimmed mesh loses triangles without losing all of them.
-        let whole = TestSupport.triangleIndexCount(of: trimmed.catalog.fullMesh)
-        let headless = TestSupport.triangleIndexCount(of: try #require(try firstPersonMesh(of: trimmed.catalog)))
+        let whole = TestSupport.triangleIndexCount(of: try #require(trimmed.gltfMeshGeometry))
+        let headless = try headlessIndexCount(of: trimmed)
         #expect(headless > 0)
         #expect(headless < whole)
 
         vrmEntity.setFirstPersonRenderMode(.firstPerson)
-        #expect(TestSupport.drawnTriangleIndexCount(of: trimmed.entity) == headless)
-        #expect(dropped.entity.isEnabled == false)
+        #expect(TestSupport.drawnTriangleIndexCount(of: trimmed) == headless)
+        #expect(dropped.isEnabled == false)
 
         vrmEntity.setFirstPersonRenderMode(.thirdPerson)
-        #expect(TestSupport.drawnTriangleIndexCount(of: trimmed.entity) == whole)
-        #expect(dropped.entity.isEnabled == true)
+        #expect(TestSupport.drawnTriangleIndexCount(of: trimmed) == whole)
+        #expect(dropped.isEnabled == true)
     }
 }
 #endif

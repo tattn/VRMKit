@@ -102,7 +102,7 @@ struct RenderQueueTests {
 
         // The split entities are the mesh to the runtime: skinned, morphed and
         // bound to their materials like the one they came out of.
-        #expect(head.allSatisfy { $0.components.has(BlendShapeWeightsComponent.self) })
+        #expect(head.allSatisfy { $0.deformedMesh?.geometry.hasBlendShapes == true })
         #expect(head.allSatisfy { $0.components.has(GLTFSkinIndexComponent.self) })
         for modelEntity in head {
             for case let materialIndex? in modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices ?? [] {

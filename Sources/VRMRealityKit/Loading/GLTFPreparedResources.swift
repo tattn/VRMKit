@@ -20,8 +20,15 @@ struct GLTFPreparedPrimitive: @unchecked Sendable {
     /// with the other cut derives its own mask.
     let cutsHead: Bool
     let firstPersonMask: FirstPersonPrimitiveMask
-    /// Four per vertex in the skin's joint order, or nil for an unskinned primitive.
-    let jointInfluences: [MeshJointInfluence]?
+    /// Nil for an unskinned primitive.
+    let jointInfluences: GLTFJointInfluences?
+}
+
+/// A skinned primitive's influences: four joints per vertex in the skin's joint order,
+/// with the weights renormalized to sum to one.
+struct GLTFJointInfluences: Sendable {
+    let joints: [SIMD4<UInt32>]
+    let weights: [SIMD4<Float>]
 }
 
 /// What the prepare passes decoded off the actor the entity graph is built on, for the
