@@ -21,7 +21,7 @@ public struct VRMAnimation: Sendable {
     /// The pre-release version older exporters wrote.
     package static let draftSpecVersion = "1.0-draft"
 
-    private static let logger = Logger(subsystem: "dev.tattn.VRMKit", category: "VRMAnimation")
+    private static let logger = Logger(subsystem: "com.github.tattn.VRMKit", category: "VRMAnimation")
 
     /// The underlying glTF document, which carries the animation samplers and
     /// their binary buffers.
