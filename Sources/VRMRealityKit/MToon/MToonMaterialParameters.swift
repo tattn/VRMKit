@@ -28,6 +28,9 @@ enum MToonParameterRow: Int, CaseIterable {
     case uvTransformRotation
     case normalParameters
     case lightDirection
+    case rimLightColor
+    case rimLightDirection
+    case rimLightShape
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -60,6 +63,12 @@ struct MToonMaterialParameters {
     var samplers = Array(repeating: MToonMaterialParameters.defaultSampler,
                          count: MToonMaterialParameters.samplerRowCount)
     var lightDirection: SIMD3<Float> = MToonMaterialParameters.defaultLightDirection
+    /// rgb is the rim light's color and w its blend (``MToonRimLight/blend``). Black,
+    /// the default, is the runtime rim light off; the shader skips the term on it.
+    var rimLightColor = SIMD4<Float>(0, 0, 0, 0)
+    var rimLightDirection = SIMD4<Float>(0, 0, 1, 0)
+    /// x width, y softness, z wrap, w view bend (``MToonRimLight``).
+    var rimLightShape = SIMD4<Float>(0, 0, 0, 0)
 
     init(_ mtoon: MToonMaterialDescriptor) {
         baseColor = mtoon.baseColorFactor
@@ -152,6 +161,21 @@ struct MToonMaterialParameters {
         outlineParams.y = mode.mtoonRawValue
     }
 
+    /// Nil turns the runtime rim light off.
+    mutating func setRimLight(_ rim: MToonRimLight?) {
+        guard let rim else {
+            rimLightColor = SIMD4<Float>(0, 0, 0, 0)
+            rimLightDirection = SIMD4<Float>(0, 0, 1, 0)
+            rimLightShape = SIMD4<Float>(0, 0, 0, 0)
+            return
+        }
+        rimLightColor = SIMD4<Float>(rim.color, simd_clamp(rim.blend, 0, 1))
+        rimLightDirection = SIMD4<Float>(rim.normalizedDirection, 0)
+        rimLightShape = simd_clamp(SIMD4<Float>(rim.width, rim.softness, rim.wrap, rim.viewBend),
+                                   SIMD4<Float>(repeating: 0),
+                                   SIMD4<Float>(repeating: 1))
+    }
+
     mutating func setTextureTransform(scale: SIMD2<Float>,
                                       offset: SIMD2<Float>,
                                       rotation: Float) {
@@ -193,6 +217,9 @@ struct MToonMaterialParameters {
         case .uvTransformRotation: return uvTransformRotation
         case .normalParameters: return normalParameters
         case .lightDirection: return SIMD4<Float>(lightDirection, 0)
+        case .rimLightColor: return rimLightColor
+        case .rimLightDirection: return rimLightDirection
+        case .rimLightShape: return rimLightShape
         }
     }
 

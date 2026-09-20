@@ -466,6 +466,13 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
         parameters.ambientColor = SIMD4<Float>(ambient, 1)
     }
 
+    /// Returns whether the rows changed.
+    func setRimLight(_ rim: MToonRimLight?) -> Bool {
+        let before = (parameters.rimLightColor, parameters.rimLightDirection, parameters.rimLightShape)
+        parameters.setRimLight(rim)
+        return before != (parameters.rimLightColor, parameters.rimLightDirection, parameters.rimLightShape)
+    }
+
     /// Blocks until this material's committed parameter writes reach the GPU,
     /// for a caller about to render on another queue: the snapshot.
     func waitForParameterWrites() {

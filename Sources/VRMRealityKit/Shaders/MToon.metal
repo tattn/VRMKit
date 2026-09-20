@@ -26,7 +26,7 @@ constexpr sampler mtoonTextureSampler(coord::normalized,
                                       address::repeat,
                                       mag_filter::linear, min_filter::linear, mip_filter::linear);
 
-constant float mtoonParameterTextureWidth = 27.0;
+constant float mtoonParameterTextureWidth = 30.0;
 
 // Parameter rows, mirroring MToonParameterRow on the Swift side.
 constant float mtoonRowBaseColor = 0.0;
@@ -47,7 +47,10 @@ constant float mtoonRowUvTransform = 14.0;
 constant float mtoonRowUvTransformRotation = 15.0;
 constant float mtoonRowNormalParameters = 16.0;
 constant float mtoonRowLightDirection = 17.0;
-constant float mtoonSamplerParameterStart = 18.0;
+constant float mtoonRowRimLightColor = 18.0;
+constant float mtoonRowRimLightDirection = 19.0;
+constant float mtoonRowRimLightShape = 20.0;
+constant float mtoonSamplerParameterStart = 21.0;
 
 // Sampler parameter slots, mirroring MToonTextureSlot on the Swift side.
 constant float mtoonSamplerSlotBase = 0.0;
@@ -416,6 +419,7 @@ void mtoonSurface(realitykit::surface_parameters params)
     half4 emissiveFactor = mtoonParameter(textures, mtoonRowEmissiveFactor);
     half4 lightColorParameter = mtoonParameter(textures, mtoonRowLightColor);
     half4 giColorParameter = mtoonParameter(textures, mtoonRowAmbientColor);
+    half4 rimLightColor = mtoonParameter(textures, mtoonRowRimLightColor);
     half4 uvTransform = mtoonParameter(textures, mtoonRowUvTransform);
     half4 uvTransformRotation = mtoonParameter(textures, mtoonRowUvTransformRotation);
     half4 normalParameters = mtoonParameter(textures, mtoonRowNormalParameters);
@@ -492,6 +496,21 @@ void mtoonSurface(realitykit::surface_parameters params)
         float3 rimLighting = realityKitApproximateRimLighting(lightColor, giColor, shading);
         rim *= mix(float3(1.0), rimLighting, clamp(float(rimParams.z), 0.0, 1.0));
         color += rim;
+    }
+
+    // The runtime rim light (MToonRimLight), a term of its own because the model's
+    // rim above is view-only. Black, the default, is off.
+    if (any(rimLightColor.rgb > 0.0h)) {
+        float3 viewDirection = normalize(params.geometry().view_direction());
+        float3 rimLightDirection = float3(mtoonParameter(textures, mtoonRowRimLightDirection).xyz);
+        float4 rimLightShape = float4(mtoonParameter(textures, mtoonRowRimLightShape));
+        float3 rimBand = float3(mtoonRimLightTerm(normal, viewDirection, rimLightDirection, rimLightShape));
+        if (featureFlags.y > 0.5h) {
+            rimBand *= float3(mtoonSample(textures.clearcoat_roughness(), uv, rimSampler).rgb);
+        }
+        // blend (w) fades the surface under the band out, so that at 1 the band is
+        // the rim's color itself rather than light added to an already bright surface.
+        color = color * (1.0 - rimBand * float(rimLightColor.w)) + float3(rimLightColor.rgb) * rimBand;
     }
 
     float3 emissiveTexture = extraFlags.z > 0.5h

@@ -66,6 +66,22 @@ extension GLTFEntity {
         setMToonLighting(direction: mtoonLightDirection, color: mtoonLightColor, ambient: color)
     }
 
+    /// Adds a rim light to every MToon material, or removes it with nil. Like the
+    /// light direction it can track a light per frame; an unchanged value writes nothing.
+    public func setMToonRimLight(_ rim: MToonRimLight?) {
+        setMToonRimLight(rim, forMaterials: Set(materialStates.keys))
+    }
+
+    /// ``setMToonRimLight(_:)`` restricted to `materials`, which
+    /// ``GLTFEntity/materialIndices(under:)`` supplies for a node's subtree. The inside
+    /// of a mouth is the usual exclusion: its walls meet the view at a grazing angle,
+    /// like a silhouette, so a backlight would light them up.
+    public func setMToonRimLight(_ rim: MToonRimLight?, forMaterials materials: Set<Int>) {
+        mutateMToonStates(forMaterials: materials) { state in
+            state.setRimLight(rim)
+        }
+    }
+
     private static func normalizedMToonLightDirection(_ direction: SIMD3<Float>) -> SIMD3<Float> {
         let length = simd_length(direction)
         return length > 0.001 ? direction / length : MToonMaterialParameters.defaultLightDirection
