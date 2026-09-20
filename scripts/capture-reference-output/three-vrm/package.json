@@ -1,0 +1,11 @@
+{
+  "name": "vrmkit-three-vrm-capture",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Headless three-vrm capture used to produce VRMKit conformance reference output. See ../README.md for the capture contract.",
+  "dependencies": {
+    "@pixiv/three-vrm": "3.5.5",
+    "three": "0.180.0"
+  }
+}

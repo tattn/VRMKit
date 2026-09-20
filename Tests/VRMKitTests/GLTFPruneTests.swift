@@ -35,17 +35,17 @@ struct GLTFPruneTests {
     @Test(arguments: VRMSampleAsset.allCases)
     func testPruneKeepsTheVRMExtensionsPointingAtTheSameEntries(asset: VRMSampleAsset) throws {
         var document = try GLTFEditableDocument(data: asset.data)
-        let detached = try #require(drawingSceneRoot(of: try document.typed()))
-        let gone = [try #require(try document.typed().nodes[detached].name),
-                    try #require(try document.typed().nodes[detached].mesh
-                        .flatMap { try document.typed().meshes[$0].name })]
+        let subjects = try renderedSubjectNames(of: try GLTFDocument(data: try document.serialize()))
+        let typed = try document.typed()
+        let detached = try #require(sceneNodeReferencedByVRMExtensions(of: typed, subjects: subjects))
+        let gone = [try #require(typed.nodes[detached].name),
+                    try #require(typed.nodes[detached].mesh.flatMap { typed.meshes[$0].name })]
+        #expect(!subjects.isDisjoint(with: gone))
         try document.detachNode(at: GLTFNodeIndex(detached))
         let before = try GLTFDocument(data: try document.serialize())
         let bones = try humanoidBoneNames(of: before)
         let joints = try springBoneJointNames(of: before)
-        let subjects = try renderedSubjectNames(of: before)
         #expect(!bones.isEmpty)
-        #expect(!subjects.isDisjoint(with: gone))
 
         try document.prune()
 
@@ -576,6 +576,20 @@ struct GLTFPruneTests {
     private func drawingSceneRoot(of gltf: GLTF) -> Int? {
         let scene = gltf.scene ?? 0
         return (gltf.scenes[scene].nodes ?? []).last { gltf.nodes[safe: $0]?.mesh != nil }
+    }
+
+    /// A top-level scene node whose name or mesh name the VRM extensions reference, so
+    /// detaching it actually exercises whether pruning keeps their bindings pointing at the
+    /// same entries. Not every mesh-bearing node is bound this way (e.g. hair or accessory
+    /// meshes with no first-person or expression bind), so `drawingSceneRoot` alone is not
+    /// specific enough for that assertion.
+    private func sceneNodeReferencedByVRMExtensions(of gltf: GLTF, subjects: Set<String>) -> Int? {
+        let scene = gltf.scene ?? 0
+        return (gltf.scenes[scene].nodes ?? []).first { index in
+            guard let node = gltf.nodes[safe: index], node.mesh != nil else { return false }
+            let meshName = node.mesh.flatMap { gltf.meshes[safe: $0]?.name }
+            return [node.name, meshName].compactMap { $0 }.contains { subjects.contains($0) }
+        }
     }
 
     private func thumbnailBytes(of document: GLTFDocument) throws -> Data? {

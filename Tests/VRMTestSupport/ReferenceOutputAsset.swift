@@ -7,6 +7,7 @@ import Foundation
 /// `scripts/capture-reference-output/README.md` for the capture procedure.
 public enum ReferenceOutputAsset: String, CaseIterable, Sendable {
     case univrmAvatarSampleM = "univrm/AvatarSample_M.json"
+    case threeVrmAvatarSampleM = "three-vrm/AvatarSample_M.json"
 
     public var data: Data {
         TestAssetBundle.data(forFixture: "ReferenceOutputs/\(rawValue)")

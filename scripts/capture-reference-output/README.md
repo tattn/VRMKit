@@ -27,6 +27,21 @@ Use the following revisions unless a comparison run explicitly records newer one
 7. Validate the JSON with a standards-compliant JSON Schema validator before comparing it with Swift
    output.
 
+## three-vrm capture script
+
+`scripts/capture-reference-output/three-vrm/capture.mjs` captures headlessly with `three` and
+`@pixiv/three-vrm@3.5.5` on Node.js (no browser/renderer required):
+
+```bash
+cd scripts/capture-reference-output/three-vrm
+npm install
+node capture.mjs Tests/Assets/VRM/AvatarSample_M.vrm ../../../Tests/Assets/ReferenceOutputs/three-vrm/AvatarSample_M.json
+```
+
+Material and texture data is stripped from the GLB's JSON chunk before parsing, since headless Node
+has no `Image`/canvas decoder and this capture only needs humanoid bones, expressions, look-at,
+node constraints, and spring-bone joints, none of which depend on materials.
+
 ## Comparison rules
 
 - Pin the exact source commit and release in every output; never compare moving branches implicitly.
@@ -36,6 +51,8 @@ Use the following revisions unless a comparison run explicitly records newer one
 - Do not use pixel identity as a conformance criterion. Record rendering comparisons separately from
   normalized runtime samples.
 
-The repository currently contains the schema and fixture inventory, but no captured external outputs.
-A differential result must not be marked complete until both the source output and the corresponding
-VRMKit output are checked in and reviewed.
+`Tests/Assets/ReferenceOutputs/univrm/AvatarSample_M.json` and
+`Tests/Assets/ReferenceOutputs/three-vrm/AvatarSample_M.json` are both captured, schema-valid, and
+compared against VRMKit's own output by `Tests/VRMRealityKitTests/VRM1DifferentialTests.swift`.
+A differential result must not be marked complete for a new fixture until both the source output
+and the corresponding VRMKit output are checked in and reviewed.
