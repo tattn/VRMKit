@@ -4,6 +4,7 @@ import RealityKit
 import simd
 import Testing
 import VRMKit
+import VRMTestSupport
 @testable import VRMRealityKit
 
 @Suite
@@ -21,6 +22,26 @@ struct VRMUpdateSystemTests {
 
         vrmEntity.isAutomaticUpdateEnabled = true
         #expect(vrmEntity.isAutomaticUpdateEnabled)
+    }
+
+    @Test
+    func testManualModeRemovesAutomaticTickBeforeExplicitUpdate() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let hips = try #require(entity.humanoid.node(for: .hips))
+        let initial = hips.transform.rotation
+
+        entity.isAutomaticUpdateEnabled = false
+        #expect(!entity.isAutomaticUpdateEnabled)
+        #expect(!entity.components.has(VRMUpdateComponent.self))
+
+        try entity.playAnimation(try VRMAnimation(data: VRMASampleFixture.standard()))
+        entity.updateAnimations(deltaTime: 0.5)
+        entity.update(deltaTime: 0)
+        #expect(hips.transform.rotation != initial)
+
+        entity.isAutomaticUpdateEnabled = true
+        #expect(entity.components.has(VRMUpdateComponent.self))
     }
 
     @Test

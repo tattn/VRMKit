@@ -145,5 +145,34 @@ struct AsyncLoadingTests {
         #expect(builder.prepared.primitives.isEmpty)
         #expect(!loader.resources.meshTemplates.isEmpty)
     }
+
+    @Test
+    func testConcurrentLoadsOnOneLoaderProduceIndependentEntities() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let loader = try VRMEntityLoader(withData: VRMSampleAsset.seedSan.data, shaders: [])
+        async let first = loader.loadEntity()
+        async let second = loader.loadEntity()
+        let entities = try await [first, second]
+
+        #expect(entities.count == 2)
+        #expect(entities[0] !== entities[1])
+        #expect(!entities[0].children.isEmpty)
+        #expect(!entities[1].children.isEmpty)
+    }
+
+    @Test
+    func testRepeatedAvatarReplacementDoesNotRetainPreviousEntities() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let loader = try VRMEntityLoader(withData: VRMSampleAsset.seedSan.data, shaders: [])
+        weak var previous: VRMEntity?
+
+        for _ in 0..<4 {
+            do {
+                let replacement = try await loader.loadEntity()
+                previous = replacement
+            }
+            #expect(previous == nil)
+        }
+    }
 }
 #endif
