@@ -311,7 +311,7 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
             }
         }
         // Sent together so the entity re-accumulates its bindings once.
-        entity.setExpressions(weights)
+        entity.applyAnimationExpressions(weights)
     }
 
     /// Aims the model's gaze where the animation states it.

@@ -456,6 +456,23 @@ struct VRMAnimationPlaybackTests {
         #expect(entity.expression(for: .preset(.aa)) > 0.25)
     }
 
+    @Test
+    func testLipSyncOverridesVRMAMouthTracksUntilReleased() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        try entity.playAnimation(fixture(), loops: true)
+
+        entity.setLipSyncExpressions([.preset(.aa): 0.2])
+        for _ in 0..<4 {
+            entity.updateAnimations(deltaTime: 0.2)
+            #expect(abs(entity.expression(for: .preset(.aa)) - 0.2) < 0.001)
+        }
+
+        entity.clearLipSyncExpressions(for: [.preset(.aa)])
+        entity.updateAnimations(deltaTime: 0)
+        #expect(entity.expression(for: .preset(.aa)) > 0.2)
+    }
+
     /// Pausing holds the pose against the animations the paused one outranks,
     /// rather than handing them its targets for as long as it is paused.
     @Test

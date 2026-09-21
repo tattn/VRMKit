@@ -43,6 +43,8 @@ public final class VRMEntity: GLTFEntity {
     private var springBones = SpringBoneRig<Entity>()
     private var nodeConstraints = NodeConstraintRig<Entity>()
     private var lookAt = LookAtRig<Entity>()
+    private var lipSyncOverrides: [ExpressionKey: CGFloat] = [:]
+    private var animationExpressionWeights: [ExpressionKey: CGFloat] = [:]
     /// Mesh entity → the deformed meshes under it, resolved on the first write to each.
     private var deformedMeshesByMeshEntity: [Entity.ID: [GLTFDeformedMesh]] = [:]
 
@@ -283,6 +285,32 @@ public final class VRMEntity: GLTFEntity {
     /// re-accumulates every active clip, so prefer this over repeated
     /// ``setExpression(value:for:)`` calls in one frame.
     public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
+        guard expressions.storeWeights(weights) else { return }
+        expressions.apply(with: expressionApplier)
+    }
+
+    /// Applies application-owned lip-sync weights after VRMA expression tracks.
+    public func setLipSyncExpressions(_ weights: [ExpressionKey: CGFloat]) {
+        lipSyncOverrides.merge(weights) { _, newest in newest }
+        applyExpressionWeights()
+    }
+
+    /// Releases application ownership for `keys`; released expressions resume their VRMA values.
+    public func clearLipSyncExpressions(for keys: some Sequence<ExpressionKey>) {
+        for key in keys {
+            lipSyncOverrides.removeValue(forKey: key)
+        }
+        applyExpressionWeights()
+    }
+
+    func applyAnimationExpressions(_ weights: [ExpressionKey: CGFloat]) {
+        animationExpressionWeights = weights
+        applyExpressionWeights()
+    }
+
+    private func applyExpressionWeights() {
+        var weights = animationExpressionWeights
+        weights.merge(lipSyncOverrides) { _, newest in newest }
         guard expressions.storeWeights(weights) else { return }
         expressions.apply(with: expressionApplier)
     }
