@@ -21,9 +21,19 @@ import VRMTestSupport
 struct VRM1DifferentialTests {
     private struct ReferenceOutput: Decodable {
         struct Fixture: Decodable { let sha256: String }
-        struct Tolerances: Decodable { let translation: Double; let scalar: Double }
+        struct Tolerances: Decodable {
+            let translation: Double
+            let rotation: Double
+            let scalar: Double
+        }
         struct Vector3: Decodable { let x: Double, y: Double, z: Double }
-        struct Values: Decodable { let names: [String], scalars: [Double], positions: [Vector3] }
+        struct Quaternion: Decodable { let x: Double, y: Double, z: Double, w: Double }
+        struct Values: Decodable {
+            let names: [String]
+            let scalars: [Double]
+            let positions: [Vector3]
+            let rotations: [Quaternion]
+        }
         struct Sample: Decodable { let values: Values }
         struct Samples: Decodable {
             let bones: [Sample]
@@ -118,6 +128,34 @@ struct VRM1DifferentialTests {
 
             #expect(abs(vrmKitDistance - referenceDistance) < Float(reference.tolerances.translation),
                      "\(bone) sits a different distance from the hips than \(referenceCase.description) measured")
+        }
+    }
+
+    @Test(arguments: referenceCases)
+    func testSampledHumanoidRotationsMatchTheReference(referenceCase: ReferenceCase) async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let reference = try decodeReference(referenceCase)
+        let entity = try await VRMEntityLoader(withData: VRMSampleAsset.avatarSampleM.data, shaders: []).loadEntity()
+        let values = reference.samples.bones[0].values
+        let referenceRotations = Dictionary(uniqueKeysWithValues:
+            zip(values.names, values.rotations))
+
+        for bone in [HumanoidBone.hips, .head, .leftHand, .rightHand, .leftFoot, .rightFoot] {
+            guard let node = entity.humanoid.node(for: bone),
+                  let referenceName = referenceCase.boneName(bone),
+                  let expected = referenceRotations[referenceName] else {
+                Issue.record("missing rotation for \(bone) in \(referenceCase.description) reference")
+                continue
+            }
+
+            let actual = Transform(matrix: node.transformMatrix(relativeTo: entity)).rotation
+            let expectedQuaternion = simd_quatf(ix: Float(expected.x),
+                                                 iy: Float(expected.y),
+                                                 iz: Float(expected.z),
+                                                 r: Float(expected.w))
+            #expect(abs(simd_dot(actual, expectedQuaternion))
+                    > 1 - Float(reference.tolerances.rotation),
+                    "\(bone) rotation differs from \(referenceCase.description)")
         }
     }
 

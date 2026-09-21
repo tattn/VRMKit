@@ -69,6 +69,31 @@ struct HumanoidBoneTests {
         #expect(throws: VRMError.self) { try VRM1(data: missingHips) }
     }
 
+    @Test
+    func testHumanoidValidationReturnsStructuredReferenceDiagnostics() throws {
+        let invalid = try VRMSampleAsset.seedSan.rewritingJSON { json in
+            json.withObject("extensions") { extensions in
+                extensions.withObject(GLTFExtension.vrm1.rawValue) { vrm in
+                    vrm.withObject("humanoid") { humanoid in
+                        humanoid.withObject("humanBones") { bones in
+                            bones.removeValue(forKey: HumanoidBone.spine.rawValue)
+                            bones.withObject(HumanoidBone.head.rawValue) { $0.set("node", 999_999) }
+                            bones.withObject(HumanoidBone.hips.rawValue) { $0.set("node", 1) }
+                            bones.withObject(HumanoidBone.chest.rawValue) { $0.set("node", 1) }
+                        }
+                    }
+                }
+            }
+        }
+
+        let report = try VRM1.validateHumanoid(data: invalid)
+        #expect(report.missingRequiredBones == [.spine])
+        #expect(report.invalidNodeIndices[.head] == 999_999)
+        #expect(report.duplicateNodeAssignments[1]?.contains(.hips) == true)
+        #expect(report.duplicateNodeAssignments[1]?.contains(.chest) == true)
+        #expect(!report.isValid)
+    }
+
     /// A property VRM does not define is not a reason to fail the parse.
     @Test
     func testAnUnknownBoneNameIsIgnored() throws {

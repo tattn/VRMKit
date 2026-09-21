@@ -1,6 +1,18 @@
 import Foundation
 
 public struct VRM1: Sendable {
+    public struct HumanoidValidationReport: Hashable, Sendable {
+        public let missingRequiredBones: [HumanoidBone]
+        public let invalidNodeIndices: [HumanoidBone: Int]
+        public let duplicateNodeAssignments: [Int: [HumanoidBone]]
+
+        public var isValid: Bool {
+            missingRequiredBones.isEmpty
+                && invalidNodeIndices.isEmpty
+                && duplicateNodeAssignments.isEmpty
+        }
+    }
+
     /// The `VRMC_vrm` spec versions this type models.
     public static func supports(specVersion: String) -> Bool {
         specVersion == "1.0" || specVersion == "1.0-beta"
@@ -21,6 +33,38 @@ public struct VRM1: Sendable {
     /// Initialize from VRM 1.0 data, resolving external resources against `rootDirectory`.
     public init(data: Data, rootDirectory: URL? = nil) throws {
         try self.init(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
+    }
+
+    public static func validateHumanoid(data: Data, rootDirectory: URL? = nil) throws -> HumanoidValidationReport {
+        try validateHumanoid(document: GLTFDocument(data: data, rootDirectory: rootDirectory))
+    }
+
+    public static func validateHumanoid(document: GLTFDocument) throws -> HumanoidValidationReport {
+        let extensions = try document.rawJSON().object("extensions")
+            ??? .keyNotFound("extensions")
+        let vrm = try extensions.object(GLTFExtension.vrm1.rawValue)
+            ??? .keyNotFound(GLTFExtension.vrm1.rawValue)
+        let bones = vrm.object("humanoid")?.object("humanBones") ?? [:]
+        var present: Set<HumanoidBone> = []
+        var nodeAssignments: [Int: [HumanoidBone]] = [:]
+        var invalid: [HumanoidBone: Int] = [:]
+
+        for bone in HumanoidBone.allCases {
+            guard let node = bones.object(bone.rawValue)?.int("node") else { continue }
+            present.insert(bone)
+            if !document.gltf.nodes.indices.contains(node) {
+                invalid[bone] = node
+            } else {
+                nodeAssignments[node, default: []].append(bone)
+            }
+        }
+
+        let duplicates = nodeAssignments.filter { $0.value.count > 1 }
+        return HumanoidValidationReport(
+            missingRequiredBones: Humanoid.HumanBones.required.filter { !present.contains($0) },
+            invalidNodeIndices: invalid,
+            duplicateNodeAssignments: duplicates
+        )
     }
 
     /// Initialize from an already-loaded document, so deciding a file's version does
@@ -113,7 +157,7 @@ public extension VRM1 {
             public subscript(bone: HumanoidBone) -> HumanBone? { bones[bone] }
 
             /// The bones VRM 1.0 requires of every humanoid.
-            static let required: [HumanoidBone] = [
+            public static let required: [HumanoidBone] = [
                 .hips, .spine, .head,
                 .leftUpperLeg, .leftLowerLeg, .leftFoot,
                 .rightUpperLeg, .rightLowerLeg, .rightFoot,
