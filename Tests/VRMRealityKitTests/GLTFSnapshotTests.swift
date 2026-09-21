@@ -51,6 +51,31 @@ struct GLTFSnapshotTests {
         }
     }
 
+    /// FNV-1a over the RGB bytes of a controlled offscreen render. The checksum is the
+    /// checked-in golden image for this stable synthetic scene.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func goldenChecksum(_ image: [[SIMD3<Float>]]) -> UInt64 {
+        image.flatMap { $0 }.reduce(into: UInt64(14_695_981_039_346_656_037)) { hash, pixel in
+            for component in [pixel.x, pixel.y, pixel.z] {
+                hash ^= UInt64(max(0, min(255, Int(component.rounded()))))
+                hash &*= 1_099_511_628_211
+            }
+        }
+    }
+
+    @Test
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    func controlledOffscreenSceneMatchesGoldenImage() throws {
+        guard OffscreenRenderer.isAvailable else { return }
+        let entity = Entity()
+        let material = UnlitMaterial(color: .red)
+        entity.addChild(ModelEntity(mesh: .generateBox(size: 1), materials: [material]))
+
+        let pixels = try OffscreenRenderer.render(entity, size: 64)
+        let checksum = goldenChecksum(pixels)
+        #expect(checksum == 6_827_813_804_783_346_469, "golden image checksum changed")
+    }
+
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .vrm1ConstraintTwist])
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotDrawsTheModelWithinTheFrame(asset: VRMSampleAsset) async throws {

@@ -414,6 +414,35 @@ struct VRMAnimationPlaybackTests {
         #expect(abs(simd_dot(delta, expected)) > 0.999)
     }
 
+    @Test
+    func testPlaybackControlsLoopReverseSeekSpeedStopAndClipReplacement() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+
+        let looping = try entity.playAnimation(fixture(), loops: true, speed: 2)
+        entity.updateAnimations(deltaTime: 0.75)
+        #expect(looping.time.isApproximatelyEqual(to: 0.5, tolerance: 0.001))
+        looping.seek(to: 0.25)
+        #expect(looping.time.isApproximatelyEqual(to: 0.25, tolerance: 0.001))
+        looping.stop()
+        #expect(looping.isComplete)
+
+        let reverse = try entity.playAnimation(fixture(), speed: -1)
+        #expect(reverse.time.isApproximatelyEqual(to: 1, tolerance: 0.001))
+        entity.updateAnimations(deltaTime: 0.25)
+        #expect(reverse.time.isApproximatelyEqual(to: 0.75, tolerance: 0.001))
+
+        let replacement = try entity.playAnimation(
+            try VRMAnimation(data: VRMASampleFixture.holdingPose(expressionWeight: 0.2)),
+            loops: true)
+        entity.updateAnimations(deltaTime: 0.1)
+        #expect(abs(entity.expression(for: .preset(.aa)) - 0.2) < 0.001)
+        replacement.stop()
+        reverse.stop()
+        entity.updateAnimations(deltaTime: 0)
+        #expect(entity.expression(for: .preset(.aa)) > 0.2)
+    }
+
     /// A controller outlives its playback whenever the caller keeps it, so it
     /// must hold neither the entity nor the runtime posing the entity graph.
     @Test
