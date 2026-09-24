@@ -316,7 +316,7 @@ The scope is one indexed triangle mesh and one material: positions, optional nor
 
 # Contributing
 
-Pull requests are welcome. Fork the repository, work on a feature branch, and open a PR :D
+Pull requests are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first: open an issue to discuss anything larger than a bug fix, and keep each pull request to a single purpose.
 
 ## Support this project
 

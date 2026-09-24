@@ -1,0 +1,70 @@
+name: PR size
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  check-size:
+    name: Check non-test change size
+    runs-on: ubuntu-latest
+    steps:
+      # pull_request_target runs with write access to this repository, so the
+      # job deliberately never checks out or executes code from the PR branch.
+      # It only reads the file list through the API and posts a comment.
+      - uses: actions/github-script@v7
+        env:
+          LIMIT: "300"
+        with:
+          script: |
+            const limit = Number(process.env.LIMIT);
+            const marker = "<!-- pr-size-check -->";
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: issue_number, per_page: 100,
+            });
+
+            const isTest = (path) => path.startsWith("Tests/");
+            const nonTest = files.filter((f) => !isTest(f.filename));
+            const lines = nonTest.reduce((sum, f) => sum + f.additions + f.deletions, 0);
+            const testLines = files
+              .filter((f) => isTest(f.filename))
+              .reduce((sum, f) => sum + f.additions + f.deletions, 0);
+
+            core.info(`Non-test lines changed: ${lines} (limit ${limit}), test lines changed: ${testLines}`);
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+
+            if (lines <= limit) {
+              if (existing) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
+              }
+              return;
+            }
+
+            const body = [
+              marker,
+              `This pull request changes **${lines} lines** outside \`Tests/\` (limit: ${limit} lines, test changes excluded: ${testLines} lines).`,
+              "",
+              `Please check that it follows [CONTRIBUTING.md](${context.payload.repository.html_url}/blob/main/CONTRIBUTING.md):`,
+              "",
+              "- Does the pull request solve exactly one problem? Split unrelated changes into separate pull requests.",
+              "- Was the change discussed in an issue beforehand? Large changes without prior agreement may be closed.",
+              "- If it has to be this large, propose in the linked issue how it could be split.",
+              "",
+              "This comment is updated automatically as the pull request changes.",
+            ].join("\n");
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
