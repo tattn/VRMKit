@@ -72,7 +72,7 @@ package struct VRMLookAtPlan: Sendable {
         case .v0(let vrm0):
             // VRM 0.x states the offset against the first-person bone, which is the bone
             // the gaze hangs off.
-            offset = vrm0.firstPerson?.firstPersonBoneOffset ?? .zero
+            offset = VRM0.nodeSpace(vrm0.firstPerson?.firstPersonBoneOffset ?? .zero)
             maps = [vrm0.firstPerson?.lookAtHorizontalInner, vrm0.firstPerson?.lookAtHorizontalOuter,
                     vrm0.firstPerson?.lookAtVerticalUp, vrm0.firstPerson?.lookAtVerticalDown]
                 .map { RangeMap($0, defaults: defaults) }

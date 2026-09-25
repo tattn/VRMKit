@@ -30,7 +30,7 @@ package enum SpringBoneColliderShape: Equatable {
     case capsule(offset: SIMD3<Float>, tail: SIMD3<Float>, radius: Float)
 
     package init(vrm0Collider collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) throws {
-        let offset = collider.offset
+        let offset = VRM0.nodeSpace(collider.offset)
         let radius = Float(collider.radius)
         try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
         try VRMSpringBoneParameters.requireFiniteNonnegative(radius, named: "collider radius")
@@ -94,7 +94,7 @@ package struct SpringBoneJointSetting {
     package init(vrm0BoneGroup group: VRM0.SecondaryAnimation.BoneGroup) throws {
         self.init(stiffnessForce: Float(group.stiffness),
                   gravityPower: Float(group.gravityPower),
-                  gravityDir: group.gravityDir,
+                  gravityDir: VRM0.nodeSpace(group.gravityDir),
                   dragForce: Float(group.dragForce),
                   hitRadius: Float(group.hitRadius))
         try validate()

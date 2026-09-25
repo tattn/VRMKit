@@ -64,6 +64,34 @@ struct SpringBoneRuntimeTests {
         #expect(throws: VRMError.self) { try SpringBoneColliderShape(vrm1Collider: collider) }
     }
 
+    /// VRM 0.x states a collider in Unity's space. VRoid puts the head's collider a little
+    /// behind the head bone, and taken as written it would sit in front, since the model
+    /// faces -Z in node space, pushing the front hair off the forehead.
+    @Test
+    func testAVRM0ColliderStaysOnTheSideOfTheBoneItIsStatedOn() throws {
+        let collider = try JSONDecoder().decode(
+            VRM0.SecondaryAnimation.ColliderGroup.Collider.self,
+            from: Data(#"{"offset": {"x": 0.01, "y": 0.1, "z": -0.014}, "radius": 0.1}"#.utf8)
+        )
+
+        let shape = try SpringBoneColliderShape(vrm0Collider: collider)
+
+        #expect(shape == .sphere(offset: SIMD3(0.01, 0.1, 0.014), radius: 0.1))
+    }
+
+    /// VRM 0.x states the gravity direction in Unity's space as well.
+    @Test
+    func testAVRM0GravityDirectionIsTakenIntoNodeSpace() throws {
+        let group = try JSONDecoder().decode(
+            VRM0.SecondaryAnimation.BoneGroup.self,
+            from: Data(#"{"bones": [0], "gravityDir": {"x": 0.1, "y": -1, "z": 0.5}}"#.utf8)
+        )
+
+        let setting = try SpringBoneJointSetting(vrm0BoneGroup: group)
+
+        #expect(setting.gravityDir == SIMD3<Float>(0.1, -1, -0.5))
+    }
+
     /// The length a joint holds its tail at is the world distance to it, so a
     /// scaled joint swings the bone the length it is drawn at.
     @Test

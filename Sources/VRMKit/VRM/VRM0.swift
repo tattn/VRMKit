@@ -360,6 +360,15 @@ public extension VRM0 {
     }
 }
 
+package extension VRM0 {
+    /// `vector` in the space the model's nodes are written in. The extension states its
+    /// offsets and directions in Unity's space, while the nodes are written with Z
+    /// reversed, so a collider taken as written sits on the wrong side of its bone.
+    static func nodeSpace(_ vector: SIMD3<Float>) -> SIMD3<Float> {
+        SIMD3(vector.x, vector.y, -vector.z)
+    }
+}
+
 // VRM 0.x spells a vector as an `{"x":, "y":, "z":}` object rather than an array.
 private struct VRM0Vector3: Codable {
     let x, y, z: Double?
