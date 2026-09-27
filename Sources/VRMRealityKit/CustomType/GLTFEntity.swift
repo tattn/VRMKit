@@ -443,6 +443,31 @@ public class GLTFEntity: Entity {
     // material index and pushed to every entity rendering with it. visionOS has no
     // `CustomMaterial`, so these all no-op there.
 
+    /// Sets one color of the material at `materialIndex` (an index into `gltf.materials`)
+    /// wherever this entity draws it, as a VRM expression's material color bind does, and
+    /// pushes it to the GPU at once. It lets a plain glTF be recolored at runtime, such as
+    /// a prop whose light color the user picks.
+    public func setMaterialColor(_ color: SIMD4<Float>,
+                                 for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
+                                 ofMaterial materialIndex: Int) {
+        applyMaterialColor(color, type: type, materialIndex: materialIndex)
+        flushDirtyMaterialStates()
+    }
+
+    /// ``setMaterialColor(_:for:ofMaterial:)`` without the flush, for a caller writing
+    /// several colors before flushing once.
+    func applyMaterialColor(_ color: SIMD4<Float>,
+                            type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
+                            materialIndex: Int) {
+        // A shader animating this color owns it in its own parameters; an unclaimed one
+        // falls back below.
+        if mutateAnimatableState(ofMaterial: materialIndex, { $0.setColor(color, for: type) }) {
+            return
+        }
+        let vrmColor = VRMColor(simd: color)
+        mapMaterials(ofMaterial: materialIndex) { $0.settingColor(vrmColor, for: type) }
+    }
+
     /// Edits a material's animatable shader state, marking it for flush. Returns false
     /// when the material has no such state or does not animate what `mutate` writes,
     /// which is the cue to fall back to the RealityKit material properties.

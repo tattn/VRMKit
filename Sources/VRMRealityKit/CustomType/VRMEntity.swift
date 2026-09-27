@@ -322,18 +322,6 @@ public final class VRMEntity: GLTFEntity {
         return cut
     }
 
-    private func applyMaterialColor(_ color: SIMD4<Float>,
-                                    type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
-                                    materialIndex: Int) {
-        // A shader animating this color owns it in its own parameters; an unclaimed one
-        // falls back below.
-        if mutateAnimatableState(ofMaterial: materialIndex, { $0.setColor(color, for: type) }) {
-            return
-        }
-        let vrmColor = VRMColor(simd: color)
-        mapMaterials(ofMaterial: materialIndex) { $0.settingColor(vrmColor, for: type) }
-    }
-
     private func applyTextureTransform(scale: SIMD2<Float>,
                                        offset: SIMD2<Float>,
                                        rotation: Float,

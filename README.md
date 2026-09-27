@@ -235,6 +235,14 @@ let controller = try entity.playAnimation(at: 0, loops: true)  // same controlle
 
 A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance. It moves and is lit as the original is; `cloneWithOwnMaterialParameters()` gives the copy meshes and material parameters of its own, posed as the original is at the call, so it holds still and can be lit or recolored by itself.
 
+`setMaterialColor(_:for:ofMaterial:)` recolors one material at runtime, the way a VRM expression's material color bind does, so a plain glTF can take a color the user picks:
+
+```swift
+if let glow = entity.gltf.materials.firstIndex(where: { $0.name == "Glow" }) {
+    entity.setMaterialColor(SIMD4<Float>(1, 0.2, 0.6, 1), for: .emissionColor, ofMaterial: glow)
+}
+```
+
 Skinning and morphing run in the loader's own compute kernel into a `LowLevelMesh` per model entity, and only when a pose or weight moved. The rest-pose vertex data behind a model entity is readable through `gltfMeshGeometry`.
 
 <details>
