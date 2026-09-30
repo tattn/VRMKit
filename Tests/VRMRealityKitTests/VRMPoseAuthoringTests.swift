@@ -100,6 +100,9 @@ struct VRMPoseAuthoringTests {
         }
         #expect(played.expression(for: .preset(.blink)) == 0)
 
+        // Leaving the face out writes no expressions whatever the model wears.
+        #expect(try VRMAnimation(data: try posed.poseAnimationData(includesExpressions: false)).expressions == nil)
+
         // A face wearing nothing writes no expressions at all.
         let plain = try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity()
         #expect(try VRMAnimation(data: try plain.poseAnimationData()).expressions == nil)

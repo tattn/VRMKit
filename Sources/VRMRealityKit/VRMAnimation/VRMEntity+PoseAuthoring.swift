@@ -21,8 +21,12 @@ extension VRMEntity {
     /// - Parameters:
     ///   - name: The glTF animation's name.
     ///   - duration: How long the clip holds the pose. Zero writes a single keyframe.
+    ///   - includesExpressions: Whether to write the expressions worn. Off leaves the face
+    ///     out of the clip, for a body pose taken while something else drives the face.
     /// - Returns: A GLB-packed `.vrma`.
-    public func poseAnimationData(name: String? = nil, duration: Float = 0) throws -> Data {
+    public func poseAnimationData(name: String? = nil,
+                                  duration: Float = 0,
+                                  includesExpressions: Bool = true) throws -> Data {
         guard duration.isFinite, duration >= 0 else {
             throw VRMError._invalidArgument("a pose animation's duration cannot be negative, infinite or NaN")
         }
@@ -49,7 +53,7 @@ extension VRMEntity {
 
         // The expression tracks go last, in the order their nodes were added, so a reader
         // that strips the expression nodes off the end of the node list can pair them up.
-        let worn = wornExpressions()
+        let worn = includesExpressions ? wornExpressions() : []
         if !worn.isEmpty {
             let nodes = try document.addExpressionNodes(preset: worn.compactMap(\.presetName),
                                                         custom: worn.compactMap(\.customName))
