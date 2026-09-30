@@ -281,6 +281,48 @@ struct SpringBoneRigTests {
         #expect(nodes.last!.worldPosition.x > 0.2)
     }
 
+    /// A paused chain keeps the shape it swung to and rides along with what it hangs off,
+    /// and a reset while paused does not undo the shape.
+    @Test
+    func testAPausedChainHoldsTheShapeItSwungTo() throws {
+        let (root, nodes) = Self.chain(length: 4)
+        let rig = try Self.vrm1Rig(nodes)
+        rig.configuration.externalForce = SIMD3(5, 0, 0)
+        for _ in 0..<30 { rig.update(deltaTime: 1.0 / 60.0) }
+        let held = nodes.map(\.localRotation)
+
+        rig.configuration.isPaused = true
+        root.translation = SIMD3(0, 3, 0)
+        rig.reset()
+        for _ in 0..<30 {
+            #expect(rig.update(deltaTime: 1.0 / 60.0) == false)
+        }
+
+        #expect(nodes.map(\.localRotation) == held)
+    }
+
+    /// Resuming swings on from the held shape, not from the motion before the pause, which
+    /// was measured where the model was then and would fling the chain across the move.
+    @Test
+    func testResumingSwingsOnFromTheHeldShape() throws {
+        let (root, nodes) = Self.chain(length: 4)
+        let rig = try Self.vrm1Rig(nodes)
+        for _ in 0..<5 { rig.update(deltaTime: 1.0 / 60.0) }
+        let held = nodes.map(\.worldPosition)
+
+        rig.configuration.isPaused = true
+        rig.update(deltaTime: 1.0 / 60.0)
+        root.translation = SIMD3(10, 0, 0)
+        rig.configuration.isPaused = false
+        rig.update(deltaTime: 1.0 / 60.0)
+        rig.update(deltaTime: 1.0 / 60.0)
+
+        // Gravity alone moves each joint by little in one step; the motion from before the
+        // pause would swing the chain back towards x = 0.
+        let moved = nodes.last!.worldPosition - (held.last! + SIMD3(10, 0, 0))
+        #expect(simd_length(moved) < 0.1)
+    }
+
     /// A display drawing faster than the fixed step leaves frames where nothing swung, and
     /// an update says so rather than having a renderer re-skin for nothing.
     @Test

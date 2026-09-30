@@ -177,13 +177,13 @@ package struct SpringBoneJoint {
     /// The rotation the joint's node was authored with, which a reset puts back.
     package var restLocalRotation: simd_quatf { initialLocalRotation }
 
-    /// Puts the tail back at rest, carrying no motion into the next step, so a
-    /// teleported model does not read the jump as a swing.
-    package mutating func settle(head: SIMD3<Float>,
-                                 parentRotation: simd_quatf,
-                                 center: SpringBoneCenter?) {
-        let restDirection = (parentRotation * initialLocalRotation) * boneAxis
-        let tail = head + restDirection * boneLength
+    /// Puts the tail where the joint points when turned to the world `rotation`, carrying
+    /// no motion into the next step: at rest, so a teleported model does not read the jump
+    /// as a swing, or where a paused joint was held, so it swings on from that shape.
+    package mutating func hold(head: SIMD3<Float>,
+                               rotation: simd_quatf,
+                               center: SpringBoneCenter?) {
+        let tail = head + (rotation * boneAxis) * boneLength
         currentTail = center?.centered(tail) ?? tail
         prevTail = currentTail
     }

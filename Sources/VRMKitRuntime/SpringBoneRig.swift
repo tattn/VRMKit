@@ -25,9 +25,14 @@ package enum SpringBoneSimulation {
 public struct SpringBoneConfiguration: Sendable {
     /// A world-space force added to every joint, scaled like gravity: wind.
     public var externalForce: SIMD3<Float>
+    /// Holds every joint at the rotation it last swung to, so what hangs off the model
+    /// keeps the shape it had, spread by wind or a turn, while the model moves. Swinging
+    /// again carries on from that shape, with none of the motion from before the pause.
+    public var isPaused: Bool
 
-    public init(externalForce: SIMD3<Float> = .zero) {
+    public init(externalForce: SIMD3<Float> = .zero, isPaused: Bool = false) {
         self.externalForce = externalForce
+        self.isPaused = isPaused
     }
 }
 
@@ -74,6 +79,9 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     /// before its first frame, so the tails read at build time would swing towards where
     /// it used to be: hair or a skirt flung through its colliders on the first frame.
     private var isSettled = false
+    /// Whether the last update was paused. The tails still carry the motion from before the
+    /// pause, measured where the model was then, so the next swing starts them afresh.
+    private var wasPaused = false
     /// Time handed to ``update(deltaTime:)`` and not yet simulated.
     private var accumulator: TimeInterval = 0
 
@@ -103,17 +111,31 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     @discardableResult
     package func update(deltaTime: TimeInterval) -> Bool {
         guard !springs.isEmpty else { return false }
+        if configuration.isPaused {
+            // Settling for a reset would drop the held shape, and a held joint carries no
+            // motion for the reset to forget.
+            pendingReset = false
+            wasPaused = true
+            return false
+        }
+        if wasPaused {
+            wasPaused = false
+            isSettled = true
+            accumulator = 0
+            restartTails(atRest: false)
+            return false
+        }
         if pendingReset {
             pendingReset = false
             isSettled = true
             accumulator = 0
-            settle()
+            restartTails(atRest: true)
             return true
         }
         var posed = false
         if !isSettled {
             isSettled = true
-            posed = settle()
+            posed = restartTails(atRest: true)
         }
         let step = SpringBoneSimulation.step
         accumulator = min(max(0, accumulator + deltaTime),
@@ -187,10 +209,10 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         }
     }
 
-    /// Puts every joint back at rest: the authored rotation, and tails carrying no motion.
-    /// Returns whether a rotation was written.
+    /// Starts every tail with no motion, where its joint points: at rest, the authored
+    /// rotation, or else where the joint is now. Returns whether a rotation was written.
     @discardableResult
-    private func settle() -> Bool {
+    private func restartTails(atRest: Bool) -> Bool {
         var posed = false
         refreshCenters()
         for springIndex in springs.indices {
@@ -203,13 +225,11 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                     ?? link.node.runtimeParent?.worldTransform
                     ?? .identity
                 if var joint = link.joint {
-                    if link.node.setLocalRotationIfMoved(joint.restLocalRotation) {
+                    if atRest, link.node.setLocalRotationIfMoved(joint.restLocalRotation) {
                         posed = true
                     }
                     let world = link.node.worldTransform(under: parentWorld)
-                    joint.settle(head: world.translation,
-                                 parentRotation: parentWorld.rotation,
-                                 center: center)
+                    joint.hold(head: world.translation, rotation: world.rotation, center: center)
                     springs[springIndex].links[index].joint = joint
                     worlds.append(world)
                 } else {

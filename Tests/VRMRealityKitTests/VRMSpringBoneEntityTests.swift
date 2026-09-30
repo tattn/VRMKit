@@ -54,6 +54,43 @@ struct VRMSpringBoneEntityTests {
         #expect(checkedJoints > 0)
     }
 
+    /// A paused model keeps its springs in the shape they swung to, carried rigidly by the
+    /// head they hang off however the head turns, and swings them again once resumed.
+    @Test
+    func testPausedSpringBonesKeepTheirShapeWhileTheModelMoves() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
+                                            shaders: []).loadEntity()
+        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        func turnHead(by angle: Float) {
+            head.transform.rotation = simd_quatf(angle: angle, axis: SIMD3<Float>(0, 1, 0)) * head.transform.rotation
+            vrmEntity.invalidateSkinPose(for: [head])
+        }
+        func localRotations() -> [simd_quatf] {
+            var rotations: [simd_quatf] = []
+            func visit(_ entity: Entity) {
+                rotations.append(entity.transform.rotation)
+                entity.children.forEach(visit)
+            }
+            head.children.forEach(visit)
+            return rotations
+        }
+        turnHead(by: .pi / 4)
+        for _ in 0..<10 { vrmEntity.update(deltaTime: 1.0 / 60.0) }
+
+        vrmEntity.springBoneConfiguration.isPaused = true
+        let held = localRotations()
+        for _ in 0..<10 {
+            turnHead(by: -.pi / 20)
+            vrmEntity.update(deltaTime: 1.0 / 60.0)
+        }
+        #expect(localRotations() == held)
+
+        vrmEntity.springBoneConfiguration.isPaused = false
+        for _ in 0..<10 { vrmEntity.update(deltaTime: 1.0 / 60.0) }
+        #expect(localRotations() != held)
+    }
+
     /// `VRMC_springBone` pairs the joints of a spring consecutively, so the
     /// last of them is only the tail the one before it swings towards.
     @Test
