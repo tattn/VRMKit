@@ -19,7 +19,7 @@ jobs:
     # Only compares the recorded build inputs, so the cheap Linux runner is enough.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The bundled metallibs are stale when the shader sources or the compile
       # settings change without re-running the build script. --check compares
       # the recorded build inputs (metallib bytes vary across Metal toolchain
@@ -48,7 +48,7 @@ jobs:
             sim_platform: visionOS Simulator
             device_name: Apple Vision Pro
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Test VRMKit
         run: |
           set -o pipefail
@@ -65,7 +65,7 @@ jobs:
     name: Build examples (iOS/visionOS/macOS)
     runs-on: xcode-27
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build All Examples
         run: |
           set -o pipefail

@@ -15,7 +15,7 @@ jobs:
       # pull_request_target runs with write access to this repository, so the
       # job deliberately never checks out or executes code from the PR branch.
       # It only reads the file list through the API and posts a comment.
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         env:
           LIMIT: "300"
         with:
