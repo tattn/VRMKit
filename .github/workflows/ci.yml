@@ -30,7 +30,7 @@ jobs:
 
   test-package:
     name: Test package (${{ matrix.platform }})
-    runs-on: macos-26
+    runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
@@ -63,7 +63,7 @@ jobs:
 
   build-examples:
     name: Build examples (iOS/visionOS/macOS)
-    runs-on: macos-26
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
       - name: Build All Examples
