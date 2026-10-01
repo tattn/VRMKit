@@ -243,7 +243,7 @@ if let glow = entity.gltf.materials.firstIndex(where: { $0.name == "Glow" }) {
 }
 ```
 
-Skinning and morphing run in the loader's own compute kernel into a `LowLevelMesh` per model entity, and only when a pose or weight moved. The rest-pose vertex data behind a model entity is readable through `gltfMeshGeometry`.
+Skinning and morphing run in the loader's own compute kernel into a `LowLevelMesh` per model entity, and only when a pose or weight moved. RealityKit sees only the rest-pose bounds of those meshes, so they opt out of its occlusion culling (iOS 27 and later). The rest-pose vertex data behind a model entity is readable through `gltfMeshGeometry`.
 
 <details>
 <summary>Renderer limitations</summary>

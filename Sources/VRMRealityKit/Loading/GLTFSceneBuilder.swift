@@ -476,6 +476,12 @@ final class GLTFSceneBuilder {
                 entity.components.set(component)
             }
         }
+        if source.isDeformable, #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
+            // RealityKit only sees the rest bounds of vertices deformed here on the GPU, so its
+            // occlusion culling drops a posed mesh whole, such as a turned face judged to be
+            // behind its own hair, even with the bounds margin.
+            entity.components.set(OcclusionCullingComponent(isEnabled: false))
+        }
         entity.components.set(GLTFMergedMeshComponent(initiallyVisibleSlots: drawing.map(\.isInitiallyVisible)))
         entity.setDeformedMesh(deformedMesh)
         return entity

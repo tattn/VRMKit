@@ -37,5 +37,21 @@ struct VRMEntityTests {
             #expect(expression.name == preset.rawValue)
         }
     }
+
+    /// RealityKit sees only the rest bounds of a mesh deformed on the GPU, so its
+    /// occlusion culling is off for those and on for the rest.
+    @Test
+    func testDeformedMeshesOptOutOfOcclusionCulling() async throws {
+        guard #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+
+        let modelEntities = entity.modelEntitiesInHierarchy
+        let deformed = modelEntities.filter { $0.deformedMesh?.source.isDeformable == true }
+        #expect(!deformed.isEmpty)
+        for modelEntity in modelEntities {
+            let isCulled = modelEntity.components[OcclusionCullingComponent.self]?.isEnabled ?? true
+            #expect(isCulled == (modelEntity.deformedMesh?.source.isDeformable != true), "\(modelEntity.name)")
+        }
+    }
 }
 #endif
