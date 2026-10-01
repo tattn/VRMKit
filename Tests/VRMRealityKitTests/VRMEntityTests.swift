@@ -38,6 +38,7 @@ struct VRMEntityTests {
         }
     }
 
+    #if compiler(>=6.4)
     /// RealityKit sees only the rest bounds of a mesh deformed on the GPU, so its
     /// occlusion culling is off for those and on for the rest.
     @Test
@@ -53,5 +54,6 @@ struct VRMEntityTests {
             #expect(isCulled == (modelEntity.deformedMesh?.source.isDeformable != true), "\(modelEntity.name)")
         }
     }
+    #endif
 }
 #endif
