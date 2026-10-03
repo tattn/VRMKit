@@ -51,11 +51,11 @@ public enum GLTFImageKind: GLTFIndexKind {
     public static var arrayName: String { "images" }
 }
 
-/// A VRM 0.x bone group, in the `VRM` extension's `secondaryAnimation.boneGroups`.
 public enum GLTFAnimationKind: GLTFIndexKind {
     public static var arrayName: String { "animations" }
 }
 
+/// A VRM 0.x bone group, in the `VRM` extension's `secondaryAnimation.boneGroups`.
 public enum VRM0BoneGroupKind: GLTFIndexKind {
     public static var arrayName: String { "secondaryAnimation.boneGroups" }
 }

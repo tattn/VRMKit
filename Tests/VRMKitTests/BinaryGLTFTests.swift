@@ -94,8 +94,8 @@ struct BinaryGLTFTests {
         #expect(throws: (any Error).self) { try document.bufferViewData(at: document.gltf.bufferViews.count) }
     }
 
-    /// The fixture with its first buffer view's `byteOffset` / `byteLength` replaced,
-    /// leaving the rest of the file intact.
+    /// The fixture with fields of its first buffer view replaced, leaving the rest of
+    /// the file intact.
     private func document(withFirstBufferView fields: JSONObject) throws -> GLTFDocument {
         let data = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
             var bufferViews = json.objects("bufferViews")

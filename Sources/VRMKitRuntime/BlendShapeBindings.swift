@@ -70,7 +70,6 @@ package struct ExpressionClip<Mesh> {
         }
     }
 
-    /// How this clip overrides `group`.
     func overrideType(for group: ExpressionOverrideGroup) -> ExpressionOverrideType {
         switch group {
         case .blink: return overrideBlink

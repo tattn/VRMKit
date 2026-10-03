@@ -56,7 +56,6 @@ struct LookAtRigTests {
         LookAtRig.make(plan: plan) { model.node(at: $0) }
     }
 
-    /// Whether a solve turned an eye bone.
     private func isPosedBones(_ result: LookAtResult) -> Bool {
         if case .posedBones = result { return true }
         return false

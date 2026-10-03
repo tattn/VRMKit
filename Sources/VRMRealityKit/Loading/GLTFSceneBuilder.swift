@@ -138,18 +138,11 @@ final class GLTFSceneBuilder {
     /// merely using `KHR_texture_transform` renders through the first UV-accessed texture's
     /// set and transform, while one that requires it is rejected.
     private func validateTextureTransformsAreRenderable() throws {
-        for (index, gltfMaterial) in (gltf.materials).enumerated() {
+        for (index, gltfMaterial) in gltf.materials.enumerated() {
             let textures = sampledTextures(of: gltfMaterial)
-            let selectedTexCoord = selectedTexCoord(withMaterialIndex: index)
-            guard textures.allSatisfy({ $0.texCoord == selectedTexCoord }) else {
+            if let conflict = textures.textureTransformConflict(selectedTexCoord: selectedTexCoord(withMaterialIndex: index)) {
                 throw VRMError._notSupported(
-                    "this glTF requires KHR_texture_transform, and material \(index) samples UV sets other than \(selectedTexCoord), which this renderer cannot draw"
-                )
-            }
-            let transforms = textures.map { $0.transform ?? GLTFUVTransform() }
-            guard transforms.allSatisfy({ $0 == transforms.first }) else {
-                throw VRMError._notSupported(
-                    "this glTF requires KHR_texture_transform, and material \(index) gives its textures different transforms, which this renderer cannot draw"
+                    "this glTF requires KHR_texture_transform, and material \(index) \(conflict), which this renderer cannot draw"
                 )
             }
         }

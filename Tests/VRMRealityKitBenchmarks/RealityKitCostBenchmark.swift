@@ -52,28 +52,11 @@ struct RealityKitCostBenchmark {
                                       frames: Int,
                                       warmup: Int,
                                       perFrame: () -> Void) throws -> Double {
-        let device = try #require(MTLCreateSystemDefaultDevice())
-        var cameraComponent = PerspectiveCameraComponent(near: 0.01, far: 100, fieldOfViewInDegrees: 30)
-        cameraComponent.fieldOfViewOrientation = .vertical
-        let camera = Entity()
-        camera.components.set(cameraComponent)
-        camera.position = SIMD3<Float>(0, 0.9, 2.4)
-
-        let renderer = try RealityRenderer()
-        renderer.entities.append(entity)
-        renderer.entities.append(camera)
-        renderer.activeCamera = camera
+        let scene = try BenchmarkRenderer(rendering: entity)
+        let renderer = scene.renderer
         renderer.cameraSettings.antialiasing = .none
-
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
-                                                                  width: 1920,
-                                                                  height: 1080,
-                                                                  mipmapped: false)
-        descriptor.usage = [.renderTarget, .shaderRead, .shaderWrite]
-        descriptor.storageMode = .private
-        let target = try #require(device.makeTexture(descriptor: descriptor))
-        let output = try RealityRenderer.CameraOutput(.singleProjection(colorTexture: target))
-        let drawn = try #require(device.makeSharedEvent())
+        let output = try scene.output(width: 1920, height: 1080)
+        let drawn = try #require(scene.device.makeSharedEvent())
 
         var submitted: UInt64 = 0
         var elapsed: Double = 0
@@ -188,8 +171,6 @@ struct RealityKitCostBenchmark {
     @Test
     func measureFirstFrameAfterLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let device = try #require(MTLCreateSystemDefaultDevice())
-
         // Warms what every load shares, so the measured load pays only its own pipelines.
         let warm = try await VRMEntityLoader(vrm: try VRM(data: VRMSampleAsset.seedSan.data)).loadEntity()
         _ = try OffscreenRenderer.render(warm, size: 64)
@@ -197,36 +178,15 @@ struct RealityKitCostBenchmark {
         let entity = try await VRMEntityLoader(vrm: try VRM(data: VRMSampleAsset.seedSan.data)).loadEntity()
         entity.isAutomaticUpdateEnabled = false
 
-        var cameraComponent = PerspectiveCameraComponent(near: 0.01, far: 100, fieldOfViewInDegrees: 30)
-        cameraComponent.fieldOfViewOrientation = .vertical
-        let camera = Entity()
-        camera.components.set(cameraComponent)
-        camera.position = SIMD3<Float>(0, 0.9, 2.4)
-        let renderer = try RealityRenderer()
-        renderer.entities.append(entity)
-        renderer.entities.append(camera)
-        renderer.activeCamera = camera
-
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
-                                                                  width: 1920,
-                                                                  height: 1080,
-                                                                  mipmapped: false)
-        descriptor.usage = [.renderTarget, .shaderRead, .shaderWrite]
-        descriptor.storageMode = .private
-        let target = try #require(device.makeTexture(descriptor: descriptor))
-        let output = try RealityRenderer.CameraOutput(.singleProjection(colorTexture: target))
+        let scene = try BenchmarkRenderer(rendering: entity)
+        let renderer = scene.renderer
+        let output = try scene.output(width: 1920, height: 1080)
 
         // Pipeline state depends on the pixel format and vertex layout, not on how many
         // pixels are drawn, so a tiny target should compile the same pipelines.
         var prewarm: Double?
         if ProcessInfo.processInfo.environment["VRMKIT_BENCH_PREWARM"] == "1" {
-            let small = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
-                                                                 width: 8, height: 8,
-                                                                 mipmapped: false)
-            small.usage = [.renderTarget, .shaderRead, .shaderWrite]
-            small.storageMode = .private
-            let smallTarget = try #require(device.makeTexture(descriptor: small))
-            let smallOutput = try RealityRenderer.CameraOutput(.singleProjection(colorTexture: smallTarget))
+            let smallOutput = try scene.output(width: 8, height: 8)
             let start = CFAbsoluteTimeGetCurrent()
             try renderer.updateAndRender(deltaTime: 0, cameraOutput: smallOutput)
             prewarm = (CFAbsoluteTimeGetCurrent() - start) * 1000
@@ -264,8 +224,6 @@ struct RealityKitCostBenchmark {
             return entity
         }
 
-        // Kept alive so each reading is what that load added rather than what it added
-        // minus what the one before it released. The first also pays the one-time costs.
         let document = try VRM(data: VRMSampleAsset.seedSan.data).document
         let sizes = document.gltf.images.indices.compactMap { index -> String? in
             guard let image = try? document.image(at: index) else { return nil }
@@ -273,6 +231,8 @@ struct RealityKitCostBenchmark {
         }
         print("BENCH gpu authored images: \(sizes.joined(separator: ", "))")
 
+        // Kept alive so each reading is what that load added rather than what it added
+        // minus what the one before it released. The first also pays the one-time costs.
         var held: [VRMEntity] = []
         held.append(try await load(shaders: GLTFEntityLoader.defaultShaders, limit: nil))
 

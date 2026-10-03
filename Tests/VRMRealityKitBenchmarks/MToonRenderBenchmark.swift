@@ -51,29 +51,11 @@ struct MToonRenderBenchmark {
                                       height: Int,
                                       frames: Int,
                                       warmup: Int) throws -> Double {
-        let device = try #require(MTLCreateSystemDefaultDevice())
-        // Framed head-on from the front, filling the height as a consumer shows it.
-        var cameraComponent = PerspectiveCameraComponent(near: 0.01, far: 100, fieldOfViewInDegrees: 30)
-        cameraComponent.fieldOfViewOrientation = .vertical
-        let camera = Entity()
-        camera.components.set(cameraComponent)
-        camera.position = SIMD3<Float>(0, 0.9, 2.4)
-
-        let renderer = try RealityRenderer()
-        renderer.entities.append(entity)
-        renderer.entities.append(camera)
-        renderer.activeCamera = camera
+        let scene = try BenchmarkRenderer(rendering: entity)
+        let renderer = scene.renderer
         renderer.cameraSettings.antialiasing = .none
-
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
-                                                                  width: width,
-                                                                  height: height,
-                                                                  mipmapped: false)
-        descriptor.usage = [.renderTarget, .shaderRead, .shaderWrite]
-        descriptor.storageMode = .private
-        let target = try #require(device.makeTexture(descriptor: descriptor))
-        let output = try RealityRenderer.CameraOutput(.singleProjection(colorTexture: target))
-        let drawn = try #require(device.makeSharedEvent())
+        let output = try scene.output(width: width, height: height)
+        let drawn = try #require(scene.device.makeSharedEvent())
 
         var submitted: UInt64 = 0
         func submit() throws {

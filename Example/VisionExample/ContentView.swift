@@ -77,7 +77,6 @@ struct ImmersiveView: View {
 @Observable
 final class ImmersiveViewModel {
     let rootEntity = Entity()
-    private(set) var errorMessage: String?
     private var vrmEntity: VRMEntity?
     private var vrmaAnimation: VRMAnimation?
     private var vrmaController: GLTFAnimationPlaybackController?
@@ -110,7 +109,6 @@ final class ImmersiveViewModel {
             
             self.vrmEntity = vrmEntity
         } catch {
-            errorMessage = error.localizedDescription
             print("VRM Load Error: \(error)")
         }
     }
@@ -127,7 +125,6 @@ final class ImmersiveViewModel {
             let animation = try loadedVRMAAnimation()
             vrmaController = try vrmEntity.playAnimation(animation, loops: true)
         } catch {
-            errorMessage = error.localizedDescription
             print("VRMA Play Error: \(error)")
         }
     }

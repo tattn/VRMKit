@@ -15,9 +15,9 @@
 
 https://github.com/user-attachments/assets/5bf25ec5-29e7-4e74-a270-0012aac7a56a
 
-For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
+For "VRM", please refer to [vrm.dev](https://vrm.dev/en/).
 
-## Features
+# Features
 
 - [x] Load VRM file
 - [x] Render VRM models on RealityKit (experimental)
@@ -89,11 +89,9 @@ struct ContentView: View {
 }
 ```
 
-`loadEntity()` returns a `VRMEntity`: add it to the scene, and drive everything else on it, expressions, humanoid bones, spring bones and animation alike.
+`loadEntity()` returns a `VRMEntity`, which drives expressions, humanoid bones, spring bones and animation.
 
-Skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself.
-
-The spring bones step at a fixed rate, so the swing is the same at every display refresh rate.
+Skinning, constraints and spring bones update every frame automatically; set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)` to drive the timing yourself. The spring bones step at a fixed rate, so the swing is the same at every display refresh rate.
 
 ```swift
 model.springBoneConfiguration.externalForce = SIMD3<Float>(1, 0, 0) // wind
@@ -113,7 +111,7 @@ for expression in model.availableExpressions {
 }
 ```
 
-VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`, and each listed expression keeps the name the model gives it. `ExpressionPreset.vrm0PresetName` spells it back the 0.x way. `setExpressions` applies several weights at once, which suits per-frame face tracking.
+VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`; `ExpressionPreset.vrm0PresetName` spells it back the 0.x way. `setExpressions` applies several weights at once, which suits per-frame face tracking.
 
 ## Look at
 
@@ -123,7 +121,7 @@ model.lookAtTarget = .angles(yaw: 15, pitch: -5)        // degrees from the head
 model.lookAtTarget = nil                                // back to rest
 ```
 
-The eyes stay on the target as either it or the model moves. VRM 0.x and 1.0 share this API: the model itself states whether the gaze turns its eye bones, through its own curves, or weighs its look expressions.
+The eyes stay on the target as either it or the model moves. VRM 0.x and 1.0 share this API, and the model itself states whether the gaze turns its eye bones or weighs its look expressions.
 
 ## Bone animation
 
@@ -190,9 +188,7 @@ final class MyShader: GLTFMaterialShader {
 let custom = try VRMEntityLoader(withData: data, shaders: [MyShader(), MToonShader()])
 ```
 
-`GLTFShadedMaterial` also carries extra render passes, MToon's outline being one, and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. See the `GLTFMaterialShader` documentation comments.
-
-A shader's own runtime controls live on that state type, edited with `updateMaterialStates(_:)`.
+`GLTFShadedMaterial` also carries extra render passes, MToon's outline being one, and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. A shader's own runtime controls live on that state type, edited with `updateMaterialStates(_:)`.
 
 ```swift
 entity.updateMaterialStates(GlowState.self) { state in
@@ -212,7 +208,7 @@ let shader = MToonShader(functions: MToonShaderFunctions(surface: .init(named: "
 entity.updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setUserParameter(glow, at: 0) }
 ```
 
-A blended material also carries a `renderQueue`, the Unity-scale draw order that VRM 0.x's `renderQueue` and MToon's `renderQueueOffsetNumber` express; `context.renderQueue(alphaMode:transparentWithZWrite:offset:)` derives it. RealityKit orders the blended parts of one model entity by distance, which flips parts an author stacked on purpose as the view moves, so a mesh whose blended materials sit at different queues draws them from model entities of their own, sorted in queue order.
+A blended material also carries a `renderQueue`, the Unity-scale draw order that VRM 0.x's `renderQueue` and MToon's `renderQueueOffsetNumber` express, and `context.renderQueue(alphaMode:transparentWithZWrite:offset:)` derives it. Within one mesh, blended materials at different queues draw in queue order rather than by distance.
 
 A pass can be built hidden and shown later with `setPassEnabled`, for the whole model or for the materials under a node. `resetPassEnabled` puts back what the shader built.
 
@@ -240,9 +236,9 @@ entity.animations  // [GLTFAnimation]: index, name, duration
 let controller = try entity.playAnimation(at: 0, loops: true)  // same controller as above
 ```
 
-`loadEntity()` renders the asset's default scene and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`. It reads the model's vertex data off the main thread, a primitive at a time in parallel.
+`loadEntity()` renders the asset's default scene and throws when the glTF names none; pick one with `loadEntity(withSceneIndex:)`.
 
-A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance. It moves and is lit as the original is; `cloneWithOwnMaterialParameters()` gives the copy meshes and material parameters of its own, posed as the original is at the call, so it holds still and can be lit or recolored by itself.
+A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance. `cloneWithOwnMaterialParameters()` instead gives the copy meshes and material parameters of its own, frozen in the original's current pose, so it can be lit or recolored by itself.
 
 `setMaterialColor(_:for:ofMaterial:)` recolors one material at runtime, the way a VRM expression's material color bind does, so a plain glTF can take a color the user picks:
 
@@ -252,7 +248,7 @@ if let glow = entity.gltf.materials.firstIndex(where: { $0.name == "Glow" }) {
 }
 ```
 
-Skinning and morphing run in the loader's own compute kernel into a `LowLevelMesh` per model entity, and only when a pose or weight moved. RealityKit sees only the rest-pose bounds of those meshes, so they opt out of its occlusion culling (iOS 27 and later). The rest-pose vertex data behind a model entity is readable through `gltfMeshGeometry`.
+Skinning and morphing run in a compute kernel, and only when a pose or weight changed. The rest-pose vertex data behind a model entity is readable through `gltfMeshGeometry`.
 
 <details>
 <summary>Renderer limitations</summary>
@@ -267,6 +263,7 @@ RealityKit meshes and materials cannot express every part of glTF and MToon. Eac
 - Skinning reads `JOINTS_0` / `WEIGHTS_0` only, so a vertex is driven by at most four joints.
 - MToon's outline is clamped to a culling margin of the mesh's radius, so an outline asking for more caps out there.
 - MToon's outline takes its lit color from the runtime light color, not from the surface's fully evaluated shading, which RealityKit does not expose to a `CustomMaterial`.
+- RealityKit sees only the rest-pose bounds of skinned and morphed meshes, so on iOS 27 and later they opt out of its occlusion culling.
 
 </details>
 
@@ -289,7 +286,7 @@ if let hand = vrm.nodeIndex(of: .leftHand) {
 try document.serialize().write(to: outputURL)
 ```
 
-Indices are typed. `GLTFNodeIndex`, `GLTFMeshIndex`, `GLTFMaterialIndex` and `GLTFSceneIndex` are all plain integers in the file, and the type is what stops one reaching an edit that wanted another.
+Indices are typed: `GLTFNodeIndex`, `GLTFMeshIndex`, `GLTFMaterialIndex` and `GLTFSceneIndex` keep one kind of index from reaching an edit that wants another.
 
 `append` copies a whole source document to the end of the arrays it belongs in and embeds its external resources into the GLB buffer. The source's default scene decides which of the copied nodes are drawn, or the one `append(_:sceneAt:under:)` names. A source it cannot rebase, such as one declaring an unknown extension or a VRM 0.x model, is refused rather than written out broken.
 
@@ -297,7 +294,7 @@ Indices are typed. `GLTFNodeIndex`, `GLTFMeshIndex`, `GLTFMaterialIndex` and `GL
 
 `addNode`, `setName` and `setTransform` edit the node graph by appending, never by renumbering, so the VRM extensions keep pointing at what they used to. `detachNode` cuts a subtree's links to its parent and scenes, and `moveNode(at:to:)` hangs it under another node instead, or under the default scene's roots when given none.
 
-`prune()` drops what a detached subtree left behind and remaps the remaining indices. It runs only when called. A node something still references keeps its transform but loses what it drew, so a humanoid bone or a spring joint stays where it was. It answers with the BIN bytes it reclaimed and with where every entry it kept ended up:
+`prune()` drops what a detached subtree left behind and remaps the remaining indices. A node something still references keeps its transform but loses what it drew, so a humanoid bone or a spring joint stays where it was. It returns the BIN bytes it reclaimed and where every entry it kept ended up:
 
 ```swift
 let node = try document.addNode(name: "item")
@@ -305,7 +302,7 @@ let result = try document.prune()
 let stillThere = result.newIndex(of: node)   // nil for a node the prune dropped
 ```
 
-`setVRMThumbnail`, `setVRMName` and `setVRMAuthors` rewrite the model's own metadata in whichever form the document keeps, leaving every other field alone, and refuse what that version would not validate: VRM 1.0 asks for a square thumbnail, a name and at least one author. The license fields are not writable: they are the distributor's to set.
+`setVRMThumbnail`, `setVRMName` and `setVRMAuthors` rewrite the model's own metadata in whichever form the document keeps, leaving every other field alone, and refuse what that version would not validate: VRM 1.0 asks for a square thumbnail, a name and at least one author. The license fields are the distributor's to set, so they are not writable.
 
 `addVRM1SpringBone` and `addVRM0SpringBone` give merged content its motion. A `VRM1Spring` lists the joints a spring runs down, each below the one before it and each with its own parameters, while a `VRM0SpringBoneGroup` names the nodes a swing starts at and swings everything below them. A spring is checked against what `VRMC_springBone` says one is. Colliders are not authored here.
 
@@ -347,9 +344,9 @@ The scope is one indexed triangle mesh and one material: positions, optional nor
 
 Pull requests are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) first: open an issue to discuss anything larger than a bug fix, and keep each pull request to a single purpose.
 
-## Support this project
+# Support this project
 
-Donating to help me continue working on this project.
+Donations help me keep working on this project.
 
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://paypal.me/tattn/)
 

@@ -139,7 +139,7 @@ extension GLTFEntity {
     /// ``playAnimation(at:loops:speed:)``.
     public var animations: [GLTFAnimation] {
         if let cached = animationMetadata { return cached }
-        let metadata = (gltf.animations).enumerated().map { index, animation in
+        let metadata = gltf.animations.enumerated().map { index, animation in
             GLTFAnimation(index: index, name: animation.name, duration: animationDecoder.duration(of: animation))
         }
         animationMetadata = metadata

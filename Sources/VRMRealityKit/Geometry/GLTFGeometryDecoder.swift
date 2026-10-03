@@ -21,8 +21,8 @@ struct GLTFPrimitiveGeometry: Sendable {
     var bitangents: [SIMD3<Float>] = []
     var texcoords: [SIMD2<Float>] = []
     var indices: [UInt32] = []
-    /// POSITION deltas per morph target. RealityKit blend shapes have no
-    /// NORMAL / TANGENT channel, so nothing else is read.
+    /// POSITION deltas per morph target. The deformation kernel morphs positions
+    /// only, so nothing else is read.
     var blendShapeOffsets: [[SIMD3<Float>]] = []
     /// Empty for an unskinned primitive.
     var joints: [SIMD4<UInt32>] = []
@@ -38,8 +38,8 @@ struct GLTFPrimitiveGeometry: Sendable {
     /// decodes every vertex of the mesh and draws its own slice of them (the
     /// `AliciaSolid` fixture decodes 80,169 vertices that way for 21,995 drawn), and
     /// merged or baked exports leave hidden parts behind as vertices no triangle uses.
-    /// RealityKit skins and morphs every vertex in the buffer whether or not a
-    /// triangle draws it. Call it before the tangent frame is built.
+    /// The deformation kernel skins and morphs every vertex in the buffer whether or
+    /// not a triangle draws it. Call it before the tangent frame is built.
     mutating func dropUnreferencedVertices() {
         var renumbered = [UInt32](repeating: .max, count: positions.count)
         var kept: [Int] = []

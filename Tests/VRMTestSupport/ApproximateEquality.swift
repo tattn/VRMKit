@@ -1,6 +1,5 @@
 import simd
 
-/// Shared approximate-equality helpers for float comparisons in tests.
 public extension Float {
     func isApproximatelyEqual(to other: Float, tolerance: Float = 0.0001) -> Bool {
         abs(self - other) < tolerance

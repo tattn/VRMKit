@@ -187,10 +187,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
 
         for index in spring.links.indices {
             let link = spring.links[index]
-            // The only world transforms the rig reads rather than composes.
-            let parentWorld = link.parent.map { worlds[$0] }
-                ?? link.node.runtimeParent?.worldTransform
-                ?? .identity
+            let parentWorld = parentWorld(of: link)
             var world = link.node.worldTransform(under: parentWorld)
 
             if var joint = link.joint {
@@ -223,23 +220,27 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
             worlds.reserveCapacity(springs[springIndex].links.count)
             for index in springs[springIndex].links.indices {
                 let link = springs[springIndex].links[index]
-                let parentWorld = link.parent.map { worlds[$0] }
-                    ?? link.node.runtimeParent?.worldTransform
-                    ?? .identity
+                if atRest, let rest = link.joint?.restLocalRotation, link.node.setLocalRotationIfMoved(rest) {
+                    posed = true
+                }
+                let world = link.node.worldTransform(under: parentWorld(of: link))
                 if var joint = link.joint {
-                    if atRest, link.node.setLocalRotationIfMoved(joint.restLocalRotation) {
-                        posed = true
-                    }
-                    let world = link.node.worldTransform(under: parentWorld)
                     joint.hold(head: world.translation, rotation: world.rotation, center: center)
                     springs[springIndex].links[index].joint = joint
-                    worlds.append(world)
-                } else {
-                    worlds.append(link.node.worldTransform(under: parentWorld))
                 }
+                worlds.append(world)
             }
         }
         return posed
+    }
+
+    /// The world transform `link` hangs off: composed earlier in this pass when its
+    /// parent is a link, and otherwise the only world transform the rig reads rather
+    /// than composes.
+    private func parentWorld(of link: Link) -> SpringBoneWorldTransform {
+        link.parent.map { worlds[$0] }
+            ?? link.node.runtimeParent?.worldTransform
+            ?? .identity
     }
 }
 

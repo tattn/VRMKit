@@ -136,16 +136,26 @@ package extension JSONObject {
 
     mutating func appendObjects(_ elements: [JSONObject], to key: String) {
         guard !elements.isEmpty else { return }
-        self[key] = .objects(objects(key) + elements)
+        editArray(key) { $0.append(contentsOf: elements.map(JSONValue.object)) }
     }
 
     /// Appends one object and returns the index it was given.
     @discardableResult
     mutating func appendObject(_ element: JSONObject, to key: String) -> Int {
-        var existing = objects(key)
-        existing.append(element)
-        self[key] = .objects(existing)
-        return existing.count - 1
+        editArray(key) { elements in
+            elements.append(.object(element))
+            return elements.count - 1
+        }
+    }
+
+    /// Edits the array at `key` in place, starting from an empty one where `key` holds
+    /// no array. The array is taken out of the object first, so it is uniquely
+    /// referenced and an edit does not copy every element.
+    private mutating func editArray<Result>(_ key: String,
+                                            _ body: (inout [JSONValue]) throws -> Result) rethrows -> Result {
+        var elements = removeValue(forKey: key)?.arrayValue ?? []
+        defer { self[key] = .array(elements) }
+        return try body(&elements)
     }
 
     /// Points a buffer view, or the meshopt slice shaped like one, at the one
@@ -174,7 +184,7 @@ package extension JSONObject {
     }
 
     mutating func appendIndex(_ index: Int, to key: String) {
-        self[key] = .numbers((ints(key) ?? []) + [index])
+        editArray(key) { $0.append(.int(index)) }
     }
 
     mutating func removeIndex(_ index: Int, from key: String, dropWhenEmpty: Bool) {
@@ -187,12 +197,15 @@ package extension JSONObject {
     /// as they were. An array holding no object at `index` is left alone.
     mutating func updateObject(at index: Int,
                                in key: String,
-                               _ body: (inout JSONObject) throws -> Void) rethrows {
-        guard var elements = self[key]?.arrayValue,
-              var object = elements[safe: index]?.objectValue else { return }
-        try body(&object)
-        elements[index] = .object(object)
-        self[key] = .array(elements)
+                               _ body: (inout JSONObject) -> Void) {
+        guard self[key]?.arrayValue?[safe: index]?.objectValue != nil else { return }
+        editArray(key) { elements in
+            guard var object = elements[index].objectValue else { return }
+            // Released while edited, so the arrays inside the object are not copied either.
+            elements[index] = .null
+            body(&object)
+            elements[index] = .object(object)
+        }
     }
 
     mutating func withObject(_ key: String, _ body: (inout JSONObject) throws -> Void) rethrows {

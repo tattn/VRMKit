@@ -38,7 +38,7 @@ struct NodeConstraintOrderTests {
     /// whatever poses that source runs first.
     @Test
     func testAConstraintRunsAfterWhateverPosesItsSource() throws {
-        // 0 -> 1 -> 2, all roots of nothing.
+        // Three unrelated nodes: 0 drives 1, which drives 2.
         let hierarchy = try Self.hierarchy([[], [], []])
         let bindings = [Binding(target: 2, descriptor: Self.rotation(1)),
                         Binding(target: 1, descriptor: Self.rotation(0))]

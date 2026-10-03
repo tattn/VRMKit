@@ -187,11 +187,6 @@ package final class PackedAccessorCache: Sendable {
         return packed
     }
 
-    /// Drops the expanded accessors, for a reader that is done with them.
-    package func removeAll() {
-        packedAccessors.withLock { $0 = [:] }
-    }
-
     /// Expands a float-valued accessor of `type` element by element.
     package func floatElements<Element>(at index: Int,
                                         type: GLTF.Accessor.`Type`,

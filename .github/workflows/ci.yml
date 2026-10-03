@@ -22,9 +22,8 @@ jobs:
       - uses: actions/checkout@v7
       # The bundled metallibs are stale when the shader sources or the compile
       # settings change without re-running the build script. --check compares
-      # the recorded build inputs (metallib bytes vary across Metal toolchain
-      # versions) and needs no Metal toolchain, so it runs on the cheap runner
-      # ahead of the macOS jobs.
+      # the recorded build inputs rather than the metallibs, whose bytes vary
+      # across Metal toolchain versions.
       - name: Verify recorded metallib build inputs match sources
         run: ./scripts/build-mtoon-metallibs.sh --check
 

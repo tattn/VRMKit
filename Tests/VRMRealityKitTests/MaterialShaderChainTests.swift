@@ -354,22 +354,15 @@ struct MaterialShaderChainTests {
     @Test
     func testRequiredTextureTransformFailsWhenMToonTexturesDisagree() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let modified = try TestSupport.modifiedSeedSanData(name: "mixed-mtoon-texture-transform") { json in
-            json["extensionsRequired"] = .strings(json.strings("extensionsRequired")
-                + ["KHR_texture_transform"])
-            var materials = json.objects("materials")
-            guard var extensions = materials.first?.object("extensions"),
-                  var mtoon = extensions.object("VRMC_materials_mtoon"),
-                  var shade = mtoon.object("shadeMultiplyTexture") else {
+        let modified = try TestSupport.modifiedSeedSanMToonExtension(name: "mixed-mtoon-texture-transform",
+                                                                     requiring: ["KHR_texture_transform"]) { mtoon in
+            guard var shade = mtoon.object("shadeMultiplyTexture") else {
                 throw VRMError.dataInconsistent("Missing Seed-san MToon shade texture")
             }
             // The core material's textures still agree, so only MToon's own
             // texture set makes the transforms disagree.
             shade["extensions"] = ["KHR_texture_transform": ["scale": [2.0, 2.0]]]
             mtoon["shadeMultiplyTexture"] = .object(shade)
-            extensions["VRMC_materials_mtoon"] = .object(mtoon)
-            materials[0]["extensions"] = .object(extensions)
-            json["materials"] = .objects(materials)
         }
 
         await #expect(throws: (any Error).self) {
@@ -383,20 +376,9 @@ struct MaterialShaderChainTests {
     /// Seed-san with material 0's MToon shade texture pointing past the end of
     /// the texture array, so building it as MToon fails.
     private static func brokenMToonSeedSanData(isRequired: Bool) throws -> Data {
-        try TestSupport.modifiedSeedSanData(name: "broken-mtoon-texture-\(isRequired ? "required" : "used")") { json in
-            if isRequired {
-                json["extensionsRequired"] = .strings(json.strings("extensionsRequired")
-                    + ["VRMC_materials_mtoon"])
-            }
-            var materials = json.objects("materials")
-            guard var extensions = materials.first?.object("extensions"),
-                  var mtoon = extensions.object("VRMC_materials_mtoon") else {
-                throw VRMError.dataInconsistent("Missing Seed-san MToon extension")
-            }
+        try TestSupport.modifiedSeedSanMToonExtension(name: "broken-mtoon-texture-\(isRequired ? "required" : "used")",
+                                                      requiring: isRequired ? ["VRMC_materials_mtoon"] : []) { mtoon in
             mtoon["shadeMultiplyTexture"] = ["index": 9999]
-            extensions["VRMC_materials_mtoon"] = .object(mtoon)
-            materials[0]["extensions"] = .object(extensions)
-            json["materials"] = .objects(materials)
         }
     }
 
@@ -515,20 +497,9 @@ struct MaterialShaderChainTests {
     /// values cannot be read.
     private static func seedSanDataWithMToonSpecVersion(_ specVersion: String,
                                                         isRequired: Bool) throws -> Data {
-        try TestSupport.modifiedSeedSanData(name: "mtoon-spec-\(specVersion)") { json in
-            if isRequired {
-                json["extensionsRequired"] = .strings(json.strings("extensionsRequired")
-                    + ["VRMC_materials_mtoon"])
-            }
-            var materials = json.objects("materials")
-            guard var extensions = materials.first?.object("extensions"),
-                  var mtoon = extensions.object("VRMC_materials_mtoon") else {
-                throw VRMError.dataInconsistent("Missing Seed-san MToon extension")
-            }
+        try TestSupport.modifiedSeedSanMToonExtension(name: "mtoon-spec-\(specVersion)",
+                                                      requiring: isRequired ? ["VRMC_materials_mtoon"] : []) { mtoon in
             mtoon["specVersion"] = .string(specVersion)
-            extensions["VRMC_materials_mtoon"] = .object(mtoon)
-            materials[0]["extensions"] = .object(extensions)
-            json["materials"] = .objects(materials)
         }
     }
 

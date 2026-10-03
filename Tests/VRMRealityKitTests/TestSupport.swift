@@ -90,12 +90,17 @@ enum TestSupport {
         }
     }
 
-    /// Rewrites a single glTF material of the fixture. Wraps the repeated
+    /// Rewrites a single glTF material of the fixture, and lists `requiredExtensions`
+    /// in the document's `extensionsRequired`. Wraps the repeated
     /// unwrap/mutate/write-back dance the material tests all need.
     static func modifiedSeedSanMaterial(name: String,
                                         index: Int = 0,
+                                        requiring requiredExtensions: [String] = [],
                                         modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         try modifiedSeedSanData(name: name) { json in
+            if !requiredExtensions.isEmpty {
+                json["extensionsRequired"] = .strings(json.strings("extensionsRequired") + requiredExtensions)
+            }
             var materials = json.objects("materials")
             guard materials.indices.contains(index) else {
                 throw VRMError.dataInconsistent("Missing Seed-san material \(index) for fixture '\(name)'")
@@ -108,8 +113,9 @@ enum TestSupport {
     /// Rewrites a material's `VRMC_materials_mtoon` extension.
     static func modifiedSeedSanMToonExtension(name: String,
                                               index: Int = 0,
+                                              requiring requiredExtensions: [String] = [],
                                               modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
-        try modifiedSeedSanMaterial(name: name, index: index) { material in
+        try modifiedSeedSanMaterial(name: name, index: index, requiring: requiredExtensions) { material in
             guard var extensions = material.object("extensions"),
                   var mtoon = extensions.object("VRMC_materials_mtoon") else {
                 throw VRMError.dataInconsistent("Missing Seed-san MToon extension for fixture '\(name)'")

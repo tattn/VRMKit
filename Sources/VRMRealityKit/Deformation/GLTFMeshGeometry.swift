@@ -63,7 +63,6 @@ public struct GLTFMeshGeometry: @unchecked Sendable {
     public var isSkinned: Bool { !jointIndices.isEmpty }
     public var hasBlendShapes: Bool { blendShapeTargetCount > 0 }
 
-    /// The triangles a slot draws, as `indices` into ``positions``.
     /// The POSITION deltas of one morph target, one per vertex. Zero for the vertices
     /// of a primitive that declares no targets, and empty for a target the mesh has not.
     public func blendShapeOffsets(forTarget target: Int) -> [SIMD3<Float>] {
@@ -74,6 +73,7 @@ public struct GLTFMeshGeometry: @unchecked Sendable {
         return (0..<vertexCount).map { SIMD3(floats[$0 * 3], floats[$0 * 3 + 1], floats[$0 * 3 + 2]) }
     }
 
+    /// The triangles a slot draws, as `indices` into ``positions``.
     public func triangleIndices(ofSlot slot: Int, isFirstPerson: Bool = false) -> ArraySlice<UInt32> {
         indices[slots[slot].indexRange(isFirstPerson: isFirstPerson)]
     }

@@ -18,7 +18,7 @@ extension GLTFSceneBuilder {
     func makeGeometryDecoder() throws -> GLTFGeometryDecoder {
         var texcoordSelections: [Int: GLTFGeometryDecoder.TexcoordSelection] = [:]
         var samplingNormalTexture: Set<Int> = []
-        for index in (gltf.materials).indices {
+        for index in gltf.materials.indices {
             let resolved = resolvedTexCoord(withMaterialIndex: index)
             texcoordSelections[index] = .init(selected: resolved.selected, isMixed: resolved.isMixed)
             if materialSamplesNormalTexture(withMaterialIndex: index) {
@@ -26,7 +26,7 @@ extension GLTFSceneBuilder {
             }
         }
         var remaps: [Int: [Int]] = [:]
-        for index in (gltf.skins).indices {
+        for index in gltf.skins.indices {
             remaps[index] = try skin(withSkinIndex: index).jointIndexRemap
         }
         return GLTFGeometryDecoder(accessors: accessors,

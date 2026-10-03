@@ -106,8 +106,8 @@ struct MToonMaterialDescriptorTests {
 
     @Test
     func testVRM0OutOfRangeAndBooleanNumbersFallBackToDefaults() throws {
-        // `1e100` overflows `Float` and JSON booleans bridge to `NSNumber`:
-        // neither is a usable value, and converting them to `Int` would trap.
+        // `1e100` overflows `Float`, and converting it to `Int` would trap; a
+        // JSON boolean is not a number. Neither is a usable value.
         let descriptor = try #require(MToonMaterialDescriptor(
             material: material(),
             materialProperty: vrm0MaterialProperty(floats: #"""

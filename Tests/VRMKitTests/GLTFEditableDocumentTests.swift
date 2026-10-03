@@ -419,16 +419,13 @@ struct GLTFEditableDocumentTests {
             let view = try #require(embedded.bufferView, "image \(index)", sourceLocation: sourceLocation)
             let expected = try images[index].uri
                 .map { try Data(gltfUrlString: $0, relativeTo: lhs.rootDirectory) }
-                ?? (try bufferViewBytes(of: lhs, at: #require(images[index].bufferView)))
-            #expect(try bufferViewBytes(of: rhs, at: view) == expected,
+                ?? (try lhs.bufferViewData(at: #require(images[index].bufferView)).data)
+            #expect(try rhs.bufferViewData(at: view).data == expected,
                     "image \(index)", sourceLocation: sourceLocation)
         }
     }
 
     /// Compares the bytes every buffer view names, the whole of a glTF's binary side.
-    /// Sliced out of the buffers directly rather than read through ``GLTFDocument``,
-    /// which bounds a view by its buffer's `byteLength`, and AliciaSolid declares one
-    /// shorter than its views.
     private func expectSameBufferViews(_ lhs: GLTFDocument,
                                        _ rhs: GLTFDocument,
                                        added: Int = 0,
@@ -436,16 +433,9 @@ struct GLTFEditableDocumentTests {
         let views = lhs.gltf.bufferViews
         #expect(views.count + added == rhs.gltf.bufferViews.count, sourceLocation: sourceLocation)
         for index in views.indices {
-            #expect(try bufferViewBytes(of: lhs, at: index) == (try bufferViewBytes(of: rhs, at: index)),
+            #expect(try lhs.bufferViewData(at: index).data == (try rhs.bufferViewData(at: index).data),
                     "buffer view \(index)", sourceLocation: sourceLocation)
         }
-    }
-
-    private func bufferViewBytes(of document: GLTFDocument, at index: Int) throws -> Data {
-        let view = try document.gltf.load(\.bufferViews, at: index)
-        let buffer = try document.bufferData(at: view.buffer)
-        let start = buffer.startIndex + view.byteOffset
-        return buffer[start ..< start + view.byteLength]
     }
 }
 

@@ -67,10 +67,20 @@ struct OutputColorSpaceTests {
         #expect(space.colorTable == palette)
     }
 
-    /// The texels a loaded color texture holds, linear, at the image's pixel (200, 100, 0).
+    /// The sRGB color of every texel of the texture ``loadedTexel(outputColorSpace:)`` loads.
+    private static let probe = SIMD3<UInt8>(200, 100, 0)
+
+    /// The texel a loaded color texture holds, linear, for a texture of ``probe`` alone.
+    /// One color throughout keeps which texel is read, and any filtering or compression
+    /// of the stored texture, out of the comparison.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func loadedTexel(outputColorSpace: GLTFOutputColorSpace) async throws -> SIMD3<Float> {
-        let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url, outputColorSpace: outputColorSpace)
+        let png = try OffscreenRenderer.makeTexturePNG(size: 16) { _, _ in Self.probe }
+        let data = try GLTFSampleAsset.simpleTexture.rewritingJSON { json in
+            json["images"] = .objects([["uri": .string("data:image/png;base64,\(png.base64EncodedString())")]])
+        }
+        let loader = try GLTFEntityLoader(withData: data, rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory,
+                                          outputColorSpace: outputColorSpace)
         _ = try await loader.loadEntity()
         let resource = try #require(loader.resources.textureCache.first { $0.key.semantic == .color }?.value)
         let device = try #require(MTLCreateSystemDefaultDevice())
@@ -81,14 +91,16 @@ struct OutputColorSpaceTests {
         let texture = try #require(device.makeTexture(descriptor: descriptor))
         try await resource.copy(to: texture)
         var texel = [Float](repeating: 0, count: 4)
-        texture.getBytes(&texel, bytesPerRow: resource.width * 16, from: MTLRegionMake2D(200, 100, 1, 1),
+        texture.getBytes(&texel, bytesPerRow: resource.width * 16,
+                         from: MTLRegionMake2D(resource.width / 2, resource.height / 2, 1, 1),
                          mipmapLevel: 0)
         return SIMD3<Float>(texel[0], texel[1], texel[2])
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     @Test func anSRGBOutputRendersTheSRGBNumbersOfATexture() async throws {
-        let expected = SIMD3<Float>(Self.linear(200 / 255), Self.linear(100 / 255), 0)
+        let expected = SIMD3<Float>(Self.linear(Float(Self.probe.x) / 255), Self.linear(Float(Self.probe.y) / 255),
+                                    Self.linear(Float(Self.probe.z) / 255))
         let texel = try await loadedTexel(outputColorSpace: .sRGB)
         #expect(abs(texel - expected).max() < 0.005, "\(texel) vs \(expected)")
         // RealityKit's own conversion pulls the orange toward gray.

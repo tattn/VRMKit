@@ -31,7 +31,7 @@ struct TextureDimensionLimitTests {
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @Test func animageWithinTheLimitIsNotRedrawn() throws {
+    @Test func anImageWithinTheLimitIsNotRedrawn() throws {
         let authored = try image(width: 256, height: 128)
         let result = GLTFSceneBuilder.clamped(authored, to: 256)
         #expect(result === authored)

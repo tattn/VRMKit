@@ -56,7 +56,7 @@ extension GLTFEditableDocument {
             )
         }
         try detachNodeLinks(at: index)
-        try addChild(index, to: parent)
+        attachNode(index, at: .child(of: parent))
     }
 
     /// Detaches a node, and everything below it, from its parent and from the scenes that
@@ -118,9 +118,9 @@ extension GLTFEditableDocument {
             ??? ._dataInconsistent("node \(index) is not a JSON object")
     }
 
-    mutating func updateNode(at index: Int, _ body: (inout JSONObject) throws -> Void) throws {
+    mutating func updateNode(at index: Int, _ body: (inout JSONObject) -> Void) throws {
         try requireNode(at: index)
-        try json.updateObject(at: index, in: .nodes, body)
+        json.updateObject(at: index, in: .nodes, body)
     }
 
     func requireNode(at index: Int) throws {
@@ -140,7 +140,6 @@ extension GLTFEditableDocument {
         attachNode(child, at: .child(of: parent))
     }
 
-    /// Adds a root to the document's default scene: a node no scene reaches is not drawn.
     private mutating func attachNode(_ index: Int, at placement: NodePlacement) {
         switch placement {
         case .child(let parent):

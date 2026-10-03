@@ -117,13 +117,22 @@ public enum OffscreenRenderer {
     /// it, so a rendered pixel names the texel it sampled.
     public static func makeProbeTexturePNG(size: Int) throws -> Data {
         let step = 256 / size
+        return try makeTexturePNG(size: size) { row, column in
+            SIMD3(UInt8(column * step + step / 2), UInt8(row * step + step / 2), 128)
+        }
+    }
+
+    /// A `size` x `size` opaque PNG whose texel (row, column) is `color(row, column)`.
+    public static func makeTexturePNG(size: Int,
+                                      color: (_ row: Int, _ column: Int) -> SIMD3<UInt8>) throws -> Data {
         var bytes = [UInt8](repeating: 255, count: size * size * 4)
         for row in 0..<size {
             for column in 0..<size {
                 let offset = (row * size + column) * 4
-                bytes[offset] = UInt8(column * step + step / 2)
-                bytes[offset + 1] = UInt8(row * step + step / 2)
-                bytes[offset + 2] = 128
+                let texel = color(row, column)
+                bytes[offset] = texel.x
+                bytes[offset + 1] = texel.y
+                bytes[offset + 2] = texel.z
             }
         }
         guard let provider = CGDataProvider(data: Data(bytes) as CFData),

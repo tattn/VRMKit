@@ -26,7 +26,7 @@ struct GLTFPruneTests {
         let saved = try GLTFDocument(data: after)
         #expect(try drawnContents(of: saved) == expected)
         // The arrays really did shrink, so the indices really did move.
-        #expect((saved.gltf.accessors).count < (before.gltf.accessors).count)
+        #expect(saved.gltf.accessors.count < before.gltf.accessors.count)
         try expectAWellFormedDocument(saved)
         expectReadableAccessors(saved)
 
@@ -418,7 +418,7 @@ struct GLTFPruneTests {
         _ = GLTFReferences.rewritingRootExtensions(json.object("extensions") ?? [:], with: resolve)
 
         let bytes = json.objects(.buffers).first.flatMap { $0.int("byteLength") } ?? 0
-        for (index, view) in (document.gltf.bufferViews).enumerated() {
+        for (index, view) in document.gltf.bufferViews.enumerated() {
             #expect(view.byteLength >= 1, "buffer view \(index)", sourceLocation: sourceLocation)
             #expect(view.byteOffset + view.byteLength <= bytes,
                     "buffer view \(index)", sourceLocation: sourceLocation)
@@ -430,7 +430,7 @@ struct GLTFPruneTests {
     /// whose bytes mean what they say, so no meshopt views.
     private func expectReadableAccessors(_ document: GLTFDocument,
                                          sourceLocation: SourceLocation = #_sourceLocation) {
-        for index in (document.gltf.accessors).indices {
+        for index in document.gltf.accessors.indices {
             #expect(throws: Never.self, "accessor \(index)", sourceLocation: sourceLocation) {
                 try packedData(of: document, at: index)
             }

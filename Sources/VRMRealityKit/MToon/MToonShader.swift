@@ -333,19 +333,10 @@ public final class MToonShader: GLTFMaterialShader {
     private func validateTextureTransformsAreRenderable(_ textures: [MToonMaterialDescriptor.Texture],
                                                         context: GLTFMaterialShaderContext) throws {
         guard context.enforcesRequiredExtension(GLTFExtension.textureTransform.rawValue) else { return }
-        let index = context.materialIndex
-        let selectedTexCoord = context.selectedTexCoord
-        guard textures.allSatisfy({ $0.texCoord == selectedTexCoord }) else {
+        if let conflict = textures.textureTransformConflict(selectedTexCoord: context.selectedTexCoord) {
             throw UnrenderableRequirement(description: """
-                this glTF requires KHR_texture_transform, and MToon material \(index) samples UV sets \
-                other than \(selectedTexCoord), which this renderer cannot draw
-                """)
-        }
-        let transforms = textures.map { $0.transform ?? GLTFUVTransform() }
-        guard transforms.allSatisfy({ $0 == transforms.first }) else {
-            throw UnrenderableRequirement(description: """
-                this glTF requires KHR_texture_transform, and MToon material \(index) gives its textures \
-                different transforms, which this renderer cannot draw
+                this glTF requires KHR_texture_transform, and MToon material \(context.materialIndex) \(conflict), \
+                which this renderer cannot draw
                 """)
         }
     }

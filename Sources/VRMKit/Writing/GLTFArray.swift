@@ -38,8 +38,8 @@ package extension JSONObject {
 
     mutating func updateObject(at index: Int,
                                in array: GLTFArray,
-                               _ body: (inout JSONObject) throws -> Void) rethrows {
-        try updateObject(at: index, in: array.rawValue, body)
+                               _ body: (inout JSONObject) -> Void) {
+        updateObject(at: index, in: array.rawValue, body)
     }
 
     mutating func appendObjects(_ elements: [JSONObject], to array: GLTFArray) {

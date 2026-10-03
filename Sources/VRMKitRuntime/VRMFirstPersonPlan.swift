@@ -23,9 +23,9 @@ package struct VRMFirstPersonPlan: Sendable {
     private let headJointsBySkin: [Int: Set<UInt32>]
 
     package init(vrm: VRM, gltf: GLTF, hierarchy: GLTFNodeHierarchy) {
+        headNode = vrm.headNode(in: gltf)
         switch vrm {
         case .v0(let vrm0):
-            headNode = vrm.headNode(in: gltf)
             var byMesh: [Int: FirstPersonAnnotationType?] = [:]
             for annotation in vrm0.firstPerson?.meshAnnotations ?? [] {
                 // A flag VRM 0.x does not name leaves the mesh at `auto`.
@@ -33,7 +33,6 @@ package struct VRMFirstPersonPlan: Sendable {
             }
             annotations = .byMesh(byMesh.compactMapValues { $0 })
         case .v1(let vrm1):
-            headNode = vrm.headNode(in: gltf)
             var byNode: [Int: FirstPersonAnnotationType] = [:]
             for annotation in vrm1.firstPerson?.meshAnnotations ?? [] {
                 byNode[annotation.node] = FirstPersonAnnotationType(vrm1Type: annotation.type)
@@ -43,7 +42,7 @@ package struct VRMFirstPersonPlan: Sendable {
 
         var headJoints: [Int: Set<UInt32>] = [:]
         if let headNode {
-            for (index, skin) in (gltf.skins).enumerated() {
+            for (index, skin) in gltf.skins.enumerated() {
                 let joints = FirstPersonAutoMask.headJoints(skinJoints: skin.joints,
                                                             headNode: headNode,
                                                             hierarchy: hierarchy)

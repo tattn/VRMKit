@@ -17,7 +17,7 @@ struct GLTFSampleAssetTests {
 
         // Reading every buffer view proves the resource context is right: GLB chunk,
         // sibling file or data URI, whichever this asset uses.
-        for index in (document.gltf.bufferViews).indices {
+        for index in document.gltf.bufferViews.indices {
             #expect(try !document.bufferViewData(at: index).data.isEmpty)
         }
     }

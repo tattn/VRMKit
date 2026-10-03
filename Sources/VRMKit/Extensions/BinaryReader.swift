@@ -13,7 +13,6 @@ struct BinaryReader {
         offset = data.startIndex
     }
 
-    /// The number of bytes consumed so far.
     var bytesRead: Int { offset - data.startIndex }
 
     mutating func readUInt32() throws -> UInt32 {

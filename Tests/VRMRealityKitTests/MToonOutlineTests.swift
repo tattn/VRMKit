@@ -59,7 +59,7 @@ struct MToonOutlineTests {
         #expect(screenParams.x.isApproximatelyEqual(to: 0.005))
         #expect(screenParams.y == 2)
 
-        // The default stays the world-coordinate outline the converter always drew.
+        // The default width mode is a world-coordinate outline.
         let world = MToonConversionStyle(outlineWidthFactor: 0.002)
         let worldLoader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
                                                shaders: [MToonShader(source: .convertAll(world))])

@@ -78,10 +78,10 @@ struct TextureTransformRenderingTests {
             ("scale", UVTransform(scale: SIMD2<Float>(2, 0.5))),
             ("rotation", UVTransform(rotation: .pi / 2)),
             ("offset and scale", UVTransform(offset: SIMD2<Float>(0.125, -0.375),
-                                                                                                     scale: SIMD2<Float>(0.5, 2))),
+                                             scale: SIMD2<Float>(0.5, 2))),
             ("all", UVTransform(offset: SIMD2<Float>(-0.2, -0.1),
-                                                                                        scale: SIMD2<Float>(1.5, 1.5),
-                                                                                        rotation: 0.3)),
+                                scale: SIMD2<Float>(1.5, 1.5),
+                                rotation: 0.3)),
         ]
 
         for (name, transform) in transforms {
@@ -132,22 +132,11 @@ struct TextureTransformRenderingTests {
     /// document needs no directory of its own.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private static func quadGLTF(_ transform: UVTransform) throws -> Data {
-        var buffer = Data()
         // POSITION, then TEXCOORD_0 in glTF's V-down convention, then indices.
-        for position in [SIMD3<Float>(-1, -1, 0), .init(1, -1, 0), .init(1, 1, 0), .init(-1, 1, 0)] {
-            for component in [position.x, position.y, position.z] {
-                withUnsafeBytes(of: component.bitPattern.littleEndian) { buffer.append(contentsOf: $0) }
-            }
-        }
-        for uv in [SIMD2<Float>(0, 1), .init(1, 1), .init(1, 0), .init(0, 0)] {
-            for component in [uv.x, uv.y] {
-                withUnsafeBytes(of: component.bitPattern.littleEndian) { buffer.append(contentsOf: $0) }
-            }
-        }
+        var buffer = Data(littleEndianFloats: [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0,
+                                               0, 1, 1, 1, 1, 0, 0, 0])
         let indexOffset = buffer.count
-        for index in [0, 1, 2, 0, 2, 3] as [UInt16] {
-            withUnsafeBytes(of: index.littleEndian) { buffer.append(contentsOf: $0) }
-        }
+        buffer.appendLittleEndian([0, 1, 2, 0, 2, 3])
 
         let png = try OffscreenRenderer.makeProbeTexturePNG(size: textureSize)
         let json: JSONObject = [
@@ -187,7 +176,7 @@ struct TextureTransformRenderingTests {
             ],
             "accessors": [
                 ["bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3",
-                           "min": [-1, -1, 0], "max": [1, 1, 0]],
+                 "min": [-1, -1, 0], "max": [1, 1, 0]],
                 ["bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC2"],
                 ["bufferView": 2, "componentType": 5123, "count": 6, "type": "SCALAR"],
             ],

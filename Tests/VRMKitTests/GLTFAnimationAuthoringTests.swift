@@ -287,11 +287,7 @@ struct GLTFAnimationAuthoringTests {
 private extension GLTFDocument {
     func floats(accessorAt index: Int) throws -> [Float] {
         let accessor = try #require(gltf.accessors[safe: index])
-        let packed = try PackedAccessor(accessor: accessor) { index in
-            let view = try bufferViewData(at: index)
-            return (view.data, view.stride)
-        }
-        return packed.floatComponents()
+        return try PackedAccessor(accessor: accessor, bufferView: bufferViewProvider).floatComponents()
     }
 }
 

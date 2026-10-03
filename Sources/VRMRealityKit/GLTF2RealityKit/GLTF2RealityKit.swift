@@ -36,6 +36,21 @@ extension GLTF.Matrix {
     }
 }
 
+extension Array where Element == GLTFSampledTexture {
+    /// Why these textures cannot all draw through the one UV set and one UV transform
+    /// RealityKit gives a material, or nil when they can.
+    func textureTransformConflict(selectedTexCoord: Int) -> String? {
+        guard allSatisfy({ $0.texCoord == selectedTexCoord }) else {
+            return "samples UV sets other than \(selectedTexCoord)"
+        }
+        let transforms = map { $0.transform ?? GLTFUVTransform() }
+        guard transforms.allSatisfy({ $0 == transforms.first }) else {
+            return "gives its textures different transforms"
+        }
+        return nil
+    }
+}
+
 /// The glTF alpha-mode → RealityKit blending decision, shared by every
 /// material path: the built-in Unlit / PBR one and MToon's `CustomMaterial`.
 struct GLTFAlphaModeSettings {

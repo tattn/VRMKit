@@ -216,7 +216,6 @@ package struct SpringBoneJoint {
             let delta = nextTail - closest
             let distance = setting.hitRadius + collider.radius
             guard delta.length_squared <= distance * distance else { continue }
-            // Hit, so push the tail out along the collider's radius.
             let normal = delta.length_squared > Float.ulpOfOne ? delta.normalized : SIMD3<Float>(0, 1, 0)
             nextTail = onBone(closest + normal * distance, head: head, restDirection: restDirection)
         }

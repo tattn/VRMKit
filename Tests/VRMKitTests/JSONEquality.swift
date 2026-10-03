@@ -63,7 +63,7 @@ func expectSameAccessors(_ lhs: GLTFDocument,
                          offset: Int = 0,
                          indices: [Int]? = nil,
                          sourceLocation: SourceLocation = #_sourceLocation) throws {
-    for index in indices ?? Array((lhs.gltf.accessors).indices) {
+    for index in indices ?? Array(lhs.gltf.accessors.indices) {
         let expected = try (try lhs.gltf.load(\.accessors, at: index))
             .packedData(bufferView: lhs.bufferViewProvider)
         let actual = try (try rhs.gltf.load(\.accessors, at: index + offset))

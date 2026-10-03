@@ -573,12 +573,8 @@ struct MToonRenderingTests {
     @Test
     func testMalformedMaterialColorBindDoesNotFailModelLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let modified = try TestSupport.modifiedSeedSanData(name: "malformed-color-bind") { json in
-            guard var extensions = json.object("extensions"),
-                  var vrm = extensions.object("VRMC_vrm"),
-                  var expressions = vrm.object("expressions"),
-                  var preset = expressions.object("preset"),
-                  var happy = preset.object("happy") else {
+        let modified = try TestSupport.modifiedSeedSanExpressions(name: "malformed-color-bind") { preset in
+            guard var happy = preset.object("happy") else {
                 throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
             }
             happy["materialColorBinds"] = [
@@ -594,10 +590,6 @@ struct MToonRenderingTests {
                 ]
             ]
             preset["happy"] = .object(happy)
-            expressions["preset"] = .object(preset)
-            vrm["expressions"] = .object(expressions)
-            extensions["VRMC_vrm"] = .object(vrm)
-            json["extensions"] = .object(extensions)
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)

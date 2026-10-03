@@ -31,8 +31,8 @@ struct GLTFReachability {
 }
 
 private struct Walk {
-    // Bridged out of the JSON once rather than per step.
     private let json: JSONObject
+    // Bridged out of the JSON once rather than per step.
     private let entries: [GLTFArray: [JSONObject]]
     /// VRM 0.x's per-material shading, an array parallel to `materials` at the
     /// root of the document rather than part of them.

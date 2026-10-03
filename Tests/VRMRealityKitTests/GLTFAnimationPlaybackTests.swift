@@ -205,7 +205,9 @@ struct GLTFAnimationPlaybackTests {
     @Test
     func testASecondWeightsAnimationTakesOverAndReleasesTheTargets() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withData: twoWeightAnimationsFixture()).loadEntity()
+        // Two STEP animations holding different constant weights on the same node.
+        let fixture = weightAnimationFixture(times: [0, 1], animations: [[0.25, 0.25], [0.75, 0.75]])
+        let entity = try await GLTFEntityLoader(withData: fixture).loadEntity()
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
         func weight() throws -> Float {
             try #require(modelEntity.deformedMesh?.blendShapeWeights.first)
@@ -230,7 +232,9 @@ struct GLTFAnimationPlaybackTests {
     @Test
     func testSeekingAnOutrankedAnimationDoesNotTakeOverTheTarget() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withData: twoWeightAnimationsFixture()).loadEntity()
+        // Two STEP animations holding different constant weights on the same node.
+        let fixture = weightAnimationFixture(times: [0, 1], animations: [[0.25, 0.25], [0.75, 0.75]])
+        let entity = try await GLTFEntityLoader(withData: fixture).loadEntity()
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
         func weight() throws -> Float {
             try #require(modelEntity.deformedMesh?.blendShapeWeights.first)
@@ -247,62 +251,29 @@ struct GLTFAnimationPlaybackTests {
         #expect(try weight().isApproximatelyEqual(to: 0.25))
     }
 
-    /// One morph target, two STEP animations holding different constant
-    /// weights on the same node.
-    private func twoWeightAnimationsFixture() -> Data {
-        var buffer = Data(littleEndianFloats: [0, 0, 0, 1, 0, 0, 0, 1, 0])   // POSITION
-        let targetOffset = buffer.count
-        buffer.append(Data(littleEndianFloats: [0, 1, 0, 0, 1, 0, 0, 1, 0])) // morph target offsets
-        let timesOffset = buffer.count
-        buffer.append(Data(littleEndianFloats: [0, 1]))
-        let weightsAOffset = buffer.count
-        buffer.append(Data(littleEndianFloats: [0.25, 0.25]))
-        let weightsBOffset = buffer.count
-        buffer.append(Data(littleEndianFloats: [0.75, 0.75]))
-
-        let json = """
-        {
-            "asset": {"version": "2.0"},
-            "scene": 0,
-            "scenes": [{"nodes": [0]}],
-            "nodes": [{"mesh": 0}],
-            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "targets": [{"POSITION": 1}]}]}],
-            "animations": [
-                {"channels": [{"sampler": 0, "target": {"node": 0, "path": "weights"}}],
-                 "samplers": [{"input": 2, "interpolation": "STEP", "output": 3}]},
-                {"channels": [{"sampler": 0, "target": {"node": 0, "path": "weights"}}],
-                 "samplers": [{"input": 2, "interpolation": "STEP", "output": 4}]}
-            ],
-            "buffers": [{"uri": "data:application/octet-stream;base64,\(buffer.base64EncodedString())", "byteLength": \(buffer.count)}],
-            "bufferViews": [
-                {"buffer": 0, "byteOffset": 0, "byteLength": 36},
-                {"buffer": 0, "byteOffset": \(targetOffset), "byteLength": 36},
-                {"buffer": 0, "byteOffset": \(timesOffset), "byteLength": 8},
-                {"buffer": 0, "byteOffset": \(weightsAOffset), "byteLength": 8},
-                {"buffer": 0, "byteOffset": \(weightsBOffset), "byteLength": 8}
-            ],
-            "accessors": [
-                {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 0], "max": [1, 1, 0]},
-                {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 0], "max": [0, 1, 0]},
-                {"bufferView": 2, "componentType": 5126, "count": 2, "type": "SCALAR", "min": [0], "max": [1]},
-                {"bufferView": 3, "componentType": 5126, "count": 2, "type": "SCALAR"},
-                {"bufferView": 4, "componentType": 5126, "count": 2, "type": "SCALAR"}
-            ]
-        }
-        """
-        return Data(json.utf8)
-    }
-
-    /// A one-node, one-morph-target glTF whose only animation drives `weights`
-    /// with the given keyframe times and STEP output values.
-    private func weightAnimationFixture(times: [Float], weights: [Float]) -> Data {
+    /// A one-node, one-morph-target glTF with one animation per element of
+    /// `animations`, each driving `weights` with its STEP output values over the
+    /// shared keyframe `times`.
+    private func weightAnimationFixture(times: [Float], animations: [[Float]]) -> Data {
         var buffer = Data(littleEndianFloats: [0, 0, 0, 1, 0, 0, 0, 1, 0])   // POSITION
         let targetOffset = buffer.count
         buffer.append(Data(littleEndianFloats: [0, 1, 0, 0, 1, 0, 0, 1, 0])) // morph target offsets
         let timesOffset = buffer.count
         buffer.append(Data(littleEndianFloats: times))
-        let weightsOffset = buffer.count
-        buffer.append(Data(littleEndianFloats: weights))
+
+        var animationJSON: [String] = []
+        var bufferViewJSON: [String] = []
+        var accessorJSON: [String] = []
+        for (index, weights) in animations.enumerated() {
+            let view = 3 + index
+            animationJSON.append("""
+                {"channels": [{"sampler": 0, "target": {"node": 0, "path": "weights"}}],
+                 "samplers": [{"input": 2, "interpolation": "STEP", "output": \(view)}]}
+                """)
+            bufferViewJSON.append(#"{"buffer": 0, "byteOffset": \#(buffer.count), "byteLength": \#(weights.count * 4)}"#)
+            accessorJSON.append(#"{"bufferView": \#(view), "componentType": 5126, "count": \#(weights.count), "type": "SCALAR"}"#)
+            buffer.append(Data(littleEndianFloats: weights))
+        }
 
         let json = """
         {
@@ -311,22 +282,19 @@ struct GLTFAnimationPlaybackTests {
             "scenes": [{"nodes": [0]}],
             "nodes": [{"mesh": 0}],
             "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "targets": [{"POSITION": 1}]}]}],
-            "animations": [
-                {"channels": [{"sampler": 0, "target": {"node": 0, "path": "weights"}}],
-                 "samplers": [{"input": 2, "interpolation": "STEP", "output": 3}]}
-            ],
+            "animations": [\(animationJSON.joined(separator: ","))],
             "buffers": [{"uri": "data:application/octet-stream;base64,\(buffer.base64EncodedString())", "byteLength": \(buffer.count)}],
             "bufferViews": [
                 {"buffer": 0, "byteOffset": 0, "byteLength": 36},
                 {"buffer": 0, "byteOffset": \(targetOffset), "byteLength": 36},
                 {"buffer": 0, "byteOffset": \(timesOffset), "byteLength": \(times.count * 4)},
-                {"buffer": 0, "byteOffset": \(weightsOffset), "byteLength": \(weights.count * 4)}
+                \(bufferViewJSON.joined(separator: ","))
             ],
             "accessors": [
                 {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 0], "max": [1, 1, 0]},
                 {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 0], "max": [0, 1, 0]},
                 {"bufferView": 2, "componentType": 5126, "count": \(times.count), "type": "SCALAR", "min": [\(times.min() ?? 0)], "max": [\(times.max() ?? 0)]},
-                {"bufferView": 3, "componentType": 5126, "count": \(weights.count), "type": "SCALAR"}
+                \(accessorJSON.joined(separator: ","))
             ]
         }
         """
@@ -340,11 +308,11 @@ struct GLTFAnimationPlaybackTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // One morph target and two keyframes, but four weights.
         let mismatched = try await GLTFEntityLoader(withData: weightAnimationFixture(times: [0, 1],
-                                                                              weights: [0, 0, 1, 1])).loadEntity()
+                                                                              animations: [[0, 0, 1, 1]])).loadEntity()
         #expect(throws: VRMError.self) { try mismatched.playAnimation(at: 0) }
 
         let exact = try await GLTFEntityLoader(withData: weightAnimationFixture(times: [0, 1],
-                                                                         weights: [0, 1])).loadEntity()
+                                                                         animations: [[0, 1]])).loadEntity()
         #expect(try exact.playAnimation(at: 0).isComplete == false)
     }
 
@@ -353,7 +321,7 @@ struct GLTFAnimationPlaybackTests {
     @Test
     func testZeroDurationLoopAppliesItsPoseAndCompletes() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withData: weightAnimationFixture(times: [0], weights: [0.5])).loadEntity()
+        let entity = try await GLTFEntityLoader(withData: weightAnimationFixture(times: [0], animations: [[0.5]])).loadEntity()
         let modelEntity = try #require(entity.morphBindings[0]?.modelEntities.first)
 
         let controller = try entity.playAnimation(at: 0, loops: true)

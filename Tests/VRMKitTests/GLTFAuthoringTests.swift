@@ -458,9 +458,6 @@ private extension GLTFDocument {
 
     private func packed(accessorAt index: Int) throws -> PackedAccessor {
         let accessor = try #require(gltf.accessors[safe: index])
-        return try PackedAccessor(accessor: accessor) { index in
-            let view = try bufferViewData(at: index)
-            return (view.data, view.stride)
-        }
+        return try PackedAccessor(accessor: accessor, bufferView: bufferViewProvider)
     }
 }

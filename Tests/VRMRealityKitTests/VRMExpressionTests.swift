@@ -182,34 +182,30 @@ struct VRMExpressionTests {
         let modified = try TestSupport.modifiedSeedSanData(name: "accumulated-material-colors") { json in
             var materials = json.objects("materials")
             guard materials.indices.contains(0),
-                  var pbr = materials[0].object("pbrMetallicRoughness"),
-                  var extensions = json.object("extensions"),
-                  var vrm = extensions.object("VRMC_vrm"),
-                  var expressions = vrm.object("expressions"),
-                  var preset = expressions.object("preset"),
-                  var happy = preset.object("happy"),
-                  var angry = preset.object("angry") else {
-                throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
+                  var pbr = materials[0].object("pbrMetallicRoughness") else {
+                throw VRMError.dataInconsistent("Missing Seed-san material fixture data")
             }
             pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]
             materials[0]["pbrMetallicRoughness"] = .object(pbr)
-            happy["materialColorBinds"] = [[
-                "material": 0,
-                "type": "color",
-                "targetValue": [0.8, 1.0, 1.0, 1.0]
-            ]]
-            angry["materialColorBinds"] = [[
-                "material": 0,
-                "type": "color",
-                "targetValue": [1.0, 0.6, 1.0, 1.0]
-            ]]
-            preset["happy"] = .object(happy)
-            preset["angry"] = .object(angry)
-            expressions["preset"] = .object(preset)
-            vrm["expressions"] = .object(expressions)
-            extensions["VRMC_vrm"] = .object(vrm)
-            json["extensions"] = .object(extensions)
             json["materials"] = .objects(materials)
+            try TestSupport.modifyExpressionPresets(in: &json) { preset in
+                guard var happy = preset.object("happy"),
+                      var angry = preset.object("angry") else {
+                    throw VRMError.dataInconsistent("Missing Seed-san expression fixture data")
+                }
+                happy["materialColorBinds"] = [[
+                    "material": 0,
+                    "type": "color",
+                    "targetValue": [0.8, 1.0, 1.0, 1.0]
+                ]]
+                angry["materialColorBinds"] = [[
+                    "material": 0,
+                    "type": "color",
+                    "targetValue": [1.0, 0.6, 1.0, 1.0]
+                ]]
+                preset["happy"] = .object(happy)
+                preset["angry"] = .object(angry)
+            }
         }
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)

@@ -15,7 +15,6 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     private var arView: ARView?
     private var loadedEntity: VRMEntity?
     private var loadedAnchor: AnchorEntity?
-    private var cameraAnchor: AnchorEntity?
     private var cameraEntity: PerspectiveCamera?
     private var lightEntity: DirectionalLight?
     private let expressionControl = ExampleExpressionControl()
@@ -162,8 +161,7 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
             arView.scene.addAnchor(anchor)
             setUpLight(in: arView)
             normalizeScale(for: vrmEntity)
-            updateOrbitTarget(for: vrmEntity, adjustDistance: false)
-            updateCameraTransform()
+            updateOrbitTarget(for: vrmEntity)
 
             // The arms are left to the VRM animation started below.
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
@@ -187,7 +185,6 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         let cameraEntity = PerspectiveCamera()
         cameraAnchor.addChild(cameraEntity)
         arView.scene.addAnchor(cameraAnchor)
-        self.cameraAnchor = cameraAnchor
         self.cameraEntity = cameraEntity
         updateCameraTransform()
     }
@@ -227,15 +224,9 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
         arView.addGestureRecognizer(pinch)
     }
 
-    private func updateOrbitTarget(for entity: Entity, adjustDistance: Bool = true) {
+    private func updateOrbitTarget(for entity: Entity) {
         let bounds = entity.visualBounds(relativeTo: nil)
-        let center = (bounds.min + bounds.max) * 0.5
-        let extents = bounds.max - bounds.min
-        let maxExtent = max(extents.x, max(extents.y, extents.z))
-        orbitTarget = center
-        if adjustDistance {
-            orbitDistance = max(0.2, maxExtent * 3.0)
-        }
+        orbitTarget = (bounds.min + bounds.max) * 0.5
         updateCameraTransform()
     }
 
