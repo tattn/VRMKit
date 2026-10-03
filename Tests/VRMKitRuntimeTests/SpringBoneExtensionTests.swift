@@ -65,6 +65,12 @@ struct SpringBoneExtensionTests {
         #expect(throws: (any Error).self) { try Self.limit(json) }
     }
 
+    /// UniVRM writes the limit without a specVersion, and those files are read as 1.0.
+    @Test
+    func testALimitWithoutASpecVersionIsReadAsTheFirstVersion() throws {
+        #expect(try Self.limit(#"{"limit": {"hinge": {"angle": 1}}}"#) == SpringBoneLimit(shape: .hinge(angle: 1)))
+    }
+
     @Test
     func testALimitOfAnotherVersionIsIgnored() throws {
         #expect(try Self.limit(#"{"specVersion": "2.0", "limit": {"cone": {"angle": 1}}}"#) == nil)

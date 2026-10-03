@@ -89,12 +89,13 @@ extension VRM1.SpringBone.Spring.Joint {
             return nil
         }
         let extended = try value.decode(LimitExtension.self)
-        guard extended.specVersion == "1.0" else { return nil }
+        // UniVRM (0.131) writes the limit without the specVersion the spec requires.
+        guard extended.specVersion == nil || extended.specVersion == "1.0" else { return nil }
         return extended.limit
     }
 
     private struct LimitExtension: Decodable {
-        let specVersion: String
+        let specVersion: String?
         let limit: Limit
     }
 
