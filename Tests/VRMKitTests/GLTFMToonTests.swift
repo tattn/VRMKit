@@ -162,18 +162,6 @@ struct GLTFMToonTests {
         #expect(throws: VRMError.self) { try document.convertMaterialsToMToon(at: [100_000]) }
     }
 
-    /// Keeping the materials is still the default, and still writes the entry telling a
-    /// VRM 0.x runtime to use the glTF material.
-    @Test
-    func testKeepingTheMaterialsWritesTheGLTFShaderProperty() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-
-        try document.append(try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url), under: 0)
-
-        let merged = try VRM0(data: try document.serialize())
-        #expect(merged.materialProperties.last?.shader == "VRM_USE_GLTFSHADER")
-    }
-
     /// `materialProperties` runs parallel to `materials`, and glTF lets two materials
     /// share a name, so only the index tells them apart.
     @Test

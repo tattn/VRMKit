@@ -23,7 +23,7 @@ public struct GLTFNodeComponent: Component {
 
 /// Marks a model entity as an additional render pass of its glTF materials, such as
 /// MToon's inverted-hull outline, rather than the materials themselves. What each
-/// slot starts showing lives in the entity's ``GLTFMergedMeshCatalog``.
+/// slot starts showing lives in the entity's ``GLTFMergedMeshComponent``.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct GLTFMaterialPassComponent: Component {
     public let name: String
@@ -152,11 +152,6 @@ public class GLTFEntity: Entity {
         /// Present when what renders the material makes one, as MToon does.
         var animatable: (any VRMAnimatableMaterialState)?
         var needsFlush = false
-
-        @MainActor
-        func hasPass(named name: String) -> Bool {
-            bindings.contains { $0.modelEntity.components[GLTFMaterialPassComponent.self]?.name == name }
-        }
     }
 
     var materialStates: [Int: MaterialRuntimeState] = [:]
@@ -309,30 +304,13 @@ public class GLTFEntity: Entity {
 
     /// This entity and every glTF entity nested under it, in a fixed traversal order.
     private var gltfEntitiesInHierarchy: [GLTFEntity] {
-        var result: [GLTFEntity] = []
-        var stack: [Entity] = [self]
-        while let entity = stack.popLast() {
-            if let gltfEntity = entity as? GLTFEntity {
-                result.append(gltfEntity)
-            }
-            stack.append(contentsOf: entity.children)
-        }
-        return result
+        descendants(of: GLTFEntity.self)
     }
 
     /// The model entities of this entity's own document: its hierarchy minus the subtrees
     /// of glTF entities nested under it.
     private var ownModelEntities: [ModelEntity] {
-        var result: [ModelEntity] = []
-        var stack: [Entity] = [self]
-        while let entity = stack.popLast() {
-            if entity !== self, entity is GLTFEntity { continue }
-            if let modelEntity = entity as? ModelEntity {
-                result.append(modelEntity)
-            }
-            stack.append(contentsOf: entity.children)
-        }
-        return result
+        descendants(of: ModelEntity.self) { $0 is GLTFEntity }
     }
 
     /// The glTF material indices any model entity under `root` renders with, additional
@@ -351,65 +329,34 @@ public class GLTFEntity: Entity {
         return indices
     }
 
-    /// Shows or hides every material slot drawing the additional render pass called
-    /// `name`, such as MToon's outline. A hidden pass keeps its place in the skinning
-    /// and morph solvers. Read from the entity graph, so a `clone(recursive:)` copy
+    /// Shows or hides the material slots drawing the additional render pass called `name`,
+    /// such as MToon's outline: all of them, or those of `materials` (see
+    /// ``materialIndices(under:)``). A hidden pass keeps its place in the skinning and morph
+    /// solvers. Without `materials` it reads the entity graph, so a `clone(recursive:)` copy
     /// works too.
-    public func setPassEnabled(_ isEnabled: Bool, named name: String) {
-        forEachPass(named: name) { $0.setMergedVisibility(isEnabled) }
-    }
-
-    /// Puts every slot drawing `name` back to the state its shader declared, undoing
-    /// a ``setPassEnabled(_:named:)``.
-    public func resetPassEnabled(named name: String) {
-        forEachPass(named: name) { $0.resetMergedVisibility() }
-    }
-
-    /// One material slot of one pass entity: a pass entity draws several
-    /// materials, so this is the unit pass visibility moves in.
-    private struct PassSlotKey: Hashable {
-        let entity: Entity.ID
-        let slot: Int
-    }
-
-    /// Pass visibility a runtime override replaced, keyed by pass name, material and slot.
-    /// Recording it per material lets overrides on different material sets compose.
-    private var passVisibilityBeforeOverride: [String: [Int: [PassSlotKey: Bool]]] = [:]
-
-    /// Shows or hides the `name` passes of `materials` for as long as an override lasts,
-    /// remembering the visibility they replace. Only the first call to cover a material
-    /// records it.
-    public func overridePassEnabled(_ isEnabled: Bool, named name: String, forMaterials materials: Set<Int>) {
+    public func setPassEnabled(_ isEnabled: Bool, named name: String, forMaterials materials: Set<Int>? = nil) {
+        guard let materials else {
+            forEachPass(named: name) { $0.setMergedVisibility(isEnabled) }
+            return
+        }
         for materialIndex in materials {
-            let needsRecord = passVisibilityBeforeOverride[name]?[materialIndex] == nil
-            var replaced: [PassSlotKey: Bool] = [:]
             forEachPassSlot(named: name, ofMaterial: materialIndex) { passEntity, slot in
-                if needsRecord, let isVisible = passEntity.mergedMesh?.visibleSlots[safe: slot] {
-                    replaced[PassSlotKey(entity: passEntity.id, slot: slot)] = isVisible
-                }
                 passEntity.setMergedSlotVisibility(isEnabled, slots: [slot])
             }
-            if needsRecord, !replaced.isEmpty {
-                passVisibilityBeforeOverride[name, default: [:]][materialIndex] = replaced
-            }
         }
     }
 
-    /// Puts the `name` passes of `materials` back to the visibility
-    /// ``overridePassEnabled(_:named:forMaterials:)`` replaced.
-    public func releasePassEnabledOverride(named name: String, forMaterials materials: Set<Int>) {
-        for materialIndex in materials {
-            guard let replaced = passVisibilityBeforeOverride[name]?.removeValue(forKey: materialIndex) else {
-                continue
-            }
-            forEachPassSlot(named: name, ofMaterial: materialIndex) { passEntity, slot in
-                let isVisible = replaced[PassSlotKey(entity: passEntity.id, slot: slot)]
-                    ?? passEntity.initialMergedSlotVisibility(at: slot)
-                passEntity.setMergedSlotVisibility(isVisible, slots: [slot])
-            }
+    /// Puts the slots of the pass called `name` back to the visibility its shader built it
+    /// with, undoing ``setPassEnabled(_:named:forMaterials:)``.
+    public func resetPassEnabled(named name: String, forMaterials materials: Set<Int>? = nil) {
+        guard let materials else {
+            forEachPass(named: name) { $0.resetMergedVisibility() }
+            return
         }
-        if passVisibilityBeforeOverride[name]?.isEmpty == true {
-            passVisibilityBeforeOverride[name] = nil
+        for materialIndex in materials {
+            forEachPassSlot(named: name, ofMaterial: materialIndex) { passEntity, slot in
+                passEntity.setMergedSlotVisibility(passEntity.initialMergedSlotVisibility(at: slot), slots: [slot])
+            }
         }
     }
 
@@ -420,8 +367,8 @@ public class GLTFEntity: Entity {
         }
     }
 
-    /// Found through the material runtime rather than the entity graph, so an override
-    /// follows its materials wherever their subtree is reparented.
+    /// Found through the material runtime rather than the entity graph, so a material's
+    /// slots are found wherever their subtree is reparented.
     private func forEachPassSlot(named name: String, ofMaterial materialIndex: Int, _ body: (ModelEntity, Int) -> Void) {
         for binding in materialStates[materialIndex]?.bindings ?? []
         where binding.modelEntity.components[GLTFMaterialPassComponent.self]?.name == name {
@@ -432,8 +379,7 @@ public class GLTFEntity: Entity {
     // MARK: - Animatable material runtime state
     //
     // Shader parameters describe a material, not an entity, so they are stored once per
-    // material index and pushed to every entity rendering with it. visionOS has no
-    // `CustomMaterial`, so these all no-op there.
+    // material index and pushed to every entity rendering with it.
 
     /// Sets one color of the material at `materialIndex` (an index into `gltf.materials`)
     /// wherever this entity draws it, as a VRM expression's material color bind does, and
@@ -451,24 +397,24 @@ public class GLTFEntity: Entity {
     func applyMaterialColor(_ color: SIMD4<Float>,
                             type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
                             materialIndex: Int) {
-        // A shader animating this color owns it in its own parameters; an unclaimed one
-        // falls back below.
-        if mutateAnimatableState(ofMaterial: materialIndex, { $0.setColor(color, for: type) }) {
-            return
-        }
         let vrmColor = VRMColor(simd: color)
-        mapMaterials(ofMaterial: materialIndex) { $0.settingColor(vrmColor, for: type) }
+        applyMaterialValue(ofMaterial: materialIndex,
+                           toState: { $0.setColor(color, for: type) },
+                           toMaterial: { $0.settingColor(vrmColor, for: type) })
     }
 
-    /// Edits a material's animatable shader state, marking it for flush. Returns false
-    /// when the material has no such state or does not animate what `mutate` writes,
-    /// which is the cue to fall back to the RealityKit material properties.
-    func mutateAnimatableState(ofMaterial materialIndex: Int,
-                               _ mutate: (any VRMAnimatableMaterialState) -> Bool) -> Bool {
-        guard let animatable = materialStates[materialIndex]?.animatable,
-              mutate(animatable) else { return false }
-        materialStates[materialIndex]?.needsFlush = true
-        return true
+    /// Writes a value through the material's runtime state when the state claims it
+    /// (`toState` returns true), marking it for flush, and onto the RealityKit materials
+    /// drawing it otherwise. A shader owning the value applies it from its own parameters,
+    /// so writing both would apply it twice.
+    func applyMaterialValue(ofMaterial materialIndex: Int,
+                            toState: (any VRMAnimatableMaterialState) -> Bool,
+                            toMaterial: (any Material) -> any Material) {
+        if let animatable = materialStates[materialIndex]?.animatable, toState(animatable) {
+            materialStates[materialIndex]?.needsFlush = true
+        } else {
+            mapMaterials(ofMaterial: materialIndex, toMaterial)
+        }
     }
 
     /// The runtime state of the material at `materialIndex`, if its shader made a `State`.
@@ -479,13 +425,12 @@ public class GLTFEntity: Entity {
 
     /// Edits the runtime state of every material whose shader made a `State`, then pushes
     /// the changed ones to the GPU once per material. `mutate` returns whether it changed
-    /// anything; a pass name and a material set narrow which materials are edited.
+    /// anything; `materials` narrows which materials are edited.
     ///
     /// Returns false when no material matched, or while a state that failed to flush stays dirty.
     @discardableResult
     public func updateMaterialStates<State: VRMAnimatableMaterialState>(
         _ type: State.Type,
-        inPassNamed passName: String? = nil,
         forMaterials materials: Set<Int>? = nil,
         _ mutate: (State) -> Bool
     ) -> Bool {
@@ -493,7 +438,6 @@ public class GLTFEntity: Entity {
         for (index, materialState) in materialStates {
             if let materials, !materials.contains(index) { continue }
             guard let state = materialState.animatable as? State else { continue }
-            if let passName, !materialState.hasPass(named: passName) { continue }
             foundState = true
             if mutate(state) {
                 materialStates[index]?.needsFlush = true
@@ -791,11 +735,18 @@ public class GLTFEntity: Entity {
 extension Entity {
     /// Every `ModelEntity` in this entity's hierarchy, including itself.
     var modelEntitiesInHierarchy: [ModelEntity] {
-        var result: [ModelEntity] = []
+        descendants(of: ModelEntity.self)
+    }
+
+    /// This entity and every one under it that is a `T`, depth first in a fixed order,
+    /// skipping the subtrees below the root that `pruning` matches.
+    func descendants<T: Entity>(of type: T.Type, pruning: (Entity) -> Bool = { _ in false }) -> [T] {
+        var result: [T] = []
         var stack: [Entity] = [self]
         while let entity = stack.popLast() {
-            if let modelEntity = entity as? ModelEntity {
-                result.append(modelEntity)
+            if entity !== self, pruning(entity) { continue }
+            if let match = entity as? T {
+                result.append(match)
             }
             stack.append(contentsOf: entity.children)
         }

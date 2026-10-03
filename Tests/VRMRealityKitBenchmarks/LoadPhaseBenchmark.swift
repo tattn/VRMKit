@@ -2,8 +2,8 @@
 import Foundation
 import Testing
 import VRMKit
+import VRMTestSupport
 @testable import VRMRealityKit
-@testable import VRMTestSupport
 
 /// Splits what loading one VRM costs into its phases: parsing the file, the off-actor
 /// prepare pass, and the RealityKit resources the build makes on the actor (textures,
@@ -21,7 +21,7 @@ struct LoadPhaseBenchmark {
         if let path = ProcessInfo.processInfo.environment["VRMKIT_BENCH_MODEL"] {
             return URL(fileURLWithPath: path)
         }
-        return TestAssetBundle.url(forFixture: "VRM/AliciaSolid.vrm")
+        return VRMSampleAsset.aliciaSolid.url
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

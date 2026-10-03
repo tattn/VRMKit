@@ -3,6 +3,7 @@ import CoreGraphics
 import Foundation
 import Testing
 import VRMKit
+import VRMTestSupport
 @testable import VRMRealityKit
 
 /// Capping how large a texture is uploaded at.
@@ -61,6 +62,21 @@ struct TextureDimensionLimitTests {
         #expect(result.height == 1)
     }
 
+    /// A PNG with alpha decodes as non-premultiplied, a format Core Graphics draws into
+    /// no context of, so it is redrawn as premultiplied rather than left full size.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    @Test func anImageWithNonPremultipliedAlphaIsLimitedToo() throws {
+        let side = 128
+        let provider = try #require(CGDataProvider(data: Data(repeating: 200, count: side * side * 4) as CFData))
+        let authored = try #require(CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32,
+                                            bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                                            provider: provider, decode: nil, shouldInterpolate: false,
+                                            intent: .defaultIntent))
+        let result = GLTFSceneBuilder.clamped(authored, to: 32)
+        #expect(result.width == 32 && result.height == 32)
+    }
+
     /// The limit reaches the load rather than stopping at the loader.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     @MainActor
@@ -68,8 +84,9 @@ struct TextureDimensionLimitTests {
         let loader = VRMEntityLoader(vrm: try VRM(data: TestSupport.seedSanData),
                                      maxTextureDimension: 64)
         #expect(loader.resources.maxTextureDimension == 64)
-        let entity = try await loader.loadEntity()
-        _ = try OffscreenRenderer.render(entity, size: 96)
+        _ = try await loader.loadEntity()
+        #expect(!loader.resources.textureCache.isEmpty)
+        #expect(loader.resources.textureCache.values.allSatisfy { $0.width <= 64 && $0.height <= 64 })
     }
 }
 #endif

@@ -4,6 +4,7 @@ import Metal
 import RealityKit
 import Testing
 import VRMKit
+import VRMTestSupport
 @testable import VRMRealityKit
 
 /// Splits what a loaded VRM costs into the parts worth reducing: entity count, skin
@@ -97,7 +98,7 @@ struct RealityKitCostBenchmark {
     @Test
     func inspectSkinBindings() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        for (name, data) in [("seedSan", TestSupport.seedSanData), ("alicia", TestSupport.aliciaSolidData)] {
+        for (name, data) in [("seedSan", VRMSampleAsset.seedSan.data), ("alicia", VRMSampleAsset.aliciaSolid.data)] {
             let entity = try await VRMEntityLoader(withData: data).loadEntity()
             let all = allEntities(entity)
             let joints = jointIDs(of: entity)
@@ -123,7 +124,7 @@ struct RealityKitCostBenchmark {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
 
         func load() async throws -> VRMEntity {
-            let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+            let entity = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data).loadEntity()
             entity.isAutomaticUpdateEnabled = false
             entity.update(deltaTime: 0)
             return entity
@@ -190,10 +191,10 @@ struct RealityKitCostBenchmark {
         let device = try #require(MTLCreateSystemDefaultDevice())
 
         // Warms what every load shares, so the measured load pays only its own pipelines.
-        let warm = try await VRMEntityLoader(vrm: try VRM(data: TestSupport.seedSanData)).loadEntity()
+        let warm = try await VRMEntityLoader(vrm: try VRM(data: VRMSampleAsset.seedSan.data)).loadEntity()
         _ = try OffscreenRenderer.render(warm, size: 64)
 
-        let entity = try await VRMEntityLoader(vrm: try VRM(data: TestSupport.seedSanData)).loadEntity()
+        let entity = try await VRMEntityLoader(vrm: try VRM(data: VRMSampleAsset.seedSan.data)).loadEntity()
         entity.isAutomaticUpdateEnabled = false
 
         var cameraComponent = PerspectiveCameraComponent(near: 0.01, far: 100, fieldOfViewInDegrees: 30)
@@ -254,7 +255,7 @@ struct RealityKitCostBenchmark {
         let device = try #require(MTLCreateSystemDefaultDevice())
 
         func load(shaders: [any GLTFMaterialShader], limit: Int?) async throws -> VRMEntity {
-            let entity = try await VRMEntityLoader(vrm: try VRM(data: TestSupport.seedSanData),
+            let entity = try await VRMEntityLoader(vrm: try VRM(data: VRMSampleAsset.seedSan.data),
                                                    shaders: shaders,
                                                    maxTextureDimension: limit).loadEntity()
             // Meshes and textures reach the GPU when something draws them, not when they
@@ -265,7 +266,7 @@ struct RealityKitCostBenchmark {
 
         // Kept alive so each reading is what that load added rather than what it added
         // minus what the one before it released. The first also pays the one-time costs.
-        let document = try VRM(data: TestSupport.seedSanData).document
+        let document = try VRM(data: VRMSampleAsset.seedSan.data).document
         let sizes = document.gltf.images.indices.compactMap { index -> String? in
             guard let image = try? document.image(at: index) else { return nil }
             return "\(image.width)x\(image.height)"
@@ -305,7 +306,7 @@ struct RealityKitCostBenchmark {
         /// Springs settled, so the cases differ in what the app asks for rather than in
         /// how much of the initial swing is left over.
         func loadSettled() async throws -> VRMEntity {
-            let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+            let entity = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data).loadEntity()
             entity.isAutomaticUpdateEnabled = false
             for _ in 0..<600 { entity.update(deltaTime: 1.0 / 60.0) }
             return entity
@@ -420,7 +421,7 @@ struct RealityKitCostBenchmark {
 
         // Every skeleton is drawn by a model entity and its outline twin, each deforming a
         // mesh of its own: what the second mesh per skeleton costs.
-        let bare = try await VRMEntityLoader(withData: TestSupport.seedSanData,
+        let bare = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data,
                                              shaders: [MToonShader(outlinePass: .never)]).loadEntity()
         bare.isAutomaticUpdateEnabled = false
         for _ in 0..<600 { bare.update(deltaTime: 1.0 / 60.0) }

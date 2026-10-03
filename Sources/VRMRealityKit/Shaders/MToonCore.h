@@ -4,7 +4,7 @@
 // Pure VRMC_materials_mtoon 1.0 math. This header must stay free of
 // RealityKit types so that the MToon specification layer can be read and
 // verified independently of RealityKit-specific approximations, which live
-// in MToon.metal as realityKitApproximate* functions.
+// in MToonRealityKit.h as realityKitApproximate* functions.
 
 #include <metal_stdlib>
 
@@ -52,6 +52,13 @@ inline metal::float2 mtoonMatcapUV(float3 normal, float3 viewDirection)
     const float3 worldViewY = metal::cross(viewDirection, worldViewX);
     return metal::float2(metal::dot(worldViewX, normal),
                          metal::dot(worldViewY, normal)) * 0.495 + 0.5;
+}
+
+// The lighting the rim is multiplied by: the light, unshaded, plus GI, as UniVRM's
+// forward base pass lights it.
+inline float3 mtoonRimLighting(float3 lightColor, float3 giColor, float rimLightingMix)
+{
+    return metal::mix(float3(1.0), lightColor + giColor, metal::saturate(rimLightingMix));
 }
 
 // Parametric rim term before the rim-multiply texture and lighting mix.

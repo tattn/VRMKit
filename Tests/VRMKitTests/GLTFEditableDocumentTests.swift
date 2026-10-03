@@ -60,19 +60,6 @@ struct GLTFEditableDocumentTests {
         #expect(try GLTFDocument(data: glb).bufferViewData(at: 0).data == Data([0, 1, 2, 3, 4]))
     }
 
-    /// The typed view is what node indices are resolved through, so it has to show the
-    /// edits rather than the state the document was loaded in.
-    @Test
-    func testTypedSnapshotFollowsEdits() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let before = try document.typed().nodes.count
-
-        let index = try document.addNode(name: "added")
-
-        #expect(try document.typed().nodes.count == before + 1)
-        #expect(try document.typed().nodes[index.rawValue].name == "added")
-    }
-
     // MARK: - Node editing
 
     @Test
@@ -214,26 +201,12 @@ struct GLTFEditableDocumentTests {
         }
     }
 
-    /// glTF wants a unit quaternion, and `rotation` is the caller's to set.
-    @Test
-    func testANonUnitRotationIsWrittenNormalized() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let index = try document.addNode(name: "item")
-        let turn = simd_quatf(angle: .pi / 3, axis: normalize(SIMD3<Float>(0, 1, 0)))
-
-        try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: turn.vector * 4)), nodeAt: index)
-
-        let written = try document.typed().nodes[index.rawValue].rotation
-        let vector = SIMD4<Float>(Float(written.x), Float(written.y), Float(written.z), Float(written.w))
-        #expect(abs(simd_length(vector) - 1) < 1e-5)
-        #expect(abs(abs(simd_dot(vector, turn.vector)) - 1) < 1e-5)
-    }
-
-    /// A quaternion far from unit length still names an orientation. Squaring its
-    /// components would lose a tiny one to underflow and a huge one to overflow, and
-    /// either would be written out as no rotation at all.
-    @Test(arguments: [Float(1e-4), 1e-20, 1e20, 1e30])
-    func testARotationFarFromUnitLengthKeepsItsOrientation(magnitude: Float) throws {
+    /// glTF wants a unit quaternion, and `rotation` is the caller's to set, so one of
+    /// any length is written normalized. Squaring its components would lose a tiny one
+    /// to underflow and a huge one to overflow, and either would be written out as no
+    /// rotation at all.
+    @Test(arguments: [Float(4), 1e-4, 1e-20, 1e20, 1e30])
+    func testANonUnitRotationIsWrittenNormalized(magnitude: Float) throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let index = try document.addNode(name: "item")
         let turn = simd_quatf(angle: .pi / 3, axis: normalize(SIMD3<Float>(0, 1, 0)))

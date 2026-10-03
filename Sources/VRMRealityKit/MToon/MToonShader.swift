@@ -27,7 +27,7 @@ public final class MToonShader: GLTFMaterialShader {
         case authoredOnly
         /// Materials authored as MToon keep their authored values, and every
         /// other material, PBR and Unlit alike, is converted to MToon with
-        /// the given style.
+        /// the given style. The conversion is not part of the VRM specification.
         case convertAll(MToonConversionStyle)
 
         /// Converts every material with the default ``MToonConversionStyle``.
@@ -83,8 +83,7 @@ public final class MToonShader: GLTFMaterialShader {
     private var resolvedFunctions: Result<MToonShaderFunctions.Resolved, Error>?
 #endif
 
-    /// `resourceName` is nil on every platform without a bundled MToon Metal
-    /// library (visionOS, Mac Catalyst), so this claims nothing there.
+    /// Empty where no Metal library is bundled.
     public var supportedRequiredExtensions: Set<String> {
         MToonShaderLibraryLoader.resourceName != nil ? [Self.extensionName] : []
     }
@@ -135,8 +134,7 @@ public final class MToonShader: GLTFMaterialShader {
 
     private func shadedMToonMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
         guard let state = try makeState(for: context) else { return nil }
-        // The rows the expression runtime animates are built here; the state factory
-        // only hands every entity graph its own copy.
+        // Every loaded entity graph gets a state of its own, starting from these rows.
         let parameters = state.parameters
         let descriptor = state.descriptor
         var shaded = GLTFShadedMaterial(material: try customMToonMaterial(state, context: context),
@@ -160,7 +158,7 @@ public final class MToonShader: GLTFMaterialShader {
         let parameters = try parameters(for: descriptor, textureTransform: textureTransform, context: context)
         return MToonState(descriptor: descriptor,
                           parameters: parameters,
-                          parameterTexture: CustomMaterial.Texture(try parameters.textureResource()),
+                          parameterTexture: CustomMaterial.Texture(try MToonParameterTexture(rows: parameters.packedRows).resource),
                           functions: functions)
     }
 
@@ -203,12 +201,9 @@ public final class MToonShader: GLTFMaterialShader {
     private func customMToonMaterial(_ state: MToonState,
                                      context: GLTFMaterialShaderContext) throws -> Material {
         let mtoon = state.descriptor
-        let surface = CustomMaterial.SurfaceShader(named: state.functions.surface.name,
-                                                   in: state.functions.surface.library)
-        var material = try CustomMaterial(surfaceShader: surface, lightingModel: .unlit)
+        var material = try sharedCustomMaterial(state, surface: state.functions.surface, context: context)
         // MToon needs more textures than CustomMaterial has semantic channels, so the
         // extra slots ride on unrelated ones. MToon.metal reads them back the same way.
-        material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base, context: context))
         material.roughness.texture = try mtoonTexture(mtoon, slot: .shade, context: context)
         material.specular.texture = try mtoonTexture(mtoon, slot: .shadingShift, context: context)
         material.metallic.texture = try mtoonTexture(mtoon, slot: .matcap, context: context)
@@ -217,28 +212,37 @@ public final class MToonShader: GLTFMaterialShader {
         material.clearcoatRoughness.texture = try mtoonTexture(mtoon, slot: .rim, context: context)
         // No outline-width map: only the outline pass's geometry modifier reads
         // it, and it binds one of its own.
-        material.ambientOcclusion.texture = try mtoonTexture(mtoon, slot: .uvAnimationMask, context: context)
-
-        applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
-        applyDepthWrite(mtoon, to: &material)
         material.faceCulling = mtoon.cullMode.faceCulling
-        applyParameters(state, to: &material)
         return material
     }
 
     private func customMToonOutlineMaterial(_ state: MToonState,
                                             context: GLTFMaterialShaderContext) throws -> Material {
-        let mtoon = state.descriptor
-        let surface = CustomMaterial.SurfaceShader(named: state.functions.outlineSurface.name,
-                                                   in: state.functions.outlineSurface.library)
-        let geometry = CustomMaterial.GeometryModifier(named: state.functions.outlineGeometry.name,
-                                                       in: state.functions.outlineGeometry.library)
-        var material = try CustomMaterial(surfaceShader: surface,
-                                          geometryModifier: geometry,
-                                          lightingModel: .unlit)
+        var material = try sharedCustomMaterial(state,
+                                                surface: state.functions.outlineSurface,
+                                                geometry: state.functions.outlineGeometry,
+                                                context: context)
         material.faceCulling = .front
+        material.clearcoat.texture = try mtoonTexture(state.descriptor, slot: .outlineWidth, context: context)
+        return material
+    }
+
+    /// What the material and its outline share: the base color both cut out by, the UV
+    /// animation mask, blending, depth writes and the parameter rows.
+    private func sharedCustomMaterial(_ state: MToonState,
+                                      surface: MToonShaderFunctions.Function,
+                                      geometry: MToonShaderFunctions.Function? = nil,
+                                      context: GLTFMaterialShaderContext) throws -> CustomMaterial {
+        let mtoon = state.descriptor
+        let surfaceShader = CustomMaterial.SurfaceShader(named: surface.name, in: surface.library)
+        var material = if let geometry {
+            try CustomMaterial(surfaceShader: surfaceShader,
+                               geometryModifier: .init(named: geometry.name, in: geometry.library),
+                               lightingModel: .unlit)
+        } else {
+            try CustomMaterial(surfaceShader: surfaceShader, lightingModel: .unlit)
+        }
         material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base, context: context))
-        material.clearcoat.texture = try mtoonTexture(mtoon, slot: .outlineWidth, context: context)
         material.ambientOcclusion.texture = try mtoonTexture(mtoon, slot: .uvAnimationMask, context: context)
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         applyDepthWrite(mtoon, to: &material)
@@ -247,10 +251,11 @@ public final class MToonShader: GLTFMaterialShader {
     }
 
     /// MToon.metal applies the UV transform from the parameter rows, so
-    /// `textureCoordinateTransform` is left at identity here. The outline budget starts
-    /// at 0, read as unbudgeted; the loader writes the real one per pass entity.
+    /// `textureCoordinateTransform` is left at identity here. `custom.value` carries what
+    /// is not the material's: x the tone-mapping flag, and w the outline budget, 0 (read
+    /// as unbudgeted) until the loader writes the real one per pass entity.
     private func applyParameters(_ state: MToonState, to material: inout CustomMaterial) {
-        material.custom.value = state.parameters.customValue(outlineBudget: 0)
+        material.custom.value = SIMD4<Float>(compensatesToneMapping ? 1 : 0, 0, 0, 0)
         material.custom.texture = state.parameterTexture
     }
 
@@ -289,7 +294,6 @@ public final class MToonShader: GLTFMaterialShader {
                             textureTransform: MaterialParameterTypes.TextureCoordinateTransform,
                             context: GLTFMaterialShaderContext) throws -> MToonMaterialParameters {
         var parameters = MToonMaterialParameters(descriptor)
-        parameters.compensatesToneMapping = compensatesToneMapping
         parameters.setTextureTransform(scale: textureTransform.scale,
                                        offset: textureTransform.offset,
                                        rotation: textureTransform.rotation)
@@ -355,7 +359,7 @@ public final class MToonShader: GLTFMaterialShader {
         return samplerParameters(sampler)
     }
 
-    /// (wrapS, wrapT, filterIndex, 0), the sampler row layout `MToon.metal` expects.
+    /// (wrapS, wrapT, filterIndex, 0), the sampler row layout `MToonRealityKit.h` expects.
     private func samplerParameters(_ sampler: GLTF.Sampler) -> SIMD4<Float> {
         let (minFilter, mipFilter) = (sampler.minFilter ?? .LINEAR_MIPMAP_LINEAR).metalFilters
         let filter = MToonSamplerFilter(
@@ -426,13 +430,11 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
     public static let userParameterCount = MToonMaterialParameters.userRowCount
 
     private(set) var parameters: MToonMaterialParameters
-#if !os(visionOS)
     /// This entity's own rows on the GPU, written in place. The loader hands every entity
     /// graph the same material, so the first flush swaps in this one.
     private(set) var parameterTexture: MToonParameterTexture?
     /// Whether ``apply(to:)`` has put ``parameterTexture`` on the materials yet.
     private var isParameterTextureInstalled = false
-#endif
 
     init(parameters: MToonMaterialParameters) {
         self.parameters = parameters
@@ -498,9 +500,7 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 
     /// The rows are blitted on a queue of their own.
     public func waitForWrites() {
-#if !os(visionOS)
         parameterTexture?.waitForWrites()
-#endif
     }
 
     /// The first flush of the copy builds a texture of its own.
@@ -509,9 +509,6 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
     }
 
     public func prepareFlush() -> Bool {
-#if os(visionOS)
-        return true
-#else
         do {
             let rows = parameters.packedRows
             if let parameterTexture {
@@ -524,29 +521,21 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
             MToonShader.logger.error("Failed to update MToon parameter texture: \(error.localizedDescription, privacy: .public)")
             return false
         }
-#endif
     }
 
     /// Only the first flush has anything to push: every write after it lands in the
     /// parameter texture the materials already sample.
     public var updatesMaterialsOnFlush: Bool {
-#if os(visionOS)
-        return false
-#else
-        return !isParameterTextureInstalled
-#endif
+        !isParameterTextureInstalled
     }
 
     public func apply(to material: any Material) -> any Material {
 #if os(visionOS)
         return material
 #else
-        guard var material = material as? CustomMaterial else { return material }
-        material.custom.value = parameters.customValue(outlineBudget: material.custom.value.w)
-        if let parameterTexture {
-            material.custom.texture = CustomMaterial.Texture(parameterTexture.resource)
-            isParameterTextureInstalled = true
-        }
+        guard var material = material as? CustomMaterial, let parameterTexture else { return material }
+        material.custom.texture = CustomMaterial.Texture(parameterTexture.resource)
+        isParameterTextureInstalled = true
         return material
 #endif
     }

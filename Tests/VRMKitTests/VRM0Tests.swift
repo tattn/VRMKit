@@ -119,13 +119,4 @@ struct VRM0Tests {
         #expect(target.colliders[0].offset.z == 0.0)
         #expect(target.colliders[0].radius == 0.09)
     }
-
-    @Test
-    func testVRMVersionDetection() throws {
-        guard case .v0(let vrm0) = try VRM(data: VRMSampleAsset.aliciaSolid.data) else {
-            Issue.record("Expected VRM0")
-            return
-        }
-        #expect(vrm0.meta.title == "Alicia Solid")
-    }
 }

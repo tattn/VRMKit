@@ -49,7 +49,7 @@ package enum VRMNodeConstraintDescriptor {
 }
 
 package enum VRMNodeConstraintRuntime {
-    package static func evaluate(_ descriptor: VRMNodeConstraintDescriptor,
+    static func evaluate(_ descriptor: VRMNodeConstraintDescriptor,
                                  sourceRestRotation: simd_quatf,
                                  sourceLocalRotation: @autoclosure () -> simd_quatf,
                                  sourceWorldPosition: @autoclosure () -> SIMD3<Float>,
@@ -153,7 +153,7 @@ package enum VRMNodeConstraintRuntime {
 /// Orders constraints so that every node a constraint reads is posed before it
 /// runs, rejecting duplicate targets and dependency cycles. `dependencies` names
 /// the nodes one binding reads, of which only the constrained ones order anything.
-package func orderNodeConstraints<Binding>(
+func orderNodeConstraints<Binding>(
     _ bindings: [Binding],
     targetIndex: (Binding) -> Int,
     dependencies: (Binding) -> [Int]

@@ -6,16 +6,6 @@ import VRMTestSupport
 @Suite
 struct GLTFDocumentLoadingTests {
     @Test
-    func testGLBDataLoadsAsBinaryDocument() throws {
-        let document = try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
-
-        #expect(document.binaryBuffer != nil)
-        #expect(document.gltf.nodes.isEmpty == false)
-        // The BIN chunk resolves through the document without a root directory.
-        #expect(try document.bufferData(at: 0).isEmpty == false)
-    }
-
-    @Test
     func testOnlyFirstURIlessBufferMayUseTheGLBBINChunk() throws {
         let data = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
             var buffers = json.objects("buffers")

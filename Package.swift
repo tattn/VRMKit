@@ -50,5 +50,10 @@ let package = Package(
             name: "VRMRealityKitTests",
             dependencies: ["VRMRealityKit", "VRMTestSupport"]
         ),
+        // Opt-in measurements (`VRMKIT_BENCH=1`), kept out of the regular test target.
+        .testTarget(
+            name: "VRMRealityKitBenchmarks",
+            dependencies: ["VRMRealityKit", "VRMTestSupport"]
+        ),
     ]
 )

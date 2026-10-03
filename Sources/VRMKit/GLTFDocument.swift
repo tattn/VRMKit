@@ -6,12 +6,12 @@ import Foundation
 public final class GLTFDocument: Sendable {
     public let gltf: GLTF
     /// GLB BIN chunk (chunk 1), when the document came from a GLB container.
-    package let binaryBuffer: Data?
+    let binaryBuffer: Data?
     /// Base directory for external buffer / image URIs.
     package let rootDirectory: URL?
     /// The glTF JSON as it was parsed, nil for a document built from an already-decoded
     /// ``GLTF``. Editing reads it so that what ``GLTF`` does not model survives a rewrite.
-    package let jsonRoot: JSONObject?
+    let jsonRoot: JSONObject?
 
     /// Decoded buffers, keyed by buffer index: resolving one re-reads an external file or
     /// base64-decodes a whole data URI. Buffer views are not cached, since that would hold

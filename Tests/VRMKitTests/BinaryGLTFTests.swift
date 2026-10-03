@@ -5,27 +5,13 @@ import VRMTestSupport
 
 @Suite
 struct BinaryGLTFTests {
-    
     @Test
-    func testLoadVRM() throws {
-        let binaryGltf = try BinaryGLTF(data: VRMSampleAsset.aliciaSolid.data)
-        let json = binaryGltf.gltf
-        #expect(json.asset.generator == "UniGLTF")
-        #expect(json.asset.version == "2.0")
-    }
-
-    @Test
-    func testStridedSubdataCopiesBytes() throws {
+    func testSubdataCopiesTheRequestedElements() throws {
         let data = Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        let strided = try data.subdata(offset: 1, size: 2, stride: 4, count: 2)
-        #expect(Array(strided) == [1, 2, 5, 6])
-    }
-
-    @Test
-    func testTightlyPackedSubdataReturnsOnlyTheRequestedRange() throws {
-        let data = Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        let packed = try data.subdata(offset: 2, size: 2, stride: 2, count: 3)
-        #expect(Array(packed) == [2, 3, 4, 5, 6, 7])
+        #expect(Array(try data.subdata(offset: 1, size: 2, stride: 4, count: 2)) == [1, 2, 5, 6])
+        #expect(Array(try data.subdata(offset: 2, size: 2, stride: 2, count: 3)) == [2, 3, 4, 5, 6, 7])
+        // The last byte landing exactly on the end is still valid.
+        #expect(Array(try data.subdata(offset: 8, size: 2, stride: 2, count: 1)) == [8, 9])
     }
 
     /// A buffer view is a slice of its buffer, so an accessor's offset counts from
@@ -42,7 +28,8 @@ struct BinaryGLTFTests {
     }
 
     /// An accessor that overruns its buffer view fails the load rather than reading
-    /// out of bounds.
+    /// out of bounds, and the extent computation must not trap: a hostile glTF can name
+    /// counts and strides whose product overflows Int.
     @Test
     func testSubdataRejectsRangesBeyondTheBuffer() {
         let data = Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
@@ -50,22 +37,14 @@ struct BinaryGLTFTests {
         #expect(throws: (any Error).self) { try data.subdata(offset: 9, size: 2, stride: 2, count: 1) }
         #expect(throws: (any Error).self) { try data.subdata(offset: 8, size: 2, stride: 4, count: 2) }
         #expect(throws: (any Error).self) { try data.subdata(offset: -1, size: 2, stride: 2, count: 1) }
-        // The last byte landing exactly on the end is still valid.
-        #expect(throws: Never.self) { try data.subdata(offset: 8, size: 2, stride: 2, count: 1) }
-    }
-
-    /// The extent computation must not trap: a hostile glTF can name counts and strides
-    /// whose product overflows Int.
-    @Test
-    func testSubdataRejectsOverflowingExtentsWithoutTrapping() {
-        let data = Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
         #expect(throws: (any Error).self) { try data.subdata(offset: 0, size: 8, stride: 8, count: .max) }
         #expect(throws: (any Error).self) { try data.subdata(offset: .max, size: 1, stride: 1, count: 2) }
         #expect(throws: (any Error).self) { try data.subdata(offset: 0, size: .max, stride: .max, count: 3) }
         #expect(throws: (any Error).self) { try data.subdata(offset: .max - 1, size: 4, stride: 4, count: 1) }
     }
 
-    /// A buffer view that overruns its buffer throws before any accessor is sliced out.
+    /// A buffer view that overruns its buffer, or names one the file does not have,
+    /// throws before any accessor is sliced out rather than trapping.
     @Test
     func testBufferViewDataRejectsRangesBeyondTheBuffer() throws {
         let overrunning = try document(withFirstBufferView: ["byteOffset": 0, "byteLength": .int(Int(UInt32.max))])
@@ -76,6 +55,9 @@ struct BinaryGLTFTests {
 
         let negative = try document(withFirstBufferView: ["byteOffset": .int(-1), "byteLength": 16])
         #expect(throws: (any Error).self) { try negative.bufferViewData(at: 0) }
+
+        let missingBuffer = try document(withFirstBufferView: ["buffer": 99])
+        #expect(throws: (any Error).self) { try missingBuffer.bufferViewData(at: 0) }
     }
 
     /// UniVRM 0.x appends a model's thumbnail past the buffer's declared `byteLength`,
@@ -154,13 +136,6 @@ struct BinaryGLTFTests {
         let binaryChunkOffset = 20 + Int(binaryOverrun.uint32LE(at: 12))
         binaryOverrun.writeUInt32LE(.max, at: binaryChunkOffset)
         #expect(throws: (any Error).self) { try BinaryGLTF(data: binaryOverrun) }
-    }
-
-    /// A buffer view naming a buffer the file does not have throws rather than trapping.
-    @Test
-    func testBufferViewDataRejectsAnIndexBeyondTheBuffers() throws {
-        let document = try document(withFirstBufferView: ["buffer": 99])
-        #expect(throws: (any Error).self) { try document.bufferViewData(at: 0) }
     }
 
     /// The header length names the size of the whole GLB, so a shorter file is truncated

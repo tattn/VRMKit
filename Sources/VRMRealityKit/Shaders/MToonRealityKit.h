@@ -96,13 +96,10 @@ half4 mtoonUserParameter(realitykit::texture::textures textures, float index)
 // function has, so specializing -- rather than branching -- keeps the derivative
 // instructions out of the code the vertex stage links against.
 //
-// Computed from the derivatives by hand rather than with calculate_clamped_lod:
-// on an iPhone 17 Pro running iOS 27.0 the on-device Metal compiler crashes
-// (EXC_ARM_MTE_TAGCHECK_FAIL inside libLLVM's AGX backend) while linking a
-// surface shader that uses the query into RealityKit's fragment pipeline, and
-// RealityKit then silently draws the material with its fallback technique. The
-// hand-written form is the isotropic LOD the query computes for these samplers,
-// which set no anisotropy.
+// Computed by hand rather than with calculate_clamped_lod, which crashes the
+// on-device Metal compiler (iOS 27.0, iPhone 17 Pro) and leaves RealityKit
+// drawing its fallback. This is the isotropic LOD the query gives for these
+// samplers, which set no anisotropy.
 template <bool ImplicitLOD>
 struct MToonSampledLOD {
     static float of(texture2d<half> texture, float2 uv);
@@ -248,16 +245,6 @@ float3 mtoonOutputColor(float4 customParameter, float3 color)
     return customParameter.x > 0.5f ? realityKitInverseToneMap(color) : color;
 }
 
-// MToon's rim term is modulated by the *lighting*, never by the surface's own
-// base/shade colors, so mtoonDirectLighting()'s result cannot be reused here.
-// RealityKit does not hand a CustomMaterial the scene's evaluated irradiance,
-// so the runtime's explicit light stands in: toon-shaded direct light plus the
-// ambient term.
-float3 realityKitApproximateRimLighting(float3 lightColor, float3 giColor, float shading)
-{
-    return lightColor * shading + giColor;
-}
-
 // RealityKit does not expose the fully evaluated lit term to the outline
 // pass; use the runtime light color as the lit approximation.
 float3 realityKitApproximateOutlineLighting(float3 lightColor, float outlineLightingMix)
@@ -290,7 +277,7 @@ float2 mtoonTransformedUV(float2 uv, half4 uvTransform, half4 uvTransformRotatio
 
 float3 mtoonLightDirection(realitykit::texture::textures textures)
 {
-    // VRMEntity always writes a normalized direction, so this only guards against
+    // GLTFEntity always writes a normalized direction, so this only guards against
     // an unwritten row; renormalizing would cost every fragment.
     float3 direction = float3(mtoonParameter(textures, mtoonRowLightDirection).xyz);
     if (all(direction == 0.0)) {

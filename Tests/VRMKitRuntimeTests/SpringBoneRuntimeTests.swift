@@ -1,14 +1,12 @@
 import Foundation
 import Testing
 import simd
-import VRMKit
-import VRMKitRuntime
+@testable import VRMKit
+@testable import VRMKitRuntime
 
 /// The spring bone simulation the renderer swings its bones with.
 @Suite
 struct SpringBoneRuntimeTests {
-    private static let identity = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
-
     private static let setting = SpringBoneJointSetting(stiffnessForce: 1,
                                                         gravityPower: 1,
                                                         gravityDir: SIMD3(0, -1, 0),
@@ -100,7 +98,7 @@ struct SpringBoneRuntimeTests {
         let joint = try #require(SpringBoneJoint(head: .zero,
                                                  localTail: SIMD3(0, -1, 0),
                                                  worldTail: SIMD3(0, -2, 0),
-                                                 initialLocalRotation: Self.identity,
+                                                 initialLocalRotation: .identity,
                                                  center: nil))
 
         #expect(joint.boneLength == 2)
@@ -116,7 +114,7 @@ struct SpringBoneRuntimeTests {
         #expect(SpringBoneJoint(head: head,
                                 localTail: .zero,
                                 worldTail: head,
-                                initialLocalRotation: Self.identity,
+                                initialLocalRotation: .identity,
                                 center: nil) == nil)
     }
 
@@ -127,14 +125,14 @@ struct SpringBoneRuntimeTests {
         var joint = try #require(SpringBoneJoint(head: .zero,
                                                  localTail: SIMD3(0, -1, 0),
                                                  worldTail: SIMD3(0, -1, 0),
-                                                 initialLocalRotation: Self.identity,
+                                                 initialLocalRotation: .identity,
                                                  center: nil))
         let collider = SpringBoneCollider(head: SIMD3(0, -1, 0), tail: nil, radius: 0.1)
 
         let rotation = joint.update(deltaTime: 1.0 / 60.0,
                                     setting: Self.setting,
                                     head: .zero,
-                                    parentRotation: Self.identity,
+                                    parentRotation: .identity,
                                     center: nil,
                                     colliders: [collider])
 
@@ -146,7 +144,7 @@ struct SpringBoneRuntimeTests {
         var joint = try #require(SpringBoneJoint(head: .zero,
                                                  localTail: SIMD3(0, 0, 1),
                                                  worldTail: SIMD3(0, 0, 1),
-                                                 initialLocalRotation: Self.identity,
+                                                 initialLocalRotation: .identity,
                                                  center: nil))
         let setting = SpringBoneJointSetting(stiffnessForce: 0,
                                              gravityPower: 1,
@@ -154,12 +152,12 @@ struct SpringBoneRuntimeTests {
                                              dragForce: 0.5,
                                              hitRadius: 0)
 
-        var rotation = Self.identity
+        var rotation = simd_quatf.identity
         for _ in 0..<30 {
             rotation = joint.update(deltaTime: 1.0 / 60.0,
                                     setting: setting,
                                     head: .zero,
-                                    parentRotation: Self.identity,
+                                    parentRotation: .identity,
                                     center: nil,
                                     colliders: [])
         }
@@ -177,14 +175,14 @@ struct SpringBoneRuntimeTests {
         var joint = try #require(SpringBoneJoint(head: .zero,
                                                  localTail: SIMD3(0, 0, 1),
                                                  worldTail: SIMD3(0, 0, boneLength),
-                                                 initialLocalRotation: Self.identity,
+                                                 initialLocalRotation: .identity,
                                                  center: nil))
 
         for _ in 0..<30 {
             let rotation = joint.update(deltaTime: 1.0 / 60.0,
                                         setting: Self.setting,
                                         head: .zero,
-                                        parentRotation: Self.identity,
+                                        parentRotation: .identity,
                                         center: nil,
                                         colliders: [])
             #expect(abs(simd_length(rotation) - 1) < 1e-5)

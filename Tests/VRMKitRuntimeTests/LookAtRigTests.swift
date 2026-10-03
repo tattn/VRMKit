@@ -171,33 +171,25 @@ struct LookAtRigTests {
     // MARK: - Bone look-at
 
     /// The eye toward the gaze turns through the outer map and the one away through the
-    /// inner, which is what keeps a pair of eyes from crossing.
+    /// inner, which is what keeps a pair of eyes from crossing. The maps swap sides for a
+    /// gaze the other way, the inner eye being whichever one turns toward the nose.
     @Test
     func testEachEyeTurnsThroughTheMapItsSideOfTheGazeCallsFor() {
         let model = Model(forward: SIMD3(0, 0, 1))
         let rig = Self.rig(model, Self.plan(applier: .bone))
+        let up = SIMD3<Float>(0, 1, 0)
 
         // 45 degrees to the model's own left, level with the gaze origin.
         rig.target = .position(SIMD3(1, 1.56, 1))
         let result = rig.apply()
 
         #expect(isPosedBones(result))
-        let up = SIMD3<Float>(0, 1, 0)
         #expect(abs(Self.angle(of: model.leftEye, about: up, from: SIMD3(0, 0, 1)) - 4) < 1e-3)
         #expect(abs(Self.angle(of: model.rightEye, about: up, from: SIMD3(0, 0, 1)) - 2) < 1e-3)
-    }
-
-    /// The maps swap sides for a gaze the other way, the inner eye being whichever one
-    /// turns toward the nose.
-    @Test
-    func testTheHorizontalMapsSwapForAGazeToTheOtherSide() {
-        let model = Model(forward: SIMD3(0, 0, 1))
-        let rig = Self.rig(model, Self.plan(applier: .bone))
 
         rig.target = .position(SIMD3(-1, 1.56, 1))
         _ = rig.apply()
 
-        let up = SIMD3<Float>(0, 1, 0)
         #expect(abs(Self.angle(of: model.leftEye, about: up, from: SIMD3(0, 0, 1)) + 2) < 1e-3)
         #expect(abs(Self.angle(of: model.rightEye, about: up, from: SIMD3(0, 0, 1)) + 4) < 1e-3)
     }

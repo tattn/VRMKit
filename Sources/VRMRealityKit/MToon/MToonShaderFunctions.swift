@@ -41,7 +41,7 @@ public struct MToonShaderFunctions {
                 return Function(named: bundledName, in: try MToonShaderLibraryLoader.loadDefault())
             }
             guard function.library.functionNames.contains(function.name) else {
-                throw MToonShaderLibraryLoaderError.requiredFunctionsMissing([function.name])
+                throw MToonShaderLibraryLoaderError.functionMissing(function.name)
             }
             return function
         }

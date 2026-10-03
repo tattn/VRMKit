@@ -13,38 +13,31 @@ import VRMTestSupport
 struct MaterialIndicesTests {
 
     /// The whole graph answers with every rendered material, and a node's
-    /// subtree with exactly the materials its own model entities carry.
+    /// subtree with exactly the materials its own model entities carry. Indices
+    /// point into one document, so an entity loaded from another one never leaks
+    /// its own into the answer, however the graphs are parented.
     @Test
-    func testMaterialIndicesFollowTheModelEntitiesUnderTheRoot() async throws {
+    func testMaterialIndicesFollowTheModelEntitiesOfTheirDocumentUnderTheRoot() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let allRendered = Set(TestSupport.materialIndexes(in: entity))
+        let avatar = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let allRendered = Set(TestSupport.materialIndexes(in: avatar))
         #expect(!allRendered.isEmpty)
-        #expect(entity.materialIndices(under: entity) == allRendered)
+        #expect(avatar.materialIndices(under: avatar) == allRendered)
 
         // Seed-san node 1 is "hair_tail", whose mesh draws material 0 alone;
         // node 0 is "hair", whose mesh draws materials 0 and 1.
-        let hairTail = try #require(entity.entity(forNodeAt: 1))
-        #expect(entity.materialIndices(under: hairTail) == [0])
-        let hair = try #require(entity.entity(forNodeAt: 0))
-        #expect(entity.materialIndices(under: hair) == [0, 1])
-    }
+        let hairTail = try #require(avatar.entity(forNodeAt: 1))
+        #expect(avatar.materialIndices(under: hairTail) == [0])
+        let hair = try #require(avatar.entity(forNodeAt: 0))
+        #expect(avatar.materialIndices(under: hair) == [0, 1])
 
-    /// Indices point into one document, so an entity loaded from another one
-    /// never leaks its own into the answer, however the graphs are parented.
-    @Test
-    func testEntitiesOfAnotherDocumentAreNotCounted() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let avatar = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let attached = try await TestSupport.loadEntity(.simpleTexture)
-        let avatarMaterials = avatar.materialIndices(under: avatar)
         #expect(attached.materialIndices(under: attached) == [0])
-
         let head = try #require(avatar.entity(forNodeAt: 2))
         head.addChild(attached)
         #expect(avatar.materialIndices(under: attached).isEmpty)
         #expect(avatar.materialIndices(under: head) == [2, 3, 4])
-        #expect(avatar.materialIndices(under: avatar) == avatarMaterials)
+        #expect(avatar.materialIndices(under: avatar) == allRendered)
         // The attached document answers for itself, wherever it hangs.
         #expect(attached.materialIndices(under: attached) == [0])
     }

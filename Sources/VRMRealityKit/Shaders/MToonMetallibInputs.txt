@@ -3,7 +3,7 @@ flags=-Wall -Wextra -Werror
 target=macosx|macos-|-mmacosx-version-min=12.0|MToon-macos.metallib
 target=iphoneos|ios-|-mios-version-min=15.0|MToon-ios.metallib
 target=iphonesimulator|ios-|-miphonesimulator-version-min=15.0|MToon-iossim.metallib
-9e46cfb871a2ea6c223bb08f345b3d8b4bd328f0992afb781b7fe345943fae1a  Sources/VRMRealityKit/Shaders/MToonCore.h
-d77484a41edcdffce0bb21e917bf3d46084b7124ca424937e4cff83bba511999  Sources/VRMRealityKit/Shaders/MToonRealityKit.h
-3d6d81c7ea5a94388c67cffc311aba1d7d46e8489f1f26234524b79400424e86  Sources/VRMRealityKit/Shaders/MToon.metal
-17ee82507eb43594283c25f6d6622f0634d9323ef83f5b4712ff9f112efe3b57  scripts/build-mtoon-metallibs.sh
+79149de5dcc2f6f80f9a8cff2fe963e684a4632b4b56ba4e6f83e3824311f9af  Sources/VRMRealityKit/Shaders/MToonCore.h
+9d7c0fb18f6c2512eb2d3ea407e87be9e9dbdea2f860ef4b18f60657a1107ada  Sources/VRMRealityKit/Shaders/MToonRealityKit.h
+eec8df6dfc3a5957769da2656249b1ac26dd2a80f7a16866217e36d67859dc5a  Sources/VRMRealityKit/Shaders/MToon.metal
+fadf31f62e68dd9e8cdbed14ac73cd51bccada9769e65ce9a9f341984b4672ed  scripts/build-mtoon-metallibs.sh

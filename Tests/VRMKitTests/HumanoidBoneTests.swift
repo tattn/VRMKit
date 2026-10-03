@@ -85,14 +85,4 @@ struct HumanoidBoneTests {
         let vrm1 = try VRM1(data: extraBone)
         #expect(vrm1.humanoid.humanBones[.hips] != nil)
     }
-
-    /// The same three bones of a VRM 1.0 model, read straight off the rig.
-    @Test
-    func testAVRM1ModelResolvesItsThumbFromItsOwnProperties() throws {
-        let vrm1 = try VRM1(data: VRMSampleAsset.seedSan.data)
-
-        #expect(vrm1.nodeIndex(of: .leftThumbMetacarpal) == vrm1.humanoid.humanBones[.leftThumbMetacarpal]?.node)
-        #expect(vrm1.nodeIndex(of: .leftThumbProximal) == vrm1.humanoid.humanBones[.leftThumbProximal]?.node)
-        #expect(vrm1.nodeIndex(of: .leftThumbDistal) == vrm1.humanoid.humanBones[.leftThumbDistal]?.node)
-    }
 }

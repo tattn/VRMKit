@@ -3,7 +3,7 @@
 <h5 align="center">VRM loader and VRM renderer</h5>
 
 <div align="center">
-  <a href="https://app.bitrise.io/app/efaa4b22f111455d">
+  <a href="https://github.com/tattn/VRMKit/actions/workflows/ci.yml">
     <img src="https://github.com/tattn/VRMKit/actions/workflows/ci.yml/badge.svg" />
   </a>
   <a href="./LICENSE">
@@ -41,7 +41,7 @@ For "VRM", please refer to [this page](https://dwango.github.io/en/vrm/).
 ## Swift Package Manager
 
 ```swift
-.package(url: "https://github.com/tattn/VRMKit.git", from: "0.9.0")
+.package(url: "https://github.com/tattn/VRMKit.git", from: "0.11.0")
 ```
 
 For SceneKit rendering, use [0.10.0](https://github.com/tattn/VRMKit/releases/tag/0.10.0).
@@ -214,12 +214,12 @@ entity.updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setUserParam
 
 A blended material also carries a `renderQueue`, the Unity-scale draw order that VRM 0.x's `renderQueue` and MToon's `renderQueueOffsetNumber` express; `context.renderQueue(alphaMode:transparentWithZWrite:offset:)` derives it. RealityKit orders the blended parts of one model entity by distance, which flips parts an author stacked on purpose as the view moves, so a mesh whose blended materials sit at different queues draws them from model entities of their own, sorted in queue order.
 
-A pass can be built hidden and shown later with `entity.setPassEnabled(_:named:)`, or for part of a model by overriding it for the materials under a node. Releasing the override puts back what it replaced.
+A pass can be built hidden and shown later with `setPassEnabled`, for the whole model or for the materials under a node. `resetPassEnabled` puts back what the shader built.
 
 ```swift
 let selection = entity.materialIndices(under: selectedNode)
-entity.overridePassEnabled(true, named: "highlight", forMaterials: selection)
-entity.releasePassEnabledOverride(named: "highlight", forMaterials: selection)
+entity.setPassEnabled(true, named: "highlight", forMaterials: selection)
+entity.resetPassEnabled(named: "highlight", forMaterials: selection)
 ```
 
 A pass whose geometry modifier moves vertices outside the mesh's bounds sets `applyBoundsBudget` to receive the room the loader widened the culling bounds by.
@@ -310,6 +310,18 @@ let stillThere = result.newIndex(of: node)   // nil for a node the prune dropped
 `addVRM1SpringBone` and `addVRM0SpringBone` give merged content its motion. A `VRM1Spring` lists the joints a spring runs down, each below the one before it and each with its own parameters, while a `VRM0SpringBoneGroup` names the nodes a swing starts at and swings everything below them. A spring is checked against what `VRMC_springBone` says one is. Colliders are not authored here.
 
 A merged animation needs no writing: `append` rebases the source's animations, and `VRMEntity` plays them through the same `animations` and `playAnimation(at:)` any glTF scene has.
+
+A `.vrma` is written the same way: `addRestSkeleton(of:)` copies a model's humanoid as the clip's skeleton, `addAnimation(name:tracks:)` adds keyframes, and `setVRMAnimationHumanoid` and `setVRMAnimationExpressions` declare them as `VRMC_vrm_animation`.
+
+```swift
+var document = GLTFEditableDocument()
+let skeleton = try document.addRestSkeleton(of: vrm)
+try document.setVRMAnimationHumanoid(skeleton.bones)
+try document.addAnimation(name: "wave", tracks: [
+    GLTFAnimationTrack(node: skeleton.bones[.rightUpperArm]!, times: [0, 1], values: .rotation([rest, raised])),
+])
+let vrma = try document.serialize()
+```
 
 `GLTFEditableDocument()` starts an empty document and `addMesh` fills it from vertex data, so a plate, a prop or a test fixture can be built without laying out accessors, buffer views and the GLB container by hand. A mesh given no normals is flat shaded.
 

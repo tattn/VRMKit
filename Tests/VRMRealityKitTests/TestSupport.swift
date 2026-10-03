@@ -359,4 +359,17 @@ extension MaterialInspectingLoader {
         try inspector.sampler(withTextureIndex: index)
     }
 }
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+@MainActor
+extension GLTFEntity {
+    /// The MToon parameter rows a material renders with, or nil when it does not render as MToon.
+    func mtoonParameters(forMaterialIndex index: Int) -> MToonMaterialParameters? {
+        mtoonState(forMaterialIndex: index)?.parameters
+    }
+
+    func mtoonState(forMaterialIndex index: Int) -> MToonAnimatableMaterialState? {
+        materialState(MToonAnimatableMaterialState.self, ofMaterial: index)
+    }
+}
 #endif

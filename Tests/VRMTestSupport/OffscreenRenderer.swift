@@ -1,31 +1,32 @@
 #if canImport(RealityKit)
 import CoreGraphics
 import Foundation
+import ImageIO
 import Metal
 import RealityKit
 import simd
-@testable import VRMRealityKit
+import UniformTypeIdentifiers
 
 /// Renders an entity into a Metal texture, so a test can assert on what
 /// RealityKit actually draws rather than on the parameters handed to it.
 @MainActor
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-enum OffscreenRenderer {
+public enum OffscreenRenderer {
     /// Whether this machine can render at all. A test environment without a
     /// Metal device skips the rendering tests instead of failing them.
-    static var isAvailable: Bool { MTLCreateSystemDefaultDevice() != nil }
+    public static var isAvailable: Bool { MTLCreateSystemDefaultDevice() != nil }
 
     /// Renders `entity` head-on through an orthographic camera framing
     /// x, y in [-1, 1], and returns the pixels as `[row][column]` RGB, row 0 at
     /// the top of the image.
-    static func render(_ entity: Entity, size: Int) throws -> [[SIMD3<Float>]] {
+    public static func render(_ entity: Entity, size: Int) throws -> [[SIMD3<Float>]] {
         try render(entity, width: size, height: size)
     }
 
     /// Renders through a perspective camera `distance` in front of the origin.
     /// An orthographic projection shrinks nothing with depth, so it cannot tell
     /// a world-space size from a screen-relative one.
-    static func renderPerspective(_ entity: Entity,
+    public static func renderPerspective(_ entity: Entity,
                                   size: Int,
                                   distance: Float,
                                   fieldOfViewInDegrees: Float = 60) throws -> [[SIMD3<Float>]] {
@@ -39,7 +40,7 @@ enum OffscreenRenderer {
     /// Renders into a `width` x `height` target. The camera frames y in [-1, 1]
     /// whatever the aspect ratio, so a wider target sees more of x rather than
     /// less of y.
-    static func render(_ entity: Entity, width: Int, height: Int) throws -> [[SIMD3<Float>]] {
+    public static func render(_ entity: Entity, width: Int, height: Int) throws -> [[SIMD3<Float>]] {
         // The vertical scale is the half-height of the framed area.
         var camera = OrthographicCameraComponent()
         camera.near = 0.1
@@ -106,7 +107,7 @@ enum OffscreenRenderer {
         }
     }
 
-    enum RenderError: Error {
+    public enum RenderError: Error {
         case noMetalDevice
         case timedOut
         case encodingFailed
@@ -114,7 +115,7 @@ enum OffscreenRenderer {
 
     /// A `size` x `size` PNG whose texel (row, column) carries a colour unique to
     /// it, so a rendered pixel names the texel it sampled.
-    static func makeProbeTexturePNG(size: Int) throws -> Data {
+    public static func makeProbeTexturePNG(size: Int) throws -> Data {
         let step = 256 / size
         var bytes = [UInt8](repeating: 255, count: size * size * 4)
         for row in 0..<size {
@@ -139,7 +140,13 @@ enum OffscreenRenderer {
                                   intent: .defaultIntent) else {
             throw RenderError.encodingFailed
         }
-        return try GLTFEntity.encode(image, as: .png)
+        let encoded = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(encoded, UTType.png.identifier as CFString, 1, nil) else {
+            throw RenderError.encodingFailed
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { throw RenderError.encodingFailed }
+        return encoded as Data
     }
 }
 #endif

@@ -126,18 +126,6 @@ struct GLTFSampleAssetRenderingTests {
         #expect(orthographic.scale.isApproximatelyEqual(to: 1))
     }
 
-    /// A loaded animated model sits in its rest pose until something plays an animation.
-    /// Playback itself is covered by GLTFAnimationPlaybackTests.
-    @Test
-    func testAnimatedSamplesRenderTheirRestPose() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
-
-        let node = try #require(entity.entity(forNodeAt: 0))
-        #expect(node.transform.rotation.vector.isApproximatelyEqual(to: SIMD4<Float>(0, 0, 0, 1)))
-        #expect(entity.gltf.animations.isEmpty == false)
-    }
-
     @Test
     func testAnimatedMorphCubeKeepsItsMorphBindings() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

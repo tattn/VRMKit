@@ -20,21 +20,17 @@ struct VRMEntityTests {
         #expect(entity.document === entity.vrm.document)
         #expect(!entity.availableExpressions.isEmpty)
         #expect(entity.humanoid.node(for: .head) != nil)
-        #expect(try loader.loadThumbnail().width > 0)
-    }
+        #expect(try entity.vrm.thumbnail.width > 0)
 
-    /// A VRM 1.0 model states its presets under the names 1.0 spells them with,
-    /// unlike a 0.x one, which names its groups whatever it likes.
-    @Test
-    func testAvailableExpressionsCarryTheNamesTheModelStates() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-
-        let expressions = entity.availableExpressions
-        #expect(expressions.contains(ExpressionInfo(key: .preset(.happy), name: "happy")))
-        for expression in expressions {
-            guard let preset = expression.preset else { continue }
-            #expect(expression.name == preset.rawValue)
+        // A VRM 1.0 model states its presets under the names 1.0 spells them with,
+        // unlike a 0.x one, which names its groups whatever it likes.
+        if asset == .seedSan {
+            let expressions = entity.availableExpressions
+            #expect(expressions.contains(ExpressionInfo(key: .preset(.happy), name: "happy")))
+            for expression in expressions {
+                guard let preset = expression.preset else { continue }
+                #expect(expression.name == preset.rawValue)
+            }
         }
     }
 

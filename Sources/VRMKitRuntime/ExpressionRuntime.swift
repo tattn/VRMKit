@@ -193,7 +193,7 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
     /// The key a clip is actually stored under. An expression named after a
     /// preset is that preset, which is how VRM 0.x models predating the presets
     /// name theirs.
-    package func canonicalKey(for key: ExpressionKey) -> ExpressionKey? {
+    func canonicalKey(for key: ExpressionKey) -> ExpressionKey? {
         clips.canonicalKey(for: key)
     }
 

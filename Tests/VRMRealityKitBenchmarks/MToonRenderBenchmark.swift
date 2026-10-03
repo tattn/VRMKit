@@ -4,6 +4,7 @@ import Metal
 import RealityKit
 import Testing
 import VRMKit
+import VRMTestSupport
 @testable import VRMRealityKit
 
 // visionOS has no `CustomMaterial`, so MToon falls back to Unlit there and there is
@@ -30,9 +31,10 @@ struct MToonRenderBenchmark {
     @Test
     func benchmarkSeedSan() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data).loadEntity()
         // A model that fell back to Unlit would benchmark everything but MToon.
-        #expect(TestSupport.hasCustomMaterial(in: entity), TestSupport.expectedCustomMaterialMessage)
+        #expect(entity.modelEntitiesInHierarchy.contains { $0.model?.materials.contains { $0 is CustomMaterial } == true },
+                "Expected MToon to load a CustomMaterial. Run scripts/build-mtoon-metallibs.sh.")
         entity.isAutomaticUpdateEnabled = false
 
         for (name, width, height) in Self.resolutions {

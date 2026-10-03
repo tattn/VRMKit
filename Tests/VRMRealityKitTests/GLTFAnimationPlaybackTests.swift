@@ -22,8 +22,6 @@ struct GLTFAnimationPlaybackTests {
         #expect(animations[0].index == 0)
         #expect(animations[0].name == nil)
         #expect(animations[0].duration.isApproximatelyEqual(to: 1.0))
-        // Unnamed animations are only addressable by index.
-        #expect(entity.animations(named: "walk").isEmpty)
     }
 
     /// A controller outlives its playback whenever the caller keeps it, so it
@@ -53,6 +51,8 @@ struct GLTFAnimationPlaybackTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.loadEntity(GLTFSampleAsset.animatedTriangle)
         let node = try #require(entity.entity(forNodeAt: 0))
+        // A loaded animated model sits in its rest pose until something plays an animation.
+        #expect(node.transform.rotation.vector.isApproximatelyEqual(to: SIMD4<Float>(0, 0, 0, 1)))
 
         let controller = try entity.playAnimation(at: 0)
         // Keyframe 0.25 is exactly a 90° rotation around +z.

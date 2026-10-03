@@ -47,6 +47,12 @@ struct VRMLookAtTests {
 
         #expect(abs(Self.turn(of: leftEye, from: restLeft) - 5) < 0.05)
         #expect(abs(Self.turn(of: rightEye, from: restRight) - 5) < 0.05)
+        // The gaze follows the target as the model moves, which is what an update is
+        // for: turning the model onto the target leaves the eyes nothing to make up.
+        entity.orientation = simd_quatf(angle: 15 * .pi / 180, axis: SIMD3(0, 1, 0))
+        entity.update(deltaTime: 1.0 / 60.0)
+        #expect(Self.turn(of: leftEye, from: restLeft) < 0.05)
+
         // Half the gaze, half the turn: the curve this model states is a straight line.
         entity.lookAtTarget = .angles(yaw: 7.5, pitch: 0)
         #expect(abs(Self.turn(of: leftEye, from: restLeft) - 2.5) < 0.05)
@@ -77,27 +83,6 @@ struct VRMLookAtTests {
 
         entity.lookAtTarget = nil
         #expect(entity.expression(for: .preset(.lookDown)) == 0)
-    }
-
-    /// The gaze follows the target as the model moves, which is what an update is for.
-    @Test
-    func testTheGazeFollowsAsTheModelTurns() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
-        let leftEye = try #require(entity.humanoid.node(for: .leftEye))
-        let rest = leftEye.orientation
-
-        entity.lookAtTarget = .position(try Self.target(yaw: 15,
-                                                        from: entity,
-                                                        offset: SIMD3(0, 0.06, 0)))
-        let aimed = Self.turn(of: leftEye, from: rest)
-
-        // Turning the model onto the target leaves the eyes nothing to make up.
-        entity.orientation = simd_quatf(angle: 15 * .pi / 180, axis: SIMD3(0, 1, 0))
-        entity.update(deltaTime: 1.0 / 60.0)
-
-        #expect(abs(aimed - 5) < 0.05)
-        #expect(Self.turn(of: leftEye, from: rest) < 0.05)
     }
 }
 #endif

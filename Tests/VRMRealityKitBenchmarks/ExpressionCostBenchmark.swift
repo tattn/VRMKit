@@ -4,6 +4,7 @@ import RealityKit
 import Testing
 import VRMKit
 import VRMKitRuntime
+import VRMTestSupport
 @testable import VRMRealityKit
 
 /// What driving expressions costs per frame, for an app that hands the model a
@@ -37,7 +38,7 @@ struct ExpressionCostBenchmark {
     @Test
     func inspectExpressions() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data).loadEntity()
         let available = entity.availableExpressions
         print("BENCH seedSan expressions: \(available.count)")
         print("BENCH   presets: \(available.filter(\.key.isPreset).count)"
@@ -48,7 +49,7 @@ struct ExpressionCostBenchmark {
     @Test
     func benchmarkPerFrameWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data).loadEntity()
         entity.isAutomaticUpdateEnabled = false
 
         // Everything the model offers, all of which moves every frame.

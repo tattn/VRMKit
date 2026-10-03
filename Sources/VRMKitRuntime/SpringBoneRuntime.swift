@@ -3,7 +3,7 @@ import VRMKit
 
 package struct SpringBoneCollider {
     package let head: SIMD3<Float>
-    package let tail: SIMD3<Float>?
+    let tail: SIMD3<Float>?
     package let radius: Float
 
     package init(head: SIMD3<Float>, tail: SIMD3<Float>?, radius: Float) {
@@ -73,11 +73,11 @@ package enum SpringBoneColliderShape: Equatable {
 /// gives every joint its own, and the two disagree about a missing field, so nothing
 /// is defaulted here.
 package struct SpringBoneJointSetting {
-    package let stiffnessForce: Float
-    package let gravityPower: Float
-    package let gravityDir: SIMD3<Float>
-    package let dragForce: Float
-    package let hitRadius: Float
+    let stiffnessForce: Float
+    let gravityPower: Float
+    let gravityDir: SIMD3<Float>
+    let dragForce: Float
+    let hitRadius: Float
 
     package init(stiffnessForce: Float,
                  gravityPower: Float,
@@ -147,11 +147,11 @@ package struct SpringBoneCenter {
 /// bone the same way.
 package struct SpringBoneJoint {
     /// Where the tail lies at rest, in the joint's own space: where the stiffness pulls it.
-    package let boneAxis: SIMD3<Float>
+    let boneAxis: SIMD3<Float>
 
     /// How far the tail is at rest, in world space as `VRMC_springBone` has it, so a
     /// scaled joint swings the length it is drawn at.
-    package let boneLength: Float
+    let boneLength: Float
 
     private let initialLocalRotation: simd_quatf
     /// Both in the center's space, which is where they stay between frames.
@@ -175,7 +175,7 @@ package struct SpringBoneJoint {
     }
 
     /// The rotation the joint's node was authored with, which a reset puts back.
-    package var restLocalRotation: simd_quatf { initialLocalRotation }
+    var restLocalRotation: simd_quatf { initialLocalRotation }
 
     /// Puts the tail where the joint points when turned to the world `rotation`, carrying
     /// no motion into the next step: at rest, so a teleported model does not read the jump
@@ -240,7 +240,7 @@ package struct SpringBoneJoint {
 }
 
 /// The tail VRM 0.x swings a childless bone around: 7cm on in the direction it points.
-package func springBoneLeafTail(head: SIMD3<Float>, parent: SIMD3<Float>) -> SIMD3<Float> {
+func springBoneLeafTail(head: SIMD3<Float>, parent: SIMD3<Float>) -> SIMD3<Float> {
     let delta = head - parent
     let direction = delta.length_squared > Float.ulpOfOne ? delta.normalized : SIMD3<Float>(0, -1, 0)
     return head + direction * 0.07

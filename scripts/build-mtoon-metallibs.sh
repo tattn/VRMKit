@@ -34,7 +34,7 @@ MSL_STD="${MSL_STD:-metal2.4}"
 COMPILE_FLAGS=(-Wall -Wextra -Werror)
 
 # sdk | -std= prefix | deployment target flag | output metallib.
-# Minimum OS versions match the CustomMaterial availability used by VRMEntityLoader.
+# Below the iOS 18 / macOS 15 that MToonShader requires, so they never constrain it.
 TARGETS=(
     "macosx|macos-|-mmacosx-version-min=12.0|MToon-macos.metallib"
     "iphoneos|ios-|-mios-version-min=15.0|MToon-ios.metallib"

@@ -11,10 +11,10 @@ public enum LookAtTarget: Sendable, Equatable {
     case angles(yaw: Float, pitch: Float)
 }
 
-public extension LookAtTarget {
+extension LookAtTarget {
     /// The gaze a rotation states. VRM states one in its own space, where a gaze at rest
     /// looks along +z, so turning that axis by the rotation is what gives the angles.
-    static func rotation(_ rotation: simd_quatf) -> LookAtTarget {
+    package static func rotation(_ rotation: simd_quatf) -> LookAtTarget {
         let angles = LookAtAxes.vrm.angles(of: rotation * SIMD3<Float>(0, 0, 1))
         return .angles(yaw: angles.x, pitch: angles.y)
     }

@@ -146,11 +146,6 @@ extension GLTFEntity {
         return metadata
     }
 
-    /// The animations carrying `name`. glTF names may repeat, so any number may match.
-    public func animations(named name: String) -> [GLTFAnimation] {
-        animations.filter { $0.name == name }
-    }
-
     /// Starts playing the animation at `index` and returns its controller.
     ///
     /// Multiple animations can run at once; channels targeting the same node or morph

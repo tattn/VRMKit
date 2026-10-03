@@ -84,27 +84,6 @@ struct VRMUpdateSystemTests {
         #expect(TestSupport.jointRotations(in: vrmEntity) != before)
     }
 
-    /// The fine-grained invalidation solves the same pose the whole-model one
-    /// does; it only skips the joints nobody moved.
-    @Test
-    func testFineGrainedInvalidateMatchesAFullReSolve() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        func posedRotations(invalidate: (VRMEntity, Entity) -> Void) async throws -> [SIMD4<Float>] {
-            let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
-            vrmEntity.resetSpringBones()
-            vrmEntity.update(deltaTime: 0)
-            let neck = try #require(vrmEntity.humanoid.node(for: .neck))
-            neck.transform.rotation *= simd_quatf(angle: 0.4, axis: SIMD3<Float>(0, 1, 0))
-            invalidate(vrmEntity, neck)
-            vrmEntity.update(deltaTime: 0)
-            return TestSupport.jointRotations(in: vrmEntity)
-        }
-
-        let fine = try await posedRotations { entity, neck in entity.invalidateSkinPose(for: [neck]) }
-        let full = try await posedRotations { entity, _ in entity.invalidateSkinPose() }
-        #expect(fine == full)
-    }
-
     /// Moving the model does not turn a fine-grained invalidation back into a whole
     /// re-solve: a joint posed without being named stays out of the skin, exactly as
     /// it does with the model held still.
@@ -134,18 +113,21 @@ struct VRMUpdateSystemTests {
         #expect(TestSupport.jointRotations(in: vrmEntity) != before)
     }
 
-    /// Solving only the moved rows while the model moves lands the same pose a whole
-    /// re-solve does.
-    @Test
-    func testFineGrainedInvalidateMatchesAFullReSolveWhileTheModelMoves() async throws {
+    /// The fine-grained invalidation solves the same pose the whole-model one
+    /// does, with the model held still or moving; it only skips the joints
+    /// nobody moved.
+    @Test(arguments: [false, true])
+    func testFineGrainedInvalidateMatchesAFullReSolve(whileTheModelMoves moving: Bool) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         func posedRotations(invalidate: (VRMEntity, Entity) -> Void) async throws -> [SIMD4<Float>] {
             let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
             vrmEntity.resetSpringBones()
             vrmEntity.update(deltaTime: 0)
             let neck = try #require(vrmEntity.humanoid.node(for: .neck))
-            for step in 1...3 {
-                vrmEntity.transform.translation = SIMD3<Float>(Float(step) * 0.1, 0, 0)
+            for step in 1...(moving ? 3 : 1) {
+                if moving {
+                    vrmEntity.transform.translation = SIMD3<Float>(Float(step) * 0.1, 0, 0)
+                }
                 neck.transform.rotation *= simd_quatf(angle: 0.1, axis: SIMD3<Float>(0, 1, 0))
                 invalidate(vrmEntity, neck)
                 vrmEntity.update(deltaTime: 0)

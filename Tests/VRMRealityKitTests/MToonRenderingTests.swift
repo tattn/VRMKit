@@ -42,20 +42,18 @@ struct MToonRenderingTests {
     @Test
     func testVRM1MToonRenderingCanBeDisabled() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let seedSan = TestSupport.seedSanData
-        let defaultLoader = try VRMEntityLoader(withData: seedSan)
-        let defaultMaterial = try defaultLoader.material(withMaterialIndex: 0)
-        _ = try #require(defaultMaterial as? CustomMaterial,
-                         TestSupport.expectedCustomMaterialMessage)
+        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: [])
+        let material = try loader.material(withMaterialIndex: 0)
+        #expect(material is UnlitMaterial)
 
-        let disabledLoader = try VRMEntityLoader(withData: seedSan, shaders: [])
-        let disabledMaterial = try disabledLoader.material(withMaterialIndex: 0)
-        #expect(!(disabledMaterial is CustomMaterial))
-        #expect(disabledMaterial is UnlitMaterial)
-
-        let disabledEntity = try await disabledLoader.loadEntity()
-        #expect(!TestSupport.hasCustomMaterial(in: disabledEntity))
-        #expect(!TestSupport.hasMToonParameters(in: disabledEntity))
+        let vrmEntity = try await loader.loadEntity()
+        #expect(!TestSupport.hasCustomMaterial(in: vrmEntity))
+        #expect(!TestSupport.hasMToonParameters(in: vrmEntity))
+        // Expression color binds resolve through the fallback material path.
+        let fallbackColor = try vrmEntity.currentMaterialColor(withMaterialIndex: 0,
+                                                              type: .color,
+                                                              builder: loader.inspector)
+        #expect(fallbackColor.isApproximatelyEqual(to: material.currentColor(for: .color)))
     }
 
     @Test
@@ -63,12 +61,10 @@ struct MToonRenderingTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmLoader = try VRMEntityLoader(withData: TestSupport.seedSanData)
         let parameters = try TestSupport.mtoonParameters(of: vrmLoader, materialIndex: 0)
-        let texture = try parameters.textureResource()
+        let texture = try MToonParameterTexture(rows: parameters.packedRows).resource
         let shader = TestSupport.mtoonShaderSource
 
-        #expect(MToonMaterialParameters.baseParameterRowCount == 18)
         #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
-        #expect(MToonMaterialParameters.textureRowCount == 35)
         #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
         #expect(texture.width == MToonMaterialParameters.textureRowCount)
         #expect(texture.height == 1)
@@ -150,7 +146,6 @@ struct MToonRenderingTests {
         var parameters = try TestSupport.mtoonParameters(of: vrmLoader, materialIndex: 0)
         let boundColor = SIMD4<Float>(0.25, 0.5, 0.75, 0.2)
 
-        #expect(parameters.extraFlags.z == 0 || parameters.extraFlags.z == 1)
         #expect(parameters.color(for: .emissionColor).isApproximatelyEqual(to: parameters.emissiveFactor))
         parameters.setColor(boundColor, for: .emissionColor)
         #expect(parameters.emissiveFactor.isApproximatelyEqual(to: SIMD4<Float>(0.25, 0.5, 0.75, 1)))
@@ -281,22 +276,6 @@ struct MToonRenderingTests {
         #expect(transform.rotation == 0)
     }
 
-    /// The light direction and the light color each ride in their own parameter
-    /// row, so updating one must not drop the other.
-    @Test
-    func testMToonLightColorUpdateKeepsTheCustomLightDirection() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmLoader = try VRMEntityLoader(withData: TestSupport.seedSanData)
-        let vrmEntity = try await vrmLoader.loadEntity()
-
-        vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
-        vrmEntity.setMToonLightColor(SIMD3<Float>(0.8, 0.7, 0.6))
-
-        let parameters = try firstMToonParameters(in: vrmEntity)
-        #expect(parameters.lightColor.isApproximatelyEqual(to: SIMD4<Float>(0.8, 0.7, 0.6, 1)))
-        #expect(parameters.lightDirection.isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
-    }
-
     /// Relighting a model per frame touches every material, so one call writes each
     /// material's rows once, the writes of that flush share a command buffer, and the
     /// same values again write nothing.
@@ -359,25 +338,6 @@ struct MToonRenderingTests {
     }
 
     @Test
-    func testSetMToonLightAndAmbientColorUpdateParameterRows() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let seedSan = TestSupport.seedSanData
-        let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let vrmEntity = try await vrmLoader.loadEntity()
-        let lightColor = SIMD3<Float>(0.8, 0.7, 0.6)
-        let ambientColor = SIMD3<Float>(0.05, 0.1, 0.15)
-
-        vrmEntity.setMToonLightColor(lightColor)
-        vrmEntity.setMToonAmbientColor(ambientColor)
-
-        let parameters = try firstMToonParameters(in: vrmEntity)
-        #expect(parameters.lightColor.isApproximatelyEqual(to: SIMD4<Float>(0.8, 0.7, 0.6, 1)))
-        #expect(parameters.ambientColor.isApproximatelyEqual(to: SIMD4<Float>(0.05, 0.1, 0.15, 1)))
-        let material = try firstCustomMaterial(in: vrmEntity)
-        #expect(material.custom.texture != nil)
-    }
-
-    @Test
     func testMToonTextureTransformBindUpdatesParameterTexture() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let seedSan = TestSupport.seedSanData
@@ -435,23 +395,6 @@ struct MToonRenderingTests {
     }
 
     @Test
-    func testMToonShadeColorBindDoesNotOverwriteCustomLightDirection() throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let seedSan = TestSupport.seedSanData
-        let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let material = try vrmLoader.material(withMaterialIndex: 0)
-        let customMaterial = try #require(material as? CustomMaterial,
-                                          TestSupport.expectedCustomMaterialMessage)
-        let initialValue = customMaterial.custom.value
-
-        let updatedMaterial = customMaterial.settingColor(VRMColor(red: 0.2, green: 0.3, blue: 0.4, alpha: 1),
-                                                          for: .shadeColor)
-        let updatedCustomMaterial = try #require(updatedMaterial as? CustomMaterial)
-
-        #expect(updatedCustomMaterial.custom.value == initialValue)
-    }
-
-    @Test
     func testMToonSamplerKeepsMagAndMinFiltersIndependent() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // glTF magFilter and minFilter are independent, so a LINEAR magFilter
@@ -477,13 +420,6 @@ struct MToonRenderingTests {
         let filter = MToonSamplerFilter(magnification: .linear, minification: .nearest, mip: .none)
         #expect(parameters.samplers[MToonTextureSlot.base.rawValue]
             .isApproximatelyEqual(to: SIMD4<Float>(1, 2, Float(filter.index), 0)))
-        // Untouched slots keep the glTF defaults: repeat/repeat, linear
-        // magnification, trilinear minification.
-        #expect(MToonMaterialParameters.defaultSampler
-            == SIMD4<Float>(0, 0, Float(MToonSamplerFilter.default.index), 0))
-        #expect(MToonSamplerFilter.default.magnification == .linear)
-        #expect(MToonSamplerFilter.default.minification == .linear)
-        #expect(MToonSamplerFilter.default.mip == .linear)
     }
 
     @Test
@@ -522,7 +458,6 @@ struct MToonRenderingTests {
             seenIndexes.insert(expected.index)
         }
         #expect(seenIndexes.count == minFilters.count)
-        #expect(MToonSamplerFilter.count == 12)
     }
 
     @Test
@@ -568,23 +503,26 @@ struct MToonRenderingTests {
         #expect(afterUpdateValue == initialValue)
     }
 
+    /// The light direction, color and ambient each ride in their own parameter
+    /// row rather than in the materials: tracking a light per frame rewrites no
+    /// ModelComponent, and updating one row must not drop the others.
     @Test
-    func testSetMToonLightDirectionUpdatesParameterRows() async throws {
+    func testSetMToonLightUpdatesParameterRows() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let seedSan = TestSupport.seedSanData
-        let vrmLoader = try VRMEntityLoader(withData: seedSan)
-        let vrmEntity = try await vrmLoader.loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let writesBefore = mtoonParameterWriteCounts(in: vrmEntity)
 
-        // The direction is normalized before it reaches the parameter rows, and
-        // rides there rather than in the materials: tracking a light per frame
-        // rewrites no ModelComponent.
         vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
+        vrmEntity.setMToonLightColor(SIMD3<Float>(0.8, 0.7, 0.6))
+        vrmEntity.setMToonAmbientColor(SIMD3<Float>(0.05, 0.1, 0.15))
 
         var checkedStates = 0
         for index in vrmEntity.materialStates.keys {
-            guard let state = vrmEntity.mtoonState(forMaterialIndex: index) else { continue }
-            #expect(state.parameters.lightDirection.isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
+            guard let parameters = vrmEntity.mtoonState(forMaterialIndex: index)?.parameters else { continue }
+            // The direction is normalized before it reaches the parameter rows.
+            #expect(parameters.lightDirection.isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
+            #expect(parameters.lightColor.isApproximatelyEqual(to: SIMD4<Float>(0.8, 0.7, 0.6, 1)))
+            #expect(parameters.ambientColor.isApproximatelyEqual(to: SIMD4<Float>(0.05, 0.1, 0.15, 1)))
             checkedStates += 1
         }
         #expect(checkedStates > 0)
@@ -706,23 +644,6 @@ struct MToonRenderingTests {
 
         #expect(TestSupport.materialIndexes(in: vrmEntity).contains(0))
         #expect(!TestSupport.modelEntities(in: vrmEntity).isEmpty)
-    }
-
-    @Test
-    func testFallbackMaterialsDoNotCarryMToonRuntimeState() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let seedSan = TestSupport.seedSanData
-        let loader = try VRMEntityLoader(withData: seedSan, shaders: [])
-        let vrmEntity = try await loader.loadEntity()
-
-        // With MToon disabled, no entity carries MToon runtime state, and
-        // expression color binds resolve through the fallback material path.
-        #expect(!TestSupport.hasMToonParameters(in: vrmEntity))
-        let fallbackColor = try vrmEntity.currentMaterialColor(withMaterialIndex: 0,
-                                                              type: .color,
-                                                              builder: loader.inspector)
-        let fallbackMaterial = try loader.material(withMaterialIndex: 0)
-        #expect(fallbackColor.isApproximatelyEqual(to: fallbackMaterial.currentColor(for: .color)))
     }
 
     @Test

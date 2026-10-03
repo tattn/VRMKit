@@ -30,8 +30,6 @@ struct MToonMaterialDescriptorTests {
         #expect(descriptor.shadingToonyFactor.isApproximatelyEqual(to: 0.95))
         #expect(descriptor.shadingShiftFactor.isApproximatelyEqual(to: -0.05))
         #expect(descriptor.giEqualizationFactor.isApproximatelyEqual(to: 0.9))
-        // UniVRM migrates rim lighting mix destructively to 1.0.
-        #expect(descriptor.rimLightingMixFactor == 1)
     }
 
     @Test

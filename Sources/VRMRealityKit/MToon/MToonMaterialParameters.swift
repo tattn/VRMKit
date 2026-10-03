@@ -7,7 +7,7 @@ import VRMKit
 import VRMKitRuntime
 
 /// Rows of the MToon parameter texture, in the order the shader indexes them.
-/// This enum is the single source of truth for the layout: `MToon.metal`
+/// This enum is the single source of truth for the layout: `MToonRealityKit.h`
 /// mirrors it as `mtoonRow*` constants, and a test compares the two.
 enum MToonParameterRow: Int, CaseIterable {
     case baseColor
@@ -72,7 +72,7 @@ struct MToonMaterialParameters {
         outlineColor = mtoon.outlineColorFactor
         emissiveFactor = SIMD4<Float>(mtoon.emissiveFactor, 1)
         // z keeps the rows a faithful copy of the material; the shader has no use
-        // for giEqualizationFactor, since VRMEntity exposes one uniform ambient
+        // for giEqualizationFactor, since GLTFEntity exposes one uniform ambient
         // color rather than a direction dependent term.
         shadeParams = SIMD4<Float>(mtoon.shadingShiftFactor,
                                    mtoon.shadingToonyFactor,
@@ -101,16 +101,6 @@ struct MToonMaterialParameters {
                                   mtoon.emissiveTexture == nil ? 0 : 1,
                                   mtoon.alphaMode.mtoonRawValue)
         normalParameters = SIMD4<Float>(mtoon.normalScale, 0, 0, 0)
-    }
-
-    /// See ``MToonShader/compensatesToneMapping``.
-    var compensatesToneMapping = true
-
-    /// What does not belong in the packed texture: the renderer's tone-mapping
-    /// flag rather than the material's, and the outline budget, which belongs to
-    /// the mesh a pass draws.
-    func customValue(outlineBudget: Float) -> SIMD4<Float> {
-        SIMD4<Float>(compensatesToneMapping ? 1 : 0, 0, 0, outlineBudget)
     }
 
     mutating func setColor(_ color: SIMD4<Float>,
@@ -199,19 +189,6 @@ struct MToonMaterialParameters {
         let rows = MToonParameterRow.allCases.map(value(for:)) + samplers + userRows
         precondition(rows.count == Self.textureRowCount)
         return rows
-    }
-
-    @MainActor
-    func textureResource() throws -> TextureResource {
-        let rows = packedRows
-        let data = rows.withUnsafeBufferPointer { Data(buffer: $0) }
-        let mip = TextureResource.Contents.MipmapLevel.mip(
-            data: data,
-            bytesPerRow: MToonParameterTexture.bytesPerRow
-        )
-        return try TextureResource(dimensions: .dimensions(width: rows.count, height: 1),
-                                   format: .raw(pixelFormat: .rgba32Float),
-                                   contents: .init(mipmapLevels: [mip]))
     }
 }
 
@@ -368,7 +345,7 @@ final class MToonParameterTexture {
 /// The filter half of a sampler parameter row.
 ///
 /// glTF's `magFilter` and `minFilter` are independent, and `minFilter` itself encodes
-/// both the minification texel filter and the mip filter. `MToon.metal` reads ``index``
+/// both the minification texel filter and the mip filter. `MToonRealityKit.h` reads ``index``
 /// and applies all three itself: the 16 constant samplers a Metal entry point allows are
 /// already spent on addressing modes.
 struct MToonSamplerFilter {
@@ -388,7 +365,7 @@ struct MToonSamplerFilter {
     var minification: TexelFilter = .linear
     var mip: MipFilter = .linear
 
-    /// The encoding `mtoonFilteredSample` in `MToon.metal` decodes.
+    /// The encoding `mtoonWrappedSample` in `MToonRealityKit.h` decodes.
     var index: Int {
         (magnification.rawValue * TexelFilter.allCases.count + minification.rawValue)
             * MipFilter.allCases.count + mip.rawValue
@@ -396,8 +373,6 @@ struct MToonSamplerFilter {
 
     /// The glTF default sampler: linear magnification and trilinear minification.
     static let `default` = MToonSamplerFilter()
-
-    static let count = TexelFilter.allCases.count * TexelFilter.allCases.count * MipFilter.allCases.count
 }
 
 extension MToonSamplerFilter.MipFilter {
@@ -412,7 +387,7 @@ extension MToonSamplerFilter.MipFilter {
 }
 
 /// MToon texture slots. The raw value is also the sampler parameter row the
-/// shader reads for this slot (see `mtoonSamplerParameter` in MToon.metal).
+/// shader reads for this slot (see `mtoonSamplerParameter` in MToonRealityKit.h).
 enum MToonTextureSlot: Int, CaseIterable {
     case base
     case shade

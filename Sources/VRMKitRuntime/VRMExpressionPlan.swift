@@ -10,14 +10,14 @@ package struct VRMExpressionPlan {
     package struct Clip {
         package let name: String
         package let preset: ExpressionPreset?
-        package let isBinary: Bool
-        package let binaryRounding: BinaryWeightRounding
-        package let overrideBlink: ExpressionOverrideType
-        package let overrideLookAt: ExpressionOverrideType
-        package let overrideMouth: ExpressionOverrideType
-        package let morphBinds: [MorphBind]
-        package let materialColorBinds: [MaterialColorBind]
-        package let textureTransformBinds: [TextureTransformBind]
+        let isBinary: Bool
+        let binaryRounding: BinaryWeightRounding
+        let overrideBlink: ExpressionOverrideType
+        let overrideLookAt: ExpressionOverrideType
+        let overrideMouth: ExpressionOverrideType
+        let morphBinds: [MorphBind]
+        let materialColorBinds: [MaterialColorBind]
+        let textureTransformBinds: [TextureTransformBind]
     }
 
     /// One morph target the expression drives, weighted 0-1 whichever version wrote it.

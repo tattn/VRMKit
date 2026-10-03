@@ -1043,13 +1043,16 @@ final class GLTFSceneBuilder {
         let scale = Double(limit) / Double(max(image.width, image.height))
         let width = max(1, Int((Double(image.width) * scale).rounded()))
         let height = max(1, Int((Double(image.height) * scale).rounded()))
-        guard let context = CGContext(data: nil,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: 0,
-                                      space: image.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: image.bitmapInfo.rawValue),
+        func context(space: CGColorSpace?, bitmapInfo: UInt32) -> CGContext? {
+            guard let space else { return nil }
+            return CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                             space: space, bitmapInfo: bitmapInfo)
+        }
+        // Core Graphics draws into no non-premultiplied alpha format, which is how a PNG
+        // with alpha decodes, so such an image is redrawn as premultiplied RGBA.
+        guard let context = context(space: image.colorSpace, bitmapInfo: image.bitmapInfo.rawValue)
+                ?? context(space: CGColorSpace(name: CGColorSpace.sRGB),
+                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
               // A failed resize is not worth failing the load over.
               let resized: CGImage = {
                   context.interpolationQuality = .high

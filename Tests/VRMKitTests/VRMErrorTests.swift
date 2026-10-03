@@ -29,22 +29,4 @@ struct VRMErrorTests {
         #expect(error.debugDescription.contains("the buffer view overruns its buffer"))
         #expect(error.debugDescription.contains("VRMErrorTests.swift"))
     }
-
-    /// A model naming no thumbnail says so as itself, not as a mangled load failure.
-    @Test
-    func testAModelWithNoThumbnailSaysSo() throws {
-        let stripped = try VRMSampleAsset.aliciaSolid.rewritingJSON { json in
-            var extensions = json.object("extensions") ?? [:]
-            var vrm = extensions.object("VRM") ?? [:]
-            var meta = vrm.object("meta") ?? [:]
-            meta.removeValue(forKey: "texture")
-            vrm["meta"] = .object(meta)
-            extensions["VRM"] = .object(vrm)
-            json["extensions"] = .object(extensions)
-        }
-        let vrm = try VRM(data: stripped)
-
-        let error = try #require(throws: VRMError.self) { try vrm.thumbnail }
-        #expect(error.kind == .thumbnailNotFound)
-    }
 }

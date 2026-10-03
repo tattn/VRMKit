@@ -30,7 +30,9 @@ struct VRMMetaWritingTests {
     func testAModelWithNoThumbnailIsGivenOne(asset: VRMSampleAsset) throws {
         let image = try thumbnailBytes(of: asset.replacement)
         var document = try GLTFEditableDocument(data: try asset.withoutAThumbnail())
-        #expect(throws: VRMError.self) { try VRM(data: try document.serialize()).thumbnail }
+        // A model naming no thumbnail says so as itself, not as a mangled load failure.
+        let error = try #require(throws: VRMError.self) { try VRM(data: try document.serialize()).thumbnail }
+        #expect(error.kind == .thumbnailNotFound)
 
         try document.setVRMThumbnail(image)
 

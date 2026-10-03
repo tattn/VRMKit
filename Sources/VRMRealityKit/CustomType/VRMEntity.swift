@@ -326,16 +326,9 @@ public final class VRMEntity: GLTFEntity {
                                        offset: SIMD2<Float>,
                                        rotation: Float,
                                        materialIndex: Int) {
-        // A shader animating the UV transform applies it from its own parameters; writing
-        // the material-level transform too would transform the primary UV twice.
-        if mutateAnimatableState(ofMaterial: materialIndex, {
-            $0.setTextureTransform(scale: scale, offset: offset, rotation: rotation)
-        }) {
-            return
-        }
-        mapMaterials(ofMaterial: materialIndex) {
-            $0.settingTextureTransform(scale: scale, offset: offset, rotation: rotation)
-        }
+        applyMaterialValue(ofMaterial: materialIndex,
+                           toState: { $0.setTextureTransform(scale: scale, offset: offset, rotation: rotation) },
+                           toMaterial: { $0.settingTextureTransform(scale: scale, offset: offset, rotation: rotation) })
     }
 
     private func applyBlendShapeWeight(_ weight: Float, targetIndex: Int, on mesh: Entity) {

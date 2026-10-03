@@ -7,7 +7,7 @@ public struct BinaryGLTF: Sendable {
     public let gltf: GLTF
     /// Chunk 0 as it was parsed, kept whole so that what ``GLTF`` does not model survives
     /// a rewrite.
-    package let jsonTree: JSONValue
+    let jsonTree: JSONValue
     /// Chunk 1.
     public let binaryBuffer: Data?
 

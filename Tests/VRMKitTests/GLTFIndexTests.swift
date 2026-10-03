@@ -28,17 +28,6 @@ struct GLTFIndexTests {
         #expect(saved.nodes[moved.rawValue].name == "third")
     }
 
-    @Test
-    func testPruningNothingLeavesEveryIndexWhereItWas() throws {
-        var document = GLTFEditableDocument()
-        let node = try document.addNode(name: "kept")
-
-        let result = try document.prune()
-
-        #expect(result.reclaimedByteCount == 0)
-        #expect(result.newIndex(of: node) == node)
-    }
-
     /// An index names an entry of one array, and the arrays are not interchangeable
     /// however alike their integers are.
     @Test

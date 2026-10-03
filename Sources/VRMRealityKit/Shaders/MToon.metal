@@ -65,7 +65,7 @@ void mtoonSurface(realitykit::surface_parameters params)
     float3 shadeColor = float3(shadeSample.rgb * shadeColorFactor.rgb);
     float3 lightColor = float3(lightColorParameter.rgb);
     // MToon equalizes GI between the raw normal-direction sample and a
-    // direction-independent one. VRMEntity exposes a single uniform ambient
+    // direction-independent one. GLTFEntity exposes a single uniform ambient
     // color, so both samples are that color and the equalization is the identity.
     float3 giColor = float3(giColorParameter.rgb);
 
@@ -94,8 +94,7 @@ void mtoonSurface(realitykit::surface_parameters params)
         if (featureFlags.y > 0.5h) {
             rim *= float3(mtoonSample(textures.clearcoat_roughness(), uv, rimSampler).rgb);
         }
-        float3 rimLighting = realityKitApproximateRimLighting(lightColor, giColor, shading);
-        rim *= mix(float3(1.0), rimLighting, clamp(float(rimParams.z), 0.0, 1.0));
+        rim *= mtoonRimLighting(lightColor, giColor, float(rimParams.z));
         color += rim;
     }
 

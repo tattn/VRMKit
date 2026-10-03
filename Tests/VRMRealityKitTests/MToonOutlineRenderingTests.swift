@@ -14,7 +14,7 @@ import VRMTestSupport
 struct MToonOutlineRenderingTests {
     private static let size = 256
     /// Leaves room around the cube for the outline band to land in.
-    private static let cubeScale: Float = 0.3
+    private nonisolated static let cubeScale: Float = 0.3
     private static let width: Float = 0.06
 
     /// A cube turned 45°, since head-on every normal would point at the camera and
@@ -66,19 +66,24 @@ struct MToonOutlineRenderingTests {
         return silhouetteWidth(outlined) - silhouetteWidth(bare)
     }
 
-    /// A screen-space width is a fraction of the screen, so it must not inherit
-    /// the model-to-world scale: doubling it doubles the cube on screen and
-    /// leaves the outline exactly as thick.
-    @Test
-    func testScreenCoordinateWidthIgnoresEntityScale() async throws {
+    /// Neither width mode inherits the model-to-world scale: a screen-space width is
+    /// a fraction of the screen and a world-space one a distance in meters, so
+    /// doubling the entity leaves the outline exactly as thick. Squashing it moves
+    /// the normals the outline is pushed along, but not the band either.
+    @Test(arguments: [
+        (MToonOutlineWidthMode.screenCoordinates, SIMD3<Float>(repeating: cubeScale * 2)),
+        (.worldCoordinates, SIMD3<Float>(repeating: cubeScale * 2)),
+        (.screenCoordinates, SIMD3<Float>(cubeScale * 2, cubeScale * 0.5, cubeScale))
+    ])
+    func testOutlineWidthIgnoresEntityScale(mode: MToonOutlineWidthMode, scaled: SIMD3<Float>) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
-        let atScale = try await outlineGrowth(mode: .screenCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale))
-        let atDoubleScale = try await outlineGrowth(mode: .screenCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale * 2))
+        let atScale = try await outlineGrowth(mode: mode, scale: SIMD3<Float>(repeating: Self.cubeScale))
+        let atOtherScale = try await outlineGrowth(mode: mode, scale: scaled)
 
         #expect(atScale > 4, "no outline band to measure")
-        #expect(abs(atDoubleScale - atScale) <= 2,
-                "screen-space outline grew the silhouette by \(atScale)px, then \(atDoubleScale)px at twice the scale")
+        #expect(abs(atOtherScale - atScale) <= 2,
+                "\(mode) outline grew the silhouette by \(atScale)px, then \(atOtherScale)px at scale \(scaled)")
     }
 
     /// What separates the two modes: pull the camera back and a screen-space
@@ -114,38 +119,6 @@ struct MToonOutlineRenderingTests {
         // a third of the pixels.
         #expect(worldFar * 2 < worldNear,
                 "world-space outline measured \(worldNear)px near and \(worldFar)px far, expected it to shrink")
-    }
-
-    /// Squashing the model moves the normals the outline is pushed along, but
-    /// not the band: a screen-space width is a distance on screen.
-    @Test
-    func testScreenCoordinateWidthSurvivesNonUniformScale() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
-              TestSupport.isMToonRenderingAvailable else { return }
-        let uniform = try await outlineGrowth(mode: .screenCoordinates,
-                                              scale: SIMD3<Float>(repeating: Self.cubeScale))
-        let squashed = try await outlineGrowth(mode: .screenCoordinates,
-                                               scale: SIMD3<Float>(Self.cubeScale * 2,
-                                                                   Self.cubeScale * 0.5,
-                                                                   Self.cubeScale))
-
-        #expect(uniform > 4, "no outline band to measure")
-        #expect(abs(squashed - uniform) <= 2,
-                "screen-space outline grew the silhouette by \(uniform)px uniformly, \(squashed)px squashed")
-    }
-
-    /// A world-space width is a distance in meters, so it must not inherit the
-    /// entity's scale either.
-    @Test
-    func testWorldCoordinateWidthIgnoresEntityScale() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
-              TestSupport.isMToonRenderingAvailable else { return }
-        let atScale = try await outlineGrowth(mode: .worldCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale))
-        let atDoubleScale = try await outlineGrowth(mode: .worldCoordinates, scale: SIMD3<Float>(repeating: Self.cubeScale * 2))
-
-        #expect(atScale > 4, "no outline band to measure")
-        #expect(abs(atDoubleScale - atScale) <= 2,
-                "world-space outline grew the silhouette by \(atScale)px, then \(atDoubleScale)px at twice the scale")
     }
 
     /// The outline is drawn past the mesh's bounding box, so it needs a culling

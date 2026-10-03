@@ -116,7 +116,12 @@ struct JSONValueTests {
             {"index": 1, "scale": 1, "nested": {"flag": "yes", "names": []}, "values": []}
             """.utf8))
 
-        #expect(throws: DecodingError.self) { try value.decode(Fixture.self) }
+        let error = try #require(throws: DecodingError.self) { try value.decode(Fixture.self) }
+        guard case .typeMismatch(_, let context) = error else {
+            Issue.record("Expected a type mismatch, got \(error)")
+            return
+        }
+        #expect(context.codingPath.map(\.stringValue) == ["nested", "flag"])
     }
 
     /// A whole number is what a glTF index is, and a fraction or a value past

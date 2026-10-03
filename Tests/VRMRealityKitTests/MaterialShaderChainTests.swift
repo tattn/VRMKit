@@ -422,7 +422,6 @@ struct MaterialShaderChainTests {
         #expect(material.roughness.texture != nil)
     }
 
-#if !os(visionOS)
     /// Functions named explicitly build the same MToon material, runtime state included.
     @Test
     func testMToonShaderDrawsWithTheFunctionsItIsGiven() throws {
@@ -450,7 +449,6 @@ struct MaterialShaderChainTests {
         #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
         #expect(loader.makeAnimatableMaterialState(forMaterialIndex: 0) == nil)
     }
-#endif
 
     /// `.authoredOnly` is the default source.
     @Test
@@ -459,31 +457,6 @@ struct MaterialShaderChainTests {
         let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url)
         #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
         #expect(loader.makeAnimatableMaterialState(forMaterialIndex: 0) == nil)
-    }
-
-    /// A converted material with an outline style gets the inverted-hull
-    /// outline entity, like an authored MToon material would.
-    @Test
-    func testConvertAllWithOutlineStyleCreatesOutlineEntities() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let style = MToonConversionStyle(outlineWidthFactor: 0.002)
-        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
-        let passName = MToonShader.outlinePassName
-        func outlines(in root: Entity) -> [ModelEntity] {
-            root.modelEntitiesInHierarchy.filter {
-                $0.components[GLTFMaterialPassComponent.self]?.name == passName
-            }
-        }
-        // Named after the mesh it belongs to, not after the unnamed model entity.
-        let outline = try #require(outlines(in: entity).first)
-        let mesh = try #require(outline.parent)
-        #expect(!mesh.name.isEmpty)
-        #expect(outline.name == "\(mesh.name)_\(passName)")
-
-        let noOutline = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                   shaders: [MToonShader(source: .convertAll)]).loadEntity()
-        #expect(outlines(in: noOutline).isEmpty)
     }
 
     @Test

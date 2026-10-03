@@ -14,13 +14,13 @@ extension GLTF {
             package let sampler: Int
             package let target: Target
             package let extensions: JSONValue?
-            package let extras: JSONValue?
+            let extras: JSONValue?
 
             public struct Target: Codable, Sendable {
                 package let node: Int?
                 package let path: String
                 package let extensions: JSONValue?
-                package let extras: JSONValue?
+                let extras: JSONValue?
 
                 /// The animated property, typed for the runtime. Nil for paths this
                 /// library does not know, such as extension-defined ones.
@@ -43,7 +43,7 @@ extension GLTF {
             package var interpolation: Interpolation { return _interpolation ?? .LINEAR }
             package let output: Int
             package let extensions: JSONValue?
-            package let extras: JSONValue?
+            let extras: JSONValue?
             private enum CodingKeys: String, CodingKey {
                 case input
                 case _interpolation = "interpolation"

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import VRMKit
+@testable import VRMKit
 import VRMTestSupport
 
 @Suite
@@ -57,22 +57,15 @@ struct VRMAnimationTests {
     /// 1.0 is the only released `VRMC_vrm_animation` version; the reference implementation
     /// reads the pre-release 1.0-draft as well, so this does too.
     @Test
-    func testSupportedSpecVersions() {
+    func testSupportedSpecVersions() throws {
         #expect(VRMAnimation.supports(specVersion: "1.0"))
         #expect(VRMAnimation.supports(specVersion: "1.0-draft"))
         #expect(!(VRMAnimation.supports(specVersion: "2.0")))
         #expect(!(VRMAnimation.supports(specVersion: "1.0-beta")))
-    }
 
-    @Test
-    func testADraftSpecVersionStillLoads() throws {
-        let animation = try VRMAnimation(data: VRMASampleFixture.standard(specVersion: "1.0-draft"))
-        #expect(animation.specVersion == "1.0-draft")
-        #expect(animation.humanoid?.humanBones["hips"]?.node == 1)
-    }
-
-    @Test
-    func testUnsupportedSpecVersionIsRejected() {
+        let draft = try VRMAnimation(data: VRMASampleFixture.standard(specVersion: "1.0-draft"))
+        #expect(draft.specVersion == "1.0-draft")
+        #expect(draft.humanoid?.humanBones["hips"]?.node == 1)
         #expect(throws: (any Error).self) { try VRMAnimation(data: VRMASampleFixture.standard(specVersion: "2.0")) }
     }
 

@@ -9,7 +9,8 @@ struct GLTFPruneTests {
     // MARK: - Detached subtrees
 
     /// The file shrinks by what the detached subtree drew, and what the model still
-    /// draws comes back byte for byte through indices that have moved.
+    /// draws comes back byte for byte through indices that have moved. A second prune
+    /// finds nothing, which says the first left the document laid out the way it reads it.
     @Test(arguments: VRMSampleAsset.allCases)
     func testPruneReclaimsWhatADetachedSubtreeDrew(asset: VRMSampleAsset) throws {
         var document = try GLTFEditableDocument(data: asset.data)
@@ -28,6 +29,9 @@ struct GLTFPruneTests {
         #expect((saved.gltf.accessors).count < (before.gltf.accessors).count)
         try expectAWellFormedDocument(saved)
         expectReadableAccessors(saved)
+
+        #expect(try document.prune().reclaimedByteCount == 0)
+        #expect(try document.serialize() == after)
     }
 
     /// Every index the VRM extensions hold moves with the arrays, so the avatar names
@@ -144,45 +148,18 @@ struct GLTFPruneTests {
         expectReadableAccessors(saved)
     }
 
-    /// A document naming no scene draws nothing, and pruning to what it draws would
-    /// take all of it.
-    @Test
-    func testPruneRefusesADocumentThatNamesNoScene() throws {
-        let json = """
-        {"asset": {"version": "2.0"}, "nodes": [{"name": "orphan"}]}
-        """
-        var document = try GLTFEditableDocument(data: Data(json.utf8))
-        let before = try document.serialize()
-
-        #expect(throws: VRMError.self) { try document.prune() }
-
-        #expect(try document.serialize() == before)
-    }
-
-    /// A reference naming an entry the document does not hold would come out of the
-    /// compaction deleted, so pruning refuses such a document.
-    @Test
-    func testPruneRefusesADocumentNamingAnEntryItDoesNotHold() throws {
-        let json = """
-        {"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "scene": 0, \
-        "nodes": [{"name": "root", "children": [7]}]}
-        """
-        var document = try GLTFEditableDocument(data: Data(json.utf8))
-        let before = try document.serialize()
-
-        #expect(throws: VRMError.self) { try document.prune() }
-
-        #expect(try document.serialize() == before)
-    }
-
-    /// A list of references spells "nothing" by leaving the element out, so a negative
-    /// one is no index at all and is refused rather than quietly dropped.
-    @Test
-    func testPruneRefusesANegativeIndexInAListOfReferences() throws {
-        let json = """
-        {"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "scene": 0, \
-        "nodes": [{"name": "root", "children": [-1]}]}
-        """
+    /// A document pruning cannot follow is refused and left as it was: one naming no
+    /// scene draws nothing, so pruning to what it draws would take all of it; an entry
+    /// it does not hold would come out of the compaction deleted, and so would a
+    /// negative index in a list, which spells "nothing" by leaving the element out; and
+    /// an undeclared extension is caught wherever it sits, inside another one included.
+    @Test(arguments: [
+        #"{"asset": {"version": "2.0"}, "nodes": [{"name": "orphan"}]}"#,
+        #"{"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "scene": 0, "nodes": [{"name": "root", "children": [7]}]}"#,
+        #"{"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "scene": 0, "nodes": [{"name": "root", "children": [-1]}]}"#,
+        #"{"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "scene": 0, "nodes": [{"name": "root"}], "extensions": {"VRMC_vrm": {"extensions": {"ACME_x": {"node": 0}}}}}"#
+    ])
+    func testPruneRefusesADocumentItCannotCompact(json: String) throws {
         var document = try GLTFEditableDocument(data: Data(json.utf8))
         let before = try document.serialize()
 
@@ -291,27 +268,6 @@ struct GLTFPruneTests {
         #expect(saved.gltf.animations.first?.channels.count == 1)
         #expect(saved.gltf.nodes.contains { $0.name == "hips" } == true)
         expectReadableAccessors(saved)
-    }
-
-    /// An extension the document does not declare is caught wherever it sits, including
-    /// inside another extension's payload.
-    @Test
-    func testPruneRefusesAnUndeclaredExtensionInsideAnother() throws {
-        let json = """
-        {
-            "asset": {"version": "2.0"},
-            "nodes": [{"name": "root"}],
-            "scenes": [{"nodes": [0]}],
-            "scene": 0,
-            "extensions": {"VRMC_vrm": {"extensions": {"ACME_x": {"node": 0}}}}
-        }
-        """
-        var document = try GLTFEditableDocument(data: Data(json.utf8))
-        let before = try document.serialize()
-
-        #expect(throws: VRMError.self) { try document.prune() }
-
-        #expect(try document.serialize() == before)
     }
 
     // MARK: - What the walk has to keep
@@ -429,26 +385,14 @@ struct GLTFPruneTests {
     @Test
     func testPruneOfADocumentWithoutBufferViewsChangesNothing() throws {
         var document = GLTFEditableDocument()
-        try document.addNode(name: "empty")
+        let node = try document.addNode(name: "empty")
         let before = try document.serialize()
 
-        #expect(try document.prune().reclaimedByteCount == 0)
+        let result = try document.prune()
 
+        #expect(result.reclaimedByteCount == 0)
+        #expect(result.newIndex(of: node) == node)
         #expect(try document.serialize() == before)
-    }
-
-    /// The second call finds nothing, which says the first left the document laid out
-    /// the way it reads it.
-    @Test(arguments: VRMSampleAsset.allCases)
-    func testPruneIsIdempotent(asset: VRMSampleAsset) throws {
-        var document = try GLTFEditableDocument(data: asset.data)
-        try document.detachNode(at: GLTFNodeIndex(try #require(drawingSceneRoot(of: try document.typed()))))
-
-        #expect(try document.prune().reclaimedByteCount > 0)
-        let pruned = try document.serialize()
-
-        #expect(try document.prune().reclaimedByteCount == 0)
-        #expect(try document.serialize() == pruned)
     }
 
     // MARK: - Helpers

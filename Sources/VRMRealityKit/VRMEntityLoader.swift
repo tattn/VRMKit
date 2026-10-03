@@ -1,5 +1,4 @@
 #if canImport(RealityKit)
-import CoreGraphics
 import Foundation
 import RealityKit
 import VRMKit
@@ -63,9 +62,6 @@ public final class VRMEntityLoader {
                   maxTextureDimension: maxTextureDimension)
     }
 
-    /// The chain ``GLTFEntityLoader`` loads through, MToon included.
-    public static var defaultShaders: [any GLTFMaterialShader] { GLTFEntityLoader.defaultShaders }
-
     /// The glTF and VRM extensions this loader implements, to satisfy `extensionsRequired`.
     public var supportedRequiredExtensions: Set<String> {
         resources.supportedRequiredExtensions
@@ -110,14 +106,6 @@ public final class VRMEntityLoader {
         try entity.setUpNodeConstraints(gltfNodes: gltf.nodes, hierarchy: hierarchy, builder: builder)
         try entity.setUpSpringBones(builder: builder)
         try entity.setUpLookAt(builder: builder)
-    }
-
-    /// The image the model shows itself by.
-    ///
-    /// Decoded on the spot rather than cached: a thumbnail is drawn by whoever asked for
-    /// it, not by the entity graph a load builds.
-    public func loadThumbnail() throws -> CGImage {
-        try document.image(at: vrm.thumbnailImageIndex.rawValue)
     }
 }
 #endif

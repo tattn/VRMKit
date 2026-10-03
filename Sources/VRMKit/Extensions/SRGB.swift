@@ -4,7 +4,7 @@ import Foundation
 /// MToon 1.0 keep their colors in: VRM 0.x writes the Unity material colors as
 /// sRGB, while every MToon 1.0 factor is linear.
 package enum SRGB {
-    package static func toLinear(_ value: Float) -> Float {
+    static func toLinear(_ value: Float) -> Float {
         value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
     }
 

@@ -20,16 +20,16 @@ package struct VRMLookAtPlan: Sendable {
     /// first-person camera off.
     package let headNode: Int
     /// The eye bones, either of them nil for a model that does not rig it.
-    package let leftEyeNode: Int?
-    package let rightEyeNode: Int?
+    let leftEyeNode: Int?
+    let rightEyeNode: Int?
     /// The gaze origin, in the head node's space: the point between the eyes.
     package let offsetFromHeadBone: SIMD3<Float>
     /// The way the model faces in its own node space: what yaw and pitch are measured from.
     package let forwardDirection: SIMD3<Float>
-    package let horizontalInner: RangeMap
-    package let horizontalOuter: RangeMap
-    package let verticalUp: RangeMap
-    package let verticalDown: RangeMap
+    let horizontalInner: RangeMap
+    let horizontalOuter: RangeMap
+    let verticalUp: RangeMap
+    let verticalDown: RangeMap
 
     package init(applier: Applier,
                  headNode: Int,
@@ -102,9 +102,9 @@ package extension VRMLookAtPlan {
     struct RangeMap: Sendable {
         /// The input angle, in degrees, that reaches the far end of the curve. Past it
         /// the output holds.
-        package let inputMaxValue: Float
+        let inputMaxValue: Float
         /// What the curve's 0...1 output scales to.
-        package let outputScale: Float
+        let outputScale: Float
         /// The curve between them, nil for the straight line VRM 1.0 always maps through.
         package let curve: Curve?
 
@@ -168,7 +168,7 @@ package extension VRMLookAtPlan.RangeMap {
         }
 
         /// The curve's value at `time`, which the maps always ask for within 0...1.
-        package func evaluate(_ time: Float) -> Float {
+        func evaluate(_ time: Float) -> Float {
             // At least two keyframes, which is what init takes.
             guard time > keys[0].time else { return keys[0].value }
             guard time < keys[keys.count - 1].time,

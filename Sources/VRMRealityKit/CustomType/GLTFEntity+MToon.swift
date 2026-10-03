@@ -2,34 +2,19 @@
 import RealityKit
 import simd
 
-/// The MToon runtime of a loaded entity. It lives here rather than on
-/// ``VRMEntity`` because MToon is a material extension a plain glTF can render
-/// too, through ``MToonShader/Source/convertAll(_:)``.
-///
-/// The setters act on a loaded entity or a ``GLTFEntity/cloneWithOwnMaterialParameters()``
-/// copy; a plain `clone(recursive:)` keeps drawing as its original does.
+/// The MToon runtime of a loaded entity, on ``GLTFEntity`` because a plain glTF renders as
+/// MToon too through ``MToonShader/Source/convertAll(_:)``. A plain `clone(recursive:)` keeps
+/// drawing as its original does; ``GLTFEntity/cloneWithOwnMaterialParameters()`` gets its own.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension GLTFEntity {
-    /// The MToon parameter rows a material renders with, or nil when it does
-    /// not render as MToon.
-    func mtoonParameters(forMaterialIndex index: Int) -> MToonMaterialParameters? {
-        mtoonState(forMaterialIndex: index)?.parameters
-    }
-
-    func mtoonState(forMaterialIndex index: Int) -> MToonAnimatableMaterialState? {
-        materialState(MToonAnimatableMaterialState.self, ofMaterial: index)
-    }
-
     // MARK: - Lighting
 
-    /// Sets the light direction, light color and ambient color together, pushing the
-    /// rows to the GPU once. A caller tracking a light per frame (a device that moves,
-    /// a background whose light is re-estimated) goes through here rather than the
-    /// three setters, which would flush every material three times a frame.
+    /// Sets the light direction, color and ambient color with one write per material, for a
+    /// caller tracking a light per frame.
     ///
-    /// The vector points from the surface toward the light, so a `DirectionalLight`
-    /// matching it sits at `direction` and aims at the model. The default color is
-    /// white and the default ambient color, feeding the MToon GI approximation, black.
+    /// `direction` points from the surface toward the light, so a matching `DirectionalLight`
+    /// sits at `direction` and aims at the model. The defaults are a white light and a black
+    /// ambient, which feeds the MToon GI approximation.
     public func setMToonLighting(direction: SIMD3<Float>, color: SIMD3<Float>, ambient: SIMD3<Float>) {
         let normalized = Self.normalizedMToonLightDirection(direction)
         updateMaterialStates(MToonAnimatableMaterialState.self) { state in
@@ -40,20 +25,18 @@ extension GLTFEntity {
         }
     }
 
-    /// The vector points from the surface toward the light, so a `DirectionalLight`
-    /// matching it sits at `direction` and aims at the model. It rides in the parameter
-    /// texture, so tracking a light per frame is one small blit per material.
+    /// See ``setMToonLighting(direction:color:ambient:)``.
     public func setMToonLightDirection(_ direction: SIMD3<Float>) {
         let normalized = Self.normalizedMToonLightDirection(direction)
         updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setLightDirection(normalized) }
     }
 
-    /// The default is white.
+    /// See ``setMToonLighting(direction:color:ambient:)``.
     public func setMToonLightColor(_ color: SIMD3<Float>) {
         updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setLightColor(color) }
     }
 
-    /// Feeds the MToon GI approximation. The default is black.
+    /// See ``setMToonLighting(direction:color:ambient:)``.
     public func setMToonAmbientColor(_ color: SIMD3<Float>) {
         updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setAmbientColor(color) }
     }

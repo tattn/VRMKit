@@ -3,7 +3,7 @@ import VRMKit
 public final class Humanoid<Node> {
     package var bones: [HumanoidBone: Node] = [:]
 
-    public init() {}
+    package init() {}
 
     /// Binds the rig to the nodes it was built from, both VRM versions reading
     /// as the same `boneNodes` mapping.

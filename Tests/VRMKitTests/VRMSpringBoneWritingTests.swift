@@ -105,29 +105,19 @@ struct VRMSpringBoneWritingTests {
     }
 
     /// A spring of one joint is one the extension accepts: the last joint is a tail
-    /// rather than one that swings, so it swings nothing.
-    @Test
-    func testAVRM1SpringOfOneJointIsWritten() throws {
+    /// rather than one that swings, so it swings nothing. And `VRMC_springBone` asks a
+    /// joint to be below the one before it, not its immediate child, so a spring may
+    /// skip over the nodes between them.
+    @Test(arguments: [[0], [0, 2]])
+    func testAVRM1SpringIsWrittenWithTheJointsItNames(ornamentIndices: [Int]) throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let ornament = try document.addOrnamentChain(under: VRMSampleAsset.seedSan.headNode)
+        let joints = ornamentIndices.map { ornament[$0] }
 
-        let index = try document.addVRM1SpringBone(VRM1Spring(joints: [ornament[0]]))
-
-        let spring = try #require(try vrm1(of: document).springBone?.springs?[safe: index.rawValue])
-        #expect(spring.joints.map(\.node) == [ornament[0].rawValue])
-    }
-
-    /// `VRMC_springBone` asks a joint to be below the one before it, not its immediate
-    /// child, so a spring may skip over the nodes between them.
-    @Test
-    func testAVRM1SpringMaySkipNodesInTheLineItRunsDown() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
-        let ornament = try document.addOrnamentChain(under: VRMSampleAsset.seedSan.headNode)
-
-        let index = try document.addVRM1SpringBone(VRM1Spring(joints: [ornament[0], ornament[2]]))
+        let index = try document.addVRM1SpringBone(VRM1Spring(joints: joints))
 
         let spring = try #require(try vrm1(of: document).springBone?.springs?[safe: index.rawValue])
-        #expect(spring.joints.map(\.node) == [ornament[0].rawValue, ornament[2].rawValue])
+        #expect(spring.joints.map(\.node) == joints.map(\.rawValue))
     }
 
     /// Adding a spring is adding: what the model already swung swings as it did, through

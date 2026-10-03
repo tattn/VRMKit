@@ -15,10 +15,10 @@ package struct SpringBoneRigColliderGroup<Node: VRMRuntimeNode> {
 /// The fixed step the spring bones swing in.
 package enum SpringBoneSimulation {
     /// A fixed rate keeps the swing the same at every display refresh rate.
-    package static let step: TimeInterval = 1.0 / 60.0
+    static let step: TimeInterval = 1.0 / 60.0
     /// Time past these steps is dropped, so a long hitch stalls the swing rather than
     /// replaying it.
-    package static let maximumStepsPerUpdate = 4
+    static let maximumStepsPerUpdate = 4
 }
 
 /// How a ``SpringBoneRig`` swings.
@@ -28,6 +28,8 @@ public struct SpringBoneConfiguration: Sendable {
     /// Holds every joint at the rotation it last swung to, so what hangs off the model
     /// keeps the shape it had, spread by wind or a turn, while the model moves. Swinging
     /// again carries on from that shape, with none of the motion from before the pause.
+    /// Unlike UniVRM's `StopSpringBoneWriteback`, which keeps simulating and only stops
+    /// writing, the simulation itself stops.
     public var isPaused: Bool
 
     public init(externalForce: SIMD3<Float> = .zero, isPaused: Bool = false) {

@@ -201,7 +201,7 @@ public struct GLTFMaterialShaderContext {
 
 /// The mutable render parameters of one material, as the VRM expression
 /// runtime drives them. A shader's own runtime controls live on its state type,
-/// edited through ``GLTFEntity/updateMaterialStates(_:inPassNamed:forMaterials:_:)``.
+/// edited through ``GLTFEntity/updateMaterialStates(_:forMaterials:_:)``.
 ///
 /// Writes accumulate in the state; the runtime then calls ``prepareFlush()``
 /// once and ``apply(to:)`` for every material instance rendering the same glTF

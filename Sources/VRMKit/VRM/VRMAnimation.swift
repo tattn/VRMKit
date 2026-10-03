@@ -16,10 +16,10 @@ public struct VRMAnimation: Sendable {
 
     /// The only released version, and the one assumed for a file that declares
     /// none: exporters ship `.vrma` without the required `specVersion`.
-    package static let releasedSpecVersion = "1.0"
+    static let releasedSpecVersion = "1.0"
 
     /// The pre-release version older exporters wrote.
-    package static let draftSpecVersion = "1.0-draft"
+    static let draftSpecVersion = "1.0-draft"
 
     private static let logger = Logger(subsystem: "com.github.tattn.VRMKit", category: "VRMAnimation")
 

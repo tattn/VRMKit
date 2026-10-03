@@ -7,7 +7,7 @@ enum MToonShaderLibraryLoaderError: Error {
     case unsupportedPlatform
     case resourceMissing(String)
     case loadFailed(String, Error)
-    case requiredFunctionsMissing(Set<String>)
+    case functionMissing(String)
 }
 
 /// Loads the precompiled platform-specific MToon Metal library bundled as a
@@ -18,12 +18,6 @@ enum MToonShaderLibraryLoaderError: Error {
 /// .metal source, which `swift build` does not support.
 @MainActor
 enum MToonShaderLibraryLoader {
-    static let requiredFunctions: Set<String> = [
-        "mtoonSurface",
-        "mtoonOutlineSurface",
-        "mtoonOutlineGeometry"
-    ]
-
     static var resourceName: String? {
 #if os(macOS) && !targetEnvironment(macCatalyst)
         return "MToon-macos"
@@ -70,18 +64,11 @@ enum MToonShaderLibraryLoader {
             throw MToonShaderLibraryLoaderError.resourceMissing(resourceName)
         }
 
-        let library: MTLLibrary
         do {
-            library = try device.makeLibrary(URL: libraryURL)
+            return try device.makeLibrary(URL: libraryURL)
         } catch {
             throw MToonShaderLibraryLoaderError.loadFailed(resourceName, error)
         }
-
-        let missing = requiredFunctions.subtracting(Set(library.functionNames))
-        guard missing.isEmpty else {
-            throw MToonShaderLibraryLoaderError.requiredFunctionsMissing(missing)
-        }
-        return library
     }
 }
 #endif

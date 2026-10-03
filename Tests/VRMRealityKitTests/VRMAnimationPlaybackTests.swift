@@ -68,11 +68,15 @@ struct VRMAnimationPlaybackTests {
     }
 
     @Test
-    func testHipsRotationRetargetsOntoAVRM1Model() async throws {
+    func testTheFixtureRetargetsOntoAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
+        // The fixture's hips rest 1 m up, so the retarget scale is the target's
+        // own rest hips height.
+        let scale = worldPosition(of: hips, in: entity).y
+        #expect(scale > 0)
 
         let controller = try entity.playAnimation(fixture())
         #expect(controller.animation.duration.isApproximatelyEqual(to: 1.0))
@@ -83,24 +87,18 @@ struct VRMAnimationPlaybackTests {
         let delta = worldRotation(of: hips, in: entity) * rest.inverse
         let expected = simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(1, 0, 0))
         #expect(abs(simd_dot(delta, expected)) > 0.999)
-    }
-
-    @Test
-    func testHipsTranslationScalesToTheTargetHipsHeight() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let hips = try #require(entity.humanoid.node(for: .hips))
-        // The fixture's hips rest 1 m up, so the retarget scale is the target's
-        // own rest hips height.
-        let scale = worldPosition(of: hips, in: entity).y
-        #expect(scale > 0)
-
-        try entity.playAnimation(fixture())
-        entity.updateAnimations(deltaTime: 1.0)
-
         // The fixture moves its hips to [0, 1, 0.5]; scaled onto the target.
-        let expected = SIMD3<Float>(0, scale, 0.5 * scale)
-        #expect(worldPosition(of: hips, in: entity).isApproximatelyEqual(to: expected, tolerance: 0.002))
+        let expectedPosition = SIMD3<Float>(0, scale, 0.5 * scale)
+        #expect(worldPosition(of: hips, in: entity).isApproximatelyEqual(to: expectedPosition, tolerance: 0.002))
+
+        // happy holds 0.7, which Seed-san's own binary happy clip snaps to 1;
+        // aa ramps to 1.5, which clamps to the spec's 0...1.
+        #expect(abs(entity.expression(for: .preset(.happy)) - 1.0) < 0.001)
+        #expect(abs(entity.expression(for: .preset(.aa)) - 1.0) < 0.001)
+
+        // Halfway up the ramp the non-binary aa carries the partial weight.
+        controller.seek(to: 0.5)
+        #expect(abs(entity.expression(for: .preset(.aa)) - 0.75) < 0.001)
     }
 
     /// The hips of a `.vrma` may sit under nodes that do not rest untransformed, so
@@ -129,7 +127,7 @@ struct VRMAnimationPlaybackTests {
     /// A VRM 0.x model faces the other way than a `.vrma` is authored in, so the
     /// whole animation turns 180° around Y.
     @Test
-    func testRetargetingOntoAVRM0ModelTurnsTheAnimationAround() async throws {
+    func testTheFixtureRetargetsOntoAVRM0ModelTurnedAround() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
@@ -144,34 +142,6 @@ struct VRMAnimationPlaybackTests {
         #expect(abs(simd_dot(delta, expected)) > 0.999)
         let expectedPosition = SIMD3<Float>(0, scale, -0.5 * scale)
         #expect(worldPosition(of: hips, in: entity).isApproximatelyEqual(to: expectedPosition, tolerance: 0.002))
-    }
-
-    @Test
-    func testExpressionChannelsDriveVRM1Expressions() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-
-        let controller = try entity.playAnimation(fixture())
-        entity.updateAnimations(deltaTime: 1.0)
-
-        // happy holds 0.7, which Seed-san's own binary happy clip snaps to 1;
-        // aa ramps to 1.5, which clamps to the spec's 0...1.
-        #expect(abs(entity.expression(for: .preset(.happy)) - 1.0) < 0.001)
-        #expect(abs(entity.expression(for: .preset(.aa)) - 1.0) < 0.001)
-
-        // Halfway up the ramp the non-binary aa carries the partial weight.
-        controller.seek(to: 0.5)
-        #expect(abs(entity.expression(for: .preset(.aa)) - 0.75) < 0.001)
-    }
-
-    @Test
-    func testExpressionChannelsDriveVRM0BlendShapes() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
-
-        try entity.playAnimation(fixture())
-        entity.updateAnimations(deltaTime: 1.0)
-
         // The 0.x model's Joy group is loaded as the happy expression.
         #expect(abs(entity.expression(for: .preset(.happy)) - 0.7) < 0.01)
     }

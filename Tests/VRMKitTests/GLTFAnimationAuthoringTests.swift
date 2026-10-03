@@ -251,7 +251,7 @@ struct GLTFAnimationAuthoringTests {
     @Test
     func testMalformedExpressionsAreRefused() throws {
         var document = GLTFEditableDocument()
-        let node = try document.addNode()
+        try document.addNode()
         let before = document
 
         #expect(throws: VRMError.self) {
@@ -264,7 +264,6 @@ struct GLTFAnimationAuthoringTests {
             try document.setVRMAnimationExpressions(GLTFExpressionNodes(preset: ["happy": 7], custom: [:]))
         }
         #expect(document.json == before.json)
-        _ = node
     }
 
     @Test

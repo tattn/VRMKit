@@ -3,6 +3,7 @@ import Foundation
 import RealityKit
 import Testing
 import VRMKit
+import VRMTestSupport
 import simd
 @testable import VRMRealityKit
 

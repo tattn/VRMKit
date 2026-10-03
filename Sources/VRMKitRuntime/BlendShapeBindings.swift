@@ -29,14 +29,14 @@ package struct ExpressionClip<Mesh> {
     package let name: String
     package let preset: ExpressionPreset?
     package let values: [BlendShapeBinding<Mesh>]
-    package let isBinary: Bool
-    package let binaryRounding: BinaryWeightRounding
+    let isBinary: Bool
+    let binaryRounding: BinaryWeightRounding
     /// How this expression suppresses the blink / lookAt / mouth expressions
     /// while it is active (VRMC_vrm `overrideBlink` / `overrideLookAt` / `overrideMouth`).
     /// A VRM 0.x group declares none of these.
-    package let overrideBlink: ExpressionOverrideType
-    package let overrideLookAt: ExpressionOverrideType
-    package let overrideMouth: ExpressionOverrideType
+    let overrideBlink: ExpressionOverrideType
+    let overrideLookAt: ExpressionOverrideType
+    let overrideMouth: ExpressionOverrideType
 
     package var key: ExpressionKey {
         return preset.map(ExpressionKey.preset) ?? .custom(name)
@@ -61,7 +61,7 @@ package struct ExpressionClip<Mesh> {
     }
 
     /// Clamps `value` to 0...1, resolving a binary clip to one of its ends.
-    package func normalizedWeight(_ value: Double) -> Double {
+    func normalizedWeight(_ value: Double) -> Double {
         let clamped = min(max(value, 0), 1)
         guard isBinary else { return clamped }
         switch binaryRounding {
@@ -71,7 +71,7 @@ package struct ExpressionClip<Mesh> {
     }
 
     /// How this clip overrides `group`.
-    package func overrideType(for group: ExpressionOverrideGroup) -> ExpressionOverrideType {
+    func overrideType(for group: ExpressionOverrideGroup) -> ExpressionOverrideType {
         switch group {
         case .blink: return overrideBlink
         case .lookAt: return overrideLookAt
@@ -155,7 +155,7 @@ package struct ExpressionOverrideState {
     }
 
     /// Whether the group receives any override effect at all.
-    package var isSuppressing: Bool {
+    var isSuppressing: Bool {
         factor < 1
     }
 }
@@ -200,7 +200,7 @@ package struct ExpressionOverrideStates {
     }
 
     /// Whether any group receives an override effect at all.
-    package var isSuppressingAnyGroup: Bool {
+    var isSuppressingAnyGroup: Bool {
         blink.isSuppressing || lookAt.isSuppressing || mouth.isSuppressing
     }
 }

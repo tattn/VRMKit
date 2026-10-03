@@ -18,24 +18,21 @@ struct VRM1Tests {
         #expect(vrm.specVersion == "1.0")
     }
 
-    /// A missing or mistyped specVersion surfaces as a thrown error rather than
-    /// trapping in the initializer.
-    @Test
-    func testMalformedSpecVersionThrowsInsteadOfCrashing() throws {
-        #expect(throws: (any Error).self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion(nil)) }
-        #expect(throws: (any Error).self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion(1.0)) }
-        #expect(throws: (any Error).self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion(["1.0"])) }
+    /// A missing, mistyped or unsupported specVersion surfaces as a thrown error
+    /// rather than trapping in the initializer.
+    @Test(arguments: [nil, 1.0, ["1.0"], "2.0"] as [JSONValue?])
+    func testAnUnreadableSpecVersionIsRejected(specVersion: JSONValue?) throws {
+        #expect(throws: (any Error).self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion(specVersion)) }
     }
 
     @Test
-    func testUnsupportedSpecVersionIsRejected() throws {
+    func testSupportedSpecVersions() throws {
         #expect(VRM1.supports(specVersion: "1.0"))
         #expect(VRM1.supports(specVersion: "1.0-beta"))
         #expect(!(VRM1.supports(specVersion: "2.0")))
         #expect(!(VRM1.supports(specVersion: "1.0-draft")))
 
         #expect(throws: Never.self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion("1.0-beta")) }
-        #expect(throws: (any Error).self) { try VRM1(data: try VRMSampleAsset.seedSan.withVRMCSpecVersion("2.0")) }
     }
 
     /// `VRMC_springBone` is versioned on its own, and springs of a version this cannot

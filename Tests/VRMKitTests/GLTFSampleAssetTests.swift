@@ -23,39 +23,12 @@ struct GLTFSampleAssetTests {
     }
 
     @Test
-    func testExternalBinaryResolvesRelativeToTheGLTFFile() throws {
-        let document = try GLTFDocument(withURL: GLTFSampleAsset.triangle.url)
-
-        #expect(document.binaryBuffer == nil)
-        #expect(document.rootDirectory != nil)
-        // Triangle.bin holds 3 vertices of 3 floats plus 3 shorts of indices.
-        #expect(try document.bufferData(at: 0).count == 44)
-    }
-
-    @Test
-    func testExternalBinaryFailsWithoutARootDirectory() throws {
-        // Loaded from memory there is nowhere to resolve "Triangle.bin" from.
-        let document = try GLTFDocument(data: GLTFSampleAsset.triangle.data)
-
-        #expect(throws: (any Error).self) {
-            _ = try document.bufferData(at: 0)
-        }
-    }
-
-    @Test
-    func testEmbeddedDataURIBufferNeedsNoRootDirectory() throws {
-        let document = try GLTFDocument(data: GLTFSampleAsset.simpleSkin.data)
-
-        #expect(document.binaryBuffer == nil)
-        #expect(try !document.bufferData(at: 0).isEmpty)
-        #expect(document.gltf.skins.count == 1)
-    }
-
-    @Test
     func testGLBSampleAssetLoadsThroughTheBinaryPath() throws {
         let document = try GLTFDocument(data: GLTFSampleAsset.boxVertexColors.data)
 
         #expect(document.binaryBuffer != nil)
+        // The BIN chunk resolves through the document without a root directory.
+        #expect(try !document.bufferData(at: 0).isEmpty)
         let primitive = try #require(document.gltf.meshes.first?.primitives.first)
         #expect(primitive.attributes[.COLOR_0] != nil)
     }

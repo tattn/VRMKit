@@ -51,18 +51,6 @@ struct GLTFEntityLoaderTests {
         #expect(entity.entity(forNodeAt: nodeIndex.rawValue)?.name == "plate")
     }
 
-    @Test
-    func testGenericLoadSetsUpSkinBindingsWithInitialPose() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-
-        #expect(!entity.skinBindings.isEmpty)
-        for binding in entity.skinBindings {
-            #expect(binding.deformedMesh?.jointTransforms != nil)
-            #expect(!binding.jointEntities.isEmpty)
-        }
-    }
-
     /// The loader keeps no scene cache, so it hands out independently animatable
     /// copies of one scene: each deforms a mesh of its own from the vertex data the
     /// last one built and binds joint entities of its own.
@@ -82,26 +70,14 @@ struct GLTFEntityLoaderTests {
             #expect(old.modelEntity !== new.modelEntity)
             #expect(old.modelEntity.model?.mesh !== new.modelEntity.model?.mesh)
             #expect(old.deformedMesh?.source === new.deformedMesh?.source)
+            #expect(new.deformedMesh?.jointTransforms != nil)
         }
         // Each entity's bindings stay within its own graph.
         for (entity, other) in [(first, second), (second, first)] {
             let binding = try #require(entity.skinBindings.first)
+            #expect(!binding.jointEntities.isEmpty)
             #expect(binding.jointEntities.allSatisfy { TestSupport.isDescendant($0, of: entity) })
             #expect(binding.jointEntities.allSatisfy { !TestSupport.isDescendant($0, of: other) })
-        }
-    }
-
-    @Test
-    func testGenericLoadRecordsMorphBindings() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-
-        #expect(!entity.morphBindings.isEmpty)
-        for (nodeIndex, binding) in entity.morphBindings {
-            #expect(entity.entity(forNodeAt: nodeIndex) != nil)
-            for modelEntity in binding.modelEntities {
-                #expect(modelEntity.deformedMesh?.geometry.hasBlendShapes == true)
-            }
         }
     }
 
@@ -174,17 +150,17 @@ struct GLTFEntityLoaderTests {
         #expect(try await GLTFEntityLoader(withData: exact).loadEntity().morphBindings[nodeIndex] != nil)
     }
 
+#if !os(visionOS)
     @Test
     func testGenericLoadRendersMToonFromGLTFExtension() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-#if !os(visionOS)
         // Seed-san's materials carry VRMC_materials_mtoon as a plain glTF material
         // extension, so the generic loader renders them as MToon too.
         let loader = try GLTFEntityLoader(withData: TestSupport.seedSanData)
         let material = try loader.material(withMaterialIndex: 0)
         #expect(material is CustomMaterial, TestSupport.expectedCustomMaterialMessage)
-#endif
     }
+#endif
 
     /// A VRM is held to `extensionsRequired` as any other glTF is.
     @Test
