@@ -70,8 +70,8 @@ public final class VRMEntity: GLTFEntity {
         VRMUpdateSystem.registerSystem()
     }()
 
-    init(vrm: VRM, document: GLTFDocument, sceneIndex: Int) {
-        super.init(document: document, sceneIndex: sceneIndex)
+    init(vrm: VRM, document: GLTFDocument, sceneIndex: Int, outputColorSpace: GLTFOutputColorSpace) {
+        super.init(document: document, sceneIndex: sceneIndex, outputColorSpace: outputColorSpace)
         _ = Self.registerRealityKitTypes
         components.set(VRMComponent(vrm: vrm))
         components.set(VRMUpdateComponent())
@@ -239,7 +239,7 @@ public final class VRMEntity: GLTFEntity {
         if let color = materialStates[index]?.animatable?.color(for: type) {
             return color
         }
-        return try builder.material(withMaterialIndex: index).currentColor(for: type)
+        return try builder.material(withMaterialIndex: index).currentColor(for: type, in: outputColorSpace)
     }
 
     /// The UV transform a `textureTransformBind` starts from. A state animating it keeps
@@ -393,21 +393,22 @@ extension Material {
             ?? MaterialParameterTypes.TextureCoordinateTransform()
     }
 
-    func currentColor(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> SIMD4<Float> {
+    func currentColor(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
+                      in outputColorSpace: GLTFOutputColorSpace) -> SIMD4<Float> {
         switch self {
         case let material as UnlitMaterial:
             switch type {
             case .color:
-                return material.color.tint.simd
+                return outputColorSpace.components(of: material.color.tint)
             case .emissionColor, .shadeColor, .matcapColor, .rimColor, .outlineColor:
                 return SIMD4<Float>(1, 1, 1, 1)
             }
         case let material as PhysicallyBasedMaterial:
             switch type {
             case .color:
-                return material.baseColor.tint.simd
+                return outputColorSpace.components(of: material.baseColor.tint)
             case .emissionColor:
-                return material.emissiveColor.color.simd
+                return outputColorSpace.components(of: material.emissiveColor.color)
             // MToon-only colors have no meaning on the PBR fallback material.
             case .shadeColor, .matcapColor, .rimColor, .outlineColor:
                 return SIMD4<Float>(1, 1, 1, 1)

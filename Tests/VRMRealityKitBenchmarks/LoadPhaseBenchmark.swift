@@ -33,7 +33,8 @@ struct LoadPhaseBenchmark {
             let parse = ContinuousClock.now - parseStarted
 
             let loader = VRMEntityLoader(vrm: vrm, shaders: [MToonShader(compensatesToneMapping: false)])
-            let root = VRMEntity(vrm: vrm, document: loader.document, sceneIndex: try loader.document.gltf.defaultSceneIndex())
+            let root = VRMEntity(vrm: vrm, document: loader.document, sceneIndex: try loader.document.gltf.defaultSceneIndex(),
+                                 outputColorSpace: loader.outputColorSpace)
             let builder = GLTFSceneBuilder(resources: loader.resources, root: root)
             try builder.validateDocument()
             let prepareStarted = ContinuousClock.now

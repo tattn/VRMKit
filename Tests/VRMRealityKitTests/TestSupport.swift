@@ -333,7 +333,8 @@ extension MaterialInspectingLoader {
     /// so a material built here is the one a load would draw with.
     func builder(sceneIndex: Int = 0) -> GLTFSceneBuilder {
         GLTFSceneBuilder(resources: resources,
-                         root: GLTFEntity(document: document, sceneIndex: sceneIndex))
+                         root: GLTFEntity(document: document, sceneIndex: sceneIndex,
+                                          outputColorSpace: resources.outputColorSpace))
     }
 
     var inspector: GLTFSceneBuilder { builder() }

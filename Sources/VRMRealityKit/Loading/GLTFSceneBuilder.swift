@@ -619,7 +619,7 @@ final class GLTFSceneBuilder {
         let useUnlit = isMToon || isUnlit
         let resolvedAlphaMode = context.resolvedAlphaMode
         let tint = gltfMaterial.pbrMetallicRoughness
-            .map { VRMColor(simd: $0.baseColorFactor) } ?? .white
+            .map { resources.outputColorSpace.color($0.baseColorFactor) } ?? .white
 
         if useUnlit {
             // RealityKit's tone mapping visibly darkens flat art, so opt out of it.
@@ -673,10 +673,7 @@ final class GLTFSceneBuilder {
         }
 
         let emissiveFactor = gltfMaterial.emissiveFactor
-        let emissiveTint = VRMColor(red: CGFloat(emissiveFactor.x),
-                                   green: CGFloat(emissiveFactor.y),
-                                   blue: CGFloat(emissiveFactor.z),
-                                   alpha: 1)
+        let emissiveTint = resources.outputColorSpace.color(SIMD4<Float>(emissiveFactor, 1))
         let hasEmissiveTint = emissiveFactor != .zero
         if let emissiveTexture = gltfMaterial.emissiveTexture {
             let textureParam = try materialTexture(withTextureIndex: emissiveTexture.index, semantic: .color)
@@ -945,7 +942,8 @@ final class GLTFSceneBuilder {
     private func makeTextureResources() async throws {
         var uploads: [TextureUpload] = []
         for key in try requestedTextureKeys() where resources.textureCache[key] == nil {
-            uploads.append(TextureUpload(key: key, image: try image(withImageIndex: key.imageIndex)))
+            uploads.append(TextureUpload(key: key, image: uploadedImage(try image(withImageIndex: key.imageIndex),
+                                                                        semantic: key.semantic)))
         }
         guard !uploads.isEmpty else { return }
         let uploaded = try await withThrowingTaskGroup(of: UploadedTexture.self) { group in
@@ -986,7 +984,12 @@ final class GLTFSceneBuilder {
             timings.textureResources += ContinuousClock.now - started
             timings.textureResourceCount += 1
         }
-        return try TextureResource(image: image, options: .init(semantic: semantic))
+        return try TextureResource(image: uploadedImage(image, semantic: semantic), options: .init(semantic: semantic))
+    }
+
+    /// The image RealityKit reads `semantic` from: a color image tagged for the output color space.
+    private func uploadedImage(_ image: CGImage, semantic: TextureResource.Semantic) -> CGImage {
+        semantic == .color ? resources.outputColorSpace.colorImage(image) : image
     }
 
     func materialTexture(withTextureIndex index: Int,

@@ -53,7 +53,7 @@ struct MToonRenderingTests {
         let fallbackColor = try vrmEntity.currentMaterialColor(withMaterialIndex: 0,
                                                               type: .color,
                                                               builder: loader.inspector)
-        #expect(fallbackColor.isApproximatelyEqual(to: material.currentColor(for: .color)))
+        #expect(fallbackColor.isApproximatelyEqual(to: material.currentColor(for: .color, in: .displayP3)))
     }
 
     @Test
@@ -768,8 +768,8 @@ struct MToonRenderingTests {
         #expect(shadeUpdatedPBR.baseColor.tint.isApproximatelyEqual(to: baseColor))
         #expect(outlineUpdatedPBR.baseColor.tint.isApproximatelyEqual(to: baseColor))
         #expect(colorUpdatedPBR.baseColor.tint.isApproximatelyEqual(to: boundColor))
-        #expect(pbr.currentColor(for: .shadeColor).isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
-        #expect(pbr.currentColor(for: .outlineColor).isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
+        #expect(pbr.currentColor(for: .shadeColor, in: .displayP3).isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
+        #expect(pbr.currentColor(for: .outlineColor, in: .displayP3).isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
 
         // matcapColor / rimColor are MToon-only, so on the PBR fallback they are
         // a no-op rather than being redirected onto the emissive channel.
@@ -779,7 +779,7 @@ struct MToonRenderingTests {
         for type in [VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType.matcapColor, .rimColor] {
             let updated = try #require(emissivePBR.settingColor(boundColor, for: type) as? PhysicallyBasedMaterial)
             #expect(updated.emissiveColor.color.isApproximatelyEqual(to: emissive))
-            #expect(emissivePBR.currentColor(for: type).isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
+            #expect(emissivePBR.currentColor(for: type, in: .displayP3).isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
         }
         let emissionUpdatedPBR = try #require(emissivePBR.settingColor(boundColor, for: .emissionColor) as? PhysicallyBasedMaterial)
         #expect(emissionUpdatedPBR.emissiveColor.color.isApproximatelyEqual(to: boundColor))
@@ -791,7 +791,7 @@ struct MToonRenderingTests {
 
         #expect(shadeUpdatedUnlit.color.tint.isApproximatelyEqual(to: baseColor))
         #expect(colorUpdatedUnlit.color.tint.isApproximatelyEqual(to: boundColor))
-        #expect(unlit.currentColor(for: .shadeColor).isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
+        #expect(unlit.currentColor(for: .shadeColor, in: .displayP3).isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
     }
 
 #if os(visionOS)
@@ -811,7 +811,8 @@ struct MToonRenderingTests {
 
 private extension VRMColor {
     func isApproximatelyEqual(to other: VRMColor, tolerance: Float = 0.0001) -> Bool {
-        simd.isApproximatelyEqual(to: other.simd, tolerance: tolerance)
+        let space = GLTFOutputColorSpace.displayP3
+        return space.components(of: self).isApproximatelyEqual(to: space.components(of: other), tolerance: tolerance)
     }
 }
 #endif

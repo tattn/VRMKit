@@ -12,6 +12,7 @@ import VRMKit
 struct GLTFComponent: Component {
     let document: GLTFDocument
     let sceneIndex: Int
+    let outputColorSpace: GLTFOutputColorSpace
 }
 
 /// The glTF node a loaded entity was built from, identified by array index:
@@ -64,6 +65,11 @@ public class GLTFEntity: Entity {
             preconditionFailure("This GLTFEntity carries no document. Load it with GLTFEntityLoader.")
         }
         return index
+    }
+
+    /// See ``GLTFEntityLoader/outputColorSpace``.
+    var outputColorSpace: GLTFOutputColorSpace {
+        components[GLTFComponent.self]?.outputColorSpace ?? .displayP3
     }
 
     /// glTF node index → the entity built for it, for this scene.
@@ -180,10 +186,10 @@ public class GLTFEntity: Entity {
         GLTFAnimationSystem.registerSystem()
     }()
 
-    init(document: GLTFDocument, sceneIndex: Int) {
+    init(document: GLTFDocument, sceneIndex: Int, outputColorSpace: GLTFOutputColorSpace) {
         super.init()
         _ = Self.registerRealityKitTypes
-        components.set(GLTFComponent(document: document, sceneIndex: sceneIndex))
+        components.set(GLTFComponent(document: document, sceneIndex: sceneIndex, outputColorSpace: outputColorSpace))
     }
 
     /// Also builds the `clone(recursive:)` copies, which inherit the ``GLTFComponent``
@@ -397,7 +403,7 @@ public class GLTFEntity: Entity {
     func applyMaterialColor(_ color: SIMD4<Float>,
                             type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType,
                             materialIndex: Int) {
-        let vrmColor = VRMColor(simd: color)
+        let vrmColor = outputColorSpace.color(color)
         applyMaterialValue(ofMaterial: materialIndex,
                            toState: { $0.setColor(color, for: type) },
                            toMaterial: { $0.settingColor(vrmColor, for: type) })

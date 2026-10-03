@@ -25,41 +25,52 @@ public final class VRMEntityLoader {
     /// See ``GLTFEntityLoader/maxTextureDimension``.
     public let maxTextureDimension: Int?
 
+    /// See ``GLTFEntityLoader/outputColorSpace``.
+    public let outputColorSpace: GLTFOutputColorSpace
+
     public init(vrm: VRM,
                 shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
-                maxTextureDimension: Int? = nil) {
+                maxTextureDimension: Int? = nil,
+                outputColorSpace: GLTFOutputColorSpace = .displayP3) {
         self.vrm = vrm
         self.shaders = shaders
         self.maxTextureDimension = maxTextureDimension
+        self.outputColorSpace = outputColorSpace
         let profile = VRMLoadProfile(vrm: vrm)
         self.profile = profile
         self.resources = GLTFResourceCache(document: vrm.document,
                                            shaders: shaders,
                                            profile: profile,
-                                           maxTextureDimension: maxTextureDimension)
+                                           maxTextureDimension: maxTextureDimension,
+                                           outputColorSpace: outputColorSpace)
     }
 
     /// Loads a VRM from a file URL. External resources resolve relative to its directory.
     public convenience init(withURL url: URL,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
-                            maxTextureDimension: Int? = nil) throws {
-        self.init(vrm: try VRM(withURL: url), shaders: shaders, maxTextureDimension: maxTextureDimension)
+                            maxTextureDimension: Int? = nil,
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
+        self.init(vrm: try VRM(withURL: url), shaders: shaders, maxTextureDimension: maxTextureDimension,
+                  outputColorSpace: outputColorSpace)
     }
 
     /// Loads a bundled VRM resource.
     public convenience init(named: String,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
-                            maxTextureDimension: Int? = nil) throws {
-        self.init(vrm: try VRM(named: named), shaders: shaders, maxTextureDimension: maxTextureDimension)
+                            maxTextureDimension: Int? = nil,
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
+        self.init(vrm: try VRM(named: named), shaders: shaders, maxTextureDimension: maxTextureDimension,
+                  outputColorSpace: outputColorSpace)
     }
 
     /// Loads a VRM from in-memory data, resolving external resources against `rootDirectory`.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
-                            maxTextureDimension: Int? = nil) throws {
+                            maxTextureDimension: Int? = nil,
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
         self.init(vrm: try VRM(data: data, rootDirectory: rootDirectory), shaders: shaders,
-                  maxTextureDimension: maxTextureDimension)
+                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace)
     }
 
     /// The glTF and VRM extensions this loader implements, to satisfy `extensionsRequired`.
@@ -79,7 +90,7 @@ public final class VRMEntityLoader {
     /// one's work. A call cancelled while it waits gives up its place there and then.
     public func loadEntity(withSceneIndex index: Int) async throws -> VRMEntity {
         try await queue.run {
-            let root = VRMEntity(vrm: vrm, document: document, sceneIndex: index)
+            let root = VRMEntity(vrm: vrm, document: document, sceneIndex: index, outputColorSpace: outputColorSpace)
             if let name = vrm.name {
                 root.name = name
             }

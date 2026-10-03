@@ -31,41 +31,52 @@ public final class GLTFEntityLoader {
     /// image costs about 85 MB with its mipmaps, and models routinely carry several.
     public let maxTextureDimension: Int?
 
+    /// Where the rendered pixels are read, which decides the numbers glTF colors render
+    /// with. `.displayP3` suits `RealityView` and `ARView`; pass `.sRGB` for a
+    /// `RealityRenderer` whose output texture is read as sRGB.
+    public let outputColorSpace: GLTFOutputColorSpace
+
     public init(document: GLTFDocument,
                 shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
-                maxTextureDimension: Int? = nil) {
+                maxTextureDimension: Int? = nil,
+                outputColorSpace: GLTFOutputColorSpace = .displayP3) {
         self.document = document
         self.shaders = shaders
         self.maxTextureDimension = maxTextureDimension
+        self.outputColorSpace = outputColorSpace
         self.resources = GLTFResourceCache(document: document,
                                            shaders: shaders,
                                            profile: GLTFDefaultLoadProfile(),
-                                           maxTextureDimension: maxTextureDimension)
+                                           maxTextureDimension: maxTextureDimension,
+                                           outputColorSpace: outputColorSpace)
     }
 
     /// Loads a `.glb` / `.gltf` file. External resources resolve relative to its directory.
     public convenience init(withURL url: URL,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
-                            maxTextureDimension: Int? = nil) throws {
+                            maxTextureDimension: Int? = nil,
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
         self.init(document: try GLTFDocument(withURL: url), shaders: shaders,
-                  maxTextureDimension: maxTextureDimension)
+                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace)
     }
 
     /// Loads a bundled glTF resource.
     public convenience init(named: String,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
-                            maxTextureDimension: Int? = nil) throws {
+                            maxTextureDimension: Int? = nil,
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
         self.init(document: try GLTFDocument(named: named), shaders: shaders,
-                  maxTextureDimension: maxTextureDimension)
+                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace)
     }
 
     /// Loads in-memory glTF data, resolving external resources against `rootDirectory`.
     public convenience init(withData data: Data,
                             rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
-                            maxTextureDimension: Int? = nil) throws {
+                            maxTextureDimension: Int? = nil,
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
         self.init(document: try GLTFDocument(data: data, rootDirectory: rootDirectory),
-                  shaders: shaders, maxTextureDimension: maxTextureDimension)
+                  shaders: shaders, maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace)
     }
 
     /// glTF extensions this loader implements, to satisfy `extensionsRequired`.
@@ -88,7 +99,7 @@ public final class GLTFEntityLoader {
     /// one's work. A call cancelled while it waits gives up its place there and then.
     public func loadEntity(withSceneIndex index: Int) async throws -> GLTFEntity {
         try await queue.run {
-            let root = GLTFEntity(document: document, sceneIndex: index)
+            let root = GLTFEntity(document: document, sceneIndex: index, outputColorSpace: outputColorSpace)
             _ = try await resources.build(into: root)
             root.invalidateSkinPose()
             root.flushDeformation()
