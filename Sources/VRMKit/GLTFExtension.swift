@@ -9,6 +9,9 @@ package enum GLTFExtension: String, Sendable, CaseIterable {
     case vrm1 = "VRMC_vrm"
     case springBone = "VRMC_springBone"
     case vrmAnimation = "VRMC_vrm_animation"
+    // VRM, on a `VRMC_springBone` collider or joint.
+    case springBoneExtendedCollider = "VRMC_springBone_extended_collider"
+    case springBoneLimit = "VRMC_springBone_limit"
     // VRM, on a node or a material.
     case nodeConstraint = "VRMC_node_constraint"
     case materialsMToon = "VRMC_materials_mtoon"

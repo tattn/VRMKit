@@ -20,10 +20,10 @@ For "VRM", please refer to [vrm.dev](https://vrm.dev/en/).
 # Features
 
 - [x] Load VRM file
-- [x] Render VRM models on RealityKit (experimental)
+- [x] Render VRM models on RealityKit
 - [x] Face morphing (blend shape)
 - [x] Bone animation (skin / joint)
-- [x] Physics (spring bone)
+- [x] Physics (spring bone, with the extended colliders and limits of VRM 1.0)
 - [x] Look at (eye bone / expression)
 - [x] MToon rendering and custom material shaders
 - [x] Render plain glTF / GLB with animations

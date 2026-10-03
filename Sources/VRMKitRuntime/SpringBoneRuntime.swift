@@ -1,15 +1,28 @@
 import simd
 import VRMKit
 
+/// A collider where it is this frame, in world space.
 package struct SpringBoneCollider {
+    package enum Kind: Equatable {
+        /// Keeps joints out of the sphere or capsule.
+        case outside
+        /// Keeps joints in the sphere or capsule (`VRMC_springBone_extended_collider`).
+        case inside
+        /// Keeps joints on the side of the plane through `head` the normal points to
+        /// (`VRMC_springBone_extended_collider`).
+        case plane(normal: SIMD3<Float>)
+    }
+
     package let head: SIMD3<Float>
     let tail: SIMD3<Float>?
     package let radius: Float
+    let kind: Kind
 
-    package init(head: SIMD3<Float>, tail: SIMD3<Float>?, radius: Float) {
+    package init(head: SIMD3<Float>, tail: SIMD3<Float>?, radius: Float, kind: Kind = .outside) {
         self.head = head
         self.tail = tail
         self.radius = radius
+        self.kind = kind
     }
 
     package func closestPoint(to point: SIMD3<Float>) -> SIMD3<Float> {
@@ -20,14 +33,37 @@ package struct SpringBoneCollider {
         let t = max(0, min(1, simd_dot(point - head, segment) / lengthSquared))
         return head + segment * t
     }
+
+    /// How far a joint of `hitRadius` at `point` is clear of the collider, negative when
+    /// they overlap, and the direction that clears it, as the `VRMC_springBone` and
+    /// `VRMC_springBone_extended_collider` reference implementations measure them.
+    func separation(of point: SIMD3<Float>, hitRadius: Float) -> (distance: Float, direction: SIMD3<Float>) {
+        switch kind {
+        case .outside:
+            let delta = point - closestPoint(to: point)
+            let length = simd_length(delta)
+            // A point exactly on the collider has no direction of its own to be pushed along.
+            let direction = length > Float.ulpOfOne ? delta / length : SIMD3<Float>(0, 1, 0)
+            return (length - radius - hitRadius, direction)
+        case .inside:
+            let delta = point - closestPoint(to: point)
+            let length = simd_length(delta)
+            let direction = length > Float.ulpOfOne ? -delta / length : SIMD3<Float>(0, -1, 0)
+            return (radius - hitRadius - length, direction)
+        case .plane(let normal):
+            return (simd_dot(point - head, normal) - hitRadius, normal)
+        }
+    }
 }
 
 /// A collider as either version states one: a shape in the space of the node it hangs
 /// off. Only the renderer holds the scene graph, so it hands ``world(in:)`` the
 /// node's transform.
 package enum SpringBoneColliderShape: Equatable {
-    case sphere(offset: SIMD3<Float>, radius: Float)
-    case capsule(offset: SIMD3<Float>, tail: SIMD3<Float>, radius: Float)
+    case sphere(offset: SIMD3<Float>, radius: Float, inside: Bool = false)
+    case capsule(offset: SIMD3<Float>, tail: SIMD3<Float>, radius: Float, inside: Bool = false)
+    /// `normal` is a unit vector.
+    case plane(offset: SIMD3<Float>, normal: SIMD3<Float>)
 
     package init(vrm0Collider collider: VRM0.SecondaryAnimation.ColliderGroup.Collider) throws {
         let offset = VRM0.nodeSpace(collider.offset)
@@ -37,35 +73,82 @@ package enum SpringBoneColliderShape: Equatable {
         self = .sphere(offset: offset, radius: radius)
     }
 
+    /// The shape `VRMC_springBone_extended_collider` gives the collider when it carries
+    /// one, which replaces the fallback shape `VRMC_springBone` states.
     package init(vrm1Collider collider: VRM1.SpringBone.Collider) throws {
+        if let extended = try collider.extendedShape() {
+            switch extended {
+            case .sphere(let offset, let radius, let inside):
+                self = try Self.validatedSphere(offset: offset, radius: radius, inside: inside)
+            case .capsule(let offset, let tail, let radius, let inside):
+                self = try Self.validatedCapsule(offset: offset, tail: tail, radius: radius, inside: inside)
+            case .plane(let offset, let normal):
+                try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
+                try VRMSpringBoneParameters.requireFinite(normal, named: "collider normal")
+                guard simd_length_squared(normal) > Float.ulpOfOne else {
+                    throw VRMError._dataInconsistent("a plane collider has no normal")
+                }
+                self = .plane(offset: offset, normal: simd_normalize(normal))
+            }
+            return
+        }
         switch collider.shape {
         case .sphere(let sphere):
-            let offset = sphere.offset
-            let radius = Float(sphere.radius)
-            try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
-            try VRMSpringBoneParameters.requireFiniteNonnegative(radius, named: "collider radius")
-            self = .sphere(offset: offset, radius: radius)
+            self = try Self.validatedSphere(offset: sphere.offset, radius: Float(sphere.radius), inside: false)
         case .capsule(let capsule):
-            let offset = capsule.offset
-            let tail = capsule.tail
-            let radius = Float(capsule.radius)
-            try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
-            try VRMSpringBoneParameters.requireFinite(tail, named: "collider tail")
-            try VRMSpringBoneParameters.requireFiniteNonnegative(radius, named: "collider radius")
-            self = .capsule(offset: offset, tail: tail, radius: radius)
+            self = try Self.validatedCapsule(offset: capsule.offset,
+                                             tail: capsule.tail,
+                                             radius: Float(capsule.radius),
+                                             inside: false)
         }
+    }
+
+    private static func validatedSphere(offset: SIMD3<Float>, radius: Float, inside: Bool) throws -> Self {
+        try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
+        try VRMSpringBoneParameters.requireFiniteNonnegative(radius, named: "collider radius")
+        return .sphere(offset: offset, radius: radius, inside: inside)
+    }
+
+    private static func validatedCapsule(offset: SIMD3<Float>,
+                                         tail: SIMD3<Float>,
+                                         radius: Float,
+                                         inside: Bool) throws -> Self {
+        try VRMSpringBoneParameters.requireFinite(offset, named: "collider offset")
+        try VRMSpringBoneParameters.requireFinite(tail, named: "collider tail")
+        try VRMSpringBoneParameters.requireFiniteNonnegative(radius, named: "collider radius")
+        return .capsule(offset: offset, tail: tail, radius: radius, inside: inside)
     }
 
     /// Where the shape is, given where the node it hangs off is.
     package func world(in localToWorld: simd_float4x4) -> SpringBoneCollider {
         switch self {
-        case .sphere(let offset, let radius):
-            SpringBoneCollider(head: localToWorld.multiplyPoint(offset), tail: nil, radius: radius)
-        case .capsule(let offset, let tail, let radius):
+        case .sphere(let offset, let radius, let inside):
+            SpringBoneCollider(head: localToWorld.multiplyPoint(offset),
+                               tail: nil,
+                               radius: radius,
+                               kind: inside ? .inside : .outside)
+        case .capsule(let offset, let tail, let radius, let inside):
             SpringBoneCollider(head: localToWorld.multiplyPoint(offset),
                                tail: localToWorld.multiplyPoint(tail),
-                               radius: radius)
+                               radius: radius,
+                               kind: inside ? .inside : .outside)
+        case .plane(let offset, let normal):
+            SpringBoneCollider(head: localToWorld.multiplyPoint(offset),
+                               tail: nil,
+                               radius: 0,
+                               kind: .plane(normal: Self.worldNormal(normal, in: localToWorld)))
         }
+    }
+
+    /// A normal turned by the inverse transpose, so it stays perpendicular to the plane
+    /// under a node scaled unevenly.
+    private static func worldNormal(_ normal: SIMD3<Float>, in localToWorld: simd_float4x4) -> SIMD3<Float> {
+        let columns = localToWorld.columns
+        let linear = simd_float3x3(SIMD3(columns.0.x, columns.0.y, columns.0.z),
+                                   SIMD3(columns.1.x, columns.1.y, columns.1.z),
+                                   SIMD3(columns.2.x, columns.2.y, columns.2.z))
+        let world = linear.inverse.transpose * normal
+        return simd_length_squared(world) > Float.ulpOfOne ? simd_normalize(world) : normal
     }
 }
 
@@ -78,17 +161,21 @@ package struct SpringBoneJointSetting {
     let gravityDir: SIMD3<Float>
     let dragForce: Float
     let hitRadius: Float
+    /// The range the joint swings in (`VRMC_springBone_limit`), nil for anywhere.
+    let limit: SpringBoneLimit?
 
     package init(stiffnessForce: Float,
                  gravityPower: Float,
                  gravityDir: SIMD3<Float>,
                  dragForce: Float,
-                 hitRadius: Float) {
+                 hitRadius: Float,
+                 limit: SpringBoneLimit? = nil) {
         self.stiffnessForce = stiffnessForce
         self.gravityPower = gravityPower
         self.gravityDir = gravityDir
         self.dragForce = dragForce
         self.hitRadius = hitRadius
+        self.limit = limit
     }
 
     package init(vrm0BoneGroup group: VRM0.SecondaryAnimation.BoneGroup) throws {
@@ -106,7 +193,8 @@ package struct SpringBoneJointSetting {
                   gravityPower: joint.gravityPower.map(Float.init) ?? VRMSpringBoneDefaults.gravityPower,
                   gravityDir: joint.gravityDir,
                   dragForce: joint.dragForce.map(Float.init) ?? VRMSpringBoneDefaults.dragForce,
-                  hitRadius: joint.hitRadius.map(Float.init) ?? VRMSpringBoneDefaults.hitRadius)
+                  hitRadius: joint.hitRadius.map(Float.init) ?? VRMSpringBoneDefaults.hitRadius,
+                  limit: try joint.limit().map(SpringBoneLimit.init(vrm1Limit:)))
         try validate()
     }
 
@@ -207,17 +295,23 @@ package struct SpringBoneJoint {
         let inertia = (currentTail - prevTail) * (1 - setting.dragForce)
         let stiffness = restDirection * (setting.stiffnessForce * deltaTime)
         let external = (setting.gravityDir * setting.gravityPower + externalForce) * deltaTime
-        var nextTail = onBone(currentTail + inertia + stiffness + external,
-                              head: head,
-                              restDirection: restDirection)
+        // The limit keeps the tail in range after the inertia and again after every
+        // collider pushes it, as `VRMC_springBone_limit` orders them.
+        let limitSpace = setting.limit?.space(restRotation: restRotation, boneAxis: boneAxis)
+        func limited(_ tail: SIMD3<Float>) -> SIMD3<Float> {
+            guard let limit = setting.limit, let limitSpace else { return tail }
+            let direction = limitSpace.inverse.act((tail - head) / boneLength)
+            return head + limitSpace.act(limit.constrained(direction)) * boneLength
+        }
+
+        var nextTail = limited(onBone(currentTail + inertia + stiffness + external,
+                                      head: head,
+                                      restDirection: restDirection))
 
         for collider in colliders {
-            let closest = collider.closestPoint(to: nextTail)
-            let delta = nextTail - closest
-            let distance = setting.hitRadius + collider.radius
-            guard delta.length_squared <= distance * distance else { continue }
-            let normal = delta.length_squared > Float.ulpOfOne ? delta.normalized : SIMD3<Float>(0, 1, 0)
-            nextTail = onBone(closest + normal * distance, head: head, restDirection: restDirection)
+            let (distance, direction) = collider.separation(of: nextTail, hitRadius: setting.hitRadius)
+            guard distance <= 0 else { continue }
+            nextTail = limited(onBone(nextTail - direction * distance, head: head, restDirection: restDirection))
         }
 
         self.prevTail = center?.centered(currentTail) ?? currentTail
