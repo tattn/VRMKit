@@ -409,10 +409,10 @@ struct GLTFGeometryDecoder: Sendable {
 
             let edge1 = positions[i1] - positions[i0]
             let edge2 = positions[i2] - positions[i0]
-            // `texcoords` point v up while the normal map works in glTF UV space,
-            // so the v gradients are negated back into it.
-            let deltaUV1 = gltfUVDelta(texcoords[i1] - texcoords[i0])
-            let deltaUV2 = gltfUVDelta(texcoords[i2] - texcoords[i0])
+            // A normal map's +Y points up the image, the way `texcoords` (v up) grow,
+            // as UniVRM's Unity-generated tangents have it.
+            let deltaUV1 = texcoords[i1] - texcoords[i0]
+            let deltaUV2 = texcoords[i2] - texcoords[i0]
 
             // A degenerate UV triangle carries no direction.
             let determinant = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y
@@ -439,11 +439,6 @@ struct GLTFGeometryDecoder: Sendable {
             bitangents[i] = simd_dot(bitangent, bitangentSums[i]) < 0 ? -bitangent : bitangent
         }
         return TangentFrame(tangents: tangents, bitangents: bitangents)
-    }
-
-    /// A UV difference converted from the mesh's v-up coordinates into glTF UV space.
-    private static func gltfUVDelta(_ delta: SIMD2<Float>) -> SIMD2<Float> {
-        SIMD2<Float>(delta.x, -delta.y)
     }
 
     /// Gram-Schmidt against the normal, falling back to any perpendicular axis.

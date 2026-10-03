@@ -40,11 +40,10 @@ struct GLTFMeshAttributeTests {
         #expect(checkedParts > 0)
     }
 
-    /// MToon samples the normal map in glTF UV space, where v points down, while
-    /// the mesh stores UVs with v up, so the generated bitangent has to follow
-    /// glTF +v to match what a TANGENT accessor supplies.
+    /// A normal map's +Y points up the image, so the generated bitangent follows
+    /// the stored v, which grows upward, as UniVRM's Unity-generated tangents do.
     @Test
-    func testGeneratedBitangentsFollowTheGLTFUVOrientation() async throws {
+    func testGeneratedBitangentsPointUpTheImage() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try await loader.loadEntity()
@@ -65,9 +64,7 @@ struct GLTFMeshAttributeTests {
                     let i2 = Int(indices[triangle + 2])
                     let deltaUV1 = texcoords[i1] - texcoords[i0]
                     let deltaUV2 = texcoords[i2] - texcoords[i0]
-                    // The stored v runs the other way, so the glTF-space
-                    // determinant is the stored one negated.
-                    let determinant = deltaUV2.x * deltaUV1.y - deltaUV1.x * deltaUV2.y
+                    let determinant = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y
                     guard abs(determinant) > 1e-9 else { continue }
                     let edge1 = positions[i1] - positions[i0]
                     let edge2 = positions[i2] - positions[i0]
