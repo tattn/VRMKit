@@ -8,7 +8,7 @@ import VRMTestSupport
 @testable import VRMRealityKit
 
 /// The MToon outline seams: the conversion style's width mode, the shader's
-/// outline pass policy, and the runtime outline API of ``GLTFEntity``.
+/// outline pass policy, and the pass visibility API of ``GLTFEntity`` on it.
 @Suite
 @MainActor
 struct MToonOutlineTests {
@@ -83,136 +83,6 @@ struct MToonOutlineTests {
         #expect(outlineEntities(in: plain).isEmpty)
     }
 
-    /// `.always` gives every MToon material a pass so an outline can be shown
-    /// later; without an authored outline it starts disabled.
-    @Test
-    func testAlwaysOutlinePassStartsDisabledWithoutAnAuthoredOutline() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll,
-                                                                      outlinePass: .always)]).loadEntity()
-        let pass = try #require(outlineEntities(in: entity).first)
-        #expect(!pass.isEnabled)
-    }
-
-    /// `.always` also covers a VRM whose materials are authored without an
-    /// outline, which is what makes a runtime selection highlight possible.
-    @Test
-    func testAlwaysOutlinePassCoversAuthoredMToonWithoutAnOutline() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let modified = try TestSupport.modifiedSeedSanMToonExtension(name: "no-outline") { mtoon in
-            mtoon["outlineWidthMode"] = "none"
-        }
-        let entity = try await VRMEntityLoader(withData: modified,
-                                               shaders: [MToonShader(outlinePass: .always)]).loadEntity()
-        let slots = outlineSlotVisibility(in: entity, materialIndex: 0)
-        #expect(!slots.isEmpty)
-        #expect(slots.allSatisfy { !$0 })
-
-        let automatic = try await VRMEntityLoader(withData: modified).loadEntity()
-        #expect(outlineSlotVisibility(in: automatic, materialIndex: 0).isEmpty)
-    }
-
-    /// The selection-highlight flow end to end minus the GPU: an override shows
-    /// a hidden pass and draws through it, over rows it leaves as authored.
-    @Test
-    func testOutlineOverrideShowsAHiddenPassAndLeavesTheAuthoredRows() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll,
-                                                                      outlinePass: .always)]).loadEntity()
-
-        let pass = try #require(outlineEntities(in: entity).first)
-        let authored = try #require(entity.mtoonParameters(forMaterialIndex: 0))
-        #expect(!pass.isEnabled)
-
-        let highlight = MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0),
-                                             width: 0.004,
-                                             mode: .screenCoordinates)
-        entity.setMToonOutlineOverride(highlight)
-
-        #expect(pass.isEnabled)
-        let state = try #require(entity.mtoonState(forMaterialIndex: 0))
-        #expect(state.outlineOverride == highlight)
-        // Untouched underneath, which is what lets the override be released.
-        #expect(state.parameters.outlineColor == authored.outlineColor)
-        #expect(state.parameters.outlineParams == authored.outlineParams)
-        // The writes were flushed, not left pending for an expression tick.
-        #expect(entity.materialStates.values.allSatisfy { !$0.needsFlush })
-
-        // Releasing it hides the pass that started hidden again.
-        entity.setMToonOutlineOverride(nil)
-        #expect(state.outlineOverride == nil)
-        #expect(!pass.isEnabled)
-    }
-
-    /// Re-setting the override already in place must not write the parameter rows
-    /// again, and a change that does write them lands in the texture the materials
-    /// already sample.
-    @Test
-    func testSettingTheSameOverrideAgainDoesNotRewriteTheParameterRows() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll,
-                                                                      outlinePass: .always)]).loadEntity()
-        let state = try #require(entity.mtoonState(forMaterialIndex: 0))
-
-        let highlight = MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004)
-        entity.setMToonOutlineOverride(highlight)
-        let texture = try #require(state.parameterTexture)
-        let writes = texture.writeCount
-        #expect(!state.updatesMaterialsOnFlush, "the first flush installs the texture, later ones must not")
-
-        entity.setMToonOutlineOverride(highlight)
-        #expect(texture.writeCount == writes)
-
-        // A different override is a real change, so it is written.
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(0, 1, 0), width: 0.004))
-        #expect(texture.writeCount == writes + 1)
-        #expect(state.parameterTexture === texture)
-    }
-
-    /// A zero-width override outlines nothing, so it hides the passes: the
-    /// inverted hull draws wherever its geometry does, offset or not.
-    @Test
-    func testZeroWidthOverrideHidesThePassesInsteadOfShowingThem() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let style = MToonConversionStyle(outlineWidthFactor: 0.002)
-        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
-        let passes = outlineEntities(in: entity)
-        #expect(passes.allSatisfy { $0.isEnabled }, "the authored outline must start visible")
-
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0))
-        #expect(passes.allSatisfy { !$0.isEnabled })
-
-        // Releasing the override restores the authored outline.
-        entity.setMToonOutlineOverride(nil)
-        #expect(passes.allSatisfy { $0.isEnabled })
-    }
-
-    /// Releasing an override puts each pass back to the state it was built in,
-    /// so materials authored with an outline keep theirs.
-    @Test
-    func testReleasingAnOverrideRestoresEachPassToItsAuthoredVisibility() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Material 0 loses its outline, so the passes start in both states.
-        let modified = try TestSupport.modifiedSeedSanMToonExtension(name: "mixed-outlines") { mtoon in
-            mtoon["outlineWidthMode"] = "none"
-        }
-        let entity = try await VRMEntityLoader(withData: modified,
-                                               shaders: [MToonShader(outlinePass: .always)]).loadEntity()
-        let authoredVisibility = outlineSlotVisibility(in: entity)
-        #expect(authoredVisibility.contains(true))
-        #expect(authoredVisibility.contains(false))
-
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004))
-        #expect(outlineSlotVisibility(in: entity).allSatisfy { $0 })
-
-        entity.setMToonOutlineOverride(nil)
-        #expect(outlineSlotVisibility(in: entity) == authoredVisibility)
-    }
-
     /// The modifier clamps its offset to the margin the pass is culled by, which
     /// the loader writes into `custom.value.w` for every later flush to carry.
     @Test
@@ -238,92 +108,11 @@ struct MToonOutlineTests {
         })
         #expect(try budget(of: main) == 0)
 
-        // Both kinds of parameter write rebuild custom.value; neither may drop
-        // the budget.
+        // A parameter write rebuilds custom.value; it may not drop the budget.
         entity.setMToonLightDirection(SIMD3<Float>(1, 0, 0))
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004))
+        entity.setMaterialColor(SIMD4<Float>(1, 0, 0, 1), for: .outlineColor, ofMaterial: 0)
         #expect(try budget(of: pass) == margin)
         #expect(try budget(of: main) == 0)
-    }
-
-    /// Rows that never reached the GPU must not move the pass visibility. Setting
-    /// the same override again retries the flush, and the visibility follows it.
-    @Test
-    func testPassVisibilityWaitsForTheRowsToReachTheGPU() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll,
-                                                                      outlinePass: .always)]).loadEntity()
-        let pass = try #require(outlineEntities(in: entity).first)
-        #expect(!pass.isEnabled)
-
-        // A material with no state to bake stands in for a parameter texture the
-        // GPU has no room for: while it is dirty, no flush finishes.
-        let blocked = Int.max
-        func blockFlushing(_ isBlocked: Bool) {
-            entity.materialStates[blocked] = isBlocked ? .init(needsFlush: true) : nil
-        }
-
-        blockFlushing(true)
-        let highlight = MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004)
-        entity.setMToonOutlineOverride(highlight)
-        #expect(try #require(entity.mtoonState(forMaterialIndex: 0)).outlineOverride == highlight)
-        #expect(!pass.isEnabled, "shown before the GPU had the override")
-
-        // Setting the same override again is the retry.
-        blockFlushing(false)
-        entity.setMToonOutlineOverride(highlight)
-        #expect(pass.isEnabled)
-
-        blockFlushing(true)
-        entity.setMToonOutlineOverride(nil)
-        #expect(pass.isEnabled, "hidden while the GPU still drew the override")
-
-        blockFlushing(false)
-        entity.setMToonOutlineOverride(nil)
-        #expect(!pass.isEnabled)
-    }
-
-    /// The override restores the visibility it replaced, not the one the shader
-    /// declared, so an outline hidden beforehand does not come back with it.
-    @Test
-    func testReleasingAnOverrideRestoresTheVisibilityItReplaced() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let style = MToonConversionStyle(outlineWidthFactor: 0.002)
-        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
-        let passes = outlineEntities(in: entity)
-        #expect(passes.allSatisfy { $0.isEnabled }, "the authored outline must start visible")
-
-        entity.setPassEnabled(false, named: MToonShader.outlinePassName)
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004))
-        #expect(passes.allSatisfy { $0.isEnabled })
-
-        entity.setMToonOutlineOverride(nil)
-        #expect(passes.allSatisfy { !$0.isEnabled })
-    }
-
-    /// Releasing an override that was never set changes nothing, so it does not
-    /// undo a ``GLTFEntity/setPassEnabled(_:named:)`` it has nothing to do with.
-    @Test
-    func testReleasingAnOverrideThatIsNotInForceLeavesPassVisibilityAlone() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let style = MToonConversionStyle(outlineWidthFactor: 0.002)
-        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
-        let passes = outlineEntities(in: entity)
-        #expect(passes.allSatisfy { $0.isEnabled }, "the authored outline must start visible")
-
-        entity.setPassEnabled(false, named: MToonShader.outlinePassName)
-        entity.setMToonOutlineOverride(nil)
-        #expect(passes.allSatisfy { !$0.isEnabled })
-
-        // And once released, a second release is just as inert.
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004))
-        entity.setMToonOutlineOverride(nil)
-        entity.setPassEnabled(false, named: MToonShader.outlinePassName)
-        entity.setMToonOutlineOverride(nil)
-        #expect(passes.allSatisfy { !$0.isEnabled })
     }
 
     /// A hidden outline pass still tracks the skeleton, so showing one mid-pose
@@ -331,11 +120,10 @@ struct MToonOutlineTests {
     @Test
     func testHiddenOutlinePassesKeepTrackingTheSkeleton() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
-                                               shaders: [MToonShader(outlinePass: .always)]).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        entity.setPassEnabled(false, named: MToonShader.outlinePassName)
         let hidden = try #require(outlineEntities(in: entity).first {
             $0.components.has(GLTFSkinIndexComponent.self)
-                && $0.mergedMesh?.visibleSlots.contains(false) == true
         })
         func pose(of modelEntity: ModelEntity) -> [SIMD4<Float>]? {
             modelEntity.deformedMesh?.jointTransforms?.map(\.rotation.vector)
@@ -365,187 +153,118 @@ struct MToonOutlineTests {
         #expect(!mainPasses.isEmpty)
         #expect(mainPasses.allSatisfy { $0.isEnabled })
     }
-    /// A recursive clone carries no material runtime state, so visibility still
-    /// works on one while the parameter setters are safe no-ops.
+
+    /// Pass visibility is read from the entity graph, so it works on a recursive
+    /// clone, which carries no material runtime state, without reaching the original.
     @Test
-    func testOutlineVisibilityWorksOnClonesWhileParameterSettersDoNot() async throws {
+    func testOutlineVisibilityWorksOnClones() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let style = MToonConversionStyle(outlineWidthFactor: 0.002)
         let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                                shaders: [MToonShader(source: .convertAll,
-                                                                      outlinePass: .always)]).loadEntity()
+                                                shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
         let clone = entity.clone(recursive: true)
         let clonedPasses = outlineEntities(in: clone)
         #expect(!clonedPasses.isEmpty)
-        #expect(clonedPasses.allSatisfy { !$0.isEnabled })
-
-        // The override reaches no parameter rows on a clone, so it must not
-        // show the passes either: a whole no-op, not a bare visibility flip.
-        clone.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.01))
         #expect(clone.mtoonParameters(forMaterialIndex: 0) == nil)
+
+        clone.setPassEnabled(false, named: MToonShader.outlinePassName)
         #expect(clonedPasses.allSatisfy { !$0.isEnabled })
-
-        clone.setPassEnabled(true, named: MToonShader.outlinePassName)
-        #expect(clonedPasses.allSatisfy { $0.isEnabled })
-        // The clone owns its own entities, so the original is untouched.
-        #expect(outlineEntities(in: entity).allSatisfy { !$0.isEnabled })
+        #expect(outlineEntities(in: entity).allSatisfy { $0.isEnabled })
     }
 
-    /// A runtime outline color outranks a VRM expression bound to the same value,
-    /// and handing it back reveals whatever the expression wrote meanwhile.
+    // MARK: - Pass visibility overrides
+
+    /// An override scoped to a material set reaches those materials alone, and
+    /// releasing it puts them back.
     @Test
-    func testRuntimeOutlineColorOutranksAnExpressionBind() async throws {
+    func testPassOverrideReachesOnlyItsMaterials() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let bound = SIMD4<Float>(0, 1, 0, 1)
-        let modified = try TestSupport.modifiedSeedSanExpressions(name: "outline-color-bind") { preset in
-            guard var happy = preset.object("happy") else {
-                throw VRMError.dataInconsistent("Missing Seed-san happy expression")
-            }
-            happy["materialColorBinds"] = [[
-                "material": 0,
-                "type": "outlineColor",
-                "targetValue": [0.0, 1.0, 0.0, 1.0]
-            ]]
-            preset["happy"] = .object(happy)
-        }
-        let entity = try await VRMEntityLoader(withData: modified,
-                                               shaders: [MToonShader(outlinePass: .always)]).loadEntity()
-        let state = try #require(entity.mtoonState(forMaterialIndex: 0))
-        let authored = state.parameters.outlineColor
-
-        let highlight = MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004)
-        entity.setMToonOutlineOverride(highlight)
-        #expect(state.outlineOverride == highlight)
-
-        // The expression still drives the row underneath; it just does not show.
-        entity.setExpression(value: 1, for: .preset(.happy))
-        #expect(state.outlineOverride == highlight)
-        #expect(state.parameters.outlineColor == bound)
-
-        // Handing it back shows the expression's current color, unprompted.
-        entity.setMToonOutlineOverride(nil)
-        #expect(state.outlineOverride == nil)
-        #expect(state.parameters.outlineColor == bound)
-
-        entity.setExpression(value: 0, for: .preset(.happy))
-        #expect(state.parameters.outlineColor == authored)
-    }
-
-    // MARK: - Scoped overrides
-
-    /// An override scoped to a material set reaches those materials alone:
-    /// the rows, and the pass visibility, of every other material never move.
-    @Test
-    func testScopedOverrideReachesOnlyItsMaterials() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Seed-san materials 0 and 1 both have authored outlines, so a
-        // zero-width override on one shows as a change and the other holds.
+        // Seed-san materials 0 and 1 both have authored outlines, so hiding one
+        // shows as a change and the other holds.
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         #expect(!outlineSlotVisibility(in: entity, materialIndex: 0).isEmpty)
         #expect(!outlineSlotVisibility(in: entity, materialIndex: 1).isEmpty)
 
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0),
-                                       forMaterials: [0])
+        entity.overridePassEnabled(false, named: MToonShader.outlinePassName, forMaterials: [0])
         #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
         #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { $0 })
-        #expect(try #require(entity.mtoonState(forMaterialIndex: 0)).outlineOverride != nil)
-        #expect(try #require(entity.mtoonState(forMaterialIndex: 1)).outlineOverride == nil)
 
-        entity.setMToonOutlineOverride(nil, forMaterials: [0])
+        entity.releasePassEnabledOverride(named: MToonShader.outlinePassName, forMaterials: [0])
         #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
-        #expect(try #require(entity.mtoonState(forMaterialIndex: 0)).outlineOverride == nil)
     }
 
-    /// Disjoint selections compose, and within an overlap the last set wins per
-    /// material while a release restores what the first covering set replaced.
+    /// Within an overlap the first covering override records what it replaced, so
+    /// releasing a later one restores the visibility from before either.
     @Test
-    func testScopedOverridesComposePerMaterial() async throws {
+    func testOverlappingPassOverridesRestoreTheVisibilityFromBeforeTheFirst() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let state0 = try #require(entity.mtoonState(forMaterialIndex: 0))
-        let state1 = try #require(entity.mtoonState(forMaterialIndex: 1))
-        let blue = MToonOutlineOverride(color: SIMD3<Float>(0, 0, 1), width: 0.004)
-        let white = MToonOutlineOverride(color: SIMD3<Float>(1, 1, 1), width: 0)
 
-        entity.setMToonOutlineOverride(blue, forMaterials: [0, 1])
-        entity.setMToonOutlineOverride(white, forMaterials: [1])
-        #expect(state0.outlineOverride == blue)
-        #expect(state1.outlineOverride == white)
-        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { !$0 })
-
-        // Material 1 goes back to its authored visibility, not to blue's.
-        entity.setMToonOutlineOverride(nil, forMaterials: [1])
-        #expect(state0.outlineOverride == blue)
-        #expect(state1.outlineOverride == nil)
+        entity.overridePassEnabled(false, named: MToonShader.outlinePassName, forMaterials: [0, 1])
+        entity.overridePassEnabled(true, named: MToonShader.outlinePassName, forMaterials: [1])
         #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { $0 })
 
-        entity.setMToonOutlineOverride(nil, forMaterials: [0])
-        #expect(state0.outlineOverride == nil)
+        entity.releasePassEnabledOverride(named: MToonShader.outlinePassName, forMaterials: [1])
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { $0 })
+
+        entity.releasePassEnabledOverride(named: MToonShader.outlinePassName, forMaterials: [0])
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
     }
 
-    /// The whole-entity setter is the all-materials scope, so a global release
-    /// hands back a scoped override, and a scoped release carves one material
-    /// out of a global override.
+    /// A release restores the visibility the override replaced, not the one the
+    /// shader declared, so a pass hidden beforehand does not come back with it.
     @Test
-    func testGlobalAndScopedOverridesShareOneScope() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let state0 = try #require(entity.mtoonState(forMaterialIndex: 0))
-        let state1 = try #require(entity.mtoonState(forMaterialIndex: 1))
-        let highlight = MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004)
-
-        entity.setMToonOutlineOverride(highlight, forMaterials: [0])
-        entity.setMToonOutlineOverride(nil)
-        #expect(state0.outlineOverride == nil)
-
-        entity.setMToonOutlineOverride(highlight)
-        entity.setMToonOutlineOverride(nil, forMaterials: [0])
-        #expect(state0.outlineOverride == nil)
-        #expect(state1.outlineOverride == highlight)
-        entity.setMToonOutlineOverride(nil)
-        #expect(state1.outlineOverride == nil)
-    }
-
-    /// A scoped release restores the visibility the override replaced, a
-    /// global hide of the caller's own included, for its materials alone.
-    @Test
-    func testScopedReleaseRestoresTheVisibilityItReplacedForItsMaterialsAlone() async throws {
+    func testReleasingAPassOverrideRestoresTheVisibilityItReplaced() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         entity.setPassEnabled(false, named: MToonShader.outlinePassName)
 
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004),
-                                       forMaterials: [0])
+        entity.overridePassEnabled(true, named: MToonShader.outlinePassName, forMaterials: [0])
         #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
         #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { !$0 })
 
-        entity.setMToonOutlineOverride(nil, forMaterials: [0])
+        entity.releasePassEnabledOverride(named: MToonShader.outlinePassName, forMaterials: [0])
         #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
     }
 
-    /// A selection of materials the outline runtime does not cover moves no
-    /// pass visibility at all, an empty one included.
+    /// Releasing an override that is not in force changes nothing, so it does not
+    /// undo a ``GLTFEntity/setPassEnabled(_:named:)`` it has nothing to do with.
     @Test
-    func testScopedOverrideWithoutAnOutlinePassInTheSelectionIsANoOp() async throws {
+    func testReleasingAPassOverrideThatIsNotInForceLeavesVisibilityAlone() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Under the default `.automatic` pass policy Seed-san material 3 (an
-        // outline-less eye) builds no pass, and material 12 is not MToon.
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        entity.setPassEnabled(false, named: MToonShader.outlinePassName)
+        entity.releasePassEnabledOverride(named: MToonShader.outlinePassName, forMaterials: [0])
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
+
+        // And once released, a second release is just as inert.
+        entity.overridePassEnabled(true, named: MToonShader.outlinePassName, forMaterials: [0])
+        entity.releasePassEnabledOverride(named: MToonShader.outlinePassName, forMaterials: [0])
+        entity.setPassEnabled(true, named: MToonShader.outlinePassName)
+        entity.releasePassEnabledOverride(named: MToonShader.outlinePassName, forMaterials: [0])
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
+    }
+
+    /// Materials that draw no such pass are skipped, an empty selection included.
+    @Test
+    func testPassOverrideWithoutThePassInTheSelectionIsANoOp() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        // Seed-san material 3 (an outline-less eye) builds no pass, and material 12
+        // is not MToon.
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let visibility = outlineSlotVisibility(in: entity)
 
-        let highlight = MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0.004)
-        entity.setMToonOutlineOverride(highlight, forMaterials: [3, 12])
-        #expect(entity.mtoonState(forMaterialIndex: 3)?.outlineOverride == nil)
-        #expect(entity.mtoonState(forMaterialIndex: 12) == nil)
+        entity.overridePassEnabled(false, named: MToonShader.outlinePassName, forMaterials: [3, 12])
         #expect(outlineSlotVisibility(in: entity) == visibility)
-
-        entity.setMToonOutlineOverride(highlight, forMaterials: [])
+        entity.overridePassEnabled(false, named: MToonShader.outlinePassName, forMaterials: [])
         #expect(outlineSlotVisibility(in: entity) == visibility)
     }
 
-    /// The unit of a scoped override is the material, so selecting a subtree
-    /// whose material is shared outlines everywhere that material draws.
+    /// The unit of an override is the material, so selecting a subtree whose
+    /// material is shared reaches everywhere that material draws.
     @Test
-    func testASharedMaterialIsOutlinedEverywhereItDraws() async throws {
+    func testAPassOverrideOnASharedMaterialReachesEverywhereItDraws() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san's "hair_tail" mesh (node 1) draws material 0, which the
         // "hair" mesh (node 0) shares.
@@ -554,12 +273,11 @@ struct MToonOutlineTests {
         let selection = entity.materialIndices(under: hairTail)
         #expect(selection == [0])
 
-        entity.setMToonOutlineOverride(MToonOutlineOverride(color: SIMD3<Float>(1, 0, 0), width: 0),
-                                       forMaterials: selection)
+        entity.overridePassEnabled(false, named: MToonShader.outlinePassName, forMaterials: selection)
         let hair = try #require(entity.entity(forNodeAt: 0))
         #expect(outlineSlotVisibility(in: hair, materialIndex: 0).allSatisfy { !$0 })
 
-        entity.setMToonOutlineOverride(nil, forMaterials: selection)
+        entity.releasePassEnabledOverride(named: MToonShader.outlinePassName, forMaterials: selection)
         #expect(outlineSlotVisibility(in: hair, materialIndex: 0).allSatisfy { $0 })
     }
 #endif

@@ -21,7 +21,7 @@ struct MaterialColorRenderingTests {
                 entity.setMaterialColor(emission, for: .emissionColor, ofMaterial: index)
             }
         }
-        entity.waitForMToonParameterWrites()
+        entity.waitForMaterialStateWrites()
         let root = Entity()
         root.addChild(entity)
         root.scale = SIMD3<Float>(repeating: 0.4)

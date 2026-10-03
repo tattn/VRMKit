@@ -128,7 +128,7 @@ extension GLTFEntity {
         if options.mtoonLitFromCamera {
             subject.setMToonLightDirection(towardCamera)
         }
-        subject.waitForMToonParameterWrites()
+        subject.waitForMaterialStateWrites()
 
         let renderer = try RealityRenderer()
         renderer.entities.append(subject)

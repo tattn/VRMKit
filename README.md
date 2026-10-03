@@ -166,9 +166,7 @@ model.setMToonAmbientColor(SIMD3<Float>(0.1, 0.1, 0.1))
 Both loaders take a material shader chain. Each shader is asked in order, and materials no shader claims render through the built-in Unlit / PBR path.
 
 ```swift
-// The default chain is [MToonShader()]: MToon with authored outlines. Use
-// .always for a hidden outline pass on every MToon material, so any of them
-// can be outlined at runtime.
+// The default chain is [MToonShader()]: MToon with authored outlines.
 let noOutlines = try VRMEntityLoader(named: "model.vrm", shaders: [MToonShader(outlinePass: .never)])
 let noMToon = try VRMEntityLoader(named: "model.vrm", shaders: [])
 
@@ -194,26 +192,37 @@ let custom = try VRMEntityLoader(withData: data, shaders: [MyShader(), MToonShad
 
 `GLTFShadedMaterial` also carries extra render passes, MToon's outline being one, and a `makeAnimatableState` closure that lets VRM expressions animate a custom material. See the `GLTFMaterialShader` documentation comments.
 
-A blended material also carries a `renderQueue`, the Unity-scale draw order that VRM 0.x's `renderQueue` and MToon's `renderQueueOffsetNumber` express; `context.renderQueue(alphaMode:transparentWithZWrite:offset:)` derives it. RealityKit orders the blended parts of one model entity by distance, which flips parts an author stacked on purpose as the view moves, so a mesh whose blended materials sit at different queues draws them from model entities of their own, sorted in queue order.
-
-A pass can be built hidden and shown later with `entity.setPassEnabled(_:named:)`, which is how MToon outlines double as a selection highlight. An override outranks the authored values, and releasing it puts them back.
+A shader's own runtime controls live on that state type, edited with `updateMaterialStates(_:)`.
 
 ```swift
-entity.setMToonOutlineOverride(
-    MToonOutlineOverride(color: SIMD3<Float>(0, 0.5, 1),
-                         width: 0.004,          // a fraction of the screen height
-                         mode: .screenCoordinates)
-)
-entity.setMToonOutlineOverride(nil) // back to the authored outlines
+entity.updateMaterialStates(GlowState.self) { state in
+    guard state.glow != 1 else { return false } // unchanged: nothing is pushed
+    state.glow = 1
+    return true
+}
 ```
 
-The override also takes a material set, so part of a model can be outlined on its own. `materialIndices(under:)` answers with the materials under a node. The unit is the glTF material, so one shared beyond the subtree is outlined wherever it draws.
+MToon can also be drawn by Metal functions of your own, built against `Sources/VRMRealityKit/Shaders/MToonRealityKit.h` from the revision you depend on. Each MToon material carries a few user rows for the values they add.
+
+```swift
+let library = try device.makeDefaultLibrary(bundle: .main)
+let shader = MToonShader(functions: MToonShaderFunctions(surface: .init(named: "myToonSurface", in: library)))
+
+// Read in the shader as mtoonUserParameter(textures, 0).
+entity.updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setUserParameter(glow, at: 0) }
+```
+
+A blended material also carries a `renderQueue`, the Unity-scale draw order that VRM 0.x's `renderQueue` and MToon's `renderQueueOffsetNumber` express; `context.renderQueue(alphaMode:transparentWithZWrite:offset:)` derives it. RealityKit orders the blended parts of one model entity by distance, which flips parts an author stacked on purpose as the view moves, so a mesh whose blended materials sit at different queues draws them from model entities of their own, sorted in queue order.
+
+A pass can be built hidden and shown later with `entity.setPassEnabled(_:named:)`, or for part of a model by overriding it for the materials under a node. Releasing the override puts back what it replaced.
 
 ```swift
 let selection = entity.materialIndices(under: selectedNode)
-entity.setMToonOutlineOverride(highlight, forMaterials: selection)
-entity.setMToonOutlineOverride(nil, forMaterials: selection) // release just those
+entity.overridePassEnabled(true, named: "highlight", forMaterials: selection)
+entity.releasePassEnabledOverride(named: "highlight", forMaterials: selection)
 ```
+
+A pass whose geometry modifier moves vertices outside the mesh's bounds sets `applyBoundsBudget` to receive the room the loader widened the culling bounds by.
 
 </details>
 

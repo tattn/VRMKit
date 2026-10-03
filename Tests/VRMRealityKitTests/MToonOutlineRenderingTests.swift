@@ -247,16 +247,16 @@ struct MToonOutlineRenderingTests {
             let image = try OffscreenRenderer.render(root, size: Self.size)
             return try #require(image[image.count / 2].first(where: isDrawn))
         }
-        func override(_ color: SIMD3<Float>) -> MToonOutlineOverride {
-            MToonOutlineOverride(color: color, width: Self.width, mode: .worldCoordinates)
+        func setOutlineColor(_ color: SIMD3<Float>) {
+            entity.setMaterialColor(SIMD4<Float>(color, 1), for: .outlineColor, ofMaterial: 0)
         }
 
-        entity.setMToonOutlineOverride(override(SIMD3<Float>(0, 1, 0)))
+        setOutlineColor(SIMD3<Float>(0, 1, 0))
         let green = try outlinePixel()
         let texture = try #require(state.parameterTexture)
         #expect(!state.updatesMaterialsOnFlush, "the first flush installs the texture, later ones must not")
 
-        entity.setMToonOutlineOverride(override(SIMD3<Float>(0, 0, 1)))
+        setOutlineColor(SIMD3<Float>(0, 0, 1))
         let blue = try outlinePixel()
 
         #expect(state.parameterTexture === texture, "the flush allocated a parameter texture instead of writing one")

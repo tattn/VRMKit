@@ -35,25 +35,13 @@ public final class MToonShader: GLTFMaterialShader {
     }
 
     /// When an MToon material gets the sibling entity drawing its inverted-hull
-    /// outline. The pass set is fixed at load; what an existing pass draws stays
-    /// adjustable through the ``GLTFEntity`` outline API.
+    /// outline. The pass set is fixed at load, and a pass can be hidden at runtime
+    /// with ``GLTFEntity/setPassEnabled(_:named:)``.
     public enum OutlinePass: Sendable {
         /// A pass for materials whose MToon data draws an outline. The default.
         case automatic
-        /// A pass for every MToon material, so one can also be shown at runtime
-        /// on materials carrying no outline. Those start hidden, which spares
-        /// their draw call but not the entity built for them at load.
-        case always
         /// No outline passes; even authored outlines are not drawn.
         case never
-
-        func buildsPass(hasAuthoredOutline: Bool) -> Bool {
-            switch self {
-            case .automatic: return hasAuthoredOutline
-            case .always: return true
-            case .never: return false
-            }
-        }
     }
 
     /// The ``GLTFShadedMaterial/Pass/name`` of the outline pass, so the mesh
@@ -68,13 +56,17 @@ public final class MToonShader: GLTFMaterialShader {
     /// `false` and gets the color as is, which also sidesteps the inversion table
     /// being calibrated for one platform's tone curve.
     public let compensatesToneMapping: Bool
+    /// The Metal functions the material and its outline are drawn with.
+    public let functions: MToonShaderFunctions
 
     public init(source: Source = .authoredOnly,
                 outlinePass: OutlinePass = .automatic,
-                compensatesToneMapping: Bool = true) {
+                compensatesToneMapping: Bool = true,
+                functions: MToonShaderFunctions = MToonShaderFunctions()) {
         self.source = source
         self.outlinePass = outlinePass
         self.compensatesToneMapping = compensatesToneMapping
+        self.functions = functions
     }
 
 #if !os(visionOS)
@@ -84,8 +76,11 @@ public final class MToonShader: GLTFMaterialShader {
         let descriptor: MToonMaterialDescriptor
         let parameters: MToonMaterialParameters
         let parameterTexture: CustomMaterial.Texture
-        let library: MTLLibrary
+        let functions: MToonShaderFunctions.Resolved
     }
+
+    /// Kept with a failure too, so a load that cannot succeed is not retried per material.
+    private var resolvedFunctions: Result<MToonShaderFunctions.Resolved, Error>?
 #endif
 
     /// `resourceName` is nil on every platform without a bundled MToon Metal
@@ -132,7 +127,7 @@ public final class MToonShader: GLTFMaterialShader {
         // so it is reported once instead of per material.
         if error is MToonShaderLibraryLoaderError {
             context.logOnce("mtoonLibrary",
-                            "Failed to load the bundled MToon shader library, so MToon materials render as Unlit approximations: \(String(describing: error))")
+                            "Failed to load the MToon shader functions, so MToon materials render as Unlit approximations: \(String(describing: error))")
         } else {
             Self.logger.error("Failed to build the MToon material \(context.materialIndex, privacy: .public); passing it on to the rest of the shader chain: \(String(describing: error), privacy: .public)")
         }
@@ -149,13 +144,9 @@ public final class MToonShader: GLTFMaterialShader {
                                                                          transparentWithZWrite: descriptor.transparentWithZWrite,
                                                                          offset: descriptor.renderQueueOffsetNumber),
                                         makeAnimatableState: { MToonAnimatableMaterialState(parameters: parameters) })
-        let hasOutline = descriptor.hasOutline
-        if outlinePass.buildsPass(hasAuthoredOutline: hasOutline) {
-            // A pass created only for runtime outlines draws nothing yet, so it
-            // starts disabled rather than spending a draw call per frame.
+        if outlinePass == .automatic, descriptor.hasOutline {
             var pass = GLTFShadedMaterial.Pass(material: try customMToonOutlineMaterial(state, context: context),
-                                               name: Self.outlinePassName,
-                                               isInitiallyEnabled: hasOutline)
+                                               name: Self.outlinePassName)
             pass.applyBoundsBudget = Self.applyingOutlineBudget
             shaded.additionalPasses = [pass]
         }
@@ -164,13 +155,22 @@ public final class MToonShader: GLTFMaterialShader {
 
     private func makeState(for context: GLTFMaterialShaderContext) throws -> MToonState? {
         guard let descriptor = try resolvedDescriptor(for: context) else { return nil }
-        let library = try MToonShaderLibraryLoader.loadDefault()
+        let functions = try resolveFunctions()
         let textureTransform = try textureTransform(for: context, descriptor: descriptor)
         let parameters = try parameters(for: descriptor, textureTransform: textureTransform, context: context)
         return MToonState(descriptor: descriptor,
                           parameters: parameters,
                           parameterTexture: CustomMaterial.Texture(try parameters.textureResource()),
-                          library: library)
+                          functions: functions)
+    }
+
+    private func resolveFunctions() throws -> MToonShaderFunctions.Resolved {
+        if let resolvedFunctions {
+            return try resolvedFunctions.get()
+        }
+        let result = Result { try functions.resolved() }
+        resolvedFunctions = result
+        return try result.get()
     }
 
     /// The authored MToon model, or under ``Source/convertAll(_:)`` one synthesized from
@@ -203,7 +203,8 @@ public final class MToonShader: GLTFMaterialShader {
     private func customMToonMaterial(_ state: MToonState,
                                      context: GLTFMaterialShaderContext) throws -> Material {
         let mtoon = state.descriptor
-        let surface = CustomMaterial.SurfaceShader(named: "mtoonSurface", in: state.library)
+        let surface = CustomMaterial.SurfaceShader(named: state.functions.surface.name,
+                                                   in: state.functions.surface.library)
         var material = try CustomMaterial(surfaceShader: surface, lightingModel: .unlit)
         // MToon needs more textures than CustomMaterial has semantic channels, so the
         // extra slots ride on unrelated ones. MToon.metal reads them back the same way.
@@ -228,8 +229,10 @@ public final class MToonShader: GLTFMaterialShader {
     private func customMToonOutlineMaterial(_ state: MToonState,
                                             context: GLTFMaterialShaderContext) throws -> Material {
         let mtoon = state.descriptor
-        let surface = CustomMaterial.SurfaceShader(named: "mtoonOutlineSurface", in: state.library)
-        let geometry = CustomMaterial.GeometryModifier(named: "mtoonOutlineGeometry", in: state.library)
+        let surface = CustomMaterial.SurfaceShader(named: state.functions.outlineSurface.name,
+                                                   in: state.functions.outlineSurface.library)
+        let geometry = CustomMaterial.GeometryModifier(named: state.functions.outlineGeometry.name,
+                                                       in: state.functions.outlineGeometry.library)
         var material = try CustomMaterial(surfaceShader: surface,
                                           geometryModifier: geometry,
                                           lightingModel: .unlit)
@@ -417,11 +420,12 @@ public final class MToonShader: GLTFMaterialShader {
 /// expression changes on one entity never reach another.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
-final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
+public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
+    /// The rows left to the app, for its own ``MToonShaderFunctions`` to read. They start
+    /// at zero and the bundled functions ignore them.
+    public static let userParameterCount = MToonMaterialParameters.userRowCount
+
     private(set) var parameters: MToonMaterialParameters
-    /// Replaces the outline rows at flush time, leaving expressions writing the
-    /// rows underneath, so releasing it reveals their current values.
-    var outlineOverride: MToonOutlineOverride?
 #if !os(visionOS)
     /// This entity's own rows on the GPU, written in place. The loader hands every entity
     /// graph the same material, so the first flush swaps in this one.
@@ -434,74 +438,82 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
         self.parameters = parameters
     }
 
+    /// Read in Metal as `mtoonUserParameter(textures, index)`.
+    public func userParameter(at index: Int) -> SIMD4<Float> {
+        parameters.userRows[index]
+    }
+
+    /// Returns whether the row changed.
+    @discardableResult
+    public func setUserParameter(_ value: SIMD4<Float>, at index: Int) -> Bool {
+        guard parameters.userRows[index] != value else { return false }
+        parameters.userRows[index] = value
+        return true
+    }
+
     // MToon has a row for every bindable value, so it claims all of them.
 
-    func color(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> SIMD4<Float>? {
+    public func color(for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> SIMD4<Float>? {
         parameters.color(for: type)
     }
 
-    func setColor(_ color: SIMD4<Float>,
-                  for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> Bool {
+    public func setColor(_ color: SIMD4<Float>,
+                         for type: VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType) -> Bool {
         parameters.setColor(color, for: type)
         return true
     }
 
-    var textureTransform: MaterialParameterTypes.TextureCoordinateTransform? {
+    public var textureTransform: MaterialParameterTypes.TextureCoordinateTransform? {
         parameters.textureTransform
     }
 
-    func setTextureTransform(scale: SIMD2<Float>, offset: SIMD2<Float>, rotation: Float) -> Bool {
+    public func setTextureTransform(scale: SIMD2<Float>, offset: SIMD2<Float>, rotation: Float) -> Bool {
         parameters.setTextureTransform(scale: scale, offset: offset, rotation: rotation)
         return true
     }
 
+    // The light setters return whether the rows changed.
+
     /// The light direction rides in its own parameter row, so tracking a light per frame
     /// is one texture blit rather than a `ModelComponent` rewrite on every material.
-    func setLightDirection(_ direction: SIMD3<Float>) {
+    func setLightDirection(_ direction: SIMD3<Float>) -> Bool {
+        guard simd_distance(direction, parameters.lightDirection) > 0.0001 else { return false }
         parameters.lightDirection = direction
+        return true
     }
 
-    func setLighting(color: SIMD3<Float>, ambient: SIMD3<Float>) {
-        parameters.lightColor = SIMD4<Float>(color, 1)
-        parameters.ambientColor = SIMD4<Float>(ambient, 1)
+    func setLightColor(_ color: SIMD3<Float>) -> Bool {
+        let row = SIMD4<Float>(color, 1)
+        guard row != parameters.lightColor else { return false }
+        parameters.lightColor = row
+        return true
     }
 
-    /// Returns whether the rows changed.
-    func setRimLight(_ rim: MToonRimLight?) -> Bool {
-        let before = (parameters.rimLightColor, parameters.rimLightDirection, parameters.rimLightShape)
-        parameters.setRimLight(rim)
-        return before != (parameters.rimLightColor, parameters.rimLightDirection, parameters.rimLightShape)
+    func setAmbientColor(_ color: SIMD3<Float>) -> Bool {
+        let row = SIMD4<Float>(color, 1)
+        guard row != parameters.ambientColor else { return false }
+        parameters.ambientColor = row
+        return true
     }
 
-    /// Blocks until this material's committed parameter writes reach the GPU,
-    /// for a caller about to render on another queue: the snapshot.
-    func waitForParameterWrites() {
+    /// The rows are blitted on a queue of their own.
+    public func waitForWrites() {
 #if !os(visionOS)
         parameterTexture?.waitForWrites()
 #endif
     }
 
     /// The first flush of the copy builds a texture of its own.
-    func detached() -> (any VRMAnimatableMaterialState)? {
-        let copy = MToonAnimatableMaterialState(parameters: parameters)
-        copy.outlineOverride = outlineOverride
-        return copy
+    public func detached() -> (any VRMAnimatableMaterialState)? {
+        MToonAnimatableMaterialState(parameters: parameters)
     }
 
-    private var drawnParameters: MToonMaterialParameters {
-        guard let outlineOverride else { return parameters }
-        var drawn = parameters
-        drawn.outlineColor = SIMD4<Float>(outlineOverride.color, 1)
-        drawn.setOutline(width: outlineOverride.width, mode: outlineOverride.mode)
-        return drawn
-    }
-
-    func prepareFlush() -> Bool {
+    public func prepareFlush() -> Bool {
 #if os(visionOS)
         return true
 #else
         do {
-            let rows = drawnParameters.packedRows
+            let rows = parameters.packedRows
             if let parameterTexture {
                 try parameterTexture.write(rows: rows)
             } else {
@@ -517,7 +529,7 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 
     /// Only the first flush has anything to push: every write after it lands in the
     /// parameter texture the materials already sample.
-    var updatesMaterialsOnFlush: Bool {
+    public var updatesMaterialsOnFlush: Bool {
 #if os(visionOS)
         return false
 #else
@@ -525,7 +537,7 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 #endif
     }
 
-    func apply(to material: any Material) -> any Material {
+    public func apply(to material: any Material) -> any Material {
 #if os(visionOS)
         return material
 #else
@@ -538,6 +550,5 @@ final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
         return material
 #endif
     }
-
 }
 #endif

@@ -163,6 +163,75 @@ struct MaterialShaderChainTests {
         #expect(state.flushCount == 2)
     }
 
+    /// A shader's own runtime controls live on its state type, which the entity hands
+    /// back by type for editing, flushes once per change and splits off for a copy.
+    @Test
+    func testCustomStateIsReachedThroughUpdateMaterialStates() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        final class GlowState: VRMAnimatableMaterialState {
+            var glow: Float = 0
+            private(set) var flushCount = 0
+            private(set) var waitCount = 0
+
+            func prepareFlush() -> Bool {
+                flushCount += 1
+                return true
+            }
+
+            func apply(to material: any Material) -> any Material { material }
+
+            func detached() -> (any VRMAnimatableMaterialState)? {
+                let copy = GlowState()
+                copy.glow = glow
+                return copy
+            }
+
+            func waitForWrites() {
+                waitCount += 1
+            }
+        }
+        final class OtherState: VRMAnimatableMaterialState {
+            func apply(to material: any Material) -> any Material { material }
+        }
+        final class GlowShader: GLTFMaterialShader {
+            func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
+                GLTFShadedMaterial(material: UnlitMaterial()) { GlowState() }
+            }
+        }
+
+        let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
+                                                shaders: [GlowShader()]).loadEntity()
+        let state = try #require(entity.materialState(GlowState.self, ofMaterial: 0))
+        #expect(entity.materialState(OtherState.self, ofMaterial: 0) == nil)
+
+        #expect(entity.updateMaterialStates(GlowState.self) { state in
+            state.glow = 1
+            return true
+        })
+        #expect(state.flushCount == 1)
+
+        // An edit reporting no change pushes nothing.
+        entity.updateMaterialStates(GlowState.self) { _ in false }
+        #expect(state.flushCount == 1)
+
+        // Nothing matched: no state of the type, or no material in the set.
+        #expect(!entity.updateMaterialStates(OtherState.self) { _ in true })
+        #expect(!entity.updateMaterialStates(GlowState.self, forMaterials: []) { _ in true })
+
+        entity.waitForMaterialStateWrites()
+        #expect(state.waitCount == 1)
+
+        let copy = entity.cloneWithOwnMaterialParameters()
+        let copiedState = try #require(copy.materialState(GlowState.self, ofMaterial: 0))
+        #expect(copiedState !== state)
+        #expect(copiedState.glow == 1)
+        copy.updateMaterialStates(GlowState.self) { state in
+            state.glow = 2
+            return true
+        }
+        #expect(state.glow == 1)
+    }
+
     /// A state claims values one at a time, so a color-only state does not
     /// swallow the binds it does not animate: Seed-san's `happy`
     /// textureTransformBind still reaches material 11.
@@ -352,6 +421,36 @@ struct MaterialShaderChainTests {
         // The shade side samples the base color texture, so it keeps its detail.
         #expect(material.roughness.texture != nil)
     }
+
+#if !os(visionOS)
+    /// Functions named explicitly build the same MToon material, runtime state included.
+    @Test
+    func testMToonShaderDrawsWithTheFunctionsItIsGiven() throws {
+        guard #available(iOS 18.0, macOS 15.0, *), TestSupport.isMToonRenderingAvailable else { return }
+        let library = try MToonShaderLibraryLoader.loadDefault()
+        let functions = MToonShaderFunctions(surface: .init(named: "mtoonSurface", in: library),
+                                             outlineSurface: .init(named: "mtoonOutlineSurface", in: library),
+                                             outlineGeometry: .init(named: "mtoonOutlineGeometry", in: library))
+        let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
+                                          shaders: [MToonShader(source: .convertAll, functions: functions)])
+        #expect(try loader.material(withMaterialIndex: 0) is CustomMaterial,
+                TestSupport.expectedCustomMaterialMessage)
+        #expect(loader.makeAnimatableMaterialState(forMaterialIndex: 0) is MToonAnimatableMaterialState)
+    }
+
+    /// A function missing from its library fails like a library that cannot load: the
+    /// material passes on to the rest of the chain instead of failing the load.
+    @Test
+    func testMToonShaderWithAMissingFunctionPassesTheMaterialOn() throws {
+        guard #available(iOS 18.0, macOS 15.0, *), TestSupport.isMToonRenderingAvailable else { return }
+        let library = try MToonShaderLibraryLoader.loadDefault()
+        let functions = MToonShaderFunctions(surface: .init(named: "noSuchSurface", in: library))
+        let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
+                                          shaders: [MToonShader(source: .convertAll, functions: functions)])
+        #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
+        #expect(loader.makeAnimatableMaterialState(forMaterialIndex: 0) == nil)
+    }
+#endif
 
     /// `.authoredOnly` is the default source.
     @Test

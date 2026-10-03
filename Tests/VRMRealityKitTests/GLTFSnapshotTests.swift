@@ -257,21 +257,23 @@ struct GLTFSnapshotTests {
 
         #expect(writeCounts() == before)
     }
-#endif
 
     /// Only the copy is lit for the camera, so the light the caller set is the
     /// light the entity is still holding afterwards.
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     func snapshotLeavesTheEntitysOwnLightWhereItWas() async throws {
-        let entity = try await entity(.aliciaSolid)
+        let entity = try await entity(.vrm1ConstraintTwist)
         let direction = SIMD3<Float>(1, 0, 0)
         entity.setMToonLightDirection(direction)
 
         _ = try await entity.snapshot(Self.options)
 
-        #expect(entity.mtoonLightDirection == direction)
+        let lights = entity.materialStates.keys.compactMap { entity.mtoonParameters(forMaterialIndex: $0)?.lightDirection }
+        #expect(!lights.isEmpty)
+        #expect(lights.allSatisfy { $0 == direction })
     }
+#endif
 
     @Test
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

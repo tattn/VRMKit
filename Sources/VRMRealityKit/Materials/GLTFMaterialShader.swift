@@ -56,7 +56,7 @@ public struct GLTFShadedMaterial {
         /// Set by a pass whose geometry modifier pushes vertices outside the
         /// mesh's bounding box, which RealityKit culls by. The loader widens that
         /// box by a budget it hands here, and the modifier has to stay within it.
-        var applyBoundsBudget: ((any Material, Float) -> any Material)?
+        public var applyBoundsBudget: ((any Material, Float) -> any Material)?
 
         public init(material: any Material,
                     name: String,
@@ -200,7 +200,8 @@ public struct GLTFMaterialShaderContext {
 }
 
 /// The mutable render parameters of one material, as the VRM expression
-/// runtime drives them.
+/// runtime drives them. A shader's own runtime controls live on its state type,
+/// edited through ``GLTFEntity/updateMaterialStates(_:inPassNamed:forMaterials:_:)``.
 ///
 /// Writes accumulate in the state; the runtime then calls ``prepareFlush()``
 /// once and ``apply(to:)`` for every material instance rendering the same glTF
@@ -238,6 +239,8 @@ public protocol VRMAnimatableMaterialState: AnyObject {
     /// A state with this one's current values that shares nothing it writes to,
     /// or nil for a state that cannot be split off.
     func detached() -> (any VRMAnimatableMaterialState)?
+    /// Blocks until the values this state pushed have reached the GPU.
+    func waitForWrites()
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -260,5 +263,7 @@ public extension VRMAnimatableMaterialState {
     var updatesMaterialsOnFlush: Bool { true }
 
     func detached() -> (any VRMAnimatableMaterialState)? { nil }
+
+    func waitForWrites() {}
 }
 #endif

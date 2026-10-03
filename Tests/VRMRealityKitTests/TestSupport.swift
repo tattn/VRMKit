@@ -153,7 +153,7 @@ enum TestSupport {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Sources/VRMRealityKit/Shaders")
-        return ["MToonCore.h", "MToon.metal"]
+        return ["MToonCore.h", "MToonRealityKit.h", "MToon.metal"]
             .compactMap { try? String(contentsOf: shaders.appendingPathComponent($0), encoding: .utf8) }
             .joined(separator: "\n")
     }()

@@ -66,9 +66,9 @@ struct MToonRenderingTests {
         let texture = try parameters.textureResource()
         let shader = TestSupport.mtoonShaderSource
 
-        #expect(MToonMaterialParameters.baseParameterRowCount == 21)
+        #expect(MToonMaterialParameters.baseParameterRowCount == 18)
         #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
-        #expect(MToonMaterialParameters.textureRowCount == 30)
+        #expect(MToonMaterialParameters.textureRowCount == 35)
         #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
         #expect(texture.width == MToonMaterialParameters.textureRowCount)
         #expect(texture.height == 1)
@@ -78,6 +78,8 @@ struct MToonRenderingTests {
         let shaderConstants = shaderFloatConstants(in: shader)
         #expect(shaderConstants["mtoonParameterTextureWidth"] == Float(MToonMaterialParameters.textureRowCount))
         #expect(shaderConstants["mtoonSamplerParameterStart"] == Float(MToonMaterialParameters.baseParameterRowCount))
+        #expect(shaderConstants["mtoonUserParameterStart"]
+            == Float(MToonMaterialParameters.baseParameterRowCount + MToonMaterialParameters.samplerRowCount))
         for row in MToonParameterRow.allCases {
             let name = shaderConstantName(prefix: "mtoonRow", case: row)
             #expect(shaderConstants[name] == Float(row.rawValue),
@@ -326,40 +328,34 @@ struct MToonRenderingTests {
         #expect(textures.map(\.writeCount) == writes.map { $0 + 1 })
     }
 
+    /// The user rows are the app's: they ride last in the packed rows, a copy takes
+    /// them along, and a scoped write leaves the other materials' rows alone.
     @Test
-    func testSetMToonRimLightUpdatesParameterRowsAndNilTurnsItOff() async throws {
+    func testUserParametersReachThePackedRowsAndACopy() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let rim = MToonRimLight(color: SIMD3<Float>(1.5, 0.8, 0.4), direction: SIMD3<Float>(0, 0, -2),
-                                width: 0.4, softness: 0.2, wrap: 0.6, viewBend: 1.5, blend: 0.25)
+        let value = SIMD4<Float>(1.5, 0.8, 0.4, 0.25)
+        let last = MToonAnimatableMaterialState.userParameterCount - 1
 
-        vrmEntity.setMToonRimLight(rim)
+        vrmEntity.updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setUserParameter(value, at: last) }
 
-        var parameters = try firstMToonParameters(in: vrmEntity)
-        #expect(parameters.rimLightColor.isApproximatelyEqual(to: SIMD4<Float>(1.5, 0.8, 0.4, 0.25)))
-        #expect(parameters.rimLightDirection.isApproximatelyEqual(to: SIMD4<Float>(0, 0, -1, 0)))
-        // The shape is clamped to 0...1
-        #expect(parameters.rimLightShape.isApproximatelyEqual(to: SIMD4<Float>(0.4, 0.2, 0.6, 1)))
-
+        let parameters = try firstMToonParameters(in: vrmEntity)
+        #expect(parameters.packedRows.last == value)
         let copy = vrmEntity.cloneWithOwnMaterialParameters()
-        #expect(try firstMToonParameters(in: copy).rimLightColor.isApproximatelyEqual(to: SIMD4<Float>(1.5, 0.8, 0.4, 0.25)))
+        #expect(try firstMToonParameters(in: copy).userRows[last] == value)
 
-        vrmEntity.setMToonRimLight(nil)
-        parameters = try firstMToonParameters(in: vrmEntity)
-        #expect(parameters.rimLightColor == SIMD4<Float>(0, 0, 0, 0))
-        #expect(parameters.rimLightShape == SIMD4<Float>(0, 0, 0, 0))
-
-        // Scoped to a material set, the others keep their rows. Only MToon materials carry the
-        // rows, so the one checked is picked among them rather than from the whole material set.
         let mtoonIndexes = TestSupport.materialIndexes(in: vrmEntity).filter {
             vrmEntity.mtoonParameters(forMaterialIndex: $0) != nil
         }
-        let others = Array(mtoonIndexes.dropFirst())
-        let other = try #require(others.first)
-        vrmEntity.setMToonRimLight(rim, forMaterials: Set(others))
-        #expect(try firstMToonParameters(in: vrmEntity).rimLightColor == SIMD4<Float>(0, 0, 0, 0))
-        #expect(try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: other).rimLightColor
-            .isApproximatelyEqual(to: SIMD4<Float>(1.5, 0.8, 0.4, 0.25)))
+        let first = try #require(mtoonIndexes.first)
+        let other = try #require(mtoonIndexes.dropFirst().first)
+        vrmEntity.updateMaterialStates(MToonAnimatableMaterialState.self, forMaterials: [other]) {
+            $0.setUserParameter(.zero, at: last)
+        }
+        #expect(vrmEntity.materialState(MToonAnimatableMaterialState.self, ofMaterial: first)?
+            .userParameter(at: last) == value)
+        #expect(vrmEntity.materialState(MToonAnimatableMaterialState.self, ofMaterial: other)?
+            .userParameter(at: last) == .zero)
     }
 
     @Test
@@ -411,6 +407,7 @@ struct MToonRenderingTests {
         // Shader source must never ship as a bundle resource (App Store safety).
         #expect(bundle.url(forResource: "MToon", withExtension: "metal") == nil)
         #expect(bundle.url(forResource: "MToonCore", withExtension: "h") == nil)
+        #expect(bundle.url(forResource: "MToonRealityKit", withExtension: "h") == nil)
 
         for resourceName in ["MToon-macos", "MToon-ios", "MToon-iossim"] {
             #expect(bundle.url(forResource: resourceName, withExtension: "metallib") != nil,

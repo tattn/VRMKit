@@ -161,11 +161,6 @@ public class GLTFEntity: Entity {
 
     var materialStates: [Int: MaterialRuntimeState] = [:]
 
-    // Backing store for the MToon API (GLTFEntity+MToon.swift).
-    var mtoonLightDirection = MToonMaterialParameters.defaultLightDirection
-    var mtoonLightColor = SIMD3<Float>(1, 1, 1)
-    var mtoonAmbientColor = SIMD3<Float>(0, 0, 0)
-
     // Backing store for the animation API (GLTFEntity+Animation.swift).
     var animationMetadata: [GLTFAnimation]?
     /// One decoder for the whole document: samplers routinely share an input accessor.
@@ -262,7 +257,7 @@ public class GLTFEntity: Entity {
     /// and posed as this entity is, and the material setters do nothing on it. This copy
     /// takes both as they are now and holds them on its own from there. Like any clone it
     /// carries no animation bindings. Before a one-off render of the copy, call
-    /// ``waitForMToonParameterWrites()`` on it.
+    /// ``waitForMaterialStateWrites()`` on it.
     public func cloneWithOwnMaterialParameters() -> Self {
         // The copy carries the meshes as they are skinned now, so they are solved against
         // the joints it is about to copy.
@@ -309,9 +304,6 @@ public class GLTFEntity: Entity {
                 materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
             }
         }
-        mtoonLightDirection = original.mtoonLightDirection
-        mtoonLightColor = original.mtoonLightColor
-        mtoonAmbientColor = original.mtoonAmbientColor
         flushDirtyMaterialStates()
     }
 
@@ -387,7 +379,7 @@ public class GLTFEntity: Entity {
     /// Shows or hides the `name` passes of `materials` for as long as an override lasts,
     /// remembering the visibility they replace. Only the first call to cover a material
     /// records it.
-    func overridePassEnabled(_ isEnabled: Bool, named name: String, forMaterials materials: Set<Int>) {
+    public func overridePassEnabled(_ isEnabled: Bool, named name: String, forMaterials materials: Set<Int>) {
         for materialIndex in materials {
             let needsRecord = passVisibilityBeforeOverride[name]?[materialIndex] == nil
             var replaced: [PassSlotKey: Bool] = [:]
@@ -405,7 +397,7 @@ public class GLTFEntity: Entity {
 
     /// Puts the `name` passes of `materials` back to the visibility
     /// ``overridePassEnabled(_:named:forMaterials:)`` replaced.
-    func releasePassEnabledOverride(named name: String, forMaterials materials: Set<Int>) {
+    public func releasePassEnabledOverride(named name: String, forMaterials materials: Set<Int>) {
         for materialIndex in materials {
             guard let replaced = passVisibilityBeforeOverride[name]?.removeValue(forKey: materialIndex) else {
                 continue
@@ -477,6 +469,45 @@ public class GLTFEntity: Entity {
               mutate(animatable) else { return false }
         materialStates[materialIndex]?.needsFlush = true
         return true
+    }
+
+    /// The runtime state of the material at `materialIndex`, if its shader made a `State`.
+    public func materialState<State: VRMAnimatableMaterialState>(_ type: State.Type,
+                                                                 ofMaterial materialIndex: Int) -> State? {
+        materialStates[materialIndex]?.animatable as? State
+    }
+
+    /// Edits the runtime state of every material whose shader made a `State`, then pushes
+    /// the changed ones to the GPU once per material. `mutate` returns whether it changed
+    /// anything; a pass name and a material set narrow which materials are edited.
+    ///
+    /// Returns false when no material matched, or while a state that failed to flush stays dirty.
+    @discardableResult
+    public func updateMaterialStates<State: VRMAnimatableMaterialState>(
+        _ type: State.Type,
+        inPassNamed passName: String? = nil,
+        forMaterials materials: Set<Int>? = nil,
+        _ mutate: (State) -> Bool
+    ) -> Bool {
+        var foundState = false
+        for (index, materialState) in materialStates {
+            if let materials, !materials.contains(index) { continue }
+            guard let state = materialState.animatable as? State else { continue }
+            if let passName, !materialState.hasPass(named: passName) { continue }
+            foundState = true
+            if mutate(state) {
+                materialStates[index]?.needsFlush = true
+            }
+        }
+        return flushDirtyMaterialStates() && foundState
+    }
+
+    /// Blocks until every material state's writes reach the GPU, for a one-off render
+    /// on a `RealityRenderer`.
+    public func waitForMaterialStateWrites() {
+        for state in materialStates.values {
+            state.animatable?.waitForWrites()
+        }
     }
 
     /// Pushes each dirty material's pending parameter writes to the GPU once per material,

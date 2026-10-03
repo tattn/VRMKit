@@ -21,6 +21,7 @@ cd "$(dirname "$0")/.."
 SHADERS="Sources/VRMRealityKit/Shaders"
 SOURCE="$SHADERS/MToon.metal"
 CORE_HEADER="$SHADERS/MToonCore.h"
+REALITYKIT_HEADER="$SHADERS/MToonRealityKit.h"
 RESOURCES="Sources/VRMRealityKit/Resources"
 # Spelled out rather than taken from $0, which varies with how the script is invoked.
 SCRIPT="scripts/build-mtoon-metallibs.sh"
@@ -49,7 +50,7 @@ build_inputs() {
     echo "msl-std=$MSL_STD"
     echo "flags=${COMPILE_FLAGS[*]}"
     printf 'target=%s\n' "${TARGETS[@]}"
-    shasum -a 256 "$CORE_HEADER" "$SOURCE" "$SCRIPT"
+    shasum -a 256 "$CORE_HEADER" "$REALITYKIT_HEADER" "$SOURCE" "$SCRIPT"
 }
 
 if [ "${1:-}" = "--check" ]; then
@@ -76,7 +77,7 @@ fi
 PROBE_SOURCE="$(mktemp -t MToonEntryPointProbe).metal"
 trap 'rm -f "$PROBE_SOURCE"' EXIT
 cat > "$PROBE_SOURCE" <<PROBE
-#include "MToon.metal"
+#include "MToonRealityKit.h"
 
 // Reaches every constant sampler the surface shaders reach, from a function the
 // compiler does enforce the entry-point limits on.
