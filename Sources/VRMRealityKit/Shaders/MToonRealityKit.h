@@ -13,8 +13,8 @@ using namespace metal;
 // Functions named realityKitApproximate* are approximations imposed by
 // RealityKit's CustomMaterial constraints, not MToon semantics.
 //
-// A replacement entry point (MToonShaderFunctions) includes this header. It
-// defines its functions, so a Metal library includes it from one source file.
+// A replacement entry point (MToonShaderFunctions) includes this header. Its
+// functions are inline, so several source files of one library can include it.
 
 // Metal allows at most 16 constant samplers per shader entry point, and the
 // budget is shared with the shaders RealityKit generates. Exceeding it only
@@ -74,19 +74,19 @@ constant float mtoonSamplerSlotUvAnimationMask = 8.0;
 // LOD: an implicit-LOD sample would need derivatives from uniform control flow,
 // which prevents the compiler from sinking these fetches into the branches that
 // actually consume them.
-half4 mtoonParameter(realitykit::texture::textures textures, float row)
+inline half4 mtoonParameter(realitykit::texture::textures textures, float row)
 {
     return textures.custom().sample(mtoonParameterSampler,
                                     float2((row + 0.5) / mtoonParameterTextureWidth, 0.5),
                                     level(0));
 }
 
-half4 mtoonSamplerParameter(realitykit::texture::textures textures, float slot)
+inline half4 mtoonSamplerParameter(realitykit::texture::textures textures, float slot)
 {
     return mtoonParameter(textures, mtoonSamplerParameterStart + slot);
 }
 
-half4 mtoonUserParameter(realitykit::texture::textures textures, float index)
+inline half4 mtoonUserParameter(realitykit::texture::textures textures, float index)
 {
     return mtoonParameter(textures, mtoonUserParameterStart + index);
 }
@@ -134,7 +134,7 @@ struct MToonSampledLOD<false> {
 // exactly what clamp_to_edge does. A mirrored coordinate is folded into [0, 1]
 // first; at its seams the mirrored neighbour is the edge texel itself, so the
 // same clamp reproduces mirrored_repeat too.
-float mtoonWrappedCoordinate(float coordinate, int mode, float levelSize)
+inline float mtoonWrappedCoordinate(float coordinate, int mode, float levelSize)
 {
     if (mode == 0) {
         return coordinate;
@@ -154,7 +154,7 @@ float mtoonWrappedCoordinate(float coordinate, int mode, float levelSize)
 // (magnification * 2 + minification) * 3 + mip, with the texel filters
 // 0 = linear, 1 = nearest and the mip filter 0 = none, 1 = nearest, 2 = linear.
 template <bool ImplicitLOD>
-half4 mtoonWrappedSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
+inline half4 mtoonWrappedSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
 {
     const int wrapS = int(float(samplerParameters.x) + 0.5);
     const int wrapT = int(float(samplerParameters.y) + 0.5);
@@ -193,13 +193,13 @@ half4 mtoonWrappedSample(texture2d<half> texture, float2 uv, half4 samplerParame
 }
 
 // Fragment-stage sampling: the LOD comes from the screen-space derivatives.
-half4 mtoonSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
+inline half4 mtoonSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
 {
     return mtoonWrappedSample<true>(texture, uv, samplerParameters);
 }
 
 // Vertex-stage sampling for the geometry modifier, which has no derivatives.
-half4 mtoonVertexSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
+inline half4 mtoonVertexSample(texture2d<half> texture, float2 uv, half4 samplerParameters)
 {
     return mtoonWrappedSample<false>(texture, uv, samplerParameters);
 }
@@ -217,7 +217,7 @@ constant float mtoonRealityKitInverseToneMap[65] = {
     2.0000
 };
 
-float realityKitInverseToneMapChannel(float target)
+inline float realityKitInverseToneMapChannel(float target)
 {
     const float encoded = target <= 0.0031308f
         ? target * 12.92f
@@ -229,7 +229,7 @@ float realityKitInverseToneMapChannel(float target)
                scaled - float(index));
 }
 
-float3 realityKitInverseToneMap(float3 color)
+inline float3 realityKitInverseToneMap(float3 color)
 {
     return float3(realityKitInverseToneMapChannel(color.x),
                   realityKitInverseToneMapChannel(color.y),
@@ -240,14 +240,14 @@ float3 realityKitInverseToneMap(float3 color)
 // tone mapping off (RealityRenderer.cameraSettings.isToneMappingEnabled) says
 // so through custom_parameter().x == 0 and gets the color as is; the table is
 // calibrated for one tone curve and does not hold on every platform.
-float3 mtoonOutputColor(float4 customParameter, float3 color)
+inline float3 mtoonOutputColor(float4 customParameter, float3 color)
 {
     return customParameter.x > 0.5f ? realityKitInverseToneMap(color) : color;
 }
 
 // RealityKit does not expose the fully evaluated lit term to the outline
 // pass; use the runtime light color as the lit approximation.
-float3 realityKitApproximateOutlineLighting(float3 lightColor, float outlineLightingMix)
+inline float3 realityKitApproximateOutlineLighting(float3 lightColor, float outlineLightingMix)
 {
     return mix(float3(1.0), lightColor, saturate(outlineLightingMix));
 }
@@ -260,12 +260,12 @@ float3 realityKitApproximateOutlineLighting(float3 lightColor, float outlineLigh
 // KHR_texture_transform are both defined in glTF UV space, so flipping
 // afterwards would invert Y offsets and the rotation direction, and shift
 // anything with a Y scale.
-float2 mtoonTextureUV(float2 uv)
+inline float2 mtoonTextureUV(float2 uv)
 {
     return float2(uv.x, 1.0 - uv.y);
 }
 
-float2 mtoonTransformedUV(float2 uv, half4 uvTransform, half4 uvTransformRotation)
+inline float2 mtoonTransformedUV(float2 uv, half4 uvTransform, half4 uvTransformRotation)
 {
     float2 transformed = uv * float2(uvTransform.xy);
     float c = float(uvTransformRotation.x);
@@ -275,7 +275,7 @@ float2 mtoonTransformedUV(float2 uv, half4 uvTransform, half4 uvTransformRotatio
     return transformed + float2(uvTransform.zw);
 }
 
-float3 mtoonLightDirection(realitykit::texture::textures textures)
+inline float3 mtoonLightDirection(realitykit::texture::textures textures)
 {
     // GLTFEntity always writes a normalized direction, so this only guards against
     // an unwritten row; renormalizing would cost every fragment.
@@ -286,7 +286,7 @@ float3 mtoonLightDirection(realitykit::texture::textures textures)
     return direction;
 }
 
-float3 mtoonShadingNormal(realitykit::surface_parameters params,
+inline float3 mtoonShadingNormal(realitykit::surface_parameters params,
                            float2 uv,
                            half4 extraFlags,
                            half normalScale,
@@ -310,7 +310,7 @@ float3 mtoonShadingNormal(realitykit::surface_parameters params,
                    + geometryNormal * float(tangentNormal.z));
 }
 
-float mtoonAlpha(float alphaMode, float baseAlpha, float cutoff)
+inline float mtoonAlpha(float alphaMode, float baseAlpha, float cutoff)
 {
     if (alphaMode < 0.5) {
         return 1.0;
@@ -325,7 +325,7 @@ float mtoonAlpha(float alphaMode, float baseAlpha, float cutoff)
 }
 
 // Both surface entry points resolve opacity and write their result the same way.
-float mtoonOpacity(float opacityThreshold,
+inline float mtoonOpacity(float opacityThreshold,
                    half4 baseSample,
                    half4 baseColorFactor,
                    half4 extraFlags,
@@ -336,7 +336,7 @@ float mtoonOpacity(float opacityThreshold,
 }
 
 template <bool ImplicitLOD>
-float2 mtoonAnimatedUVImpl(realitykit::texture::textures textures,
+inline float2 mtoonAnimatedUVImpl(realitykit::texture::textures textures,
                            float time,
                            float2 uv,
                            half4 uvAnimation,
@@ -372,7 +372,7 @@ float2 mtoonAnimatedUVImpl(realitykit::texture::textures textures,
     return animated + float2(float(uvAnimation.x), float(uvAnimation.y)) * time * mask;
 }
 
-float2 mtoonAnimatedUV(realitykit::texture::textures textures,
+inline float2 mtoonAnimatedUV(realitykit::texture::textures textures,
                        float time,
                        float2 uv,
                        half4 uvAnimation,
@@ -386,7 +386,7 @@ float2 mtoonAnimatedUV(realitykit::texture::textures textures,
 }
 
 // The geometry modifier's counterpart: same animation, sampled at level 0.
-float2 mtoonVertexAnimatedUV(realitykit::texture::textures textures,
+inline float2 mtoonVertexAnimatedUV(realitykit::texture::textures textures,
                              float time,
                              float2 uv,
                              half4 uvAnimation,
@@ -405,7 +405,7 @@ float2 mtoonVertexAnimatedUV(realitykit::texture::textures textures,
 //
 // Returns the distance covering that fraction, in view space, which is also the
 // world-space distance it is applied as: a camera does not scale.
-float realityKitApproximateScreenOutlineWidth(realitykit::geometry_parameters params, float width, float3 worldDirection)
+inline float realityKitApproximateScreenOutlineWidth(realitykit::geometry_parameters params, float width, float3 worldDirection)
 {
     float4x4 modelToView = params.uniforms().model_to_view();
     float4x4 viewToProjection = params.uniforms().view_to_projection();
@@ -445,7 +445,7 @@ float realityKitApproximateScreenOutlineWidth(realitykit::geometry_parameters pa
 // bounding box, in the mesh's own space. Staying inside it is what stops a wide
 // outline -- a screen-coordinate one far from the camera above all -- from
 // being culled along with the box it has left. 0 means no budget was written.
-float mtoonBudgetedOutlineWidth(realitykit::geometry_parameters params, float width, float3 worldDirection)
+inline float mtoonBudgetedOutlineWidth(realitykit::geometry_parameters params, float width, float3 worldDirection)
 {
     float budget = params.uniforms().custom_parameter().w;
     if (budget <= 0.0) {
