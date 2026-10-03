@@ -53,7 +53,8 @@ test-package-platform:
 			exit 1; \
 		fi; \
 		dest="platform=$(SIM_PLATFORM),id=$$dest_id"; \
-		xcodebuild test -scheme VRMKit-Package -destination "$$dest"; \
+		xcodebuild test -scheme VRMKit-Package -destination "$$dest" \
+			$(if $(RESULT_BUNDLE),-resultBundlePath "$(RESULT_BUNDLE)"); \
 	else \
 		echo "SIM_PLATFORM/RUNTIME_PLATFORM/DEVICE_NAME is required" >&2; \
 		exit 1; \

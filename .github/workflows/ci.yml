@@ -57,8 +57,17 @@ jobs:
             make test-package-platform \
               SIM_PLATFORM="${{ matrix.sim_platform }}" \
               RUNTIME_PLATFORM="${{ matrix.platform }}" \
-              DEVICE_NAME="${{ matrix.device_name }}" | xcbeautify
+              DEVICE_NAME="${{ matrix.device_name }}" \
+              RESULT_BUNDLE="TestResults/${{ matrix.platform }}.xcresult" | xcbeautify
           fi
+      # xcbeautify drops the values an expectation failed with; the result bundle keeps them.
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TestResults-${{ matrix.platform }}
+          path: TestResults
+          if-no-files-found: ignore
 
   build-examples:
     name: Build examples (iOS/visionOS/macOS)
