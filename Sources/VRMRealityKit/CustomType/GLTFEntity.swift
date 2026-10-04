@@ -106,6 +106,9 @@ public class GLTFEntity: Entity {
         let modelEntity: ModelEntity
         let skeleton: MeshResource.Skeleton
         let jointEntities: [Entity]
+        /// Each joint's parent in the skeleton, read off `skeleton` once: the solve reads
+        /// a row per joint per frame, and the skeleton hands its joints out by copy.
+        let parentIndices: [Int?]
         /// Stands in for `skeleton.id`, so the per-frame solve dedups without hashing strings.
         let skeletonKey: Int
         /// The mesh the solved pose is written to.
@@ -245,6 +248,7 @@ public class GLTFEntity: Entity {
         skinBindings.append(SkinBinding(modelEntity: modelEntity,
                                         skeleton: skeleton,
                                         jointEntities: jointEntities,
+                                        parentIndices: skeleton.joints.map(\.parentIndex),
                                         skeletonKey: key,
                                         deformedMesh: modelEntity.deformedMesh))
     }
@@ -665,7 +669,7 @@ public class GLTFEntity: Entity {
 
         // What each skeleton resolved to in this pass, shared by the bindings drawing
         // it, such as a mesh and its outline twin.
-        var changedPoses: [Int: JointTransforms] = [:]
+        var changedPoses: [Int: [Transform]] = [:]
         var unchangedKeys: Set<Int> = []
         for binding in skinBindings {
             let key = binding.skeletonKey
@@ -704,10 +708,9 @@ public class GLTFEntity: Entity {
                 unchangedKeys.insert(key)
                 continue
             }
-            let pose = JointTransforms(solved.transforms)
-            changedPoses[key] = pose
+            changedPoses[key] = solved.transforms
             unchangedKeys.remove(key)
-            setSkinPose(pose, for: binding)
+            setSkinPose(solved.transforms, for: binding)
         }
     }
 
@@ -719,7 +722,7 @@ public class GLTFEntity: Entity {
                                 dirtyRows: Set<Int>?,
                                 for binding: SkinBinding,
                                 modelWorld: simd_float4x4,
-                                changedPoses: inout [Int: JointTransforms],
+                                changedPoses: inout [Int: [Transform]],
                                 unchangedKeys: inout Set<Int>) {
         var updated = cached
         updated.modelWorld = modelWorld
@@ -748,12 +751,11 @@ public class GLTFEntity: Entity {
             unchangedKeys.insert(binding.skeletonKey)
             return
         }
-        let pose = JointTransforms(updated.transforms)
-        changedPoses[binding.skeletonKey] = pose
-        setSkinPose(pose, for: binding)
+        changedPoses[binding.skeletonKey] = updated.transforms
+        setSkinPose(updated.transforms, for: binding)
     }
 
-    private func setSkinPose(_ transforms: JointTransforms, for binding: SkinBinding) {
+    private func setSkinPose(_ transforms: [Transform], for binding: SkinBinding) {
         binding.deformedMesh?.setJointTransforms(transforms)
     }
 
@@ -778,11 +780,11 @@ public class GLTFEntity: Entity {
     /// such a row can move without its joint being touched.
     private func jointTransform(at index: Int, of binding: SkinBinding) -> (transform: Transform, isDependent: Bool) {
         let jointEntities = binding.jointEntities
-        let joints = binding.skeleton.joints
+        let parentIndices = binding.parentIndices
         let joint = jointEntities[index]
         // A joint the skeleton gives no parent is read in the model's space.
         let base: Entity
-        if index < joints.count, let parentIndex = joints[index].parentIndex, parentIndex < jointEntities.count {
+        if index < parentIndices.count, let parentIndex = parentIndices[index], parentIndex < jointEntities.count {
             base = jointEntities[parentIndex]
         } else {
             base = binding.modelEntity

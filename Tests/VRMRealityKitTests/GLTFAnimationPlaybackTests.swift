@@ -94,7 +94,7 @@ struct GLTFAnimationPlaybackTests {
         let entity = try await TestSupport.loadEntity(GLTFSampleAsset.simpleSkin)
         let binding = try #require(entity.skinBindings.first)
 
-        func pose() throws -> JointTransforms {
+        func pose() throws -> [Transform] {
             try #require(binding.deformedMesh?.jointTransforms)
         }
 
@@ -341,7 +341,7 @@ struct GLTFAnimationPlaybackTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.loadEntity(.simpleSkin)
         let binding = try #require(entity.skinBindings.first)
-        func pose() throws -> JointTransforms {
+        func pose() throws -> [Transform] {
             try #require(binding.deformedMesh?.jointTransforms)
         }
 

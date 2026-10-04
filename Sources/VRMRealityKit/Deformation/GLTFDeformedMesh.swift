@@ -25,7 +25,7 @@ final class GLTFDeformedMesh {
     private(set) var blendShapeWeights: [Float]
     /// The skeleton pose the mesh was last solved against, each joint in the space of
     /// the joint above it, as ``GLTFEntity`` solves it.
-    private(set) var jointTransforms: JointTransforms?
+    private(set) var jointTransforms: [Transform]?
 
     /// A copy taken off a live mesh draws what the mesh drew when it was taken, and
     /// never deforms again.
@@ -155,7 +155,7 @@ final class GLTFDeformedMesh {
     /// Takes the solved skeleton pose, each joint in its skeleton parent's space. The
     /// skinning matrices are made from it when the mesh is dispatched, so a mesh that
     /// copies a sibling's result never makes them.
-    func setJointTransforms(_ transforms: JointTransforms) {
+    func setJointTransforms(_ transforms: [Transform]) {
         guard source.skin != nil else { return }
         jointTransforms = transforms
         needsDeformation = true
@@ -222,7 +222,7 @@ final class GLTFDeformedMesh {
 
     /// Writes the matrices the kernel skins with, each joint's model-space pose times
     /// its inverse bind matrix, into `buffer`.
-    private static func writeJointMatrices(of transforms: JointTransforms,
+    private static func writeJointMatrices(of transforms: [Transform],
                                            for skeleton: MeshResource.Skeleton,
                                            into buffer: MTLBuffer) {
         let joints = skeleton.joints
