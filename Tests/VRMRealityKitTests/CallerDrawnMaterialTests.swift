@@ -36,7 +36,7 @@ struct CallerDrawnMaterialTests {
     }
 
     /// The ranges are the material's own triangles in the mesh's index buffer, in the material
-    /// itself and in its outline pass, which says its name.
+    /// itself and in its outline pass, which says its name. Without MToon there is no outline pass.
     @Test
     func testGeometryOfAMaterialIsItsTrianglesInEachPass() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -45,7 +45,7 @@ struct CallerDrawnMaterialTests {
         let geometry = entity.geometry(ofMaterial: 0)
 
         #expect(geometry.contains { $0.passName == nil })
-        #expect(geometry.contains { $0.passName == MToonShader.outlinePassName })
+        #expect(geometry.contains { $0.passName == MToonShader.outlinePassName } == TestSupport.isMToonRenderingAvailable)
         for part in geometry {
             #expect(part.passName == part.modelEntity.components[GLTFMaterialPassComponent.self]?.name)
             #expect(part.indexRange.upperBound <= part.mesh.descriptor.indexCapacity)
