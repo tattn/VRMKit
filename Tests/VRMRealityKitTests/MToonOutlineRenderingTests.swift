@@ -144,8 +144,8 @@ struct MToonOutlineRenderingTests {
 
     /// A screen-coordinate width holds its on-screen size at any distance, so far
     /// from a perspective camera its world-space offset grows toward the mesh radius
-    /// funding the culling margin. Still within that radius here, so the pass must
-    /// survive culling at the frustum edge like the world one.
+    /// that sizes the culling margin. It stays within that radius here, so the pass
+    /// must survive culling at the frustum edge like the world one.
     @Test
     func testScreenCoordinateOutlineSurvivesCullingAtTheFrustumEdgeFarAway() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,

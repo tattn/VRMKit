@@ -50,7 +50,7 @@ private struct RendererView: View {
     let selectedModel: MacExampleModel
     let selectedExpression: ExpressionKey
     let isMToonEnabled: Bool
-    /// Lifted to the picker above, which the loaded model names.
+    /// A binding so the expression picker above can show the names the loaded model gives.
     @Binding var expressions: [ExpressionInfo]
 
     private var loadConfiguration: LoadConfiguration {

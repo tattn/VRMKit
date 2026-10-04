@@ -19,16 +19,26 @@ public struct MToonShaderFunctions {
 
     /// The surface shader of the material itself.
     public var surface: Function?
+    /// The surface shader of a MASK material itself, the only kind that discards
+    /// fragments. Left nil, a replaced ``surface`` draws MASK materials too.
+    public var cutoutSurface: Function?
     /// The surface shader of the outline pass.
     public var outlineSurface: Function?
+    /// The surface shader of a MASK material's outline pass. Left nil, a replaced
+    /// ``outlineSurface`` draws it too.
+    public var cutoutOutlineSurface: Function?
     /// The geometry modifier of the outline pass.
     public var outlineGeometry: Function?
 
     public init(surface: Function? = nil,
+                cutoutSurface: Function? = nil,
                 outlineSurface: Function? = nil,
+                cutoutOutlineSurface: Function? = nil,
                 outlineGeometry: Function? = nil) {
         self.surface = surface
+        self.cutoutSurface = cutoutSurface
         self.outlineSurface = outlineSurface
+        self.cutoutOutlineSurface = cutoutOutlineSurface
         self.outlineGeometry = outlineGeometry
     }
 
@@ -46,13 +56,18 @@ public struct MToonShaderFunctions {
             return function
         }
         return Resolved(surface: try resolve(surface, bundledName: "mtoonSurface"),
+                        cutoutSurface: try resolve(cutoutSurface ?? surface, bundledName: "mtoonCutoutSurface"),
                         outlineSurface: try resolve(outlineSurface, bundledName: "mtoonOutlineSurface"),
+                        cutoutOutlineSurface: try resolve(cutoutOutlineSurface ?? outlineSurface,
+                                                          bundledName: "mtoonCutoutOutlineSurface"),
                         outlineGeometry: try resolve(outlineGeometry, bundledName: "mtoonOutlineGeometry"))
     }
 
     struct Resolved {
         let surface: Function
+        let cutoutSurface: Function
         let outlineSurface: Function
+        let cutoutOutlineSurface: Function
         let outlineGeometry: Function
     }
 }

@@ -88,7 +88,6 @@ struct SpringBoneExtensionTests {
         #expect(tail.y > -1e-3, "tail: \(tail)")
     }
 
-    /// The plane's normal turns with the node it hangs off.
     @Test
     func testAPlaneNormalTurnsWithItsNode() {
         let rotated = simd_float4x4(simd_quatf(angle: .pi / 2, axis: SIMD3(0, 0, 1)))
@@ -156,7 +155,6 @@ struct SpringBoneExtensionTests {
         #expect(simd_distance(yawed, SIMD3(sin(.pi / 6), cos(.pi / 6), 0)) < 1e-5)
     }
 
-    /// Directions the spec calls singular take the side it names.
     @Test
     func testSingularDirectionsTakeTheSideTheSpecNames() {
         let down = SIMD3<Float>(0, -1, 0)

@@ -260,7 +260,6 @@ struct LookAtRigTests {
         #expect(abs(Self.angle(of: model.leftEye, about: SIMD3(0, 1, 0), from: SIMD3(0, 0, 1)) - 8) < 1e-3)
     }
 
-    /// A gaze that has not moved writes nothing, so holding a target writes nothing.
     @Test
     func testAGazeThatHasNotMovedIsNotAppliedAgain() {
         let model = Model(forward: SIMD3(0, 0, 1))
@@ -271,7 +270,6 @@ struct LookAtRigTests {
         #expect(!isPosedBones(rig.apply()))
     }
 
-    /// Following nothing puts the eyes back where the model rigged them.
     @Test
     func testClearingTheTargetPutsTheEyesBackAtRest() {
         let model = Model(forward: SIMD3(0, 0, 1))
@@ -290,7 +288,6 @@ struct LookAtRigTests {
         #expect(simd_length(model.rightEye.rotation.vector - rest.vector) < 1e-5)
     }
 
-    /// A model that states no look-at moves nothing, whatever it is told to follow.
     @Test
     func testAModelStatingNoLookAtMovesNothing() {
         let model = Model(forward: SIMD3(0, 0, 1))

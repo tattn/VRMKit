@@ -11,10 +11,10 @@ import VRMKitRuntime
 /// glTF extension or a VRM 0.x MToon material property, through a
 /// `CustomMaterial` toon shader with a precompiled Metal library.
 ///
-/// Part of every loader's default shader chain. On platforms without
-/// `CustomMaterial` or a bundled Metal library (visionOS, Mac Catalyst) it
-/// claims no material, so the loader's built-in path renders MToon materials as
-/// Unlit approximations instead.
+/// Part of every loader's default shader chain. On visionOS and Mac Catalyst,
+/// which lack `CustomMaterial` or a bundled Metal library, it claims no material,
+/// so the loader's built-in path renders MToon materials as Unlit approximations
+/// instead.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public final class MToonShader: GLTFMaterialShader {
@@ -52,13 +52,13 @@ public final class MToonShader: GLTFMaterialShader {
     public let outlinePass: OutlinePass
     /// Whether the shader pre-inverts RealityKit's tone mapping so the toon color
     /// survives it. That is what a `RealityView` needs. A `RealityRenderer` that
-    /// has turned tone mapping off (`cameraSettings.isToneMappingEnabled`) passes
+    /// has turned tone mapping off through `cameraSettings.isToneMappingEnabled` passes
     /// `false` and gets the color as is, which also sidesteps the inversion table
     /// being calibrated for one platform's tone curve.
     public let compensatesToneMapping: Bool
     /// The Metal functions the material and its outline are drawn with.
     public let functions: MToonShaderFunctions
-    /// How many rows each material leaves to the app (``MToonAnimatableMaterialState/setUserParameter(_:at:)``),
+    /// How many rows each material leaves to the app through ``MToonAnimatableMaterialState/setUserParameter(_:at:)``,
     /// for its own ``functions`` to read. Each row is four floats in the parameter texture every
     /// lighting change rewrites, so ask for the rows the functions read.
     public let userParameterCount: Int
@@ -209,7 +209,8 @@ public final class MToonShader: GLTFMaterialShader {
     private func customMToonMaterial(_ state: MToonState,
                                      context: GLTFMaterialShaderContext) throws -> Material {
         let mtoon = state.descriptor
-        var material = try sharedCustomMaterial(state, surface: state.functions.surface, context: context)
+        let surface = mtoon.alphaMode == .MASK ? state.functions.cutoutSurface : state.functions.surface
+        var material = try sharedCustomMaterial(state, surface: surface, context: context)
         // MToon needs more textures than CustomMaterial has semantic channels, so the
         // extra slots ride on unrelated ones. MToon.metal reads them back the same way.
         // RealityKit hands the shaders the base color in place of the clearcoat and
@@ -225,17 +226,17 @@ public final class MToonShader: GLTFMaterialShader {
 
     private func customMToonOutlineMaterial(_ state: MToonState,
                                             context: GLTFMaterialShaderContext) throws -> Material {
-        var material = try sharedCustomMaterial(state,
-                                                surface: state.functions.outlineSurface,
-                                                geometry: state.functions.outlineGeometry,
+        let functions = state.functions
+        let surface = state.descriptor.alphaMode == .MASK ? functions.cutoutOutlineSurface : functions.outlineSurface
+        var material = try sharedCustomMaterial(state, surface: surface, geometry: functions.outlineGeometry,
                                                 context: context)
         material.faceCulling = .front
         return material
     }
 
     /// What the material and its outline share: the base color both cut out by, the
-    /// single-channel maps (the UV animation mask both read, the shading shift and the
-    /// outline width), blending, depth writes and the parameter rows.
+    /// packed single-channel maps, blending, depth writes and the parameter rows. The
+    /// maps are the UV animation mask both read, the shading shift and the outline width.
     private func sharedCustomMaterial(_ state: MToonState,
                                       surface: MToonShaderFunctions.Function,
                                       geometry: MToonShaderFunctions.Function? = nil,
@@ -262,8 +263,8 @@ public final class MToonShader: GLTFMaterialShader {
 
     /// MToon.metal applies the UV transform from the parameter rows, so
     /// `textureCoordinateTransform` is left at identity here. `custom.value` carries what
-    /// is not the material's: x the tone-mapping flag, and w the outline budget, 0 (read
-    /// as unbudgeted) until the loader writes the real one per pass entity.
+    /// is not the material's: x the tone-mapping flag, and w the outline budget, which
+    /// stays 0, read as unbudgeted, until the loader writes the real one per pass entity.
     private func applyParameters(_ state: MToonState, to material: inout CustomMaterial) {
         material.custom.value = SIMD4<Float>(compensatesToneMapping ? 1 : 0, 0, 0, 0)
         material.custom.texture = state.parameterTexture
@@ -426,7 +427,7 @@ public final class MToonShader: GLTFMaterialShader {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
-    /// The rows left to the app (``MToonShader/userParameterCount``), for its own
+    /// The rows left to the app, as many as ``MToonShader/userParameterCount``, for its own
     /// ``MToonShaderFunctions`` to read. They start at zero and the bundled functions ignore them.
     public var userParameterCount: Int { parameters.userRows.count }
 

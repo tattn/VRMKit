@@ -345,8 +345,8 @@ struct GLTFEntityLoaderTests {
         let uvs = try #require(entity.modelEntitiesInHierarchy.first?.gltfMeshGeometry?.texcoords)
 
         #expect(uvs.count == 3)
-        // The loader flips V (RealityKit's UV origin is bottom-left), so the TEXCOORD_1
-        // values arrive as (u, 1 - v).
+        // RealityKit's UV origin is bottom-left, so the loader flips V and the
+        // TEXCOORD_1 values arrive as (u, 1 - v).
         #expect(uvs[0].isApproximatelyEqual(to: SIMD2<Float>(0.25, 0.25)))
         #expect(uvs[1].isApproximatelyEqual(to: SIMD2<Float>(0.5, 0.25)))
         #expect(uvs[2].isApproximatelyEqual(to: SIMD2<Float>(0.25, 0.5)))

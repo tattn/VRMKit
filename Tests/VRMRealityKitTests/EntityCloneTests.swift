@@ -94,7 +94,7 @@ struct EntityCloneTests {
 #endif
     }
 
-    /// A glTF entity attached under the model (an accessory) is a document of its own: its
+    /// An accessory, a glTF entity attached under the model, is a document of its own: its
     /// copy takes rows from its own materials, not from the model's material of the same
     /// index, and is lit on its own too.
     @Test

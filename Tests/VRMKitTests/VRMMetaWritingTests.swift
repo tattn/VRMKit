@@ -147,7 +147,6 @@ struct VRMMetaWritingTests {
         }
     }
 
-    /// The licence a model is distributed under comes through untouched.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testWritingTheMetaLeavesTheLicenceAsItWasAuthored(asset: VRMSampleAsset) throws {
         let before = try licence(of: try VRM(data: asset.data))

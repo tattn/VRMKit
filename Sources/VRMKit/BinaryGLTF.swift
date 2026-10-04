@@ -3,12 +3,12 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#glb-file-format-specification
 
 public struct BinaryGLTF: Sendable {
-    /// Chunk 0.
+    /// The JSON chunk, chunk 0, decoded into the typed model.
     public let gltf: GLTF
     /// Chunk 0 as it was parsed, kept whole so that what ``GLTF`` does not model survives
     /// a rewrite.
     let jsonTree: JSONValue
-    /// Chunk 1.
+    /// The BIN chunk, chunk 1, nil when the container carries none.
     public let binaryBuffer: Data?
 
     /// The ASCII `glTF` a GLB starts with.

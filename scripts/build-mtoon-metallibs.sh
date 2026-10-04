@@ -1,18 +1,17 @@
 #!/bin/bash
 # Precompiles the RealityKit MToon shader into per-platform Metal libraries.
 #
-# CustomMaterial shaders must be compiled offline (TN3133): SwiftPM/Xcode Metal
-# compilation of package targets is not reliable across build environments
-# (swift build does not compile .metal, and Xcode 26+ requires a separately
-# installed Metal Toolchain). The resulting .metallib files are committed to
-# the repository and loaded at runtime with MTLDevice.makeLibrary(URL:).
+# CustomMaterial shaders are compiled offline, as TN3133 describes, because package
+# targets cannot rely on a Metal compiler: swift build does not compile .metal, and
+# Xcode 26 and later need a separately installed Metal Toolchain. The .metallib files
+# are committed and loaded at runtime with MTLDevice.makeLibrary(URL:).
 #
-# Run this script whenever anything the metallibs are built from changes --
-# the shader sources, the compile settings below, or this script:
+# Run this script whenever the shader sources, the compile settings below, or this
+# script change:
 #   ./scripts/build-mtoon-metallibs.sh
 #
-# Pass --check to only verify that the recorded build inputs match the current
-# ones (no Metal toolchain required), which is what CI runs:
+# Pass --check to only verify that the recorded build inputs match the current ones.
+# It needs no Metal toolchain, and CI runs it:
 #   ./scripts/build-mtoon-metallibs.sh --check
 set -euo pipefail
 
@@ -26,9 +25,9 @@ RESOURCES="Sources/VRMRealityKit/Resources"
 # Spelled out rather than taken from $0, which varies with how the script is invoked.
 SCRIPT="scripts/build-mtoon-metallibs.sh"
 
-# Pin the Metal Shading Language version instead of relying on the compiler
-# default (which advances with new toolchains). MSL 2.4 matches the minimum
-# deployment targets below (macOS 12 / iOS 15) and the RealityKit shader API.
+# Pin the Metal Shading Language version, since the compiler default advances with
+# new toolchains. MSL 2.4 matches the minimum deployment targets below and the
+# RealityKit shader API.
 # Override with MSL_STD after verifying compatibility on the oldest targets.
 MSL_STD="${MSL_STD:-metal2.4}"
 COMPILE_FLAGS=(-Wall -Wextra -Werror)
@@ -67,13 +66,10 @@ if [ "${1:-}" = "--check" ]; then
     exit 0
 fi
 
-# The MToon entry points are [[visible]] functions, which are not entry points
-# as far as the Metal compiler is concerned, so the per-entry-point limits are
-# never checked when they are compiled on their own. RealityKit links them into
-# the shaders it generates at runtime, where exceeding a limit fails the
-# pipeline silently and the mesh simply stops drawing -- so the limit that the
-# sampler table is up against is checked here, by compiling the shader's
-# sampling code as a real fragment function.
+# The compiler does not apply per-entry-point limits to [[visible]] functions, but
+# RealityKit links them into its generated shaders at runtime, where exceeding a
+# limit silently stops the mesh drawing. Compiling the sampling code as a real
+# fragment function checks the sampler limit here instead.
 PROBE_SOURCE="$(mktemp -t MToonEntryPointProbe).metal"
 trap 'rm -f "$PROBE_SOURCE"' EXIT
 cat > "$PROBE_SOURCE" <<PROBE

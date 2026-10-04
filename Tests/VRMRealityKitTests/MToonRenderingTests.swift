@@ -34,7 +34,7 @@ struct MToonRenderingTests {
         #expect(customMaterial.clearcoatRoughness.texture == nil)
 
         // The light direction rides in the parameter texture; custom.value only
-        // carries the tone-mapping compensation flag (on by default) and the
+        // carries the tone-mapping compensation flag, on by default, and the
         // outline budget.
         #expect(customMaterial.custom.value.isApproximatelyEqual(to: SIMD4<Float>(1, 0, 0, 0)))
     }
@@ -355,15 +355,14 @@ struct MToonRenderingTests {
         #expect(material.textureCoordinateTransform.scale == SIMD2<Float>(1, 1))
     }
 
-    /// Metallib freshness is checked by scripts/build-mtoon-metallibs.sh --check
-    /// (which CI runs), so this only covers what the bundle itself must contain.
+    /// CI checks metallib freshness with scripts/build-mtoon-metallibs.sh --check,
+    /// so this only covers what the bundle itself must contain.
     @Test
     func testBundledMToonMetallibsArePackagedWithoutShaderSource() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // The same bundle the loader itself reads from.
         let bundle = MToonShaderLibraryLoader.resourceBundle
 
-        // Shader source must never ship as a bundle resource (App Store safety).
+        // Shader source must never ship as a bundle resource, for App Store safety.
         #expect(bundle.url(forResource: "MToon", withExtension: "metal") == nil)
         #expect(bundle.url(forResource: "MToonCore", withExtension: "h") == nil)
         #expect(bundle.url(forResource: "MToonRealityKit", withExtension: "h") == nil)
@@ -388,7 +387,9 @@ struct MToonRenderingTests {
         let functions = Set(library.functionNames)
 
         #expect(functions.contains("mtoonSurface"))
+        #expect(functions.contains("mtoonCutoutSurface"))
         #expect(functions.contains("mtoonOutlineSurface"))
+        #expect(functions.contains("mtoonCutoutOutlineSurface"))
         #expect(functions.contains("mtoonOutlineGeometry"))
 #endif
     }

@@ -53,7 +53,6 @@ struct SpringBoneRuntimeTests {
         }
     }
 
-    /// A radius the simulation cannot collide against fails the model.
     @Test
     func testAColliderWithANegativeRadiusIsRefused() throws {
         let json = #"{"node": 0, "shape": {"sphere": {"offset": [0, 0, 0], "radius": -1}}}"#

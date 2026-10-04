@@ -108,7 +108,6 @@ struct BinaryGLTFTests {
         return try GLTFDocument(data: data)
     }
 
-    /// A file whose magic is not `glTF` has to fail the load.
     @Test
     func testRejectsAFileThatIsNotBinaryGLTF() {
         var notGLB = VRMSampleAsset.aliciaSolid.data

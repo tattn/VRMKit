@@ -30,7 +30,7 @@ public struct GLTFMaterialPassComponent: Component {
     public let name: String
 }
 
-/// The triangles of one material in one deformed mesh (``GLTFEntity/geometry(ofMaterial:)``).
+/// The triangles of one material in one deformed mesh, as ``GLTFEntity/geometry(ofMaterial:)`` returns them.
 /// The vertices are in `modelEntity`'s space, in the mesh's vertex buffers as its descriptor
 /// lays them out. `indexRange` counts the mesh's `UInt32` indices, and `materialSlot` is the
 /// material's place in `modelEntity`'s `ModelComponent`.
@@ -177,7 +177,7 @@ public class GLTFEntity: Entity {
 
     var materialStates: [Int: MaterialRuntimeState] = [:]
 
-    // Backing store for the animation API (GLTFEntity+Animation.swift).
+    // Backing store for the animation API in GLTFEntity+Animation.swift.
     var animationMetadata: [GLTFAnimation]?
     /// One decoder for the whole document: samplers routinely share an input accessor.
     lazy var animationDecoder = GLTFAnimationDecoder(document: document)
@@ -280,7 +280,7 @@ public class GLTFEntity: Entity {
         updateSkinPose()
         let copy = clone(recursive: true)
         copy.freezeDeformedMeshes()
-        // A glTF entity attached under this one (an accessory) is a document of its own,
+        // A glTF entity attached under this one, such as an accessory, is a document of its own,
         // whose material indices mean nothing in this entity's states; each takes its
         // parameters from its own original. A clone keeps the children in order, so the
         // two hierarchies pair up entity by entity.
@@ -305,7 +305,7 @@ public class GLTFEntity: Entity {
     }
 
     /// Gives this clone rows of its own copied from `original`'s, bound to the model
-    /// entities of this entity's own document (not those of a glTF entity nested under it).
+    /// entities of this entity's own document, never those of a glTF entity nested under it.
     private func adoptMaterialParameters(of original: GLTFEntity) {
         for modelEntity in ownModelEntities {
             guard let indices = modelEntity.components[GLTFMaterialSlotsComponent.self]?.materialIndices else {
@@ -351,8 +351,8 @@ public class GLTFEntity: Entity {
     }
 
     /// Shows or hides the material slots drawing the additional render pass called `name`,
-    /// such as MToon's outline: all of them, or those of `materials` (see
-    /// ``materialIndices(under:)``). A hidden pass keeps its place in the skinning and morph
+    /// such as MToon's outline: all of them, or those of `materials`, which
+    /// ``materialIndices(under:)`` can scope. A hidden pass keeps its place in the skinning and morph
     /// solvers. Without `materials` it reads the entity graph, so a `clone(recursive:)` copy
     /// works too.
     public func setPassEnabled(_ isEnabled: Bool, named name: String, forMaterials materials: Set<Int>? = nil) {
@@ -444,8 +444,8 @@ public class GLTFEntity: Entity {
     // Shader parameters describe a material, not an entity, so they are stored once per
     // material index and pushed to every entity rendering with it.
 
-    /// Sets one color of the material at `materialIndex` (an index into `gltf.materials`)
-    /// wherever this entity draws it, as a VRM expression's material color bind does, and
+    /// Sets one color of the material at `materialIndex` in `gltf.materials` wherever
+    /// this entity draws it, as a VRM expression's material color bind does, and
     /// pushes it to the GPU at once. It lets a plain glTF be recolored at runtime, such as
     /// a prop whose light color the user picks.
     public func setMaterialColor(_ color: SIMD4<Float>,
@@ -466,10 +466,10 @@ public class GLTFEntity: Entity {
                            toMaterial: { $0.settingColor(vrmColor, for: type) })
     }
 
-    /// Writes a value through the material's runtime state when the state claims it
-    /// (`toState` returns true), marking it for flush, and onto the RealityKit materials
-    /// drawing it otherwise. A shader owning the value applies it from its own parameters,
-    /// so writing both would apply it twice.
+    /// Writes a value through the material's runtime state when `toState` reports the state
+    /// claims it, marking it for flush, and onto the RealityKit materials drawing it otherwise.
+    /// A shader owning the value applies it from its own parameters, so writing both would
+    /// apply it twice.
     func applyMaterialValue(ofMaterial materialIndex: Int,
                             toState: (any VRMAnimatableMaterialState) -> Bool,
                             toMaterial: (any Material) -> any Material) {
@@ -603,8 +603,8 @@ public class GLTFEntity: Entity {
     /// of every mesh whose pose or weights moved since the last submit, in one command
     /// buffer. Nothing is submitted for a held pose.
     ///
-    /// The entities drawing one glTF mesh (its render passes and its render-queue
-    /// groups) hold the same pose and weights, so the first of them deforms the
+    /// The entities drawing one glTF mesh, its render passes and render-queue groups,
+    /// hold the same pose and weights, so the first of them deforms the
     /// vertices and the rest copy its result. Every dispatch shares one compute encoder
     /// and every copy one blit encoder: an encoder costs the GPU more than a copy does.
     func flushDeformation() {

@@ -45,6 +45,20 @@ struct MToonTextureSlotRenderingTests {
         #expect(simd_distance(standard, wide) < 0.002, "8 rows \(standard), 40 rows \(wide)")
     }
 
+    /// A MASK material cuts out below its cutoff and draws above it. Only MASK materials
+    /// draw with the function that may discard, so this is the one place it shows.
+    @Test
+    func testMaskMaterialCutsOutBelowTheCutoff() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
+              TestSupport.isMToonRenderingAvailable else { return }
+
+        let below = try await render(matcap: false, rimMultiply: nil, mask: (alpha: 0.3, cutoff: 0.5))
+        let above = try await render(matcap: false, rimMultiply: nil, mask: (alpha: 0.7, cutoff: 0.5))
+
+        #expect(below.max() < 0.02, "cut out \(below)")
+        #expect(above.x > 0.05, "drawn \(above)")
+    }
+
     /// Separate images for the three single-channel maps share one texture, each
     /// in the channel the map is read from, drawn at the largest image's size.
     @Test
@@ -108,17 +122,20 @@ struct MToonTextureSlotRenderingTests {
     /// The middle pixel of a quad filling the viewport.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func render(matcap: Bool, rimMultiply: SIMD3<UInt8>?,
+                        mask: (alpha: Float, cutoff: Float)? = nil,
                         shader: MToonShader = MToonShader()) async throws -> SIMD3<Float> {
-        let entity = try await GLTFEntityLoader(withData: Self.quadGLTF(matcap: matcap, rimMultiply: rimMultiply),
-                                                shaders: [shader]).loadEntity()
+        let data = try Self.quadGLTF(matcap: matcap, rimMultiply: rimMultiply, mask: mask)
+        let entity = try await GLTFEntityLoader(withData: data, shaders: [shader]).loadEntity()
         let image = try OffscreenRenderer.render(entity, size: Self.renderSize)
         return image[Self.renderSize / 2][Self.renderSize / 2] / 255
     }
 
     /// A quad covering x, y in [-1, 1] with a dark red MToon material, a white
-    /// matcap and the given rim multiply texture, all solid colours.
+    /// matcap and the given rim multiply texture, all solid colours, cut out by
+    /// `mask` when it is given.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private static func quadGLTF(matcap: Bool, rimMultiply: SIMD3<UInt8>?) throws -> Data {
+    private static func quadGLTF(matcap: Bool, rimMultiply: SIMD3<UInt8>?,
+                                 mask: (alpha: Float, cutoff: Float)? = nil) throws -> Data {
         var buffer = Data(littleEndianFloats: [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0,
                                                0, 0, 1, 0, 1, 1, 0, 1,
                                                0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1])
@@ -140,6 +157,16 @@ struct MToonTextureSlotRenderingTests {
         if rimMultiply != nil {
             mtoon["rimMultiplyTexture"] = ["index": 2]
         }
+        var material: JSONObject = [
+            "pbrMetallicRoughness": ["baseColorTexture": ["index": 0]],
+            "extensions": ["VRMC_materials_mtoon": .object(mtoon)],
+        ]
+        if let mask {
+            material["pbrMetallicRoughness"] = ["baseColorTexture": ["index": 0],
+                                                "baseColorFactor": [1, 1, 1, .double(Double(mask.alpha))]]
+            material["alphaMode"] = "MASK"
+            material["alphaCutoff"] = .double(Double(mask.cutoff))
+        }
         let json: JSONObject = [
             "asset": ["version": "2.0"],
             "scene": 0,
@@ -150,10 +177,7 @@ struct MToonTextureSlotRenderingTests {
                 "indices": 3,
                 "material": 0,
             ]]]],
-            "materials": [[
-                "pbrMetallicRoughness": ["baseColorTexture": ["index": 0]],
-                "extensions": ["VRMC_materials_mtoon": .object(mtoon)],
-            ]],
+            "materials": [.object(material)],
             "extensionsUsed": ["VRMC_materials_mtoon"],
             "textures": [["source": 0], ["source": 1], ["source": 2]],
             "images": [try image(SIMD3(64, 0, 0)), try image(SIMD3(255, 255, 255)),

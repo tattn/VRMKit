@@ -36,7 +36,6 @@ struct SpringBoneRigTests {
         return rig
     }
 
-    /// Gravity pulls a hanging chain down, and every bone keeps its authored length.
     @Test
     func testAChainSwingsUnderGravityWithoutStretching() throws {
         let (_, nodes) = Self.chain(length: 4)
@@ -269,7 +268,6 @@ struct SpringBoneRigTests {
         #expect(abs(simd_distance(nodes[0].worldPosition, nodes[1].worldPosition) - 1) < 1e-3)
     }
 
-    /// Wind pushes the chain the way it blows.
     @Test
     func testAnExternalForcePushesTheChainAlongItself() throws {
         let (_, nodes) = Self.chain(length: 4)

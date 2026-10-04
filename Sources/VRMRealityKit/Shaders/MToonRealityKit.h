@@ -83,7 +83,7 @@ inline half4 mtoonUserParameter(realitykit::texture::textures textures, float in
 
 // The LOD a sample resolves to, clamped to the texture's mip range like
 // calculate_clamped_lod. It needs the screen-space derivatives only a fragment
-// function has, so specializing -- rather than branching -- keeps the derivative
+// function has, so specializing rather than branching keeps the derivative
 // instructions out of the code the vertex stage links against.
 //
 // Computed by hand rather than with calculate_clamped_lod, which crashes the
@@ -300,21 +300,23 @@ inline float3 mtoonShadingNormal(realitykit::surface_parameters params,
                    + geometryNormal * float(tangentNormal.z));
 }
 
+// Only the cutout entry points discard. A function that may discard keeps the GPU
+// from rejecting hidden fragments before shading them, which costs about a quarter
+// of the frame on Apple GPUs for every opaque material drawn with it.
+template <bool Cutout>
 inline float mtoonAlpha(float alphaMode, float baseAlpha, float cutoff)
 {
-    if (alphaMode < 0.5) {
-        return 1.0;
+    if (alphaMode > 1.5) {
+        return baseAlpha;
     }
-    if (alphaMode < 1.5) {
-        if (baseAlpha < cutoff) {
-            discard_fragment();
-        }
-        return 1.0;
+    if (Cutout && alphaMode > 0.5 && baseAlpha < cutoff) {
+        discard_fragment();
     }
-    return baseAlpha;
+    return 1.0;
 }
 
 // Both surface entry points resolve opacity and write their result the same way.
+template <bool Cutout>
 inline float mtoonOpacity(float opacityThreshold,
                    half4 baseSample,
                    half4 baseColorFactor,
@@ -322,7 +324,7 @@ inline float mtoonOpacity(float opacityThreshold,
                    half4 shadeParams)
 {
     const float cutoff = opacityThreshold > 0.0 ? opacityThreshold : float(shadeParams.w);
-    return mtoonAlpha(float(extraFlags.w), float(baseSample.a * baseColorFactor.a), cutoff);
+    return mtoonAlpha<Cutout>(float(extraFlags.w), float(baseSample.a * baseColorFactor.a), cutoff);
 }
 
 template <bool ImplicitLOD>
@@ -432,9 +434,9 @@ inline float realityKitApproximateScreenOutlineWidth(realitykit::geometry_parame
 }
 
 // custom.value.w is the room the loader granted the pass outside the mesh's
-// bounding box, in the mesh's own space. Staying inside it is what stops a wide
-// outline -- a screen-coordinate one far from the camera above all -- from
-// being culled along with the box it has left. 0 means no budget was written.
+// bounding box, in the mesh's own space. Staying inside it stops a wide outline,
+// above all a screen-coordinate one far from the camera, from being culled along
+// with the box it has left. 0 means no budget was written.
 inline float mtoonBudgetedOutlineWidth(realitykit::geometry_parameters params, float width, float3 worldDirection)
 {
     float budget = params.uniforms().custom_parameter().w;

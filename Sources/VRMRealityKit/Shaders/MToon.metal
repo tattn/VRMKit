@@ -1,9 +1,7 @@
 #include "MToonRealityKit.h"
 
-// The entry points MToonShader draws with unless MToonShaderFunctions replaces them.
-
-[[visible]]
-void mtoonSurface(realitykit::surface_parameters params)
+template <bool Cutout>
+inline void mtoonSurfaceImpl(realitykit::surface_parameters params)
 {
     auto textures = params.textures();
     auto surface = params.surface();
@@ -73,8 +71,8 @@ void mtoonSurface(realitykit::surface_parameters params)
     float3 indirect = mtoonIndirectLighting(litColor, giColor);
     float3 color = direct + indirect;
 
-    // Without a matcap and with a black parametric rim color the whole rim term
-    // is zero, so skip it (the majority of MToon materials).
+    // Most MToon materials have no matcap and a black parametric rim color, which
+    // makes the whole rim term zero, so skip it.
     if (featureFlags.x > 0.5h || any(rimColorFactor.rgb > 0.0h)) {
         float3 rim = float3(0.0);
         // `normal` and view_direction() are both world-space, which is what
@@ -103,7 +101,7 @@ void mtoonSurface(realitykit::surface_parameters params)
         : float3(1.0);
     color += float3(emissiveFactor.rgb) * emissiveTexture;
 
-    float opacity = mtoonOpacity(material.opacity_threshold(), baseSample, baseColorFactor, extraFlags, shadeParams);
+    float opacity = mtoonOpacity<Cutout>(material.opacity_threshold(), baseSample, baseColorFactor, extraFlags, shadeParams);
 
     surface.set_base_color(half3(0.0h));
     surface.set_emissive_color(half3(mtoonOutputColor(params.uniforms().custom_parameter(), color)));
@@ -112,8 +110,8 @@ void mtoonSurface(realitykit::surface_parameters params)
     surface.set_metallic(0.0h);
 }
 
-[[visible]]
-void mtoonOutlineSurface(realitykit::surface_parameters params)
+template <bool Cutout>
+inline void mtoonOutlineSurfaceImpl(realitykit::surface_parameters params)
 {
     auto textures = params.textures();
     auto surface = params.surface();
@@ -145,7 +143,7 @@ void mtoonOutlineSurface(realitykit::surface_parameters params)
         uv = mtoonTransformedUV(uv, uvTransform, uvTransformRotation);
         half4 baseSample = mtoonSample(textures.base_color(), uv, baseSampler);
         half4 baseColorFactor = mtoonParameter(textures, mtoonRowBaseColor);
-        opacity = mtoonOpacity(material.opacity_threshold(), baseSample, baseColorFactor, extraFlags, shadeParams);
+        opacity = mtoonOpacity<Cutout>(material.opacity_threshold(), baseSample, baseColorFactor, extraFlags, shadeParams);
     }
     float3 outlineLit = realityKitApproximateOutlineLighting(float3(lightColorParameter.rgb), float(outlineParams.z));
     float3 finalColor = float3(outlineColor.rgb) * outlineLit;
@@ -155,6 +153,33 @@ void mtoonOutlineSurface(realitykit::surface_parameters params)
     surface.set_opacity(half(opacity));
     surface.set_roughness(1.0h);
     surface.set_metallic(0.0h);
+}
+
+// The entry points MToonShader draws with unless MToonShaderFunctions replaces them.
+// MASK materials draw with the cutout ones.
+
+[[visible]]
+void mtoonSurface(realitykit::surface_parameters params)
+{
+    mtoonSurfaceImpl<false>(params);
+}
+
+[[visible]]
+void mtoonCutoutSurface(realitykit::surface_parameters params)
+{
+    mtoonSurfaceImpl<true>(params);
+}
+
+[[visible]]
+void mtoonOutlineSurface(realitykit::surface_parameters params)
+{
+    mtoonOutlineSurfaceImpl<false>(params);
+}
+
+[[visible]]
+void mtoonCutoutOutlineSurface(realitykit::surface_parameters params)
+{
+    mtoonOutlineSurfaceImpl<true>(params);
 }
 
 [[visible]]
@@ -194,8 +219,8 @@ void mtoonOutlineGeometry(realitykit::geometry_parameters params)
     }
     float width = max(0.0, float(outlineParams.x)) * widthMask;
     // Offset in world space either way: MToon's widths are meters or a fraction
-    // of the screen, and a model-space offset would scale both by the entity's
-    // (possibly non-uniform) scale on top.
+    // of the screen, and a model-space offset would also scale both by the entity's
+    // scale, which may be non-uniform.
     float3 worldNormal = params.uniforms().normal_to_world() * normalize(params.geometry().normal());
     float worldNormalLength = length(worldNormal);
     if (worldNormalLength < mtoonEpsilon) {

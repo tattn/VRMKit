@@ -9,7 +9,7 @@ public struct GLTFPruneResult: Sendable {
     /// How many BIN bytes the prune reclaimed.
     public let reclaimedByteCount: Int
 
-    /// No entry at all for what the prune dropped.
+    /// Old index to new index for each array, with no entry for what the prune dropped.
     private let moved: [GLTFArray: [Int: Int]]
 
     package init(reclaimedByteCount: Int, moved: [GLTFArray: [Int: Int]]) {

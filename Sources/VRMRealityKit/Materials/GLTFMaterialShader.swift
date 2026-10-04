@@ -17,8 +17,8 @@ import VRMKitRuntime
 @MainActor
 public protocol GLTFMaterialShader: AnyObject {
     /// The materials this shader builds for the context's material, or nil to
-    /// pass it on to the next shader in the chain (and ultimately the built-in
-    /// Unlit / PBR path).
+    /// pass it on to the next shader in the chain and, past the last one, to the
+    /// built-in Unlit / PBR path.
     ///
     /// A thrown error fails the material instead of falling through: a plain glTF load
     /// fails with it, while a VRM draws the material with the default material in its
@@ -71,14 +71,14 @@ public struct GLTFShadedMaterial {
     /// Extra passes, added to the scene before the main model entity.
     public var additionalPasses: [Pass]
     /// Where a blended material draws among the other blended materials of its
-    /// mesh, on Unity's render-queue scale (lower draws first): what VRM 0.x
+    /// mesh, on Unity's render-queue scale where lower draws first: what VRM 0.x
     /// records per material, or MToon's base queue plus `renderQueueOffsetNumber`.
     /// Nil for a material that is not blended, which the depth buffer orders.
     /// ``GLTFMaterialShaderContext/renderQueue(alphaMode:transparentWithZWrite:offset:)``
     /// derives it.
     public var renderQueue: Int?
-    /// Lets VRM expressions (`materialColorBind` / `textureTransformBind`) drive
-    /// this material the way MToon does. Called once per material per loaded
+    /// Lets the `materialColorBind` and `textureTransformBind` of VRM expressions
+    /// drive this material the way MToon does. Called once per material per loaded
     /// entity graph. Anything the state does not claim falls back to mutating
     /// the RealityKit material properties directly.
     public var makeAnimatableState: (@MainActor () -> any VRMAnimatableMaterialState)?
@@ -120,8 +120,8 @@ public struct GLTFMaterialShaderContext {
     }
 
     /// The ``GLTFShadedMaterial/renderQueue`` of ``material`` drawn as `alphaMode`:
-    /// the queue VRM 0.x recorded, or the mode's base queue (a depth-writing blend
-    /// draws ahead of the rest) moved by MToon's `offset`. Nil unless blended.
+    /// the queue VRM 0.x recorded, or the mode's base queue moved by MToon's `offset`,
+    /// where a depth-writing blend draws ahead of the rest. Nil unless blended.
     public func renderQueue(alphaMode: GLTF.Material.AlphaMode,
                             transparentWithZWrite: Bool = false,
                             offset: Int = 0) -> Int? {

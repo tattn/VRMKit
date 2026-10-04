@@ -214,7 +214,6 @@ struct MToonMaterialDescriptorTests {
                                         keywordMap: #"{"_ALPHABLEND_ON": true}"#,
                                         tagMap: #"{"RenderType": "Transparent"}"#)
             #expect(zWrite.renderQueueOffsetNumber == 0)
-            // The TransparentWithZWrite render mode still reaches the descriptor.
             #expect(zWrite.transparentWithZWrite)
         }
     }

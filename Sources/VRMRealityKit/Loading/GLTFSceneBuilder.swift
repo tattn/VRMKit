@@ -323,10 +323,9 @@ final class GLTFSceneBuilder {
         let skeleton = primitives.contains(where: \.isSkinned)
             ? try skinIndex.map { try skin(withSkinIndex: $0).skeleton }
             : nil
-        // One vertex array for the whole mesh: every entity drawing it (its render
-        // passes and its render-queue groups) deforms from the same source and draws
-        // its own slots of it, so the vertices are skinned once per frame, not once
-        // per entity.
+        // One vertex array for the whole mesh: every entity drawing it, render passes
+        // and render-queue groups alike, deforms from the same source and draws its own
+        // slots of it, so the vertices are skinned once per frame, not once per entity.
         let started = ContinuousClock.now
         let context = try GLTFDeformationContext.shared()
         let geometry = try GLTFMeshGeometry(primitives: primitives.map(\.prepared),
@@ -365,8 +364,8 @@ final class GLTFSceneBuilder {
         }
 
         // RealityKit orders blended parts back to front by their bounds, which flips
-        // parts an author stacked on purpose (an eye highlight a few millimetres over
-        // its iris, bangs blended over the face of another mesh) once the view tilts.
+        // parts an author stacked on purpose once the view tilts, such as an eye highlight
+        // a few millimetres over its iris or bangs blended over the face of another mesh.
         // When the model's materials ask for different render queues, its blended parts
         // draw from entities of their own, one per queue, in one sort group for the
         // whole model that keeps the queue order. Parts of one queue are still ordered
@@ -474,7 +473,7 @@ final class GLTFSceneBuilder {
                 entity.components.set(component)
             }
         }
-        // The component ships with the OS 27 SDKs (Swift 6.4); older SDKs have no occlusion culling.
+        // The component ships with the OS 27 SDKs, which bring Swift 6.4; older SDKs have no occlusion culling.
         #if compiler(>=6.4)
         if source.isDeformable, #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) {
             // RealityKit only sees the rest bounds of vertices deformed here on the GPU, so its
@@ -690,7 +689,7 @@ final class GLTFSceneBuilder {
         return material
     }
 
-    /// The textures a standard (non-MToon) material samples through mesh UVs, in the
+    /// The textures a standard material, MToon aside, samples through mesh UVs, in the
     /// order the glTF material declares them.
     private func sampledTextures(of gltfMaterial: GLTF.Material) -> [GLTFSampledTexture] {
         var textures: [GLTFSampledTexture] = []

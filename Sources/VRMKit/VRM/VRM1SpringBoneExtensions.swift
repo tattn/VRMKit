@@ -89,7 +89,7 @@ extension VRM1.SpringBone.Spring.Joint {
             return nil
         }
         let extended = try value.decode(LimitExtension.self)
-        // UniVRM (0.131) writes the limit without the specVersion the spec requires.
+        // UniVRM 0.131 writes the limit without the specVersion the spec requires.
         guard extended.specVersion == nil || extended.specVersion == "1.0" else { return nil }
         return extended.limit
     }

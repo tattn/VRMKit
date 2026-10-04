@@ -216,8 +216,8 @@ struct MToonOutlineTests {
     @Test
     func testPassVisibilityWithoutThePassInTheSelectionIsANoOp() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Seed-san material 3 (an outline-less eye) builds no pass, and material 12
-        // is not MToon.
+        // Seed-san material 3, an eye without an outline, builds no pass, and material
+        // 12 is not MToon.
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let visibility = outlineSlotVisibility(in: entity)
 

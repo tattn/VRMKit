@@ -254,8 +254,8 @@ final class MToonParameterTexture {
     }
 
     /// The batch's blit encoder when a batch is open and shares this texture's device,
-    /// opening the batch's command buffer on the first call. A texture on another device
-    /// (a multi-GPU machine) writes on its own.
+    /// opening the batch's command buffer on the first call. A texture on another device,
+    /// as on a multi-GPU machine, writes on its own.
     private func batchBlit() -> WriteBatch? {
         guard Self.isBatching else { return nil }
         if let batch = Self.openBatch {
@@ -383,7 +383,7 @@ extension MToonSamplerFilter.MipFilter {
 }
 
 /// MToon texture slots. The raw value is also the sampler parameter row the
-/// shader reads for this slot (see `mtoonSamplerParameter` in MToonRealityKit.h).
+/// shader reads for this slot through `mtoonSamplerParameter` in `MToonRealityKit.h`.
 enum MToonTextureSlot: Int, CaseIterable {
     case base
     case shade
@@ -454,7 +454,7 @@ extension MToonMaterialDescriptor.CullMode {
 #endif
 
 private extension MToonMaterialDescriptor.OutlineWidthMode {
-    /// Encoding read back by MToon.metal as `outlineParams.y` (> 1.5h means screen space).
+    /// Encoding MToon.metal reads back as `outlineParams.y`, where above 1.5 means screen space.
     var mtoonRawValue: Float {
         switch self {
         case .none: return 0

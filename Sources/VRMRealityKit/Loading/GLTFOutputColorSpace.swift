@@ -27,9 +27,9 @@ public enum GLTFOutputColorSpace: Sendable, Hashable {
 
     /// A glTF color image tagged as sRGB numbers in this output.
     ///
-    /// glTF images are sRGB whatever color profile they embed (the specification has
-    /// loaders ignore it), so the pixels are retagged rather than converted. An image
-    /// with no RGB primaries, such as grayscale, is left as decoded.
+    /// The specification has loaders read glTF images as sRGB whatever color profile they
+    /// embed, so the pixels are retagged rather than converted. An image with no RGB
+    /// primaries, such as grayscale, is left as decoded.
     func colorImage(_ image: CGImage) -> CGImage {
         guard let space = image.colorSpace else { return image }
         switch space.model {

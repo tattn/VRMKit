@@ -26,13 +26,12 @@ enum MToonShaderLibraryLoader {
 #elseif os(iOS) && !targetEnvironment(macCatalyst)
         return "MToon-ios"
 #else
-        // No precompiled MToon library is bundled for this platform
-        // (e.g. Mac Catalyst, visionOS); MToon rendering falls back to UnlitMaterial.
+        // Mac Catalyst and visionOS get no precompiled MToon library, so MToon
+        // rendering falls back to UnlitMaterial.
         return nil
 #endif
     }
 
-    /// The bundle the precompiled metallibs ship in.
     static var resourceBundle: Bundle { .module }
 
     // Both success and failure are cached so repeated material creation does

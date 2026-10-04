@@ -30,9 +30,9 @@ final class VRMAnimationRuntime {
     /// adds to its parent's, identity while the animation rests.
     private struct RotationDelta {
         let track: GLTFKeyframeTrack<simd_quatf>
-        /// (animation parent rest world), with the VRM 0.x facing flip folded in.
+        /// The animation parent's rest world rotation, with the VRM 0.x facing flip folded in.
         let pre: simd_quatf
-        /// inverse(animation node rest world), flip folded in.
+        /// The inverse of the animation node's rest world rotation, flip folded in.
         let post: simd_quatf
 
         func value(at time: Float) -> simd_quatf {
@@ -45,9 +45,9 @@ final class VRMAnimationRuntime {
         /// target model also has, root first and this bone's own last, so a bone the
         /// model lacks still passes its rotation down.
         let deltas: [RotationDelta]
-        /// inverse(target parent rest world).
+        /// The inverse of the target parent's rest world rotation.
         let pre: simd_quatf
-        /// target node rest world.
+        /// The target node's rest world rotation.
         let post: simd_quatf
 
         func value(at time: Float) -> simd_quatf {

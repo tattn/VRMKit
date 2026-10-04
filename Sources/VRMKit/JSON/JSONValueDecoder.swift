@@ -215,7 +215,7 @@ private struct UnkeyedContainer: UnkeyedDecodingContainer {
     }
 
     mutating func decodeNil() throws -> Bool {
-        // Codable has a nil that fails leave the element unconsumed.
+        // Codable expects a nil check that fails to leave the element unconsumed.
         let value = try next(JSONValue.self)
         guard value.isNull else {
             currentIndex -= 1

@@ -4,6 +4,6 @@ target=macosx|macos-|-mmacosx-version-min=12.0|MToon-macos.metallib
 target=iphoneos|ios-|-mios-version-min=15.0|MToon-ios.metallib
 target=iphonesimulator|ios-|-miphonesimulator-version-min=15.0|MToon-iossim.metallib
 79149de5dcc2f6f80f9a8cff2fe963e684a4632b4b56ba4e6f83e3824311f9af  Sources/VRMRealityKit/Shaders/MToonCore.h
-6c93a5ab6a7f3592563a9995254b153a0948960729554bb1d10a043a2db66672  Sources/VRMRealityKit/Shaders/MToonRealityKit.h
-f0663c0af2fa1491211d6ef0064c34554e34dbf482cda0a8acebffe37bb9fb78  Sources/VRMRealityKit/Shaders/MToon.metal
-a66f5e46b91f740bbf9d386d67d9845572a6eb40e46f4a81f93b79478bcc9cdf  scripts/build-mtoon-metallibs.sh
+8121ce6e5d3d16e38f0f6aa2818beffac3c83fe9911a3e08c1418e5b6b6a1ab6  Sources/VRMRealityKit/Shaders/MToonRealityKit.h
+59691bd441e401366a73c461d1d585dd206c6d8417404bd2ca69834ea9077a89  Sources/VRMRealityKit/Shaders/MToon.metal
+4f9bed70b6b812a55aa1be251857d9c2db163a369f9bd19a20e58aacbb213c66  scripts/build-mtoon-metallibs.sh

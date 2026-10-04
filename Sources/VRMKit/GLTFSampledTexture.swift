@@ -22,8 +22,8 @@ package struct GLTFSampledTexture: Equatable, Sendable {
     package let index: Int
     /// UV set this texture samples, honoring a `KHR_texture_transform` override.
     package let texCoord: Int
-    /// UV transform carried by the source format (`KHR_texture_transform` for
-    /// glTF / VRM 1.0, the Unity `_MainTex` scale/offset for VRM 0.x).
+    /// UV transform carried by the source format: `KHR_texture_transform` for
+    /// glTF / VRM 1.0, the Unity `_MainTex` scale/offset for VRM 0.x.
     package let transform: GLTFUVTransform?
 
     package init(index: Int, texCoord: Int = 0, transform: GLTFUVTransform? = nil) {

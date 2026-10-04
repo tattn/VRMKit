@@ -33,13 +33,12 @@ struct GLTFPrimitiveGeometry: Sendable {
     var isSkinned: Bool { !joints.isEmpty }
 
     /// Removes the vertices no triangle references and renumbers the indices, keeping
-    /// the vertices in first-use order. Orphan vertices are common: a VRM 0.x export
-    /// shares one vertex buffer across the primitives of a mesh, so each primitive
-    /// decodes every vertex of the mesh and draws its own slice of them (the
-    /// `AliciaSolid` fixture decodes 80,169 vertices that way for 21,995 drawn), and
-    /// merged or baked exports leave hidden parts behind as vertices no triangle uses.
-    /// The deformation kernel skins and morphs every vertex in the buffer whether or
-    /// not a triangle draws it. Call it before the tangent frame is built.
+    /// the vertices in first-use order. The deformation kernel skins and morphs every
+    /// vertex in the buffer, drawn or not, and orphans are common: a VRM 0.x export
+    /// shares one vertex buffer across the primitives of a mesh, so each primitive decodes
+    /// every vertex of the mesh to draw its own slice. The `AliciaSolid` fixture decodes
+    /// 80,169 vertices that way for 21,995 drawn. Merged or baked exports also leave hidden
+    /// parts behind as unused vertices. Call it before the tangent frame is built.
     mutating func dropUnreferencedVertices() {
         var renumbered = [UInt32](repeating: .max, count: positions.count)
         var kept: [Int] = []
@@ -409,7 +408,7 @@ struct GLTFGeometryDecoder: Sendable {
 
             let edge1 = positions[i1] - positions[i0]
             let edge2 = positions[i2] - positions[i0]
-            // A normal map's +Y points up the image, the way `texcoords` (v up) grow,
+            // A normal map's +Y points up the image, the way v grows in `texcoords`,
             // as UniVRM's Unity-generated tangents have it.
             let deltaUV1 = texcoords[i1] - texcoords[i0]
             let deltaUV2 = texcoords[i2] - texcoords[i0]

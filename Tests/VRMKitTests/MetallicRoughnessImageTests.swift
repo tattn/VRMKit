@@ -40,7 +40,7 @@ struct MetallicRoughnessImageTests {
         #expect(try grey(of: images.rough) == 128)
     }
 
-    /// A factor over the range the channel holds is held to it.
+    /// A factor that pushes a channel past 255 is clamped there.
     @Test
     func testEachFactorScalesItsOwnChannel() throws {
         let images = try metallicRoughnessImages(from: try packedImage(),

@@ -8,7 +8,7 @@ import VRMKitRuntime
 protocol GLTFAnimatableValue {
     static func lerp(_ from: Self, to: Self, fraction: Float) -> Self
     /// glTF's cubic Hermite spline, where `duration` is the time between the
-    /// surrounding keyframes (the spec's `t_k+1 - t_k`).
+    /// surrounding keyframes, `t_k+1 - t_k` in the spec.
     static func cubic(value0: Self,
                       outTangent0: Self,
                       value1: Self,

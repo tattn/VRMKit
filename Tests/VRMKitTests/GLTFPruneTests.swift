@@ -148,11 +148,10 @@ struct GLTFPruneTests {
         expectReadableAccessors(saved)
     }
 
-    /// A document pruning cannot follow is refused and left as it was: one naming no
-    /// scene draws nothing, so pruning to what it draws would take all of it; an entry
-    /// it does not hold would come out of the compaction deleted, and so would a
-    /// negative index in a list, which spells "nothing" by leaving the element out; and
-    /// an undeclared extension is caught wherever it sits, inside another one included.
+    /// A document pruning cannot follow is refused and left as it was. In argument order:
+    /// naming no scene draws nothing, so pruning would take everything; a child index the
+    /// document does not hold, or a negative one, would come out of the compaction deleted,
+    /// since a glTF list has no -1 sentinel; an undeclared extension is caught even nested.
     @Test(arguments: [
         #"{"asset": {"version": "2.0"}, "nodes": [{"name": "orphan"}]}"#,
         #"{"asset": {"version": "2.0"}, "scenes": [{"nodes": [0]}], "scene": 0, "nodes": [{"name": "root", "children": [7]}]}"#,

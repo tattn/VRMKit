@@ -7,8 +7,8 @@ import VRMKitRuntime
 import VRMTestSupport
 @testable import VRMRealityKit
 
-/// What driving expressions costs per frame, for an app that hands the model a
-/// full set of weights every frame (face tracking).
+/// What driving expressions costs per frame, for an app such as a face tracker that
+/// hands the model a full set of weights every frame.
 /// Not part of a normal test run: set `VRMKIT_BENCH=1` to run it.
 ///
 ///     VRMKIT_BENCH=1 swift test -c release --filter ExpressionCostBenchmark
