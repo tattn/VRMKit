@@ -32,9 +32,11 @@ extension VRMRuntimeNode {
     /// Writes `rotation` back unless the node already holds it, and answers whether it
     /// moved: a renderer re-solves its skin pose only for the nodes that did. A
     /// quaternion and its negation are the same rotation, so neither counts as a move.
-    func setLocalRotationIfMoved(_ rotation: simd_quatf) -> Bool {
+    /// `tolerance` is the largest difference in a component that still counts as held.
+    func setLocalRotationIfMoved(_ rotation: simd_quatf, tolerance: Float = 0) -> Bool {
         let current = localRotation.vector
-        guard current != rotation.vector, current != -rotation.vector else { return false }
+        guard simd_reduce_max(simd_abs(current - rotation.vector)) > tolerance,
+              simd_reduce_max(simd_abs(current + rotation.vector)) > tolerance else { return false }
         setLocalRotation(rotation)
         return true
     }

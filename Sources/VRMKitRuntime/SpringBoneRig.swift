@@ -19,6 +19,11 @@ package enum SpringBoneSimulation {
     /// Time past these steps is dropped, so a long hitch stalls the swing rather than
     /// replaying it.
     static let maximumStepsPerUpdate = 4
+    /// The largest change in a component of a joint's local rotation that is not
+    /// written back. A spring at rest keeps returning its rest rotation, give or take
+    /// the rounding of the integration, and writing a rotation costs a renderer a
+    /// component update however small the change: about a thousandth of a degree.
+    static let restTolerance: Float = 1e-5
 }
 
 /// How a ``SpringBoneRig`` swings.
@@ -93,8 +98,9 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     private var centers: [ObjectIdentifier: SpringBoneCenter] = [:]
     private var worlds: [SpringBoneWorldTransform] = []
 
-    /// The nodes the simulation writes rotations to, so a renderer can re-skin
-    /// only what a step actually moved.
+    /// The nodes the last ``update(deltaTime:)`` wrote a rotation to, so a renderer
+    /// can re-skin only what a step actually moved. A joint that settled and keeps
+    /// its rotation is left out.
     package private(set) var posedNodes: [Node] = []
 
     package init() {}
@@ -109,9 +115,11 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     /// carries to the next update, so the swing does not depend on how often a
     /// renderer draws.
     ///
-    /// Returns whether a joint was posed, so a renderer re-skins only the frames a step fell in.
+    /// Returns whether a joint was posed (``posedNodes``), so a renderer re-skins only
+    /// the frames a step moved something in.
     @discardableResult
     package func update(deltaTime: TimeInterval) -> Bool {
+        posedNodes.removeAll(keepingCapacity: true)
         guard !springs.isEmpty else { return false }
         if configuration.isPaused {
             // Settling for a reset would drop the held shape, and a held joint carries no
@@ -132,17 +140,16 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
             isSettled = true
             accumulator = 0
             restartTails(atRest: true)
-            return true
+            return !posedNodes.isEmpty
         }
-        var posed = false
         if !isSettled {
             isSettled = true
-            posed = restartTails(atRest: true)
+            restartTails(atRest: true)
         }
         let step = SpringBoneSimulation.step
         accumulator = min(max(0, accumulator + deltaTime),
                           step * TimeInterval(SpringBoneSimulation.maximumStepsPerUpdate))
-        guard accumulator >= step else { return posed }
+        guard accumulator >= step else { return !posedNodes.isEmpty }
 
         // The renderer's state stands still within one update, so read it once however
         // many steps the frame takes.
@@ -154,7 +161,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                 self.step(&springs[index], deltaTime: Float(step))
             }
         }
-        return true
+        return !posedNodes.isEmpty
     }
 
     private func refreshWorldColliders() {
@@ -199,20 +206,29 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                                             colliders: springColliders,
                                             externalForce: configuration.externalForce)
                 spring.links[index].joint = joint
-                link.node.setLocalRotation(parentWorld.rotation.inverse * rotation)
-                // Composed again from the rotation the joint was swung to, which its
-                // children hang off.
-                world = link.node.worldTransform(under: parentWorld)
+                if link.node.setLocalRotationIfMoved(parentWorld.rotation.inverse * rotation,
+                                                     tolerance: SpringBoneSimulation.restTolerance) {
+                    notePosed(link.node)
+                    // Composed again from the rotation the joint was swung to, which its
+                    // children hang off.
+                    world = link.node.worldTransform(under: parentWorld)
+                }
             }
             worlds.append(world)
         }
     }
 
+    /// A node is a joint of one spring only, so a step poses it at most once. The steps
+    /// of one update may list it again, which a renderer's invalidation absorbs.
+    private func notePosed(_ node: Node) {
+        if posedNodes.last !== node {
+            posedNodes.append(node)
+        }
+    }
+
     /// Starts every tail with no motion, where its joint points: at rest, the authored
-    /// rotation, or else where the joint is now. Returns whether a rotation was written.
-    @discardableResult
-    private func restartTails(atRest: Bool) -> Bool {
-        var posed = false
+    /// rotation, or else where the joint is now. A rotation it writes is noted in ``posedNodes``.
+    private func restartTails(atRest: Bool) {
         refreshCenters()
         for springIndex in springs.indices {
             let center = springs[springIndex].center.map { centers[ObjectIdentifier($0)] } ?? nil
@@ -221,7 +237,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
             for index in springs[springIndex].links.indices {
                 let link = springs[springIndex].links[index]
                 if atRest, let rest = link.joint?.restLocalRotation, link.node.setLocalRotationIfMoved(rest) {
-                    posed = true
+                    notePosed(link.node)
                 }
                 let world = link.node.worldTransform(under: parentWorld(of: link))
                 if var joint = link.joint {
@@ -231,7 +247,6 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                 worlds.append(world)
             }
         }
-        return posed
     }
 
     /// The world transform `link` hangs off: composed earlier in this pass when its
@@ -441,7 +456,6 @@ package extension SpringBoneRig {
     private func append(_ spring: Spring) {
         guard spring.links.contains(where: { $0.joint != nil }) else { return }
         springs.append(spring)
-        posedNodes.append(contentsOf: spring.links.compactMap { $0.joint != nil ? $0.node : nil })
     }
 
     /// VRM 0.x swings every bone below the root: one with children towards the first of
