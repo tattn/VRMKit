@@ -85,8 +85,7 @@ fragment half4 mtoonEntryPointProbe(float4 position [[position]],
                                     texture2d<half> texture [[texture(0)]],
                                     constant float4 &samplerParameters [[buffer(0)]])
 {
-    return mtoonSample(texture, position.xy, half4(samplerParameters))
-         + texture.sample(mtoonParameterSampler, position.xy);
+    return mtoonSample(texture, position.xy, half4(samplerParameters));
 }
 PROBE
 

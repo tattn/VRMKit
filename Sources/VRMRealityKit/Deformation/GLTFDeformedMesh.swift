@@ -35,8 +35,13 @@ final class GLTFDeformedMesh {
     /// Whether the parts drawn now cover anything. A mesh drawing nothing, such as a
     /// hidden render pass, is not deformed until something of it shows again.
     private var drawsAnything = true
+    /// The drawn slots hidden for a caller that draws them itself, which keep the mesh
+    /// deformed while nothing of it shows.
+    var callerDrawnSlots: Set<Int> = []
     /// Whether a dispatch would change what the mesh draws.
-    var isDeformationPending: Bool { needsDeformation && drawsAnything && !isFrozen && source.isDeformable }
+    var isDeformationPending: Bool {
+        needsDeformation && (drawsAnything || !callerDrawnSlots.isEmpty) && !isFrozen && source.isDeformable
+    }
     private let jointMatricesBuffer: MTLBuffer?
     private let morphWeightsBuffer: MTLBuffer?
     private let activeTargetsBuffer: MTLBuffer?

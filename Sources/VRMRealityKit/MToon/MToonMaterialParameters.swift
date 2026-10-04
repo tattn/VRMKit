@@ -35,9 +35,6 @@ struct MToonMaterialParameters {
     static let defaultLightDirection = simd_normalize(SIMD3<Float>(0.35, 0.55, 0.75))
     static let baseParameterRowCount = MToonParameterRow.allCases.count
     static let samplerRowCount = MToonTextureSlot.allCases.count
-    static let textureRowCount = baseParameterRowCount + samplerRowCount + userRowCount
-    /// See ``MToonAnimatableMaterialState/userParameterCount``.
-    static let userRowCount = 8
     /// The glTF default sampler: REPEAT on both axes, linear magnification,
     /// trilinear minification.
     static let defaultSampler = SIMD4<Float>(0, 0, Float(MToonSamplerFilter.default.index), 0)
@@ -62,9 +59,11 @@ struct MToonMaterialParameters {
     var samplers = Array(repeating: MToonMaterialParameters.defaultSampler,
                          count: MToonMaterialParameters.samplerRowCount)
     var lightDirection: SIMD3<Float> = MToonMaterialParameters.defaultLightDirection
-    var userRows = Array(repeating: SIMD4<Float>(repeating: 0), count: MToonMaterialParameters.userRowCount)
+    var userRows: [SIMD4<Float>]
 
-    init(_ mtoon: MToonMaterialDescriptor) {
+    /// `userRowCount` is ``MToonShader/userParameterCount``.
+    init(_ mtoon: MToonMaterialDescriptor, userRowCount: Int) {
+        userRows = Array(repeating: SIMD4<Float>(repeating: 0), count: userRowCount)
         baseColor = mtoon.baseColorFactor
         shadeColor = mtoon.shadeColorFactor
         rimColor = mtoon.parametricRimColorFactor
@@ -186,9 +185,7 @@ struct MToonMaterialParameters {
     /// ``MToonParameterRow`` order, the sampler rows at
     /// `MToonTextureSlot.rawValue`, then the user rows.
     var packedRows: [SIMD4<Float>] {
-        let rows = MToonParameterRow.allCases.map(value(for:)) + samplers + userRows
-        precondition(rows.count == Self.textureRowCount)
-        return rows
+        MToonParameterRow.allCases.map(value(for:)) + samplers + userRows
     }
 }
 
@@ -199,7 +196,6 @@ struct MToonMaterialParameters {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 final class MToonParameterTexture {
-    static let bytesPerRow = MemoryLayout<SIMD4<Float>>.stride * MToonMaterialParameters.textureRowCount
 
     /// What the materials sample. It outlives every write, so installing it on
     /// a material once is enough.
@@ -276,7 +272,7 @@ final class MToonParameterTexture {
         var descriptor = LowLevelTexture.Descriptor()
         descriptor.textureType = .type2D
         descriptor.pixelFormat = .rgba32Float
-        descriptor.width = MToonMaterialParameters.textureRowCount
+        descriptor.width = rows.count
         descriptor.height = 1
         descriptor.mipmapLevelCount = 1
         descriptor.textureUsage = [.shaderRead]
@@ -292,7 +288,7 @@ final class MToonParameterTexture {
     /// Replaces every row. The texture is well under a page, so writing all of
     /// them costs less than tracking which moved.
     func write(rows: [SIMD4<Float>]) throws {
-        precondition(rows.count == MToonMaterialParameters.textureRowCount)
+        precondition(rows.count == texture.descriptor.width)
         // A buffer of its own per write: the GPU reads it whenever it runs the
         // blit, and a few hundred bytes cost less than synchronizing a shared one.
         guard let buffer = device.makeBuffer(rows) else {
@@ -321,8 +317,8 @@ final class MToonParameterTexture {
                             using blit: MTLBlitCommandEncoder, on commandBuffer: MTLCommandBuffer) {
         blit.copy(from: buffer,
                   sourceOffset: 0,
-                  sourceBytesPerRow: Self.bytesPerRow,
-                  sourceBytesPerImage: Self.bytesPerRow,
+                  sourceBytesPerRow: MemoryLayout<SIMD4<Float>>.stride * rowCount,
+                  sourceBytesPerImage: MemoryLayout<SIMD4<Float>>.stride * rowCount,
                   sourceSize: MTLSize(width: rowCount, height: 1, depth: 1),
                   to: texture.replace(using: commandBuffer),
                   destinationSlice: 0,

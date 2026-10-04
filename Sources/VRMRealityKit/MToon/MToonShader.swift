@@ -58,15 +58,23 @@ public final class MToonShader: GLTFMaterialShader {
     public let compensatesToneMapping: Bool
     /// The Metal functions the material and its outline are drawn with.
     public let functions: MToonShaderFunctions
+    /// How many rows each material leaves to the app (``MToonAnimatableMaterialState/setUserParameter(_:at:)``),
+    /// for its own ``functions`` to read. Each row is four floats in the parameter texture every
+    /// lighting change rewrites, so ask for the rows the functions read.
+    public let userParameterCount: Int
+    /// The ``userParameterCount`` a shader has unless it asks for more.
+    nonisolated public static let defaultUserParameterCount = 8
 
     public init(source: Source = .authoredOnly,
                 outlinePass: OutlinePass = .automatic,
                 compensatesToneMapping: Bool = true,
-                functions: MToonShaderFunctions = MToonShaderFunctions()) {
+                functions: MToonShaderFunctions = MToonShaderFunctions(),
+                userParameterCount: Int = defaultUserParameterCount) {
         self.source = source
         self.outlinePass = outlinePass
         self.compensatesToneMapping = compensatesToneMapping
         self.functions = functions
+        self.userParameterCount = userParameterCount
     }
 
 #if !os(visionOS)
@@ -204,14 +212,13 @@ public final class MToonShader: GLTFMaterialShader {
         var material = try sharedCustomMaterial(state, surface: state.functions.surface, context: context)
         // MToon needs more textures than CustomMaterial has semantic channels, so the
         // extra slots ride on unrelated ones. MToon.metal reads them back the same way.
+        // RealityKit hands the shaders the base color in place of the clearcoat and
+        // clearcoat roughness textures, so those two slots carry nothing.
         material.roughness.texture = try mtoonTexture(mtoon, slot: .shade, context: context)
-        material.specular.texture = try mtoonTexture(mtoon, slot: .shadingShift, context: context)
+        material.specular.texture = try mtoonTexture(mtoon, slot: .rim, context: context)
         material.metallic.texture = try mtoonTexture(mtoon, slot: .matcap, context: context)
         material.normal.texture = try mtoonTexture(mtoon, slot: .normal, context: context)
         material.emissiveColor = .init(color: .white, texture: try mtoonTexture(mtoon, slot: .emissive, context: context))
-        material.clearcoatRoughness.texture = try mtoonTexture(mtoon, slot: .rim, context: context)
-        // No outline-width map: only the outline pass's geometry modifier reads
-        // it, and it binds one of its own.
         material.faceCulling = mtoon.cullMode.faceCulling
         return material
     }
@@ -223,12 +230,12 @@ public final class MToonShader: GLTFMaterialShader {
                                                 geometry: state.functions.outlineGeometry,
                                                 context: context)
         material.faceCulling = .front
-        material.clearcoat.texture = try mtoonTexture(state.descriptor, slot: .outlineWidth, context: context)
         return material
     }
 
-    /// What the material and its outline share: the base color both cut out by, the UV
-    /// animation mask, blending, depth writes and the parameter rows.
+    /// What the material and its outline share: the base color both cut out by, the
+    /// single-channel maps (the UV animation mask both read, the shading shift and the
+    /// outline width), blending, depth writes and the parameter rows.
     private func sharedCustomMaterial(_ state: MToonState,
                                       surface: MToonShaderFunctions.Function,
                                       geometry: MToonShaderFunctions.Function? = nil,
@@ -243,7 +250,10 @@ public final class MToonShader: GLTFMaterialShader {
             try CustomMaterial(surfaceShader: surfaceShader, lightingModel: .unlit)
         }
         material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base, context: context))
-        material.ambientOcclusion.texture = try mtoonTexture(mtoon, slot: .uvAnimationMask, context: context)
+        let masks = try context.builder.mtoonMaskTexture(shadingShift: mtoon.texture(for: .shadingShift)?.index,
+                                                         outlineWidth: mtoon.texture(for: .outlineWidth)?.index,
+                                                         uvAnimationMask: mtoon.texture(for: .uvAnimationMask)?.index)
+        material.ambientOcclusion.texture = CustomMaterial.Texture(try masks ?? fallbackTextureResource(.white))
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         applyDepthWrite(mtoon, to: &material)
         applyParameters(state, to: &material)
@@ -293,7 +303,7 @@ public final class MToonShader: GLTFMaterialShader {
     private func parameters(for descriptor: MToonMaterialDescriptor,
                             textureTransform: MaterialParameterTypes.TextureCoordinateTransform,
                             context: GLTFMaterialShaderContext) throws -> MToonMaterialParameters {
-        var parameters = MToonMaterialParameters(descriptor)
+        var parameters = MToonMaterialParameters(descriptor, userRowCount: userParameterCount)
         parameters.setTextureTransform(scale: textureTransform.scale,
                                        offset: textureTransform.offset,
                                        rotation: textureTransform.rotation)
@@ -416,9 +426,9 @@ public final class MToonShader: GLTFMaterialShader {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
-    /// The rows left to the app, for its own ``MToonShaderFunctions`` to read. They start
-    /// at zero and the bundled functions ignore them.
-    public static let userParameterCount = MToonMaterialParameters.userRowCount
+    /// The rows left to the app (``MToonShader/userParameterCount``), for its own
+    /// ``MToonShaderFunctions`` to read. They start at zero and the bundled functions ignore them.
+    public var userParameterCount: Int { parameters.userRows.count }
 
     private(set) var parameters: MToonMaterialParameters
     /// This entity's own rows on the GPU, written in place. The loader hands every entity
@@ -430,6 +440,9 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
     init(parameters: MToonMaterialParameters) {
         self.parameters = parameters
     }
+
+    /// The direction toward the light, normalized, as ``GLTFEntity/setMToonLighting(direction:color:ambient:)`` set it.
+    public var lightDirection: SIMD3<Float> { parameters.lightDirection }
 
     /// Read in Metal as `mtoonUserParameter(textures, index)`.
     public func userParameter(at index: Int) -> SIMD4<Float> {

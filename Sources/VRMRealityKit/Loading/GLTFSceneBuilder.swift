@@ -65,6 +65,9 @@ final class GLTFSceneBuilder {
     private var jointEntitiesBySkin: [Int: [Entity]] = [:]
     /// What the built-in path makes of a material, while the shader chain decorates it.
     private var standardMaterialCache: [Int: Material] = [:]
+    /// The sort group the blended parts of the whole model draw in, by render queue.
+    private let renderQueueSortGroup = ModelSortGroup()
+    private var cachedModelRenderQueueCount: Int?
 
     init(resources: GLTFResourceCache, root: GLTFEntity) {
         self.resources = resources
@@ -361,19 +364,21 @@ final class GLTFSceneBuilder {
             meshEntity.addChild(passEntity)
         }
 
-        // RealityKit orders the blended parts of one model entity back to front by
-        // their bounds, which flips parts an author stacked on purpose (an eye
-        // highlight a few millimetres over its iris) once the view tilts. Parts whose
-        // materials ask for different render queues draw from entities of their own,
-        // in a sort group that keeps the queue order.
+        // RealityKit orders blended parts back to front by their bounds, which flips
+        // parts an author stacked on purpose (an eye highlight a few millimetres over
+        // its iris, bangs blended over the face of another mesh) once the view tilts.
+        // When the model's materials ask for different render queues, its blended parts
+        // draw from entities of their own, one per queue, in one sort group for the
+        // whole model that keeps the queue order. Parts of one queue are still ordered
+        // back to front within it.
         let renderQueues = Set(primitives.compactMap(\.shaded.renderQueue)).sorted()
         var groups: [(queue: Int?, slots: [Int])] = [(nil, Array(primitives.indices))]
         var sortGroup: ModelSortGroup?
-        if renderQueues.count > 1 {
+        if !renderQueues.isEmpty, try modelRenderQueueCount() > 1 {
             groups = (renderQueues.map(Optional.some) + [nil]).map { queue in
                 (queue, primitives.indices.filter { primitives[$0].shaded.renderQueue == queue })
             }
-            sortGroup = ModelSortGroup()
+            sortGroup = renderQueueSortGroup
         }
         for (queue, slots) in groups where !slots.isEmpty {
             let modelEntity = try makeModelEntity(
@@ -763,6 +768,15 @@ final class GLTFSceneBuilder {
         (try? shadedMaterial(withMaterialIndex: index))?.makeAnimatableState?()
     }
 
+    /// How many render queues the materials this builder's scene draws with ask for.
+    private func modelRenderQueueCount() throws -> Int {
+        if let cachedModelRenderQueueCount { return cachedModelRenderQueueCount }
+        let queues = try drawnMaterialIndices().compactMap { try shadedMaterial(withMaterialIndex: $0).renderQueue }
+        let count = Set(queues).count
+        cachedModelRenderQueueCount = count
+        return count
+    }
+
     /// The materials this builder's scene draws with.
     private func drawnMaterialIndices() throws -> Set<Int> {
         var indices: Set<Int> = []
@@ -1139,6 +1153,65 @@ final class GLTFSceneBuilder {
                 pixels[offset + 2] = value
             }
         }
+    }
+
+    /// MToon's single-channel maps in one raw texture, each in the channel VRMC_materials_mtoon
+    /// reads it from: the shading shift in red, the outline width in green and the UV animation
+    /// mask in blue. Fewer CustomMaterial slots reach the shaders than MToon has textures, and
+    /// these three leave each other's channels unread, so one slot carries them all. A single
+    /// image, or one image shared by every map that is set, is used as it is. Nil when none is set.
+    func mtoonMaskTexture(shadingShift: Int?, outlineWidth: Int?, uvAnimationMask: Int?) throws -> TextureResource? {
+        let textureIndices = [shadingShift, outlineWidth, uvAnimationMask]
+        let imageIndices = try textureIndices.map { try $0.map(gltf.imageIndex(ofTextureAt:)) }
+        guard let textureIndex = textureIndices.compactMap({ $0 }).first else { return nil }
+        guard Set(imageIndices.compactMap { $0 }).count > 1 else {
+            return try texture(withTextureIndex: textureIndex, semantic: .raw)
+        }
+        if let cached = resources.mtoonMaskCache[imageIndices] { return cached }
+        let packed = try Self.channelPackedImage(try imageIndices.map { try $0.map(image(withImageIndex:)) })
+        let resource = try makeTextureResource(packed, semantic: .raw)
+        resources.mtoonMaskCache[imageIndices] = resource
+        return resource
+    }
+
+    /// An image whose channel `n` is channel `n` of `sources[n]`, each drawn at the size of the
+    /// largest. A missing source leaves its channel white.
+    nonisolated static func channelPackedImage(_ sources: [CGImage?]) throws -> CGImage {
+        let width = sources.compactMap { $0?.width }.max() ?? 1
+        let height = sources.compactMap { $0?.height }.max() ?? 1
+        let bytesPerPixel = 4
+        var packed = [UInt8](repeating: 255, count: width * height * bytesPerPixel)
+        for (channel, source) in sources.enumerated() {
+            guard let source else { continue }
+            let pixels = try rgba8Pixels(of: source, width: width, height: height)
+            for pixel in 0..<(width * height) {
+                packed[pixel * bytesPerPixel + channel] = pixels[pixel * bytesPerPixel + channel]
+            }
+        }
+        guard let provider = CGDataProvider(data: Data(packed) as CFData),
+              let image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                                  bytesPerRow: width * bytesPerPixel, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                  provider: provider, decode: nil, shouldInterpolate: false,
+                                  intent: .defaultIntent) else {
+            throw VRMError._dataInconsistent("failed to create CGImage")
+        }
+        return image
+    }
+
+    /// `image` drawn into 8-bit RGBA at `width` x `height`.
+    private nonisolated static func rgba8Pixels(of image: CGImage, width: Int, height: Int) throws -> [UInt8] {
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        try pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                          // The maps are data, not color: alpha must not premultiply them.
+                                          bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
+                throw VRMError._dataInconsistent("failed to create cgcontext")
+            }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        return pixels
     }
 
     private nonisolated static func rewritingPixels(of image: CGImage,

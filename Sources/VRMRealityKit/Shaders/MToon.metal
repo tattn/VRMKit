@@ -52,7 +52,7 @@ void mtoonSurface(realitykit::surface_parameters params)
 
     float shift = float(shadeParams.x);
     if (featureFlags.z > 0.5h) {
-        half shadingShift = mtoonSample(textures.specular(), uv, shadingShiftSampler).r;
+        half shadingShift = mtoonSample(textures.ambient_occlusion(), uv, shadingShiftSampler).r;
         shift += float(shadingShift) * float(uvAnimation.w);
     }
 
@@ -92,7 +92,7 @@ void mtoonSurface(realitykit::surface_parameters params)
         }
 
         if (featureFlags.y > 0.5h) {
-            rim *= float3(mtoonSample(textures.clearcoat_roughness(), uv, rimSampler).rgb);
+            rim *= float3(mtoonSample(textures.specular(), uv, rimSampler).rgb);
         }
         rim *= mtoonRimLighting(lightColor, giColor, float(rimParams.z));
         color += rim;
@@ -190,7 +190,7 @@ void mtoonOutlineGeometry(realitykit::geometry_parameters params)
         widthUV = mtoonTransformedUV(widthUV, uvTransform, uvTransformRotation);
 
         half4 outlineWidthSampler = mtoonSamplerParameter(params.textures(), mtoonSamplerSlotOutlineWidth);
-        widthMask = float(mtoonVertexSample(params.textures().clearcoat(), widthUV, outlineWidthSampler).g);
+        widthMask = float(mtoonVertexSample(params.textures().ambient_occlusion(), widthUV, outlineWidthSampler).g);
     }
     float width = max(0.0, float(outlineParams.x)) * widthMask;
     // Offset in world space either way: MToon's widths are meters or a fraction

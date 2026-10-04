@@ -28,10 +28,10 @@ struct MToonRenderingTests {
         #expect(customMaterial.normal.texture != nil)
         #expect(customMaterial.roughness.texture != nil)
         #expect(customMaterial.emissiveColor.texture != nil)
-        #expect(customMaterial.clearcoatRoughness.texture != nil)
-        // The outline-width map rides on clearcoat, which only the outline
-        // pass's geometry modifier samples, so the main material leaves it free.
+        #expect(customMaterial.specular.texture != nil)
+        // RealityKit hands the shaders the base color in place of these two.
         #expect(customMaterial.clearcoat.texture == nil)
+        #expect(customMaterial.clearcoatRoughness.texture == nil)
 
         // The light direction rides in the parameter texture; custom.value only
         // carries the tone-mapping compensation flag (on by default) and the
@@ -66,13 +66,13 @@ struct MToonRenderingTests {
 
         #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
         #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
-        #expect(texture.width == MToonMaterialParameters.textureRowCount)
+        #expect(texture.width == MToonMaterialParameters.baseParameterRowCount + MToonMaterialParameters.samplerRowCount
+            + MToonShader.defaultUserParameterCount)
         #expect(texture.height == 1)
 
         // Extracted rather than restated, so any reordering or insertion on
         // either side fails here.
         let shaderConstants = shaderFloatConstants(in: shader)
-        #expect(shaderConstants["mtoonParameterTextureWidth"] == Float(MToonMaterialParameters.textureRowCount))
         #expect(shaderConstants["mtoonSamplerParameterStart"] == Float(MToonMaterialParameters.baseParameterRowCount))
         #expect(shaderConstants["mtoonUserParameterStart"]
             == Float(MToonMaterialParameters.baseParameterRowCount + MToonMaterialParameters.samplerRowCount))
@@ -127,12 +127,11 @@ struct MToonRenderingTests {
         let rawTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .raw)
         let colorTexture = try loader.texture(withTextureIndex: textureIndex, semantic: .color)
 
-        #expect(material.specular.texture != nil)
-        #expect(material.ambientOcclusion.texture != nil)
-        // The outline-width map is sampled by the outline pass alone, so that is
-        // the material carrying it.
+        // One image shared by the three maps is bound as it is, raw, where both the
+        // material and its outline pass read it.
         let outline = try #require(shaded.additionalPasses.first?.material as? CustomMaterial)
-        #expect(outline.clearcoat.texture != nil)
+        #expect(material.ambientOcclusion.texture?.resource === rawTexture)
+        #expect(outline.ambientOcclusion.texture?.resource === rawTexture)
         #expect(MToonTextureSlot.shadingShift.semantic == .raw)
         #expect(MToonTextureSlot.outlineWidth.semantic == .raw)
         #expect(MToonTextureSlot.uvAnimationMask.semantic == .raw)
@@ -314,7 +313,7 @@ struct MToonRenderingTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let value = SIMD4<Float>(1.5, 0.8, 0.4, 0.25)
-        let last = MToonAnimatableMaterialState.userParameterCount - 1
+        let last = MToonShader.defaultUserParameterCount - 1
 
         vrmEntity.updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setUserParameter(value, at: last) }
 

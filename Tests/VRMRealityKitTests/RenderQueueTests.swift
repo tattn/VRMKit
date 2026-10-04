@@ -111,6 +111,36 @@ struct RenderQueueTests {
         }
     }
 
+    /// Blended parts of different meshes keep their queue order too, as bangs blended
+    /// over the face of another mesh do: the sort group is the whole model's.
+    @Test
+    func testQueuesOrderBlendedPartsAcrossMeshes() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let underneath = 0
+        let modified = try TestSupport.modifiedSeedSanMaterial(name: "queue-across-meshes", index: underneath) { material in
+            material["alphaMode"] = "BLEND"
+            var extensions = material.object("extensions") ?? [:]
+            var mtoon = extensions.object("VRMC_materials_mtoon") ?? [:]
+            mtoon["renderQueueOffsetNumber"] = -1
+            extensions["VRMC_materials_mtoon"] = .object(mtoon)
+            material["extensions"] = .object(extensions)
+        }
+        let entity = try await VRMEntityLoader(withData: modified).loadEntity()
+
+        func sortOrder(ofMaterial materialIndex: Int) throws -> (ModelSortGroupComponent, Entity?) {
+            let modelEntity = try #require(entity.modelEntitiesInHierarchy.first {
+                !$0.components.has(GLTFMaterialPassComponent.self)
+                    && $0.components[GLTFMaterialSlotsComponent.self]?.materialIndices == [materialIndex]
+            })
+            return (try #require(modelEntity.components[ModelSortGroupComponent.self]), modelEntity.parent)
+        }
+        let (under, underMesh) = try sortOrder(ofMaterial: underneath)
+        let (over, overMesh) = try sortOrder(ofMaterial: Self.blendedEye)
+        #expect(underMesh !== overMesh, "the two parts are meant to be in different meshes")
+        #expect(under.group == over.group)
+        #expect(under.order < over.order)
+    }
+
     /// The model entities drawing Seed-san's `head` mesh, the siblings of the one
     /// drawing its blended eye, passes aside.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

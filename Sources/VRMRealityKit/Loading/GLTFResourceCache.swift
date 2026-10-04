@@ -111,6 +111,9 @@ final class GLTFResourceCache {
     /// Metal and roughness split out of one image's channels.
     var metallicRoughnessCache: [Int: (metal: TextureResource, rough: TextureResource)] = [:]
     var bakedTextureCache: [GLTFBakedImageKey: TextureResource] = [:]
+    /// MToon's single-channel maps packed into one texture, keyed by the image each
+    /// channel comes from (red, green, blue).
+    var mtoonMaskCache: [[Int?]: TextureResource] = [:]
     /// Keyed by glTF sampler index; nil is the texture that names no sampler.
     var samplerCache: [Int?: MaterialParameters.Texture.Sampler] = [:]
 

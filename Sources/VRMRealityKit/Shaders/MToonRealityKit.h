@@ -21,20 +21,12 @@ using namespace metal;
 // shows up at runtime, as a pipeline that never builds: with one sampler per
 // addressing mode (nine) the depth-only technique of the outline pass, whose
 // vertex stage runs the outline geometry modifier, failed to build on iPhone.
-// So the shader owns two samplers -- one for the parameter rows and one
-// repeating sampler for every texture -- and applies glTF's wrap modes
-// (mtoonWrappedCoordinate) and filter modes (mtoonWrappedSample) to the
-// coordinate and the sample instead.
-constexpr sampler mtoonParameterSampler(coord::normalized,
-                                        address::clamp_to_edge,
-                                        filter::nearest,
-                                        mip_filter::none);
-
+// So the shader owns one repeating sampler for every texture, reads the
+// parameter rows by index, and applies glTF's wrap modes (mtoonWrappedCoordinate)
+// and filter modes (mtoonWrappedSample) to the coordinate and the sample instead.
 constexpr sampler mtoonTextureSampler(coord::normalized,
                                       address::repeat,
                                       mag_filter::linear, min_filter::linear, mip_filter::linear);
-
-constant float mtoonParameterTextureWidth = 35.0;
 
 // Parameter rows, mirroring MToonParameterRow on the Swift side.
 constant float mtoonRowBaseColor = 0.0;
@@ -70,15 +62,13 @@ constant float mtoonSamplerSlotRim = 6.0;
 constant float mtoonSamplerSlotOutlineWidth = 7.0;
 constant float mtoonSamplerSlotUvAnimationMask = 8.0;
 
-// The parameter texture is a 1-row lookup table, so sample it at an explicit
-// LOD: an implicit-LOD sample would need derivatives from uniform control flow,
-// which prevents the compiler from sinking these fetches into the branches that
-// actually consume them.
+// The parameter texture is one row of texels, as wide as the app's user rows make
+// it, so a row is fetched by index rather than sampled at a fixed width. A fetch
+// needs no derivatives, which leaves the compiler free to sink these reads into
+// the branches that actually consume them.
 inline half4 mtoonParameter(realitykit::texture::textures textures, float row)
 {
-    return textures.custom().sample(mtoonParameterSampler,
-                                    float2((row + 0.5) / mtoonParameterTextureWidth, 0.5),
-                                    level(0));
+    return textures.custom().read(uint2(uint(row), 0));
 }
 
 inline half4 mtoonSamplerParameter(realitykit::texture::textures textures, float slot)

@@ -30,6 +30,21 @@ public struct GLTFMaterialPassComponent: Component {
     public let name: String
 }
 
+/// The triangles of one material in one deformed mesh (``GLTFEntity/geometry(ofMaterial:)``).
+/// The vertices are in `modelEntity`'s space, in the mesh's vertex buffers as its descriptor
+/// lays them out. `indexRange` counts the mesh's `UInt32` indices, and `materialSlot` is the
+/// material's place in `modelEntity`'s `ModelComponent`.
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+public struct GLTFMaterialGeometry {
+    public let modelEntity: ModelEntity
+    /// The ``GLTFShadedMaterial/Pass/name`` of an additional render pass, such as MToon's
+    /// outline, or nil for the material itself.
+    public let passName: String?
+    public let materialSlot: Int
+    public let mesh: LowLevelMesh
+    public let indexRange: Range<Int>
+}
+
 /// The glTF skin a model entity is skinned by. It survives `clone(recursive:)`, so a
 /// mesh built once and cloned per node still binds its own joints.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -362,6 +377,48 @@ public class GLTFEntity: Entity {
         for materialIndex in materials {
             forEachPassSlot(named: name, ofMaterial: materialIndex) { passEntity, slot in
                 passEntity.setMergedSlotVisibility(passEntity.initialMergedSlotVisibility(at: slot), slots: [slot])
+            }
+        }
+    }
+
+    // MARK: - Materials drawn by the caller
+
+    /// The queue the skinning and morphing are submitted on. A command buffer committed to it
+    /// after this frame's update, such as from a `System` that runs after ``VRMUpdateSystem``,
+    /// reads the vertices this frame deformed: Metal runs the command buffers of one queue in order.
+    public static func deformationCommandQueue() throws -> MTLCommandQueue {
+        try GLTFDeformationContext.shared().commandQueue
+    }
+
+    /// Where the material at `materialIndex` draws from, one entry per mesh and render pass drawing
+    /// it, for a caller rendering it with Metal itself or giving its materials more to read.
+    public func geometry(ofMaterial materialIndex: Int) -> [GLTFMaterialGeometry] {
+        (materialStates[materialIndex]?.bindings ?? []).compactMap { binding in
+            let modelEntity = binding.modelEntity
+            guard let mesh = modelEntity.deformedMesh,
+                  let slot = mesh.drawnSlots[safe: binding.slot] else { return nil }
+            return GLTFMaterialGeometry(modelEntity: modelEntity,
+                                        passName: modelEntity.components[GLTFMaterialPassComponent.self]?.name,
+                                        materialSlot: binding.slot,
+                                        mesh: mesh.lowLevelMesh,
+                                        indexRange: mesh.geometry.slots[slot].indexRange(isFirstPerson: false))
+        }
+    }
+
+    /// Stops RealityKit drawing `materials`, additional render passes included, while their
+    /// vertices keep deforming every frame, for a caller that draws them from
+    /// ``geometry(ofMaterial:)``. `false` draws them again.
+    public func setDrawnByCaller(_ isDrawnByCaller: Bool, forMaterials materials: Set<Int>) {
+        for materialIndex in materials {
+            for binding in materialStates[materialIndex]?.bindings ?? [] {
+                if let mesh = binding.modelEntity.deformedMesh {
+                    if isDrawnByCaller {
+                        mesh.callerDrawnSlots.insert(binding.slot)
+                    } else {
+                        mesh.callerDrawnSlots.remove(binding.slot)
+                    }
+                }
+                binding.modelEntity.setMergedSlotVisibility(!isDrawnByCaller, slots: [binding.slot])
             }
         }
     }
