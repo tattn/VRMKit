@@ -26,6 +26,7 @@ enum GLTFDeformationKernel {
         uint hasNormals;
         uint hasTangents;
         uint isSkinned;
+        uint outputCount;
     };
 
     kernel void gltfDeformVertices(device const packed_float3 *basePositions [[buffer(0)]],
@@ -39,7 +40,14 @@ enum GLTFDeformationKernel {
                                    device const float *morphWeights [[buffer(8)]],
                                    device const uint *activeTargets [[buffer(9)]],
                                    constant Uniforms &uniforms [[buffer(10)]],
-                                   device DeformedVertex *out [[buffer(11)]],
+                                   device DeformedVertex *out0 [[buffer(11)]],
+                                   device DeformedVertex *out1 [[buffer(12)]],
+                                   device DeformedVertex *out2 [[buffer(13)]],
+                                   device DeformedVertex *out3 [[buffer(14)]],
+                                   device DeformedVertex *out4 [[buffer(15)]],
+                                   device DeformedVertex *out5 [[buffer(16)]],
+                                   device DeformedVertex *out6 [[buffer(17)]],
+                                   device DeformedVertex *out7 [[buffer(18)]],
                                    uint id [[thread_position_in_grid]])
     {
         if (id >= uniforms.vertexCount) return;
@@ -77,7 +85,12 @@ enum GLTFDeformationKernel {
         deformed.normal = normal;
         deformed.tangent = tangent;
         deformed.bitangent = bitangent;
-        out[id] = deformed;
+        // Every entity drawing the mesh has a vertex buffer of its own. Writing each of them
+        // here costs the GPU less than copying the first into the rest, which reads it back.
+        device DeformedVertex *outputs[] = { out0, out1, out2, out3, out4, out5, out6, out7 };
+        for (uint i = 0; i < uniforms.outputCount; i++) {
+            outputs[i][id] = deformed;
+        }
     }
     """
 }

@@ -153,8 +153,8 @@ final class GLTFDeformedMesh {
     }
 
     /// Takes the solved skeleton pose, each joint in its skeleton parent's space. The
-    /// skinning matrices are made from it when the mesh is dispatched, so a mesh that
-    /// copies a sibling's result never makes them.
+    /// skinning matrices are made from it when the mesh is dispatched, so a mesh whose
+    /// vertices a sibling's dispatch writes never makes them.
     func setJointTransforms(_ transforms: [Transform]) {
         guard source.skin != nil else { return }
         jointTransforms = transforms
@@ -171,10 +171,14 @@ final class GLTFDeformedMesh {
         return lowLevelMesh.replace(bufferIndex: 0, using: commandBuffer)
     }
 
-    /// Encodes this mesh's skinning and morphing into `output`, which
-    /// ``beginDeformation(using:)`` handed out, on an encoder that already holds the
-    /// context's pipeline.
-    func encodeDeformation(into output: MTLBuffer, with encoder: MTLComputeCommandEncoder) {
+    /// The most vertex buffers one dispatch writes, as many as the kernel has outputs.
+    static let maxOutputCount = 8
+
+    /// Encodes this mesh's skinning and morphing into `outputs`, the buffers
+    /// ``beginDeformation(using:)`` handed out to it and to the meshes drawing the same
+    /// source, on an encoder that already holds the context's pipeline.
+    func encodeDeformation(into outputs: [MTLBuffer], with encoder: MTLComputeCommandEncoder) {
+        precondition((1...Self.maxOutputCount).contains(outputs.count))
         let context = source.context
         let geometry = source.geometry
 
@@ -198,7 +202,8 @@ final class GLTFDeformedMesh {
                                                activeTargetCount: UInt32(activeTargetCount),
                                                hasNormals: geometry.normals.isEmpty ? 0 : 1,
                                                hasTangents: geometry.tangents.isEmpty ? 0 : 1,
-                                               isSkinned: source.skin == nil ? 0 : 1)
+                                               isSkinned: source.skin == nil ? 0 : 1,
+                                               outputCount: UInt32(outputs.count))
         let empty = context.emptyBuffer
         encoder.setBuffer(source.basePositions, offset: 0, index: 0)
         encoder.setBuffer(source.baseNormals ?? empty, offset: 0, index: 1)
@@ -211,7 +216,9 @@ final class GLTFDeformedMesh {
         encoder.setBuffer(morphWeightsBuffer ?? empty, offset: 0, index: 8)
         encoder.setBuffer(activeTargetsBuffer ?? empty, offset: 0, index: 9)
         encoder.setBytes(&uniforms, length: MemoryLayout<GLTFDeformationUniforms>.stride, index: 10)
-        encoder.setBuffer(output, offset: 0, index: 11)
+        for slot in 0..<Self.maxOutputCount {
+            encoder.setBuffer(outputs[safe: slot] ?? empty, offset: 0, index: 11 + slot)
+        }
         let width = min(context.pipeline.maxTotalThreadsPerThreadgroup, 64)
         // Whole threadgroups rather than `dispatchThreads`: the simulator's Metal device rejects
         // non-uniform threadgroup sizes, and the kernel already ignores threads past the last vertex.
@@ -242,10 +249,6 @@ final class GLTFDeformedMesh {
         }
     }
 
-    static func encodeCopy(from: MTLBuffer, to: MTLBuffer, with blit: MTLBlitCommandEncoder) {
-        blit.copy(from: from, sourceOffset: 0, to: to, destinationOffset: 0, size: min(from.length, to.length))
-    }
-
     /// A copy drawing what this mesh draws now, which never deforms again. Any
     /// deformation still pending on this mesh must have been submitted first: the
     /// copy is taken on the GPU, behind it.
@@ -258,9 +261,9 @@ final class GLTFDeformedMesh {
                   let blit = commandBuffer.makeBlitCommandEncoder() else {
                 throw VRMError._notSupported("could not copy a deformed mesh")
             }
-            Self.encodeCopy(from: lowLevelMesh.read(bufferIndex: 0, using: commandBuffer),
-                            to: copy.lowLevelMesh.replace(bufferIndex: 0, using: commandBuffer),
-                            with: blit)
+            let from = lowLevelMesh.read(bufferIndex: 0, using: commandBuffer)
+            let to = copy.lowLevelMesh.replace(bufferIndex: 0, using: commandBuffer)
+            blit.copy(from: from, sourceOffset: 0, to: to, destinationOffset: 0, size: min(from.length, to.length))
             blit.endEncoding()
             commandBuffer.commit()
         }

@@ -608,45 +608,38 @@ public class GLTFEntity: Entity {
     /// buffer. Nothing is submitted for a held pose.
     ///
     /// The entities drawing one glTF mesh, its render passes and render-queue groups,
-    /// hold the same pose and weights, so the first of them deforms the
-    /// vertices and the rest copy its result. Every dispatch shares one compute encoder
-    /// and every copy one blit encoder: an encoder costs the GPU more than a copy does.
+    /// hold the same pose and weights, so the first of them deforms the vertices once
+    /// into the vertex buffers of them all. Every dispatch shares one compute encoder:
+    /// an encoder costs the GPU more than a dispatch does.
     func flushDeformation() {
         flushSkinPoseIfNeeded()
         guard let pending = deformedMeshes.first(where: \.isDeformationPending) else { return }
         let context = pending.source.context
         guard let commandBuffer = context.commandQueue.makeCommandBuffer() else { return }
         commandBuffer.label = "VRMKit deformation"
-        var deformations: [(mesh: GLTFDeformedMesh, output: MTLBuffer)] = []
-        var copies: [(from: MTLBuffer, to: MTLBuffer)] = []
-        var deformedBySource: [ObjectIdentifier: MTLBuffer] = [:]
+        var deformations: [(mesh: GLTFDeformedMesh, outputs: [MTLBuffer])] = []
+        var deformationBySource: [ObjectIdentifier: Int] = [:]
         // The interval is the CPU side of a submit, for a trace to set against the GPU's.
         let interval = Self.signposter.beginInterval("VRMKit deformation")
         defer { Self.signposter.endInterval("VRMKit deformation", interval) }
         for mesh in deformedMeshes {
             guard let output = mesh.beginDeformation(using: commandBuffer) else { continue }
             let source = ObjectIdentifier(mesh.source)
-            if let deformed = deformedBySource[source] {
-                copies.append((deformed, output))
+            if let index = deformationBySource[source],
+               deformations[index].outputs.count < GLTFDeformedMesh.maxOutputCount {
+                deformations[index].outputs.append(output)
             } else {
-                deformedBySource[source] = output
-                deformations.append((mesh, output))
+                deformationBySource[source] = deformations.count
+                deformations.append((mesh, [output]))
             }
         }
         if let encoder = commandBuffer.makeComputeCommandEncoder() {
             encoder.label = "VRMKit deformation"
             encoder.setComputePipelineState(context.pipeline)
-            for (mesh, output) in deformations {
-                mesh.encodeDeformation(into: output, with: encoder)
+            for (mesh, outputs) in deformations {
+                mesh.encodeDeformation(into: outputs, with: encoder)
             }
             encoder.endEncoding()
-        }
-        if !copies.isEmpty, let blit = commandBuffer.makeBlitCommandEncoder() {
-            blit.label = "VRMKit deformation copy"
-            for (from, to) in copies {
-                GLTFDeformedMesh.encodeCopy(from: from, to: to, with: blit)
-            }
-            blit.endEncoding()
         }
         commandBuffer.commit()
     }

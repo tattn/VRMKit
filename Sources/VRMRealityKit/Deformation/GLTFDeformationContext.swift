@@ -1,6 +1,7 @@
 #if canImport(RealityKit)
 import Foundation
 import Metal
+import simd
 import VRMKit
 
 /// One deformed vertex as the kernel writes it and the `LowLevelMesh` reads it.
@@ -19,6 +20,7 @@ struct GLTFDeformationUniforms {
     var hasNormals: UInt32
     var hasTangents: UInt32
     var isSkinned: UInt32
+    var outputCount: UInt32
 }
 
 /// What every deformed mesh in the process shares: the device, the queue the
@@ -29,8 +31,13 @@ final class GLTFDeformationContext {
     let device: MTLDevice
     let commandQueue: MTLCommandQueue
     let pipeline: MTLComputePipelineState
-    /// Bound where a mesh has no data for an input, so every buffer slot is filled.
+    /// Bound where a mesh has no data for an input or output, so every buffer slot is filled.
     let emptyBuffer: MTLBuffer
+
+    /// Metal's API validation rejects a buffer shorter than one element of the argument it
+    /// is bound to, even one the kernel never reads, so the empty buffer holds the largest:
+    /// a joint matrix, which outgrows a deformed vertex.
+    private static let emptyBufferLength = max(MemoryLayout<simd_float4x4>.stride, GLTFDeformedVertex.stride)
 
     private static var cached: Result<GLTFDeformationContext, Error>?
 
@@ -48,7 +55,7 @@ final class GLTFDeformationContext {
             throw VRMError._notSupported("mesh deformation needs a Metal device")
         }
         guard let commandQueue = device.makeCommandQueue(),
-              let emptyBuffer = device.makeBuffer(length: 16, options: .storageModeShared) else {
+              let emptyBuffer = device.makeBuffer(length: Self.emptyBufferLength, options: .storageModeShared) else {
             throw VRMError._notSupported("mesh deformation could not make a Metal command queue")
         }
         let library = try device.makeLibrary(source: GLTFDeformationKernel.source, options: nil)
