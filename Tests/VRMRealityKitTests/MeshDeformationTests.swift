@@ -12,10 +12,11 @@ import VRMTestSupport
 @MainActor
 struct MeshDeformationTests {
     /// The entities drawing one glTF mesh, such as its model and its outline pass, are
-    /// deformed by one dispatch, and every one of them draws the posed vertices.
+    /// deformed by one dispatch, and every one of them draws the posed vertices. Without MToon
+    /// there is no outline pass, so no mesh is drawn by more than one entity.
     @Test
     func testEveryEntityDrawingAMeshDrawsItPosed() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let siblings = try #require(Dictionary(grouping: entity.deformedMeshes) { ObjectIdentifier($0.source) }
             .values
