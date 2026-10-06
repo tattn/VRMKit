@@ -56,4 +56,25 @@ struct ExpressionRuntimeTests {
         #expect(runtime.availableExpressions.map(\.key) == [.preset(.happy), .custom("wink")])
         #expect(runtime.availableExpressions.map(\.name) == ["happy", "wink"])
     }
+
+    @Test
+    func testAvailableExpressionReportsMorphTargetBindCount() {
+        let mesh = Mesh()
+        let runtime = ExpressionRuntime<Mesh>()
+        let expression = ExpressionClip(
+            name: "aa",
+            preset: .aa,
+            values: [
+                BlendShapeBinding(mesh: mesh, index: 0, weight: 1),
+                BlendShapeBinding(mesh: mesh, index: 1, weight: 0.5),
+            ],
+            isBinary: false
+        )
+
+        runtime.setUp(
+            clips: [expression], materialColorClips: [:], textureTransformClips: [:])
+
+        #expect(runtime.availableExpressions.first?.bindCounts.morphTargets == 2)
+        #expect(runtime.availableExpressions.first?.bindCounts.total == 2)
+    }
 }

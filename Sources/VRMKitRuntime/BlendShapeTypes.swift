@@ -84,6 +84,22 @@ public enum ExpressionKey: Hashable, Sendable {
     }
 }
 
+public struct ExpressionBindCounts: Hashable, Sendable {
+    public let morphTargets: Int
+    public let materialColors: Int
+    public let textureTransforms: Int
+
+    public var total: Int {
+        morphTargets + materialColors + textureTransforms
+    }
+
+    public init(morphTargets: Int = 0, materialColors: Int = 0, textureTransforms: Int = 0) {
+        self.morphTargets = morphTargets
+        self.materialColors = materialColors
+        self.textureTransforms = textureTransforms
+    }
+}
+
 /// One expression a model offers: the key that drives it, and the name the model
 /// itself gives it, which is `Joy` on a VRM 0.x model and `happy` on a 1.0 one.
 public struct ExpressionInfo: Hashable, Sendable {
@@ -91,10 +107,16 @@ public struct ExpressionInfo: Hashable, Sendable {
     public let key: ExpressionKey
     /// The VRM 1.0 expression name, or the VRM 0.x blend shape group name.
     public let name: String
+    public let bindCounts: ExpressionBindCounts
 
-    public init(key: ExpressionKey, name: String) {
+    public init(
+        key: ExpressionKey,
+        name: String,
+        bindCounts: ExpressionBindCounts = ExpressionBindCounts()
+    ) {
         self.key = key
         self.name = name
+        self.bindCounts = bindCounts
     }
 
     /// The preset this is, or nil for a custom expression.

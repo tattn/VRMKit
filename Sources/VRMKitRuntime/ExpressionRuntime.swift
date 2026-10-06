@@ -133,7 +133,17 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
             }
         }
         clips = Dictionary(uniqueKeysWithValues: stated.map { ($0.key, $0) })
-        availableExpressions = stated.map { ExpressionInfo(key: $0.key, name: $0.name) }
+        availableExpressions = stated.map { clip in
+            ExpressionInfo(
+                key: clip.key,
+                name: clip.name,
+                bindCounts: ExpressionBindCounts(
+                    morphTargets: clip.values.count,
+                    materialColors: materialColorClips[clip.key]?.count ?? 0,
+                    textureTransforms: textureTransformClips[clip.key]?.count ?? 0
+                )
+            )
+        }
         self.materialColorClips = materialColorClips
         self.textureTransformClips = textureTransformClips
         weights = [:]
