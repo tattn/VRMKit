@@ -1332,7 +1332,10 @@ final class GLTFSceneBuilder {
 
     private func computeSkinJointOrdering(skin: GLTF.Skin) throws -> (parentIndices: [Int?], order: [Int], remap: [Int]) {
         let jointNodeIndices = skin.joints
-        let jointIndexMap = Dictionary(uniqueKeysWithValues: jointNodeIndices.enumerated().map { ($0.element, $0.offset) })
+        // A node the skin names twice hangs its children off its first entry; the other
+        // is a leaf under the same parent, so both are posed where the node is.
+        let jointIndexMap = Dictionary(jointNodeIndices.enumerated().map { ($0.element, $0.offset) },
+                                       uniquingKeysWith: { first, _ in first })
         var parentIndices: [Int?] = Array(repeating: nil, count: jointNodeIndices.count)
         let hierarchy = try resources.nodeHierarchy()
         for (i, nodeIndex) in jointNodeIndices.enumerated() {

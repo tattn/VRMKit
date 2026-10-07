@@ -75,6 +75,10 @@ package struct GLTFNodeHierarchy {
 
     /// Rejects the malformed node graphs and skins a loader takes for granted: a cyclic
     /// hierarchy would recurse forever and a bad joint index would trap.
+    ///
+    /// A node a skin names twice is let through, though glTF has a skin's joints be unique:
+    /// exporters write it, UniVRM loads it, and each entry still carries its own inverse
+    /// bind matrix, so it skins as two joints that move together.
     package static func validatingStructure(of gltf: GLTF) throws -> GLTFNodeHierarchy {
         let nodes = gltf.nodes
         let hierarchy = try GLTFNodeHierarchy(nodes: nodes)
@@ -83,14 +87,8 @@ package struct GLTFNodeHierarchy {
             guard !skin.joints.isEmpty else {
                 throw VRMError._dataInconsistent("skin \(index) names no joint")
             }
-            var seen: Set<Int> = []
-            for joint in skin.joints {
-                guard nodes.indices.contains(joint) else {
-                    throw VRMError._dataInconsistent("skin \(index) has a joint \(joint) of \(nodes.count) nodes")
-                }
-                guard seen.insert(joint).inserted else {
-                    throw VRMError._dataInconsistent("skin \(index) names node \(joint) as a joint twice")
-                }
+            for joint in skin.joints where !nodes.indices.contains(joint) {
+                throw VRMError._dataInconsistent("skin \(index) has a joint \(joint) of \(nodes.count) nodes")
             }
         }
 

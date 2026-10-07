@@ -571,22 +571,35 @@ struct GLTFEntityLoaderTests {
         await #expect(throws: VRMError.self) { try await loader(emissiveTexCoord: 1).loadEntity() }
     }
 
-    /// Skin joints index the joint arrays positionally, so a repeated, missing or
-    /// out-of-range joint throws rather than trapping.
+    /// Skin joints index the joint arrays positionally, so a missing or out-of-range
+    /// joint throws rather than trapping.
     @Test
     func testMalformedSkinJointsFailTheLoad() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        for joints in [[1, 1], [], [99]] {
-            let loader = try TestSupport.loader(.simpleSkin) { json in
-                var skins = json.objects("skins")
-                guard !skins.isEmpty else { return }
-                skins[0]["joints"] = .numbers(joints)
-                skins[0].removeValue(forKey: "inverseBindMatrices")
-                json["skins"] = .objects(skins)
-            }
+        for joints in [[], [99]] {
             await #expect(throws: VRMError.self, "joints \(joints) must not load") {
-                try await loader.loadEntity()
+                try await Self.simpleSkinLoader(joints: joints).loadEntity()
             }
+        }
+    }
+
+    /// glTF has a skin's joints be unique, but exporters write a node twice and UniVRM
+    /// loads it, so it skins as two joints that move together.
+    @Test
+    func testASkinNamingANodeTwiceLoads() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        _ = try await Self.simpleSkinLoader(joints: [1, 1]).loadEntity()
+        _ = try await Self.simpleSkinLoader(joints: [2, 1, 2]).loadEntity()
+    }
+
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private static func simpleSkinLoader(joints: [Int]) throws -> GLTFEntityLoader {
+        try TestSupport.loader(.simpleSkin) { json in
+            var skins = json.objects("skins")
+            guard !skins.isEmpty else { return }
+            skins[0]["joints"] = .numbers(joints)
+            skins[0].removeValue(forKey: "inverseBindMatrices")
+            json["skins"] = .objects(skins)
         }
     }
 
