@@ -119,5 +119,25 @@ struct VRMSpringBoneEntityTests {
 
         #expect(joint.transform.rotation == rotation)
     }
+
+    /// A model migrated from VRM 0.x can name a node in several springs. It loads, and
+    /// the node swings with the first of them.
+    @Test
+    func testAModelNamingAJointInSeveralSpringsLoads() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let data = try TestSupport.modifiedSeedSanData(name: "repeated spring") { json in
+            var extensions = json.object("extensions") ?? [:]
+            var springBone = extensions.object("VRMC_springBone") ?? [:]
+            let springs = springBone.objects("springs")
+            guard let first = springs.first else {
+                throw VRMError.dataInconsistent("Missing Seed-san spring bone fixture data")
+            }
+            springBone["springs"] = .objects(springs + [first])
+            extensions["VRMC_springBone"] = .object(springBone)
+            json["extensions"] = .object(extensions)
+        }
+        let vrmEntity = try await VRMEntityLoader(withData: data, shaders: []).loadEntity()
+        vrmEntity.update(deltaTime: 1.0 / 60.0)
+    }
 }
 #endif

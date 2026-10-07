@@ -339,14 +339,18 @@ struct SpringBoneRigTests {
 
     // MARK: - VRMC_springBone validation
 
-    /// `VRMC_springBone` gives each joint one spring, so a node two springs name would be
-    /// posed twice a frame.
+    /// `VRMC_springBone` gives each joint one spring, but a model migrated from VRM 0.x can
+    /// name a node in several. It stays with the first, so no node is posed twice a frame.
     @Test
-    func testAJointTwoSpringsBothSwingIsRefused() throws {
-        #expect(throws: VRMError.self) {
-            try Self.build(springs: [[1, 2], [2, 3]])
-        }
-        try Self.build(springs: [[1, 2], [3, 4]])
+    func testANodeSeveralSpringsNameIsSwungByTheFirstOnly() throws {
+        let (rig, nodes) = try Self.build(springs: [[1, 2, 3], [2, 3, 4, 5], [1, 2, 3]])
+        rig.configuration.externalForce = SIMD3(0, -1, 0)
+        rig.update(deltaTime: SpringBoneSimulation.step)
+
+        // The second spring keeps only 4-5, and the third nothing.
+        let posed = rig.posedNodes.map(ObjectIdentifier.init)
+        #expect(posed.count == 3)
+        #expect(Set(posed) == Set([nodes[1], nodes[2], nodes[4]].map(ObjectIdentifier.init)))
     }
 
     /// `VRMC_springBone` has a spring's centre be its first joint or a node above it.
@@ -370,7 +374,10 @@ struct SpringBoneRigTests {
 
     /// Builds the springs a `VRMC_springBone` states, by node index into one chain
     /// hanging off a root.
-    private static func build(springs: [[Int]], centers: [Int?] = []) throws {
+    /// - Returns: The rig, and the nodes the springs index: the root, then the chain.
+    @discardableResult
+    private static func build(springs: [[Int]],
+                              centers: [Int?] = []) throws -> (rig: SpringBoneRig<TestRuntimeNode>, nodes: [TestRuntimeNode]) {
         let (root, nodes) = chain(length: 5)
         let all = [root] + nodes
         let stated = zip(springs, centers + Array(repeating: nil, count: springs.count)).map {
@@ -381,7 +388,9 @@ struct SpringBoneRigTests {
         let springBone = try JSONValue.object(["specVersion": "1.0", "springs": .array(stated)])
             .decode(VRM1.SpringBone.self)
 
-        try SpringBoneRig<TestRuntimeNode>().addVRM1Springs(springBone) { all[$0] }
+        let rig = SpringBoneRig<TestRuntimeNode>()
+        try rig.addVRM1Springs(springBone) { all[$0] }
+        return (rig, all)
     }
 
     /// A non-uniform scale above a rotation shears the matrix below it, which no

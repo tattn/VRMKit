@@ -295,7 +295,8 @@ package extension SpringBoneRig {
         // goes without physics.
         guard let springBone, VRM1.SpringBone.supports(specVersion: springBone.specVersion) else { return }
         let springs = springBone.springs ?? []
-        try Self.validateVRM1(springs, node: node)
+        let jointsOfSpring = Self.jointsNamedOnce(springs)
+        try Self.validateVRM1(jointsOfSpring, centers: springs.map(\.center), node: node)
         let sourceColliders = springBone.colliders ?? []
         let allColliderGroups = try (springBone.colliderGroups ?? []).map { group in
             SpringBoneRigColliderGroup<Node>(colliders: try group.colliders.map { index in
@@ -305,12 +306,12 @@ package extension SpringBoneRig {
                 return (node: try node(collider.node), shape: try SpringBoneColliderShape(vrm1Collider: collider))
             })
         }
-        for spring in springs {
-            let jointNodes = try spring.joints.map { try node($0.node) }
+        for (spring, joints) in zip(springs, jointsOfSpring) {
+            let jointNodes = try joints.map { try node($0.node) }
             // A chain of one joint is only a tail, so it swings nothing.
             guard jointNodes.count > 1 else { continue }
             try addVRM1Spring(center: try spring.center.map { try node($0) },
-                              chain: zip(jointNodes, spring.joints).map {
+                              chain: zip(jointNodes, joints).map {
                                   (node: $0, setting: try SpringBoneJointSetting(vrm1Joint: $1))
                               },
                               colliderGroups: try Self.colliderGroups(allColliderGroups,
@@ -318,23 +319,31 @@ package extension SpringBoneRig {
         }
     }
 
+    /// The joints of each spring, leaving out a node a joint before it already names.
+    /// `VRMC_springBone` gives a node to one spring, but a model migrated from VRM 0.x can
+    /// name it in several when one bone group hangs below another. UniVRM keeps it in the
+    /// first spring and drops it from the later ones, so a later spring swings past it as
+    /// a node between two joints, and no node is posed twice a frame.
+    private static func jointsNamedOnce(_ springs: [VRM1.SpringBone.Spring]) -> [[VRM1.SpringBone.Spring.Joint]] {
+        var named: Set<Int> = []
+        return springs.map { spring in
+            spring.joints.filter { named.insert($0.node).inserted }
+        }
+    }
+
     /// The rules `VRMC_springBone` states across springs, which building one at a time
     /// cannot see.
-    private static func validateVRM1(_ springs: [VRM1.SpringBone.Spring],
+    private static func validateVRM1(_ jointsOfSpring: [[VRM1.SpringBone.Spring.Joint]],
+                                     centers: [Int?],
                                      node: (Int) throws -> Node) throws {
         var springOfJoint: [ObjectIdentifier: Int] = [:]
-        for (index, spring) in springs.enumerated() {
-            for joint in spring.joints {
-                let key = ObjectIdentifier(try node(joint.node))
-                guard springOfJoint.updateValue(index, forKey: key) == nil else {
-                    throw VRMError._dataInconsistent(
-                        "node \(joint.node) is a joint of more than one spring"
-                    )
-                }
+        for (index, joints) in jointsOfSpring.enumerated() {
+            for joint in joints {
+                springOfJoint[ObjectIdentifier(try node(joint.node))] = index
             }
         }
-        for (index, spring) in springs.enumerated() {
-            guard let centerIndex = spring.center, let first = spring.joints.first else { continue }
+        for (index, (joints, centerIndex)) in zip(jointsOfSpring, centers).enumerated() {
+            guard let centerIndex, let first = joints.first else { continue }
             let center = try node(centerIndex)
             guard ancestry(of: try node(first.node)).contains(where: { $0 === center }) else {
                 throw VRMError._dataInconsistent(
