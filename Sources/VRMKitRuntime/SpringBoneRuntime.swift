@@ -294,6 +294,14 @@ package struct SpringBoneJoint {
         prevTail = currentTail
     }
 
+    /// Moves the tail and its last position `share` of the way along with `motion`, how a
+    /// partial center moved since the last step, as a spring's center carries all of it. Only
+    /// for a joint whose tails are kept in the world rather than in a spring's center.
+    mutating func carry(by motion: simd_float4x4, share: Float) {
+        currentTail += (motion.multiplyPoint(currentTail) - currentTail) * share
+        prevTail += (motion.multiplyPoint(prevTail) - prevTail) * share
+    }
+
     /// Advances the tail by `deltaTime` and returns the world rotation the joint has to
     /// take for its bone to point at it.
     package mutating func update(deltaTime: Float,

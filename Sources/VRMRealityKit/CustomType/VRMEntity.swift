@@ -113,6 +113,16 @@ public final class VRMEntity: GLTFEntity {
         springBones.reset()
     }
 
+    /// Has `center` carry `share` of its motion into the tail of the spring-bone joint on
+    /// `joint`, where a spring's center carries all of it: 0 swings the joint as if it had
+    /// no center and 1 as if `center` were its spring's center. It takes the place of the
+    /// spring's center for that joint, and the spring bones start again at rest.
+    ///
+    /// `center` has to be above the joint, and no spring may swing it, as for a spring's center.
+    public func setSpringBoneCenter(_ center: Entity, share: Float, forJoint joint: Entity) throws {
+        try springBones.setCenter(center, share: share, forJoint: joint)
+    }
+
     /// The versions disagree about which way a model faces, and loading converts no
     /// coordinates, so the entity faces whichever way its VRM does.
     public override var frontDirection: SIMD3<Float> { vrm.forwardDirection }

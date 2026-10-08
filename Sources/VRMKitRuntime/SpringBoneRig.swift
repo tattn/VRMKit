@@ -64,6 +64,17 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         let setting: SpringBoneJointSetting
         /// Where the parent's world transform comes from when it is outside the spring.
         var mount = Mount.renderer
+        /// A center of the joint's own, in place of the spring's (``setCenter(_:share:forJoint:)``).
+        var partialCenter: PartialCenter?
+    }
+
+    /// A node that carries a share of its motion into a joint's tail, where a spring's
+    /// center carries all of it.
+    private struct PartialCenter {
+        /// How far above the joint the node is.
+        let levelsUp: Int
+        let share: Float
+        var anchor: Int?
     }
 
     /// Where a link whose parent is outside its spring reads the parent's world transform.
@@ -142,6 +153,9 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     private var stepAnchorWorlds: [SpringBoneWorldTransform] = []
     private var stepAnchorMotions: [SpringBoneStepMotion] = []
     private var stepAnchorCenters: [SpringBoneCenter?] = []
+    /// The anchors that are a joint's partial center, and how each moved since the last step.
+    private var partialCenterAnchors: [Int] = []
+    private var stepPartialCenterMotions: [simd_float4x4] = []
 
     // Held across frames so a solve allocates nothing.
     private var worldColliders: [SpringBoneCollider] = []
@@ -160,6 +174,35 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     /// Forgets the motion the springs carry between frames, so the next update starts
     /// them at rest: for teleporting a model without a frame of flung hair.
     package func reset() {
+        pendingReset = true
+    }
+
+    /// Has `center` carry `share` of its motion into the tail of the joint on `joint`, where
+    /// a spring's center carries all of it: 0 swings the joint as if it had no center and 1
+    /// as if `center` were its spring's center. It takes the place of the spring's center
+    /// for that joint, and the springs start again at rest.
+    ///
+    /// `center` has to be above the joint, and no spring may swing it, as for a spring's center.
+    package func setCenter(_ center: Node, share: Float, forJoint joint: Node) throws {
+        guard share.isFinite, (0...1).contains(share) else {
+            throw VRMError._invalidArgument("a center's share must be finite and in 0...1")
+        }
+        guard let (springIndex, linkIndex) = springs.indices.lazy.compactMap({ springIndex in
+            self.springs[springIndex].links.firstIndex { $0.node === joint && $0.joint != nil }.map { (springIndex, $0) }
+        }).first else {
+            throw VRMError._invalidArgument("the node is not a joint any spring swings")
+        }
+        guard let levelsUp = sequence(first: joint, next: { $0.runtimeParent }).dropFirst()
+            .enumerated().first(where: { $0.element === center }).map({ $0.offset + 1 }) else {
+            throw VRMError._invalidArgument("a joint's center has to be above it")
+        }
+        let swung = Set(springs.flatMap { $0.links.compactMap { $0.joint == nil ? nil : ObjectIdentifier($0.node) } })
+        guard !sequence(first: center, next: { $0.runtimeParent }).contains(where: { swung.contains(ObjectIdentifier($0)) }) else {
+            throw VRMError._invalidArgument("a joint's center cannot be a node a spring swings")
+        }
+        springs[springIndex].links[linkIndex].partialCenter = PartialCenter(levelsUp: levelsUp, share: share)
+        areAnchorsResolved = false
+        // The joint's tails are kept in the world rather than in the spring's center from now on.
         pendingReset = true
     }
 
@@ -243,6 +286,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     /// read to this one.
     private func prepareStep(progress: Float) {
         isStepAtEnd = progress >= 1 - SpringBoneSimulation.endOfFrameTolerance
+        defer { measurePartialCenterMotions() }
         guard !isStepAtEnd else { return }
         for (index, sample) in anchorSamples.enumerated() {
             let motion = SpringBoneStepMotion(from: sample.previous, to: sample.current, progress: progress)
@@ -256,6 +300,16 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         stepColliders.removeAll(keepingCapacity: true)
         for (current, previous) in zip(worldColliders, previousWorldColliders) {
             stepColliders.append(current.interpolated(from: previous, progress: progress))
+        }
+    }
+
+    /// How each partial center moved since the step before, which carries a share of the
+    /// joints' tails along before they swing.
+    private func measurePartialCenterMotions() {
+        for index in partialCenterAnchors {
+            let world = isStepAtEnd ? anchorSamples[index].current : stepAnchorWorlds[index]
+            stepPartialCenterMotions[index] = world.matrix * anchorSamples[index].lastStepWorld.matrix.inverse
+            anchorSamples[index].lastStepWorld = world
         }
     }
 
@@ -275,11 +329,14 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
             var world = link.node.worldTransform(under: parentWorld)
 
             if var joint = link.joint {
+                if let partialCenter = link.partialCenter, let anchor = partialCenter.anchor {
+                    joint.carry(by: stepPartialCenterMotions[anchor], share: partialCenter.share)
+                }
                 let rotation = joint.update(deltaTime: deltaTime,
                                             setting: link.setting,
                                             head: world.translation,
                                             parentRotation: parentWorld.rotation,
-                                            center: center,
+                                            center: link.partialCenter == nil ? center : nil,
                                             colliders: springColliders,
                                             externalForce: configuration.externalForce)
                 spring.links[index].joint = joint
@@ -319,7 +376,9 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                 }
                 let world = link.node.worldTransform(under: link.parent.map { worlds[$0] } ?? currentParentWorld(of: link))
                 if var joint = link.joint {
-                    joint.hold(head: world.translation, rotation: world.rotation, center: center)
+                    joint.hold(head: world.translation,
+                               rotation: world.rotation,
+                               center: link.partialCenter == nil ? center : nil)
                     springs[springIndex].links[index].joint = joint
                 }
                 worlds.append(world)
@@ -354,6 +413,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         areAnchorsResolved = true
         anchors.removeAll()
         anchorSamples.removeAll()
+        partialCenterAnchors.removeAll()
         var indexOfAnchor: [ObjectIdentifier: Int] = [:]
         /// The anchor `levelsUp` above `base`.
         func anchor(_ base: Node, levelsUp: Int) -> Int? {
@@ -389,8 +449,17 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                     anchor(node, levelsUp: 1).map(Mount.anchor) ?? .renderer
                 }
             }
+            for linkIndex in springs[springIndex].links.indices {
+                guard let partialCenter = springs[springIndex].links[linkIndex].partialCenter else { continue }
+                let index = anchor(springs[springIndex].links[linkIndex].node, levelsUp: partialCenter.levelsUp)
+                springs[springIndex].links[linkIndex].partialCenter?.anchor = index
+                if let index, !partialCenterAnchors.contains(index) {
+                    partialCenterAnchors.append(index)
+                }
+            }
         }
         let count = anchors.count
+        stepPartialCenterMotions = Array(repeating: matrix_identity_float4x4, count: count)
         stepAnchorWorlds = Array(repeating: .identity, count: count)
         stepAnchorMotions = Array(repeating: .identity, count: count)
         stepAnchorCenters = Array(repeating: nil, count: count)
@@ -405,10 +474,15 @@ private struct SpringBoneAnchorSample {
     var isCenter = false
     /// `current` as the center of a spring, for an anchor a spring hangs in.
     var currentCenter: SpringBoneCenter?
+    /// Where the node was at the last step solved, for a joint's partial center.
+    var lastStepWorld = SpringBoneWorldTransform.identity
 
     mutating func record(_ world: SpringBoneWorldTransform, fresh: Bool) {
         previous = fresh ? world : current
         current = world
+        if fresh {
+            lastStepWorld = world
+        }
         if isCenter {
             currentCenter = SpringBoneCenter(localToWorld: world.matrix)
         }

@@ -280,6 +280,84 @@ struct SpringBoneRigTests {
         #expect(simd_distance(try swung(frameRate: 30), try swung(frameRate: 60)) < 1e-4)
     }
 
+    /// A joint's own center carrying all of its motion swings the joint as the spring's
+    /// center does, and one carrying none as if there were no center.
+    @Test(arguments: [Float(0), 1])
+    func testAPartialCenterCarryingAllOrNoneMatchesASpringCenterOrNone(share: Float) throws {
+        func swung(center: Bool, partialShare: Float?) throws -> SIMD3<Float> {
+            let (root, nodes) = Self.chain(length: 4)
+            let rig = SpringBoneRig<TestRuntimeNode>()
+            try rig.addVRM1Spring(center: center ? root : nil,
+                                  chain: nodes.map { (node: $0, setting: Self.lightlyDamped) },
+                                  colliderGroups: [])
+            if let partialShare {
+                for joint in nodes.dropLast() {
+                    try rig.setCenter(root, share: partialShare, forJoint: joint)
+                }
+            }
+            Self.drive(rig, moving: root, frameRate: 60)
+            return nodes.last!.worldPosition
+        }
+
+        let expected = try swung(center: share == 1, partialShare: nil)
+        // The spring's own center gives way to the joints'.
+        #expect(simd_distance(try swung(center: share == 0, partialShare: share), expected) < 1e-4)
+    }
+
+    /// Part of the motion carries the tail part of the way between swinging freely and
+    /// being carried along as if nothing moved.
+    @Test
+    func testAPartialCenterCarriesPartOfTheMotion() throws {
+        /// How far from where it hangs off a root that stays still the tip ends up, measured
+        /// in the moving root's space.
+        func deviation(share: Float?) throws -> Float {
+            func tip(moving: Bool) throws -> SIMD3<Float> {
+                let (root, nodes) = Self.chain(length: 4)
+                let rig = SpringBoneRig<TestRuntimeNode>()
+                try rig.addVRM1Spring(center: nil,
+                                      chain: nodes.map { (node: $0, setting: Self.setting) },
+                                      colliderGroups: [])
+                if let share {
+                    for joint in nodes.dropLast() {
+                        try rig.setCenter(root, share: share, forJoint: joint)
+                    }
+                }
+                if moving {
+                    Self.drive(rig, moving: root, frameRate: 60)
+                } else {
+                    rig.update(deltaTime: 0)
+                    for _ in 0..<60 { rig.update(deltaTime: 1.0 / 60.0) }
+                }
+                return root.uncountedWorldMatrix.inverse.multiplyPoint(nodes.last!.worldPosition)
+            }
+            return simd_distance(try tip(moving: true), try tip(moving: false))
+        }
+
+        let free = try deviation(share: nil)
+        let half = try deviation(share: 0.5)
+        let carried = try deviation(share: 1)
+        #expect(carried < 1e-3)
+        #expect(carried < half)
+        #expect(half < free)
+    }
+
+    /// A joint's center is held to what a spring's center is: above the joint, and swung
+    /// by no spring. Only a joint that swings takes one.
+    @Test
+    func testAPartialCenterThatCannotBeOneIsRefused() throws {
+        let (root, nodes) = Self.chain(length: 4)
+        let rig = SpringBoneRig<TestRuntimeNode>()
+        try rig.addVRM1Spring(center: nil,
+                              chain: nodes.map { (node: $0, setting: Self.lightlyDamped) },
+                              colliderGroups: [])
+
+        #expect(throws: VRMError.self) { try rig.setCenter(nodes[2], share: 0.5, forJoint: nodes[1]) }
+        #expect(throws: VRMError.self) { try rig.setCenter(nodes[0], share: 0.5, forJoint: nodes[2]) }
+        #expect(throws: VRMError.self) { try rig.setCenter(root, share: 0.5, forJoint: nodes[3]) }
+        #expect(throws: VRMError.self) { try rig.setCenter(root, share: 1.5, forJoint: nodes[1]) }
+        try rig.setCenter(root, share: 0.5, forJoint: nodes[1])
+    }
+
     /// A frame shorter than one step carries into the next update rather than swinging
     /// a partial step of its own.
     @Test
