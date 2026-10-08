@@ -25,6 +25,24 @@ package struct SpringBoneCollider {
         self.kind = kind
     }
 
+    /// Where the collider was `progress` of the way from `previous` to here, for a step part
+    /// of the way through a frame.
+    func interpolated(from previous: SpringBoneCollider, progress: Float) -> SpringBoneCollider {
+        let t = SIMD3<Float>(repeating: progress)
+        var kind = self.kind
+        if case .plane(let normal) = kind, case .plane(let previousNormal) = previous.kind {
+            let mixed = simd_mix(previousNormal, normal, t)
+            // A plane flipped over within the frame has no normal half way.
+            if simd_length_squared(mixed) > Float.ulpOfOne {
+                kind = .plane(normal: simd_normalize(mixed))
+            }
+        }
+        return SpringBoneCollider(head: simd_mix(previous.head, head, t),
+                                  tail: tail.map { tail in previous.tail.map { simd_mix($0, tail, t) } ?? tail },
+                                  radius: radius,
+                                  kind: kind)
+    }
+
     package func closestPoint(to point: SIMD3<Float>) -> SIMD3<Float> {
         guard let tail else { return head }
         let segment = tail - head

@@ -310,6 +310,18 @@ struct RealityKitCostBenchmark {
             coarse.update(deltaTime: 1.0 / 60.0)
         })
 
+        // A display link's frame times wobble around the step, so most steps fall part of the
+        // way through their frame, where the springs interpolate what they hang off.
+        let uneven = try await loadSettled()
+        let (unevenHead, unevenRotation) = try headDriver(uneven)
+        var unevenFrame = 0
+        report("head coarse uneven", microsecondsPerUpdate {
+            unevenFrame += 1
+            unevenHead.transform.rotation = unevenRotation()
+            uneven.invalidateSkinPose()
+            uneven.update(deltaTime: unevenFrame.isMultiple(of: 2) ? 1.0 / 58.0 : 1.0 / 62.0)
+        })
+
         let narrow = try await loadSettled()
         let (narrowHead, narrowRotation) = try headDriver(narrow)
         report("head narrow", microsecondsPerUpdate {

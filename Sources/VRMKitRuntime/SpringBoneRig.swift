@@ -24,6 +24,9 @@ package enum SpringBoneSimulation {
     /// the rounding of the integration, and writing a rotation costs a renderer a
     /// component update however small the change: about a thousandth of a degree.
     static let restTolerance: Float = 1e-5
+    /// How close to the end of its frame a step takes the renderer's state as it is rather
+    /// than interpolating it: a thousandth of the frame's motion.
+    static let endOfFrameTolerance: Float = 1e-3
 }
 
 /// How a ``SpringBoneRig`` swings.
@@ -59,10 +62,40 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         /// two joints of a chain.
         var joint: SpringBoneJoint?
         let setting: SpringBoneJointSetting
+        /// Where the parent's world transform comes from when it is outside the spring.
+        var mount = Mount.renderer
+    }
+
+    /// Where a link whose parent is outside its spring reads the parent's world transform.
+    private enum Mount {
+        /// From the renderer as it is, for a parent with nothing above it to spread.
+        case renderer
+        /// The parent is the anchor at this index.
+        case anchor(Int)
+        /// From the renderer, carried by the motion of the anchor at this index: a parent
+        /// another spring swings, which hangs below that anchor.
+        case carried(Int)
+    }
+
+    /// A node a spring hangs in or off that no spring swings, reached from a node the rig
+    /// holds anyway rather than held itself: the rig must not hold a model holding it.
+    private struct Anchor {
+        let base: Node
+        let levelsUp: Int
+
+        var node: Node? {
+            var node: Node? = base
+            for _ in 0..<levelsUp {
+                node = node?.runtimeParent
+            }
+            return node
+        }
     }
 
     private struct Spring {
         let center: Node?
+        /// The anchor of `center`.
+        var centerAnchor: Int?
         /// Indices into the rig's collider table, shared between springs so a collider
         /// every strand of hair names is solved once a frame.
         let colliderIndices: [Int]
@@ -91,11 +124,30 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     private var wasPaused = false
     /// Time handed to ``update(deltaTime:)`` and not yet simulated.
     private var accumulator: TimeInterval = 0
+    /// The time not yet simulated when the renderer's state was last read, which is how far
+    /// the steps were behind that state.
+    private var accumulatorAtSample: TimeInterval = 0
+    /// Whether ``anchors`` and every ``Link/mount`` match the springs. They are found once
+    /// the springs are all there: a spring added later may swing what an earlier one hangs off.
+    private var areAnchorsResolved = false
+    /// The steps of one update spread what the anchors and colliders moved since the steps
+    /// last caught up across themselves rather than moving it all in the first: a spring with
+    /// little drag rings at the frame rate from that jolt whenever a frame takes several
+    /// steps, or none.
+    private var anchors: [Anchor] = []
+    private var anchorSamples: [SpringBoneAnchorSample] = []
+    /// Whether the step being solved is at the end of its frame, where the anchors and
+    /// colliders are as last read. The step arrays hold them for any other step.
+    private var isStepAtEnd = true
+    private var stepAnchorWorlds: [SpringBoneWorldTransform] = []
+    private var stepAnchorMotions: [SpringBoneStepMotion] = []
+    private var stepAnchorCenters: [SpringBoneCenter?] = []
 
     // Held across frames so a solve allocates nothing.
     private var worldColliders: [SpringBoneCollider] = []
+    private var previousWorldColliders: [SpringBoneCollider] = []
+    private var stepColliders: [SpringBoneCollider] = []
     private var springColliders: [SpringBoneCollider] = []
-    private var centers: [ObjectIdentifier: SpringBoneCenter] = [:]
     private var worlds: [SpringBoneWorldTransform] = []
 
     /// The nodes the last ``update(deltaTime:)`` wrote a rotation to, so a renderer
@@ -121,6 +173,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     package func update(deltaTime: TimeInterval) -> Bool {
         posedNodes.removeAll(keepingCapacity: true)
         guard !springs.isEmpty else { return false }
+        resolveAnchorsIfNeeded()
         if configuration.isPaused {
             // Settling for a reset would drop the held shape, and a held joint carries no
             // motion for the reset to forget.
@@ -152,42 +205,66 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         guard accumulator >= step else { return !posedNodes.isEmpty }
 
         // The renderer's state stands still within one update, so read it once however
-        // many steps the frame takes.
-        refreshWorldColliders()
-        refreshCenters()
+        // many steps the frame takes, and spread what moved since the last read across them.
+        sample(fresh: false)
+        let span = accumulator - accumulatorAtSample
+        var stepEnd = -accumulatorAtSample
         while accumulator >= step {
             accumulator -= step
+            stepEnd += step
+            prepareStep(progress: Float(stepEnd / span))
             for index in springs.indices {
                 self.step(&springs[index], deltaTime: Float(step))
             }
         }
+        accumulatorAtSample = accumulator
         return !posedNodes.isEmpty
     }
 
-    private func refreshWorldColliders() {
+    /// Reads where the anchors and colliders are. A fresh read forgets where they were, so
+    /// the next steps spread no motion from before it.
+    private func sample(fresh: Bool) {
+        for index in anchors.indices {
+            guard let world = anchors[index].node?.worldTransform else { continue }
+            anchorSamples[index].record(world, fresh: fresh)
+        }
+        swap(&previousWorldColliders, &worldColliders)
         worldColliders.removeAll(keepingCapacity: true)
         worldColliders.reserveCapacity(colliderEntries.count)
         for entry in colliderEntries {
             worldColliders.append(entry.shape.world(in: entry.node.worldMatrix))
         }
+        if fresh {
+            previousWorldColliders = worldColliders
+        }
     }
 
-    private func refreshCenters() {
-        centers.removeAll(keepingCapacity: true)
-        for spring in springs {
-            guard let center = spring.center else { continue }
-            let key = ObjectIdentifier(center)
-            guard centers[key] == nil else { continue }
-            centers[key] = SpringBoneCenter(localToWorld: center.worldMatrix)
+    /// Puts the anchors and colliders where they were `progress` of the way from the last
+    /// read to this one.
+    private func prepareStep(progress: Float) {
+        isStepAtEnd = progress >= 1 - SpringBoneSimulation.endOfFrameTolerance
+        guard !isStepAtEnd else { return }
+        for (index, sample) in anchorSamples.enumerated() {
+            let motion = SpringBoneStepMotion(from: sample.previous, to: sample.current, progress: progress)
+            let world = motion.apply(to: sample.current)
+            stepAnchorMotions[index] = motion
+            stepAnchorWorlds[index] = world
+            if sample.isCenter {
+                stepAnchorCenters[index] = SpringBoneCenter(localToWorld: world.matrix)
+            }
+        }
+        stepColliders.removeAll(keepingCapacity: true)
+        for (current, previous) in zip(worldColliders, previousWorldColliders) {
+            stepColliders.append(current.interpolated(from: previous, progress: progress))
         }
     }
 
     private func step(_ spring: inout Spring, deltaTime: Float) {
         springColliders.removeAll(keepingCapacity: true)
         for index in spring.colliderIndices {
-            springColliders.append(worldColliders[index])
+            springColliders.append(isStepAtEnd ? worldColliders[index] : stepColliders[index])
         }
-        let center = spring.center.map { centers[ObjectIdentifier($0)] } ?? nil
+        let center = spring.centerAnchor.flatMap { isStepAtEnd ? anchorSamples[$0].currentCenter : stepAnchorCenters[$0] }
 
         worlds.removeAll(keepingCapacity: true)
         worlds.reserveCapacity(spring.links.count)
@@ -229,9 +306,10 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     /// Starts every tail with no motion, where its joint points: at rest, the authored
     /// rotation, or else where the joint is now. A rotation it writes is noted in ``posedNodes``.
     private func restartTails(atRest: Bool) {
-        refreshCenters()
+        sample(fresh: true)
+        accumulatorAtSample = accumulator
         for springIndex in springs.indices {
-            let center = springs[springIndex].center.map { centers[ObjectIdentifier($0)] } ?? nil
+            let center = springs[springIndex].centerAnchor.flatMap { anchorSamples[$0].currentCenter }
             worlds.removeAll(keepingCapacity: true)
             worlds.reserveCapacity(springs[springIndex].links.count)
             for index in springs[springIndex].links.indices {
@@ -239,7 +317,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                 if atRest, let rest = link.joint?.restLocalRotation, link.node.setLocalRotationIfMoved(rest) {
                     notePosed(link.node)
                 }
-                let world = link.node.worldTransform(under: parentWorld(of: link))
+                let world = link.node.worldTransform(under: link.parent.map { worlds[$0] } ?? currentParentWorld(of: link))
                 if var joint = link.joint {
                     joint.hold(head: world.translation, rotation: world.rotation, center: center)
                     springs[springIndex].links[index].joint = joint
@@ -249,13 +327,91 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         }
     }
 
-    /// The world transform `link` hangs off: composed earlier in this pass when its
-    /// parent is a link, and otherwise the only world transform the rig reads rather
-    /// than composes.
+    /// The world transform `link` hangs off at the step being solved: composed earlier in
+    /// this pass when its parent is a link, and otherwise the only world transform the rig
+    /// reads rather than composes.
     private func parentWorld(of link: Link) -> SpringBoneWorldTransform {
-        link.parent.map { worlds[$0] }
-            ?? link.node.runtimeParent?.worldTransform
-            ?? .identity
+        if let parent = link.parent {
+            return worlds[parent]
+        }
+        switch link.mount {
+        case .renderer: return currentParentWorld(of: link)
+        case .anchor(let index):
+            return isStepAtEnd ? anchorSamples[index].current : stepAnchorWorlds[index]
+        case .carried(let index):
+            let world = currentParentWorld(of: link)
+            return isStepAtEnd ? world : stepAnchorMotions[index].apply(to: world)
+        }
+    }
+
+    /// The world transform the parent of `link`, outside its spring, has in the renderer now.
+    private func currentParentWorld(of link: Link) -> SpringBoneWorldTransform {
+        link.node.runtimeParent?.worldTransform ?? .identity
+    }
+
+    private func resolveAnchorsIfNeeded() {
+        guard !areAnchorsResolved else { return }
+        areAnchorsResolved = true
+        anchors.removeAll()
+        anchorSamples.removeAll()
+        var indexOfAnchor: [ObjectIdentifier: Int] = [:]
+        /// The anchor `levelsUp` above `base`.
+        func anchor(_ base: Node, levelsUp: Int) -> Int? {
+            let anchor = Anchor(base: base, levelsUp: levelsUp)
+            guard let node = anchor.node else { return nil }
+            if let index = indexOfAnchor[ObjectIdentifier(node)] { return index }
+            anchors.append(anchor)
+            anchorSamples.append(SpringBoneAnchorSample())
+            indexOfAnchor[ObjectIdentifier(node)] = anchors.count - 1
+            return anchors.count - 1
+        }
+        let swung = Set(springs.flatMap { $0.links.compactMap { $0.joint == nil ? nil : ObjectIdentifier($0.node) } })
+        for springIndex in springs.indices {
+            if let center = springs[springIndex].center, let index = anchor(center, levelsUp: 0) {
+                anchorSamples[index].isCenter = true
+                springs[springIndex].centerAnchor = index
+            }
+            for linkIndex in springs[springIndex].links.indices where springs[springIndex].links[linkIndex].parent == nil {
+                let node = springs[springIndex].links[linkIndex].node
+                // Everything below the highest node a spring swings moves with that swing,
+                // which the steps solve themselves rather than spread.
+                var levelsAboveHighestSwung: Int?
+                var levelsUp = 1
+                for ancestor in sequence(first: node, next: { $0.runtimeParent }).dropFirst() {
+                    if swung.contains(ObjectIdentifier(ancestor)) {
+                        levelsAboveHighestSwung = levelsUp + 1
+                    }
+                    levelsUp += 1
+                }
+                springs[springIndex].links[linkIndex].mount = if let levels = levelsAboveHighestSwung {
+                    anchor(node, levelsUp: levels).map(Mount.carried) ?? .renderer
+                } else {
+                    anchor(node, levelsUp: 1).map(Mount.anchor) ?? .renderer
+                }
+            }
+        }
+        let count = anchors.count
+        stepAnchorWorlds = Array(repeating: .identity, count: count)
+        stepAnchorMotions = Array(repeating: .identity, count: count)
+        stepAnchorCenters = Array(repeating: nil, count: count)
+    }
+}
+
+/// Where a node a spring hangs in or off was when the steps last caught up with the
+/// renderer, and where it is now.
+private struct SpringBoneAnchorSample {
+    var previous = SpringBoneWorldTransform.identity
+    var current = SpringBoneWorldTransform.identity
+    var isCenter = false
+    /// `current` as the center of a spring, for an anchor a spring hangs in.
+    var currentCenter: SpringBoneCenter?
+
+    mutating func record(_ world: SpringBoneWorldTransform, fresh: Bool) {
+        previous = fresh ? world : current
+        current = world
+        if isCenter {
+            currentCenter = SpringBoneCenter(localToWorld: world.matrix)
+        }
     }
 }
 
@@ -465,6 +621,7 @@ package extension SpringBoneRig {
     private func append(_ spring: Spring) {
         guard spring.links.contains(where: { $0.joint != nil }) else { return }
         springs.append(spring)
+        areAnchorsResolved = false
     }
 
     /// VRM 0.x swings every bone below the root: one with children towards the first of

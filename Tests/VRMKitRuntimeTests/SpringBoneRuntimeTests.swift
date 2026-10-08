@@ -187,4 +187,23 @@ struct SpringBoneRuntimeTests {
             #expect(abs(simd_length(rotation) - 1) < 1e-5)
         }
     }
+
+    /// A step part of the way through a frame meets a collider part of the way along its
+    /// move, a plane turned part of the way.
+    @Test
+    func testAColliderPartOfTheWayThroughAFrameIsPartOfTheWayAlongItsMove() {
+        let capsule = SpringBoneCollider(head: SIMD3(2, 0, 0), tail: SIMD3(2, 2, 0), radius: 0.1)
+        let movedCapsule = SpringBoneCollider(head: .zero, tail: SIMD3(0, 2, 0), radius: 0.1)
+        let halfway = capsule.interpolated(from: movedCapsule, progress: 0.25)
+        #expect(simd_distance(halfway.head, SIMD3(0.5, 0, 0)) < 1e-6)
+        #expect(simd_distance(halfway.tail!, SIMD3(0.5, 2, 0)) < 1e-6)
+
+        let plane = SpringBoneCollider(head: .zero, tail: nil, radius: 0, kind: .plane(normal: SIMD3(1, 0, 0)))
+        let turnedPlane = SpringBoneCollider(head: .zero, tail: nil, radius: 0, kind: .plane(normal: SIMD3(0, 1, 0)))
+        guard case .plane(let normal) = plane.interpolated(from: turnedPlane, progress: 0.5).kind else {
+            Issue.record("a plane stays a plane")
+            return
+        }
+        #expect(simd_distance(normal, simd_normalize(SIMD3(1, 1, 0))) < 1e-6)
+    }
 }

@@ -64,6 +64,11 @@ struct SpringBoneRigTests {
 
         #expect(root.worldReads == 2)
         #expect(nodes.allSatisfy { $0.worldReads == 0 })
+
+        // Nor once a step, when a frame takes several.
+        root.resetWorldReads()
+        rig.update(deltaTime: 1.0 / 30.0)
+        #expect(root.worldReads == 2)
     }
 
     /// The rig is built where the model was loaded, and a model is usually moved into
@@ -212,6 +217,67 @@ struct SpringBoneRigTests {
         let baseline = try settled(frameTime: 1.0 / 60.0, frames: 60)
         #expect(simd_distance(try settled(frameTime: 1.0 / 30.0, frames: 30), baseline) < 1e-4)
         #expect(simd_distance(try settled(frameTime: 1.0 / 120.0, frames: 120), baseline) < 1e-4)
+    }
+
+    private static let lightlyDamped = SpringBoneJointSetting(stiffnessForce: 0.5,
+                                                              gravityPower: 1,
+                                                              gravityDir: SIMD3(0, -1, 0),
+                                                              dragForce: 0.05,
+                                                              hitRadius: 0)
+
+    /// Turns and moves `root` steadily for a second, drawn at `frameRate`, as tracking
+    /// poses a model, and updates `rig` every frame.
+    private static func drive(_ rig: SpringBoneRig<TestRuntimeNode>, moving root: TestRuntimeNode, frameRate: Int) {
+        func place(at time: Double) {
+            root.translation = SIMD3(Float(time) * 0.5, 0, 0)
+            root.rotation = simd_quatf(angle: Float(time) * 0.8, axis: SIMD3(0, 1, 0))
+        }
+        place(at: 0)
+        rig.update(deltaTime: 0)
+        for frame in 1...frameRate {
+            place(at: Double(frame) / Double(frameRate))
+            rig.update(deltaTime: 1 / Double(frameRate))
+        }
+    }
+
+    /// The steps of one update spread what the spring hangs off has moved across
+    /// themselves, so a model moving under a spring swings it the same at 30 fps as at 60
+    /// rather than jolting it once a frame.
+    @Test(arguments: [false, true])
+    func testAMovingModelSwingsTheSameAtEveryFrameRate(measuredInTheRoot: Bool) throws {
+        func swung(frameRate: Int) throws -> SIMD3<Float> {
+            let (root, nodes) = Self.chain(length: 4)
+            let rig = SpringBoneRig<TestRuntimeNode>()
+            try rig.addVRM1Spring(center: measuredInTheRoot ? root : nil,
+                                  chain: nodes.map { (node: $0, setting: Self.lightlyDamped) },
+                                  colliderGroups: [])
+            Self.drive(rig, moving: root, frameRate: frameRate)
+            return nodes.last!.worldPosition
+        }
+
+        #expect(simd_distance(try swung(frameRate: 30), try swung(frameRate: 60)) < 1e-4)
+    }
+
+    /// A spring hanging off a joint of another moves with that joint as the step swings it,
+    /// and with the model as the step puts it.
+    @Test
+    func testASpringHangingOffAnotherSwingsTheSameAtEveryFrameRate() throws {
+        func swung(frameRate: Int) throws -> SIMD3<Float> {
+            let (root, nodes) = Self.chain(length: 4)
+            let branch = nodes[1].addChild(TestRuntimeNode(translation: SIMD3(1, 0, 0)))
+            let branchTail = branch.addChild(TestRuntimeNode(translation: SIMD3(0, 0, 1)))
+            let rig = SpringBoneRig<TestRuntimeNode>()
+            try rig.addVRM1Spring(center: nil,
+                                  chain: nodes.map { (node: $0, setting: Self.lightlyDamped) },
+                                  colliderGroups: [])
+            try rig.addVRM1Spring(center: nil,
+                                  chain: [branch, branchTail].map { (node: $0, setting: Self.lightlyDamped) },
+                                  colliderGroups: [])
+            Self.drive(rig, moving: root, frameRate: frameRate)
+            return branchTail.worldPosition
+        }
+
+        #expect(simd_distance(try swung(frameRate: 30), try swung(frameRate: 60)) < 1e-4)
     }
 
     /// A frame shorter than one step carries into the next update rather than swinging
