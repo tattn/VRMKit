@@ -114,8 +114,18 @@ public struct GLTFMaterialShaderContext {
     public var document: GLTFDocument { builder.document }
 
     /// How ``material`` cuts out or blends, with the VRM 0.x shader metadata
-    /// taking priority over the glTF alpha mode as UniVRM reads it.
+    /// taking priority over the glTF alpha mode as UniVRM reads it. A MASK material
+    /// whose base color alpha reaches the cutoff at every texel it samples is `.OPAQUE`:
+    /// the cutout draw would discard nothing of it, and a draw that may discard forgoes
+    /// the GPU's rejection of hidden fragments (``GLTFCutoutCoverage``).
     public var resolvedAlphaMode: GLTF.Material.AlphaMode {
+        let authored = authoredAlphaMode
+        guard authored == .MASK, builder.drawsCutoutOpaque(materialIndex: materialIndex) else { return authored }
+        return .OPAQUE
+    }
+
+    /// ``resolvedAlphaMode`` as the document wrote it, before the cutout coverage is read.
+    var authoredAlphaMode: GLTF.Material.AlphaMode {
         GLTF.Material.AlphaMode(vrm0: vrm0MaterialProperty, fallback: material.alphaMode)
     }
 
@@ -174,9 +184,14 @@ public struct GLTFMaterialShaderContext {
     }
 
     /// What MToon data ``material`` carries, from the `VRMC_materials_mtoon`
-    /// extension or the VRM 0.x property, decoded and cached by the builder.
+    /// extension or the VRM 0.x property, decoded and cached by the builder, with the
+    /// alpha mode drawn as ``resolvedAlphaMode`` decides.
     func mtoonResolution() throws -> MToonMaterialDescriptor.Resolution {
-        try builder.mtoonResolution(withMaterialIndex: materialIndex)
+        let resolution = try builder.mtoonResolution(withMaterialIndex: materialIndex)
+        guard case .supported(var descriptor) = resolution, descriptor.alphaMode == .MASK,
+              resolvedAlphaMode == .OPAQUE else { return resolution }
+        descriptor.alphaMode = .OPAQUE
+        return .supported(descriptor)
     }
 
     /// The single UV transform this renderer applies for `textures`. The first

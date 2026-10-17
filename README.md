@@ -206,7 +206,7 @@ entity.updateMaterialStates(GlowState.self) { state in
 
 MToon can also draw with Metal functions of your own, built against `Sources/VRMRealityKit/Shaders/MToonRealityKit.h` from the revision you depend on. Each MToon material carries a few user rows for the values your functions add.
 
-MASK materials draw with `cutoutSurface` and `cutoutOutlineSurface` when you provide them. Only these may discard fragments: a function that may discard keeps the GPU from skipping hidden fragments for every material drawn with it.
+MASK materials draw with `cutoutSurface` and `cutoutOutlineSurface` when you provide them. Only these may discard fragments: a function that may discard keeps the GPU from skipping hidden fragments for every material drawn with it. A MASK material whose base color alpha reaches the cutoff at every texel its triangles sample draws as OPAQUE, with the plain functions: exporters mark whole models MASK while only the hair and lace cut anything out.
 
 ```swift
 let library = try device.makeDefaultLibrary(bundle: .main)

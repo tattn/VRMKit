@@ -125,6 +125,7 @@ extension GLTFResourceCache {
             prepare geometry \(timings.prepareGeometry, privacy: .public), \
             prepare textures \(timings.prepareTextures, privacy: .public) \
             (uploads \(timings.textureUploads, privacy: .public)), \
+            cutout coverage \(timings.cutoutCoverage, privacy: .public), \
             build \(ContinuousClock.now - buildStarted, privacy: .public) \
             (materials \(timings.materials, privacy: .public) x\(timings.materialCount, privacy: .public), \
             meshes \(timings.meshResources, privacy: .public) x\(timings.meshResourceCount, privacy: .public), \

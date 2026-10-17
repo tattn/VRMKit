@@ -99,6 +99,9 @@ final class GLTFResourceCache {
     /// The UV set each material is sampled through, and whether its textures disagree.
     var materialTexCoordCache: [Int: (selected: Int, isMixed: Bool)] = [:]
     var mtoonResolutionCache: [Int: MToonMaterialDescriptor.Resolution] = [:]
+    /// Whether each MASK material draws opaque, its cutout discarding nothing
+    /// (``GLTFSceneBuilder/drawsCutoutOpaque(materialIndex:)``).
+    var cutoutsDrawnOpaque: [Int: Bool] = [:]
 
     /// One glTF image decoded for one semantic: RealityKit bakes the semantic into the
     /// resource, so an image read as color and as a normal map is two.

@@ -37,6 +37,8 @@ final class GLTFSceneBuilder {
         /// The upload part of ``prepareTextures``: what RealityKit spends making the
         /// texture resources once the images are decoded.
         var textureUploads: Duration = .zero
+        /// Deciding which MASK materials discard nothing, off the actor once both passes are done.
+        var cutoutCoverage: Duration = .zero
         /// Textures the build had to make on the actor, for a material asking for one the
         /// prepare pass did not foresee.
         var textureResources: Duration = .zero
@@ -98,6 +100,10 @@ final class GLTFSceneBuilder {
         async let textures: Void = prepareTexturePass()
         _ = try await (geometry, textures)
         try Task.checkCancellation()
+        // Reads the decoded geometry against the decoded images, so it follows both.
+        let coverageStarted = ContinuousClock.now
+        try await prepareCutoutCoverage()
+        timings.cutoutCoverage = ContinuousClock.now - coverageStarted
     }
 
     private func prepareGeometryPass() async throws {
@@ -691,7 +697,7 @@ final class GLTFSceneBuilder {
 
     /// The textures a standard material, MToon aside, samples through mesh UVs, in the
     /// order the glTF material declares them.
-    private func sampledTextures(of gltfMaterial: GLTF.Material) -> [GLTFSampledTexture] {
+    func sampledTextures(of gltfMaterial: GLTF.Material) -> [GLTFSampledTexture] {
         var textures: [GLTFSampledTexture] = []
         if let pbr = gltfMaterial.pbrMetallicRoughness {
             if let info = pbr.baseColorTexture { textures.append(GLTFSampledTexture(info)) }
@@ -777,7 +783,7 @@ final class GLTFSceneBuilder {
     }
 
     /// The materials this builder's scene draws with.
-    private func drawnMaterialIndices() throws -> Set<Int> {
+    func drawnMaterialIndices() throws -> Set<Int> {
         var indices: Set<Int> = []
         for drawn in try drawnMeshes() {
             for primitive in resolvedPrimitives(of: drawn.mesh) {

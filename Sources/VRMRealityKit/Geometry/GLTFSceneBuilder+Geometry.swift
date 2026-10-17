@@ -111,7 +111,7 @@ extension GLTFSceneBuilder {
         return GLTFJointInfluences(joints: remappedJoints, weights: normalizedWeights)
     }
 
-    private func geometryDecoder() throws -> GLTFGeometryDecoder {
+    func geometryDecoder() throws -> GLTFGeometryDecoder {
         if let cached = resolvedGeometryDecoder { return cached }
         let decoder = try makeGeometryDecoder()
         resolvedGeometryDecoder = decoder
