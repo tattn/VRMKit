@@ -124,7 +124,16 @@ public final class VRMEntity: GLTFEntity {
 
     /// The versions disagree about which way a model faces, and loading converts no
     /// coordinates, so the entity faces whichever way its VRM does.
-    public override var frontDirection: SIMD3<Float> { vrm.forwardDirection }
+    public override var frontDirection: SIMD3<Float> {
+        if let frontDirectionCache { return frontDirectionCache }
+        let direction = vrm.forwardDirection
+        frontDirectionCache = direction
+        return direction
+    }
+
+    /// ``vrm`` is looked up in a component on every read, and apps ask for the front every
+    /// frame. A copy does not carry it over, so it reads its own.
+    private var frontDirectionCache: SIMD3<Float>?
 
     func setUpHumanoid(nodes: [Entity?]) {
         humanoid.setUp(boneNodes: vrm.boneNodes, nodes: nodes)

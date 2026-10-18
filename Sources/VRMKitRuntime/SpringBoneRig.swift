@@ -211,6 +211,9 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     ///
     /// Returns whether a joint was posed (``posedNodes``), so a renderer re-skins only
     /// the frames a step moved something in.
+    // The renderer is another module, which cannot specialize this, and the types nested in a
+    // generic class are generic too: their metadata would be looked up every frame.
+    @_specialize(exported: true, where Node == GLTFPoseNode)
     @discardableResult
     package func update(deltaTime: TimeInterval) -> Bool {
         posedNodes.removeAll(keepingCapacity: true)

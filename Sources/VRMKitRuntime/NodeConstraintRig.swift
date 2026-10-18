@@ -58,6 +58,7 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
     }
 
     /// Poses every constrained node.
+    @_specialize(exported: true, where Node == GLTFPoseNode)
     package func apply() {
         for binding in bindings {
             apply(binding)

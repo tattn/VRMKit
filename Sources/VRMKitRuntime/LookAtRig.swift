@@ -111,6 +111,7 @@ package final class LookAtRig<Node: VRMRuntimeNode> where Node.RuntimeNode == No
 
     /// Aims the gaze at ``target``, turning the eye bones itself where the model states a
     /// bone look-at. A gaze that has not moved since the last call writes nothing.
+    @_specialize(exported: true, where Node == GLTFPoseNode)
     package func apply() -> LookAtResult {
         guard let gaze else { return .unchanged }
         let angles = solveAngles(gaze)
