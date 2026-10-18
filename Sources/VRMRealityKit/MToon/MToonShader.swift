@@ -361,7 +361,7 @@ public final class MToonShader: GLTFMaterialShader {
         return samplerParameters(sampler)
     }
 
-    /// (wrapS, wrapT, filterIndex, 0), the sampler row layout `MToonRealityKit.h` expects.
+    /// (wrapS, wrapT, filterIndex, 0), the sampler row layout `MToonSampling.h` expects.
     private func samplerParameters(_ sampler: GLTF.Sampler) -> SIMD4<Float> {
         let (minFilter, mipFilter) = (sampler.minFilter ?? .LINEAR_MIPMAP_LINEAR).metalFilters
         let filter = MToonSamplerFilter(
@@ -449,7 +449,7 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 
     /// Every parameter row the MToon functions read, for a caller drawing the material with Metal
     /// itself (``GLTFEntity/setDrawnByCaller(_:forMaterials:)``): the rows, the sampler rows and
-    /// then the user rows, as `Shaders/MToonRealityKit.h` lays them out. The layout is not a stable
+    /// then the user rows, as `Shaders/MToonLayout.h` lays them out. The layout is not a stable
     /// API, so read the rows with the header from the revision in use.
     public var parameterRows: [SIMD4<Float>] { parameters.packedRows }
 

@@ -3,9 +3,9 @@ import Metal
 
 /// The Metal functions an ``MToonShader`` draws with; one left nil is the bundled one.
 ///
-/// A replacement reads the material as the bundled function does, as laid out in
-/// `Shaders/MToonRealityKit.h`. The layout is not a stable API, so build against the
-/// header from the revision in use.
+/// A replacement reads the material as the bundled function does, through
+/// `Shaders/MToonRealityKit.h` and the layout in `Shaders/MToonLayout.h`. The layout is
+/// not a stable API, so build against the headers from the revision in use.
 public struct MToonShaderFunctions {
     public struct Function {
         public var name: String

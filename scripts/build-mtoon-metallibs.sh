@@ -20,6 +20,8 @@ cd "$(dirname "$0")/.."
 SHADERS="Sources/VRMRealityKit/Shaders"
 SOURCE="$SHADERS/MToon.metal"
 CORE_HEADER="$SHADERS/MToonCore.h"
+LAYOUT_HEADER="$SHADERS/MToonLayout.h"
+SAMPLING_HEADER="$SHADERS/MToonSampling.h"
 REALITYKIT_HEADER="$SHADERS/MToonRealityKit.h"
 RESOURCES="Sources/VRMRealityKit/Resources"
 # Spelled out rather than taken from $0, which varies with how the script is invoked.
@@ -49,7 +51,7 @@ build_inputs() {
     echo "msl-std=$MSL_STD"
     echo "flags=${COMPILE_FLAGS[*]}"
     printf 'target=%s\n' "${TARGETS[@]}"
-    shasum -a 256 "$CORE_HEADER" "$REALITYKIT_HEADER" "$SOURCE" "$SCRIPT"
+    shasum -a 256 "$CORE_HEADER" "$LAYOUT_HEADER" "$SAMPLING_HEADER" "$REALITYKIT_HEADER" "$SOURCE" "$SCRIPT"
 }
 
 if [ "${1:-}" = "--check" ]; then

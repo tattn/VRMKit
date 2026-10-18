@@ -7,7 +7,7 @@ import VRMKit
 import VRMKitRuntime
 
 /// Rows of the MToon parameter texture, in the order the shader indexes them.
-/// This enum is the single source of truth for the layout: `MToonRealityKit.h`
+/// This enum is the single source of truth for the layout: `MToonLayout.h`
 /// mirrors it as `mtoonRow*` constants, and a test compares the two.
 enum MToonParameterRow: Int, CaseIterable {
     case baseColor
@@ -341,7 +341,7 @@ final class MToonParameterTexture {
 /// The filter half of a sampler parameter row.
 ///
 /// glTF's `magFilter` and `minFilter` are independent, and `minFilter` itself encodes
-/// both the minification texel filter and the mip filter. `MToonRealityKit.h` reads ``index``
+/// both the minification texel filter and the mip filter. `MToonSampling.h` reads ``index``
 /// and applies all three itself: the 16 constant samplers a Metal entry point allows are
 /// already spent on addressing modes.
 struct MToonSamplerFilter {
@@ -361,7 +361,7 @@ struct MToonSamplerFilter {
     var minification: TexelFilter = .linear
     var mip: MipFilter = .linear
 
-    /// The encoding `mtoonWrappedSample` in `MToonRealityKit.h` decodes.
+    /// The encoding `mtoonWrappedSample` in `MToonSampling.h` decodes.
     var index: Int {
         (magnification.rawValue * TexelFilter.allCases.count + minification.rawValue)
             * MipFilter.allCases.count + mip.rawValue

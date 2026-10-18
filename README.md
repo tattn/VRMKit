@@ -204,7 +204,7 @@ entity.updateMaterialStates(GlowState.self) { state in
 
 ### Custom Metal functions
 
-MToon can also draw with Metal functions of your own, built against `Sources/VRMRealityKit/Shaders/MToonRealityKit.h` from the revision you depend on. Each MToon material carries a few user rows for the values your functions add.
+MToon can also draw with Metal functions of your own, built against `Sources/VRMRealityKit/Shaders/MToonRealityKit.h` from the revision you depend on. Each MToon material carries a few user rows for the values your functions add. The headers it includes, `MToonCore.h` (the MToon math), `MToonLayout.h` (the parameter rows) and `MToonSampling.h` (how the textures are sampled), use no RealityKit, for drawing a material the app draws itself (`GLTFEntity.setDrawnByCaller`) with the same functions.
 
 MASK materials draw with `cutoutSurface` and `cutoutOutlineSurface` when you provide them. Only these may discard fragments: a function that may discard keeps the GPU from skipping hidden fragments for every material drawn with it. A MASK material whose base color alpha reaches the cutoff at every texel its triangles sample draws as OPAQUE, with the plain functions: exporters mark whole models MASK while only the hair and lace cut anything out.
 
