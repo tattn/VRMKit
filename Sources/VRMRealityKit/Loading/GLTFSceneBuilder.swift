@@ -625,8 +625,8 @@ final class GLTFSceneBuilder {
             .map { resources.outputColorSpace.color($0.baseColorFactor) } ?? .white
 
         if useUnlit {
-            // RealityKit's tone mapping visibly darkens flat art, so opt out of it.
-            var material = UnlitMaterial(applyPostProcessToneMap: false)
+            // RealityKit's tone mapping visibly darkens flat art, so opt out of it where it applies.
+            var material = UnlitMaterial(applyPostProcessToneMap: !resources.compensatesToneMapping)
             if let pbr = gltfMaterial.pbrMetallicRoughness,
                let baseTexture = pbr.baseColorTexture {
                 let textureParam = try materialTexture(withTextureIndex: baseTexture.index, semantic: .color)

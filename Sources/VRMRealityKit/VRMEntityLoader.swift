@@ -28,39 +28,49 @@ public final class VRMEntityLoader {
     /// See ``GLTFEntityLoader/outputColorSpace``.
     public let outputColorSpace: GLTFOutputColorSpace
 
+    /// See ``GLTFEntityLoader/compensatesToneMapping``.
+    public let compensatesToneMapping: Bool
+
     public init(vrm: VRM,
                 shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                 maxTextureDimension: Int? = nil,
-                outputColorSpace: GLTFOutputColorSpace = .displayP3) {
+                outputColorSpace: GLTFOutputColorSpace = .displayP3,
+                compensatesToneMapping: Bool = true) {
         self.vrm = vrm
         self.shaders = shaders
         self.maxTextureDimension = maxTextureDimension
         self.outputColorSpace = outputColorSpace
+        self.compensatesToneMapping = compensatesToneMapping
         let profile = VRMLoadProfile(vrm: vrm)
         self.profile = profile
         self.resources = GLTFResourceCache(document: vrm.document,
                                            shaders: shaders,
                                            profile: profile,
                                            maxTextureDimension: maxTextureDimension,
-                                           outputColorSpace: outputColorSpace)
+                                           outputColorSpace: outputColorSpace,
+                                           compensatesToneMapping: compensatesToneMapping)
     }
 
     /// Loads a VRM from a file URL. External resources resolve relative to its directory.
     public convenience init(withURL url: URL,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                             maxTextureDimension: Int? = nil,
-                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3,
+                            compensatesToneMapping: Bool = true) throws {
         self.init(vrm: try VRM(withURL: url), shaders: shaders, maxTextureDimension: maxTextureDimension,
-                  outputColorSpace: outputColorSpace)
+                  outputColorSpace: outputColorSpace,
+                  compensatesToneMapping: compensatesToneMapping)
     }
 
     /// Loads a bundled VRM resource.
     public convenience init(named: String,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                             maxTextureDimension: Int? = nil,
-                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3,
+                            compensatesToneMapping: Bool = true) throws {
         self.init(vrm: try VRM(named: named), shaders: shaders, maxTextureDimension: maxTextureDimension,
-                  outputColorSpace: outputColorSpace)
+                  outputColorSpace: outputColorSpace,
+                  compensatesToneMapping: compensatesToneMapping)
     }
 
     /// Loads a VRM from in-memory data, resolving external resources against `rootDirectory`.
@@ -68,9 +78,11 @@ public final class VRMEntityLoader {
                             rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                             maxTextureDimension: Int? = nil,
-                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3,
+                            compensatesToneMapping: Bool = true) throws {
         self.init(vrm: try VRM(data: data, rootDirectory: rootDirectory), shaders: shaders,
-                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace)
+                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace,
+                  compensatesToneMapping: compensatesToneMapping)
     }
 
     /// The glTF and VRM extensions this loader implements, to satisfy `extensionsRequired`.

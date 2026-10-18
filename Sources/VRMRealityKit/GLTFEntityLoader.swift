@@ -36,37 +36,51 @@ public final class GLTFEntityLoader {
     /// `RealityRenderer` whose output texture is read as sRGB.
     public let outputColorSpace: GLTFOutputColorSpace
 
+    /// Whether the built-in Unlit path opts its materials out of RealityKit's tone mapping,
+    /// as ``MToonShader/compensatesToneMapping`` does for MToon. That is what a `RealityView`
+    /// needs. RealityKit opts a material out by pre-inverting the tone curve whether or not the
+    /// camera applies it, so a `RealityRenderer` that has turned tone mapping off through
+    /// `cameraSettings.isToneMappingEnabled` passes `false` to draw the texture as is.
+    public let compensatesToneMapping: Bool
+
     public init(document: GLTFDocument,
                 shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                 maxTextureDimension: Int? = nil,
-                outputColorSpace: GLTFOutputColorSpace = .displayP3) {
+                outputColorSpace: GLTFOutputColorSpace = .displayP3,
+                compensatesToneMapping: Bool = true) {
         self.document = document
         self.shaders = shaders
         self.maxTextureDimension = maxTextureDimension
         self.outputColorSpace = outputColorSpace
+        self.compensatesToneMapping = compensatesToneMapping
         self.resources = GLTFResourceCache(document: document,
                                            shaders: shaders,
                                            profile: GLTFDefaultLoadProfile(),
                                            maxTextureDimension: maxTextureDimension,
-                                           outputColorSpace: outputColorSpace)
+                                           outputColorSpace: outputColorSpace,
+                                           compensatesToneMapping: compensatesToneMapping)
     }
 
     /// Loads a `.glb` / `.gltf` file. External resources resolve relative to its directory.
     public convenience init(withURL url: URL,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                             maxTextureDimension: Int? = nil,
-                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3,
+                            compensatesToneMapping: Bool = true) throws {
         self.init(document: try GLTFDocument(withURL: url), shaders: shaders,
-                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace)
+                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace,
+                  compensatesToneMapping: compensatesToneMapping)
     }
 
     /// Loads a bundled glTF resource.
     public convenience init(named: String,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                             maxTextureDimension: Int? = nil,
-                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3,
+                            compensatesToneMapping: Bool = true) throws {
         self.init(document: try GLTFDocument(named: named), shaders: shaders,
-                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace)
+                  maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace,
+                  compensatesToneMapping: compensatesToneMapping)
     }
 
     /// Loads in-memory glTF data, resolving external resources against `rootDirectory`.
@@ -74,9 +88,11 @@ public final class GLTFEntityLoader {
                             rootDirectory: URL? = nil,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                             maxTextureDimension: Int? = nil,
-                            outputColorSpace: GLTFOutputColorSpace = .displayP3) throws {
+                            outputColorSpace: GLTFOutputColorSpace = .displayP3,
+                            compensatesToneMapping: Bool = true) throws {
         self.init(document: try GLTFDocument(data: data, rootDirectory: rootDirectory),
-                  shaders: shaders, maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace)
+                  shaders: shaders, maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace,
+                  compensatesToneMapping: compensatesToneMapping)
     }
 
     /// glTF extensions this loader implements, to satisfy `extensionsRequired`.

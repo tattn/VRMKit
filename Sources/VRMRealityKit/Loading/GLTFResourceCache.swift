@@ -21,6 +21,8 @@ final class GLTFResourceCache {
     let maxTextureDimension: Int?
     /// See ``GLTFEntityLoader/outputColorSpace``.
     let outputColorSpace: GLTFOutputColorSpace
+    /// See ``GLTFEntityLoader/compensatesToneMapping``.
+    let compensatesToneMapping: Bool
 
     static let gltfLogger = Logger(subsystem: "com.github.tattn.VRMKit", category: "glTF")
 
@@ -28,12 +30,14 @@ final class GLTFResourceCache {
          shaders: [any GLTFMaterialShader],
          profile: any GLTFLoadProfile,
          maxTextureDimension: Int? = nil,
-         outputColorSpace: GLTFOutputColorSpace = .displayP3) {
+         outputColorSpace: GLTFOutputColorSpace = .displayP3,
+         compensatesToneMapping: Bool = true) {
         self.document = document
         self.shaders = shaders
         self.profile = profile
         self.maxTextureDimension = maxTextureDimension
         self.outputColorSpace = outputColorSpace
+        self.compensatesToneMapping = compensatesToneMapping
         self.skins = Array(repeating: nil, count: document.gltf.skins.count)
         self.materials = Array(repeating: nil, count: document.gltf.materials.count)
     }
