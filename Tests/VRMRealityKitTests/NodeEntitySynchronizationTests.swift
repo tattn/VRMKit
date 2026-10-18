@@ -63,7 +63,7 @@ struct NodeEntitySynchronizationTests {
         let turn = simd_quatf(angle: 0.4, axis: SIMD3(1, 0, 0))
         pose.setLocalRotation(turn, ofNode: toe)
 
-        let copy = entity.cloneWithOwnMaterialParameters()
+        let copy = entity.snapshot()
         let toeName = try #require(entity.entity(forNodeAt: toe)).name
         let copiedToe = try #require(copy.findEntity(named: toeName))
         #expect(abs(simd_dot(copiedToe.transform.rotation, turn)) > 0.9999)

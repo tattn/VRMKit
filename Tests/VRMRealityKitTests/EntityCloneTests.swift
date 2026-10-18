@@ -67,7 +67,7 @@ struct EntityCloneTests {
         vrmEntity.setMToonLightDirection(original)
         // Seed-san's happy expression shifts the UV of material 11.
         vrmEntity.setExpression(value: 1, for: .preset(.happy))
-        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        let copy = vrmEntity.snapshot()
         vrmEntity.setExpression(value: 0, for: .preset(.happy))
         #expect(try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0))
         #expect(try TestSupport.mtoonParameters(in: copy, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0.25))
@@ -118,7 +118,7 @@ struct EntityCloneTests {
         let accessoryIndex = try #require(accessory.materialIndices(under: accessory).first)
         let accessoryBase = try #require(accessory.mtoonParameters(forMaterialIndex: accessoryIndex)?.baseColor)
 
-        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        let copy = vrmEntity.snapshot()
         let copiedAccessory = try #require(copy.findEntity(named: accessory.name) as? GLTFEntity)
 
         // The accessory's copy draws with the accessory's rows, left out of the model's states
@@ -147,7 +147,7 @@ struct EntityCloneTests {
         vrmEntity.invalidateSkinPose()
         #expect(TestSupport.jointRotations(in: vrmEntity) == solved)
 
-        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        let copy = vrmEntity.snapshot()
         #expect(TestSupport.jointRotations(in: copy) != solved)
         #expect(TestSupport.jointRotations(in: copy) == TestSupport.jointRotations(in: vrmEntity))
     }

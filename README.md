@@ -257,7 +257,7 @@ let controller = try entity.playAnimation(at: 0, loops: true)  // same controlle
 
 `loadEntity()` renders the asset's default scene and throws when the glTF names none. Pick a scene with `loadEntity(withSceneIndex:)`.
 
-A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so load the scene again for a second animatable instance. `cloneWithOwnMaterialParameters()` gives the copy its own meshes and material parameters, frozen in the original's current pose, so it can be lit or recolored independently.
+A `clone(recursive:)` copy shares the loaded meshes and materials but not the animation bindings, so call `loadEntity()` again for a second animatable instance: the same loader shares the decoded textures and meshes between them. `snapshot()` takes a still copy in the model's current pose, with meshes and material parameters of its own, so it can be lit or recolored independently, and it is ready to render once returned.
 
 `setMaterialColor(_:for:ofMaterial:)` recolors one material at runtime, the same way a VRM expression's material color bind does:
 

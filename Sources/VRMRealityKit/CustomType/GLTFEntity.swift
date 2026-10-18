@@ -383,14 +383,15 @@ public class GLTFEntity: Entity {
         materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
     }
 
-    /// A `clone(recursive:)` copy with material parameters and meshes of its own.
+    /// A copy of the model as it stands, which keeps that pose, skin and material values while
+    /// this entity moves on, and is ready to render once returned.
     ///
-    /// A plain clone shares this entity's parameters and meshes, so it is lit, colored
-    /// and posed as this entity is, and the material setters do nothing on it. This copy
-    /// takes both as they are now and holds them on its own from there. Like any clone it
-    /// carries no animation bindings. Before a one-off render of the copy, call
-    /// ``waitForMaterialStateWrites()`` on it.
-    public func cloneWithOwnMaterialParameters() -> Self {
+    /// A plain `clone(recursive:)` shares this entity's material values and meshes, so it is
+    /// lit, colored and posed as this entity is, and the material setters do nothing on it.
+    /// A snapshot holds its own, and its material setters change it alone. Like any clone it
+    /// has no runtime: for a second model that animates, load it again, from the same loader
+    /// to share the textures and meshes.
+    public func snapshot() -> Self {
         // The copy carries the meshes as they are skinned now, and its node entities the
         // pose, so what hangs under them is copied where the pose puts it.
         updateSkinPose()
@@ -403,6 +404,8 @@ public class GLTFEntity: Entity {
         // two hierarchies pair up entity by entity.
         for (original, cloned) in zip(gltfEntitiesInHierarchy, copy.gltfEntitiesInHierarchy) {
             cloned.adoptMaterialParameters(of: original)
+            // Its rows are written on the GPU, which a render taken straight away must not outrun.
+            cloned.waitForMaterialStateWrites()
         }
         return copy
     }
@@ -725,7 +728,7 @@ public class GLTFEntity: Entity {
     /// The update loop does this once a frame, so this is for a caller reading or copying
     /// the model between updates: a `clone(recursive: true)` taken while a joint has moved
     /// carries the mesh as the last solve left it, which is a pose the joints no longer
-    /// describe. ``cloneWithOwnMaterialParameters()`` does it for you.
+    /// describe. ``snapshot()`` does it for you.
     public func updateSkinPose() {
         flushDeformation()
     }

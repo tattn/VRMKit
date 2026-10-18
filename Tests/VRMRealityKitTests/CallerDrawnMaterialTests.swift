@@ -111,7 +111,7 @@ struct CallerDrawnMaterialTests {
             #expect(geometry.renderQueue == 3000)
         }
 
-        let copy = entity.cloneWithOwnMaterialParameters()
+        let copy = entity.snapshot()
         #expect(copy.geometry(ofMaterial: blendedEye).allSatisfy { $0.alphaMode == .BLEND && $0.renderQueue == 3000 })
     }
 

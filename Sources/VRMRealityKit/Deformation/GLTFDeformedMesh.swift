@@ -278,7 +278,7 @@ final class GLTFDeformedMesh {
 
 /// The deformed mesh a model entity draws. Shared by a plain `clone(recursive:)`,
 /// which therefore keeps drawing what its original does; a copy of its own comes from
-/// ``GLTFEntity/cloneWithOwnMaterialParameters()``.
+/// ``GLTFEntity/snapshot()``.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct GLTFDeformedMeshComponent: Component {
     let mesh: GLTFDeformedMesh

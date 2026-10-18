@@ -226,7 +226,7 @@ struct MaterialShaderChainTests {
         entity.waitForMaterialStateWrites()
         #expect(state.waitCount == 1)
 
-        let copy = entity.cloneWithOwnMaterialParameters()
+        let copy = entity.snapshot()
         let copiedState = try #require(copy.materialState(GlowState.self, ofMaterial: 0))
         #expect(copiedState !== state)
         #expect(copiedState.glow == 1)

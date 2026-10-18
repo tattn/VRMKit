@@ -356,7 +356,7 @@ struct MToonRenderingTests {
 
         let parameters = try firstMToonParameters(in: vrmEntity)
         #expect(parameters.packedRows.last == value)
-        let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        let copy = vrmEntity.snapshot()
         #expect(try firstMToonParameters(in: copy).userRows[last] == value)
 
         let mtoonIndexes = TestSupport.materialIndexes(in: vrmEntity).filter {

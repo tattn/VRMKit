@@ -4,7 +4,7 @@ import simd
 
 /// The MToon runtime of a loaded entity, on ``GLTFEntity`` because a plain glTF renders as
 /// MToon too through ``MToonShader/Source/convertAll(_:)``. A plain `clone(recursive:)` keeps
-/// drawing as its original does; ``GLTFEntity/cloneWithOwnMaterialParameters()`` gets its own.
+/// drawing as its original does; ``GLTFEntity/snapshot()`` gets its own.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension GLTFEntity {
     // MARK: - Lighting
