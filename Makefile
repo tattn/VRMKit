@@ -52,6 +52,7 @@ test-package-platform:
 			echo "No simulator found for $(DEVICE_NAME) on $(RUNTIME_PLATFORM)" >&2; \
 			exit 1; \
 		fi; \
+		$(call boot_simulator,$$dest_id) || exit 1; \
 		dest="platform=$(SIM_PLATFORM),id=$$dest_id"; \
 		xcodebuild test -scheme VRMKit-Package -destination "$$dest" \
 			$(if $(RESULT_BUNDLE),-resultBundlePath "$(RESULT_BUNDLE)"); \
@@ -59,6 +60,19 @@ test-package-platform:
 		echo "SIM_PLATFORM/RUNTIME_PLATFORM/DEVICE_NAME is required" >&2; \
 		exit 1; \
 	fi
+
+# simctl can list a device whose runtime disk image is not mounted yet, and xcodebuild
+# then sees the runtime as (null) and refuses the destination. Booting first makes
+# CoreSimulator mount the runtime and keeps it mounted while the tests run.
+define boot_simulator
+booted=; \
+for attempt in 1 2 3; do \
+	if xcrun simctl bootstatus "$(1)" -b >/dev/null; then booted=1; break; fi; \
+	echo "Simulator $(1) did not boot (attempt $$attempt)" >&2; \
+	sleep 10; \
+done; \
+[ -n "$$booted" ]
+endef
 
 define udid_for_latest
 $(shell xcrun simctl list --json devices available | jq -r --arg name "$(1)" --arg platform "$(2)" 'def ver(k): (k | capture("SimRuntime\\." + $$platform + "-(?<major>\\d+)-(?<minor>\\d+)")) as $$m | [$$m.major|tonumber, $$m.minor|tonumber]; .devices | to_entries | map(select(.key | test("SimRuntime\\." + $$platform + "-\\d+-\\d+"))) | sort_by(ver(.key)) | last | .value | map(select(.name | contains($$name))) | last | .udid // empty')
