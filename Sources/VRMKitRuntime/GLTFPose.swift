@@ -33,6 +33,10 @@ public final class GLTFPose {
     /// Called with every local transform a runtime writes, for a renderer keeping its scene
     /// graph a copy of the pose. Not called for ``adoptLocalTransform(_:ofNode:)``.
     package var didWriteLocalTransform: ((Int, GLTFNodeTransform) -> Void)?
+    /// The nodes whose writes go to ``didWriteLocalTransform``, nil for every node: a renderer
+    /// keeping only some of its scene graph a copy is not called for the rest, which a
+    /// runtime writes hundreds of times a frame.
+    package var handedBackNodes: [Bool]?
 
     /// The nodes as the runtimes generic over ``VRMRuntimeNode`` take them.
     package private(set) lazy var nodes: [GLTFPoseNode] = (0..<nodeCount).map { GLTFPoseNode(pose: self, index: $0) }
@@ -82,7 +86,7 @@ public final class GLTFPose {
         guard locals[index] != transform else { return }
         locals[index] = transform
         noteMoved(index)
-        didWriteLocalTransform?(index, transform)
+        handBack(index)
     }
 
     /// Writes the rotation, leaving the translation and the scale alone.
@@ -90,14 +94,19 @@ public final class GLTFPose {
         guard locals[index].rotation != rotation else { return }
         locals[index].rotation = rotation
         noteMoved(index)
-        didWriteLocalTransform?(index, locals[index])
+        handBack(index)
     }
 
     public func setLocalTranslation(_ translation: SIMD3<Float>, ofNode index: Int) {
         guard locals[index].translation != translation else { return }
         locals[index].translation = translation
         noteMoved(index)
-        didWriteLocalTransform?(index, locals[index])
+        handBack(index)
+    }
+
+    private func handBack(_ index: Int) {
+        guard let didWriteLocalTransform, handedBackNodes?[index] ?? true else { return }
+        didWriteLocalTransform(index, locals[index])
     }
 
     // MARK: - Model and world space

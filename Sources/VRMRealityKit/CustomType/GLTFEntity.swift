@@ -128,6 +128,7 @@ public class GLTFEntity: Entity {
         didSet {
             guard nodeEntitySynchronization != oldValue else { return }
             synchronizedNodes = nil
+            pose?.handedBackNodes = nil
             synchronizeNodeEntities()
         }
     }
@@ -329,6 +330,7 @@ public class GLTFEntity: Entity {
                 }
             }
             synchronizedNodes = mask
+            pose.handedBackNodes = mask
         }
         return synchronizedNodes?[safe: index] ?? false
     }
