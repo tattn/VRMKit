@@ -270,7 +270,7 @@ final class GLTFDeformedMesh {
             let to = copy.lowLevelMesh.replace(bufferIndex: 0, using: commandBuffer)
             blit.copy(from: from, sourceOffset: 0, to: to, destinationOffset: 0, size: min(from.length, to.length))
             blit.endEncoding()
-            commandBuffer.commit()
+            source.context.commit(commandBuffer)
         }
         return copy
     }

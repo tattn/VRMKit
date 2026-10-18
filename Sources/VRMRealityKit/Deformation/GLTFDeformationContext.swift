@@ -31,6 +31,9 @@ final class GLTFDeformationContext {
     let device: MTLDevice
     let commandQueue: MTLCommandQueue
     let pipeline: MTLComputePipelineState
+    /// Signalled with ``submittedValue`` by every command buffer that writes deformed vertices.
+    let completion: MTLSharedEvent
+    private(set) var submittedValue: UInt64 = 0
     /// Bound where a mesh has no data for an input or output, so every buffer slot is filled.
     let emptyBuffer: MTLBuffer
 
@@ -55,6 +58,7 @@ final class GLTFDeformationContext {
             throw VRMError._notSupported("mesh deformation needs a Metal device")
         }
         guard let commandQueue = device.makeCommandQueue(),
+              let completion = device.makeSharedEvent(),
               let emptyBuffer = device.makeBuffer(length: Self.emptyBufferLength, options: .storageModeShared) else {
             throw VRMError._notSupported("mesh deformation could not make a Metal command queue")
         }
@@ -64,8 +68,16 @@ final class GLTFDeformationContext {
         }
         self.device = device
         self.commandQueue = commandQueue
+        self.completion = completion
         self.pipeline = try device.makeComputePipelineState(function: function)
         self.emptyBuffer = emptyBuffer
+    }
+
+    /// Commits `commandBuffer`, which writes deformed vertices, signalling ``completion`` when it ends.
+    func commit(_ commandBuffer: MTLCommandBuffer) {
+        submittedValue += 1
+        commandBuffer.encodeSignalEvent(completion, value: submittedValue)
+        commandBuffer.commit()
     }
 
     /// A shared-storage buffer of `vectors` packed as the kernel's `packed_float3`.

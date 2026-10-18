@@ -503,11 +503,12 @@ public class GLTFEntity: Entity {
 
     // MARK: - Materials drawn by the caller
 
-    /// The queue the skinning and morphing are submitted on. A command buffer committed to it
-    /// after this frame's update, such as from a `System` that runs after ``VRMUpdateSystem``,
-    /// reads the vertices this frame deformed: Metal runs the command buffers of one queue in order.
-    public static func deformationCommandQueue() throws -> MTLCommandQueue {
-        try GLTFDeformationContext.shared().commandQueue
+    /// What a command buffer of the same device waits on to read the vertices every skinning and
+    /// morphing submitted so far writes, such as after this frame's update:
+    /// `commandBuffer.encodeWaitForEvent(fence.event, value: fence.value)`.
+    public static func deformationFence() throws -> GLTFDeformationFence {
+        let context = try GLTFDeformationContext.shared()
+        return GLTFDeformationFence(event: context.completion, value: context.submittedValue, device: context.device)
     }
 
     /// Where the material at `materialIndex` draws from, one entry per mesh and render pass drawing
@@ -769,7 +770,7 @@ public class GLTFEntity: Entity {
             }
             encoder.endEncoding()
         }
-        commandBuffer.commit()
+        context.commit(commandBuffer)
     }
 
     /// Re-solves the skin pose only where a node has moved since the last solve, so a
@@ -935,6 +936,14 @@ extension GLTFNodeTransform {
     init(_ transform: Transform) {
         self.init(translation: transform.translation, rotation: transform.rotation, scale: transform.scale)
     }
+}
+
+/// The point a command buffer waits for to read deformed vertices (``GLTFEntity/deformationFence()``).
+public struct GLTFDeformationFence: @unchecked Sendable {
+    public let event: any MTLSharedEvent
+    public let value: UInt64
+    /// The device the vertices live on, which a command buffer waiting on the fence has to share.
+    public let device: any MTLDevice
 }
 
 /// Which node entities of a ``GLTFEntity`` stay a copy of its ``GLTFEntity/pose``.
