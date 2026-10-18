@@ -36,11 +36,12 @@ public final class GLTFEntityLoader {
     /// `RealityRenderer` whose output texture is read as sRGB.
     public let outputColorSpace: GLTFOutputColorSpace
 
-    /// Whether the built-in Unlit path opts its materials out of RealityKit's tone mapping,
-    /// as ``MToonShader/compensatesToneMapping`` does for MToon. That is what a `RealityView`
-    /// needs. RealityKit opts a material out by pre-inverting the tone curve whether or not the
-    /// camera applies it, so a `RealityRenderer` that has turned tone mapping off through
-    /// `cameraSettings.isToneMappingEnabled` passes `false` to draw the texture as is.
+    /// Whether the materials compensate for RealityKit's tone mapping, so their colors come out
+    /// as authored through it: MToon pre-inverts the tone curve, and Unlit opts out of it. That
+    /// is what a `RealityView` needs. RealityKit opts a material out by pre-inverting the tone
+    /// curve whether or not the camera applies it, so a `RealityRenderer` that has turned tone
+    /// mapping off through `cameraSettings.isToneMappingEnabled` passes `false` to draw the
+    /// colors as they are. A material shader reads it as ``GLTFMaterialShaderContext/compensatesToneMapping``.
     public let compensatesToneMapping: Bool
 
     public init(document: GLTFDocument,

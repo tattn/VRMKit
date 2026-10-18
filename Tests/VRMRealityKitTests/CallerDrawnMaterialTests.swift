@@ -115,23 +115,18 @@ struct CallerDrawnMaterialTests {
         #expect(copy.geometry(ofMaterial: blendedEye).allSatisfy { $0.alphaMode == .BLEND && $0.renderQueue == 3000 })
     }
 
-    /// The MToon rows a caller reads are the ones the GPU gets, and the revision moves once
-    /// per flush that changed them.
+    /// The MToon rows a caller reads are the ones the GPU gets, as each change leaves them.
     @Test
     func testMToonParameterRowsFollowEveryFlush() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let state = try #require(entity.materialState(MToonAnimatableMaterialState.self, ofMaterial: 0))
-        let revision = state.parameterRevision
         #expect(state.parameterRows == state.parameters.packedRows)
 
         let color = SIMD4<Float>(0.25, 0.5, 0.75, 1)
         entity.setMaterialColor(color, for: .color, ofMaterial: 0)
-        #expect(state.parameterRevision == revision + 1)
         #expect(state.parameterRows[MToonParameterRow.baseColor.rawValue] == color)
-
-        entity.setMaterialColor(color, for: .color, ofMaterial: 0)
-        #expect(state.parameterRevision == revision + 1)
+        #expect(state.parameterRows == state.parameters.packedRows)
     }
 
     /// The ranges are the material's own triangles in the mesh's index buffer, in the material

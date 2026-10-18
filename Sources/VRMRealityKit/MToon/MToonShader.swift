@@ -50,29 +50,24 @@ public final class MToonShader: GLTFMaterialShader {
 
     public let source: Source
     public let outlinePass: OutlinePass
-    /// Whether the shader pre-inverts RealityKit's tone mapping so the toon color
-    /// survives it. That is what a `RealityView` needs. A `RealityRenderer` that
-    /// has turned tone mapping off through `cameraSettings.isToneMappingEnabled` passes
-    /// `false` and gets the color as is, which also sidesteps the inversion table
-    /// being calibrated for one platform's tone curve.
-    public let compensatesToneMapping: Bool
     /// The Metal functions the material and its outline are drawn with.
     public let functions: MToonShaderFunctions
     /// How many rows each material leaves to the app through ``MToonAnimatableMaterialState/setUserParameter(_:at:)``,
     /// for its own ``functions`` to read. Each row is four floats in the parameter texture every
     /// lighting change rewrites, so ask for the rows the functions read.
     public let userParameterCount: Int
-    /// The ``userParameterCount`` a shader has unless it asks for more.
-    nonisolated public static let defaultUserParameterCount = 8
+
+    /// Which revision of the parameter rows' layout (``MToonAnimatableMaterialState/parameterRows``,
+    /// `Shaders/MToonLayout.h`) this build writes. It moves whenever a row moves, so a caller
+    /// reading the rows with a header of its own can tell when its copy no longer matches.
+    nonisolated public static let parameterLayoutVersion = 1
 
     public init(source: Source = .authoredOnly,
                 outlinePass: OutlinePass = .automatic,
-                compensatesToneMapping: Bool = true,
                 functions: MToonShaderFunctions = MToonShaderFunctions(),
-                userParameterCount: Int = defaultUserParameterCount) {
+                userParameterCount: Int = 0) {
         self.source = source
         self.outlinePass = outlinePass
-        self.compensatesToneMapping = compensatesToneMapping
         self.functions = functions
         self.userParameterCount = userParameterCount
     }
@@ -257,7 +252,7 @@ public final class MToonShader: GLTFMaterialShader {
         material.ambientOcclusion.texture = CustomMaterial.Texture(try masks ?? fallbackTextureResource(.white))
         applyAlphaMode(mtoon.alphaMode, alphaCutoff: mtoon.alphaCutoff, to: &material)
         applyDepthWrite(mtoon, to: &material)
-        applyParameters(state, to: &material)
+        applyParameters(state, compensatesToneMapping: context.compensatesToneMapping, to: &material)
         return material
     }
 
@@ -265,7 +260,7 @@ public final class MToonShader: GLTFMaterialShader {
     /// `textureCoordinateTransform` is left at identity here. `custom.value` carries what
     /// is not the material's: x the tone-mapping flag, and w the outline budget, which
     /// stays 0, read as unbudgeted, until the loader writes the real one per pass entity.
-    private func applyParameters(_ state: MToonState, to material: inout CustomMaterial) {
+    private func applyParameters(_ state: MToonState, compensatesToneMapping: Bool, to material: inout CustomMaterial) {
         material.custom.value = SIMD4<Float>(compensatesToneMapping ? 1 : 0, 0, 0, 0)
         material.custom.texture = state.parameterTexture
     }
@@ -449,13 +444,9 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 
     /// Every parameter row the MToon functions read, for a caller drawing the material with Metal
     /// itself (``GLTFEntity/setDrawnByCaller(_:forMaterials:)``): the rows, the sampler rows and
-    /// then the user rows, as `Shaders/MToonLayout.h` lays them out. The layout is not a stable
-    /// API, so read the rows with the header from the revision in use.
+    /// then the user rows, as `Shaders/MToonLayout.h` lays them out in
+    /// ``MToonShader/parameterLayoutVersion``.
     public var parameterRows: [SIMD4<Float>] { parameters.packedRows }
-
-    /// Counts the flushes that changed ``parameterRows``, so a caller copies the rows only
-    /// when the count moves.
-    public private(set) var parameterRevision = 0
 
     /// Read in Metal as `mtoonUserParameter(textures, index)`.
     public func userParameter(at index: Int) -> SIMD4<Float> {
@@ -537,7 +528,6 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
                 parameterTexture = try MToonParameterTexture(rows: rows)
             }
             flushedRows = rows
-            parameterRevision += 1
             return true
         } catch {
             MToonShader.logger.error("Failed to update MToon parameter texture: \(error.localizedDescription, privacy: .public)")

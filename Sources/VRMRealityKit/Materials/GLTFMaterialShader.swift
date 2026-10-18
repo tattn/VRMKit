@@ -113,6 +113,9 @@ public struct GLTFMaterialShaderContext {
     /// below do not cover.
     public var document: GLTFDocument { builder.document }
 
+    /// See ``GLTFEntityLoader/compensatesToneMapping``.
+    public var compensatesToneMapping: Bool { builder.resources.compensatesToneMapping }
+
     /// How ``material`` cuts out or blends, with the VRM 0.x shader metadata
     /// taking priority over the glTF alpha mode as UniVRM reads it. A MASK material
     /// whose base color alpha reaches the cutoff at every texel it samples is `.OPAQUE`:

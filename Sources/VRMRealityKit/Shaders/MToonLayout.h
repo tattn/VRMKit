@@ -7,6 +7,9 @@
 // parameter rows, which sampler row each texture slot reads, and what the rows say about
 // the alpha. A function drawing an MToon material outside RealityKit reads the same rows.
 
+// The layout revision, MToonShader.parameterLayoutVersion on the Swift side. It moves with any row.
+constant int mtoonParameterLayoutVersion = 1;
+
 // Parameter rows, mirroring MToonParameterRow on the Swift side.
 constant float mtoonRowBaseColor = 0.0;
 constant float mtoonRowShadeColor = 1.0;

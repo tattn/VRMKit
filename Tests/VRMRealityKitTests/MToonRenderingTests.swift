@@ -66,9 +66,10 @@ struct MToonRenderingTests {
 
         #expect(MToonMaterialParameters.samplerRowCount == MToonTextureSlot.allCases.count)
         #expect(parameters.samplers.count == MToonMaterialParameters.samplerRowCount)
-        #expect(texture.width == MToonMaterialParameters.baseParameterRowCount + MToonMaterialParameters.samplerRowCount
-            + MToonShader.defaultUserParameterCount)
+        // A shader asks for user rows; the default asks for none.
+        #expect(texture.width == MToonMaterialParameters.baseParameterRowCount + MToonMaterialParameters.samplerRowCount)
         #expect(texture.height == 1)
+        #expect(shader.contains("constant int mtoonParameterLayoutVersion = \(MToonShader.parameterLayoutVersion);"))
 
         // Extracted rather than restated, so any reordering or insertion on
         // either side fails here.
@@ -345,9 +346,11 @@ struct MToonRenderingTests {
     @Test
     func testUserParametersReachThePackedRowsAndACopy() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let userRows = 8
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
+                                                  shaders: [MToonShader(userParameterCount: userRows)]).loadEntity()
         let value = SIMD4<Float>(1.5, 0.8, 0.4, 0.25)
-        let last = MToonShader.defaultUserParameterCount - 1
+        let last = userRows - 1
 
         vrmEntity.updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setUserParameter(value, at: last) }
 
@@ -519,7 +522,8 @@ struct MToonRenderingTests {
     func testCompensatesToneMappingFlagReachesCustomValue() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: TestSupport.seedSanData,
-                                         shaders: [MToonShader(compensatesToneMapping: false)])
+                                         shaders: [MToonShader()],
+                                         compensatesToneMapping: false)
         let vrmEntity = try await loader.loadEntity()
 
         var checkedMaterials = 0
