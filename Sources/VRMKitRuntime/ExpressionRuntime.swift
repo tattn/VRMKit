@@ -69,6 +69,17 @@ package struct ExpressionApplier<Mesh: AnyObject> {
     }
 }
 
+/// What applying needs of one expression besides its clip, held outside the generic
+/// runtime so the per-frame loop touches no type generic over the mesh. Targets are
+/// indices into the runtime's target lists.
+private struct ExpressionSlot {
+    let overrideGroup: ExpressionOverrideGroup?
+    let isBinary: Bool
+    var morphs: [(target: Int, weight: Float)] = []
+    var colors: [(target: Int, delta: SIMD4<Float>)] = []
+    var transforms: [(target: Int, scaleDelta: SIMD2<Float>, offsetDelta: SIMD2<Float>)] = []
+}
+
 /// The renderer-agnostic expression runtime: the clips a model states, the input
 /// weights a caller sets, and the accumulation VRM defines over them, ending in
 /// per-target values an ``ExpressionApplier`` writes out.
@@ -76,43 +87,42 @@ package struct ExpressionApplier<Mesh: AnyObject> {
 /// Weights accumulate rather than overwrite where expressions overlap on a target, an
 /// active expression may suppress the blink / lookAt / mouth groups, and a value that did
 /// not move since the last apply is not written again.
+///
+/// Keys and targets are resolved to indices once at set-up: a face tracker hands over
+/// dozens of weights every frame, and hashing their keys and targets each time cost
+/// more than the accumulation itself.
 package final class ExpressionRuntime<Mesh: AnyObject> {
     package private(set) var clips: [ExpressionKey: ExpressionClip<Mesh>] = [:]
     /// The expressions the model offers, in the order the plan states them.
     package private(set) var availableExpressions: [ExpressionInfo] = []
-    private var materialColorClips: [ExpressionKey: [ExpressionMaterialColorBinding]] = [:]
-    private var textureTransformClips: [ExpressionKey: [ExpressionTextureTransformBinding]] = [:]
 
-    /// Input weights per expression, zero entries left out.
-    private var weights: [ExpressionKey: Float] = [:]
+    /// One per expression, in the order of `availableExpressions`.
+    private var slots: [ExpressionSlot] = []
+    private var slotClips: [ExpressionClip<Mesh>] = []
+    /// The slot each key drives. A custom key spelling a preset drives the preset,
+    /// which is how VRM 0.x models predating the presets name theirs.
+    private var slotsByKey: [ExpressionKey: Int] = [:]
+    /// Input weight per slot, zero when inactive.
+    private var weights: [Float] = []
 
-    private struct MorphKey: Hashable {
-        let mesh: ObjectIdentifier
-        let targetIndex: Int
-    }
+    // Every target any clip drives, once each, so applying the active clips can put
+    // every untouched target back where it started.
+    private var morphTargets: [BlendShapeBinding<Mesh>] = []
+    private var colorTargets: [ExpressionMaterialColorBinding] = []
+    private var transformTargets: [ExpressionTextureTransformBinding] = []
 
-    private struct ColorKey: Hashable {
-        let material: Int
-        let type: ExpressionMaterialColorType
-    }
+    // Values last written out, nil until the first write, so a value that did not move
+    // is not written again.
+    private var appliedMorphWeights: [Float?] = []
+    private var appliedColors: [SIMD4<Float>?] = []
+    private var appliedTransforms: [SIMD4<Float>?] = []
 
-    // Every binding any clip holds, indexed once at set-up, so applying the
-    // active clips can put every untouched target back where it started.
-    private var morphIndex: [MorphKey: BlendShapeBinding<Mesh>] = [:]
-    private var colorIndex: [ColorKey: ExpressionMaterialColorBinding] = [:]
-    private var transformIndex: [Int: ExpressionTextureTransformBinding] = [:]
-
-    // Values last written out, so a value that did not move is not written again.
-    private var appliedMorphWeights: [MorphKey: Float] = [:]
-    private var appliedColors: [ColorKey: SIMD4<Float>] = [:]
-    private var appliedTransforms: [Int: SIMD4<Float>] = [:]
-
-    // Scratch for one apply, held so that driving expressions every frame
-    // allocates nothing once the capacities settle.
-    private var scratchMorphWeights: [MorphKey: Float] = [:]
-    private var scratchColors: [ColorKey: SIMD4<Float>] = [:]
-    private var scratchScales: [Int: SIMD2<Float>] = [:]
-    private var scratchOffsets: [Int: SIMD2<Float>] = [:]
+    // Scratch for one apply, held so that driving expressions every frame allocates
+    // nothing.
+    private var scratchMorphWeights: [Float] = []
+    private var scratchColors: [SIMD4<Float>] = []
+    private var scratchScales: [SIMD2<Float>] = []
+    private var scratchOffsets: [SIMD2<Float>] = []
 
     package init() {}
 
@@ -134,24 +144,73 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
         }
         clips = Dictionary(uniqueKeysWithValues: stated.map { ($0.key, $0) })
         availableExpressions = stated.map { ExpressionInfo(key: $0.key, name: $0.name) }
-        self.materialColorClips = materialColorClips
-        self.textureTransformClips = textureTransformClips
-        weights = [:]
-        morphIndex = [:]
-        colorIndex = [:]
-        transformIndex = [:]
-        appliedMorphWeights = [:]
-        appliedColors = [:]
-        appliedTransforms = [:]
-        for binding in clips.values.flatMap(\.values) {
-            morphIndex[MorphKey(mesh: ObjectIdentifier(binding.mesh), targetIndex: binding.index)] = binding
+        slotClips = stated
+
+        slotsByKey = positions
+        for (key, slot) in positions {
+            if case .preset(let preset) = key, positions[.custom(preset.rawValue)] == nil {
+                slotsByKey[.custom(preset.rawValue)] = slot
+            }
         }
-        for binding in materialColorClips.values.joined() {
-            colorIndex[ColorKey(material: binding.material, type: binding.type)] = binding
+
+        var morphTargetIndices: [ObjectIdentifier: [Int: Int]] = [:]
+        var colorTargetIndices: [Int: [ExpressionMaterialColorType: Int]] = [:]
+        var transformTargetIndices: [Int: Int] = [:]
+        morphTargets = []
+        colorTargets = []
+        transformTargets = []
+        slots = stated.map { clip in
+            var slot = ExpressionSlot(overrideGroup: clip.key.overrideGroup, isBinary: clip.isBinary)
+            for binding in clip.values {
+                let mesh = ObjectIdentifier(binding.mesh)
+                let target: Int
+                if let existing = morphTargetIndices[mesh]?[binding.index] {
+                    target = existing
+                    morphTargets[target] = binding
+                } else {
+                    target = morphTargets.count
+                    morphTargetIndices[mesh, default: [:]][binding.index] = target
+                    morphTargets.append(binding)
+                }
+                slot.morphs.append((target, Float(binding.weight)))
+            }
+            for binding in materialColorClips[clip.key] ?? [] {
+                let target: Int
+                if let existing = colorTargetIndices[binding.material]?[binding.type] {
+                    target = existing
+                    colorTargets[target] = binding
+                } else {
+                    target = colorTargets.count
+                    colorTargetIndices[binding.material, default: [:]][binding.type] = target
+                    colorTargets.append(binding)
+                }
+                slot.colors.append((target, binding.targetValue - binding.baseValue))
+            }
+            for binding in textureTransformClips[clip.key] ?? [] {
+                let target: Int
+                if let existing = transformTargetIndices[binding.material] {
+                    target = existing
+                    transformTargets[target] = binding
+                } else {
+                    target = transformTargets.count
+                    transformTargetIndices[binding.material] = target
+                    transformTargets.append(binding)
+                }
+                slot.transforms.append((target,
+                                        binding.targetScale - binding.baseScale,
+                                        binding.targetOffset - binding.baseOffset))
+            }
+            return slot
         }
-        for binding in textureTransformClips.values.joined() {
-            transformIndex[binding.material] = binding
-        }
+
+        weights = Array(repeating: 0, count: slots.count)
+        appliedMorphWeights = Array(repeating: nil, count: morphTargets.count)
+        appliedColors = Array(repeating: nil, count: colorTargets.count)
+        appliedTransforms = Array(repeating: nil, count: transformTargets.count)
+        scratchMorphWeights = Array(repeating: 0, count: morphTargets.count)
+        scratchColors = colorTargets.map(\.baseValue)
+        scratchScales = transformTargets.map(\.baseScale)
+        scratchOffsets = transformTargets.map(\.baseOffset)
     }
 
     /// Hands the runtime what the model states, resolving each bind to the renderer's
@@ -190,17 +249,10 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
               textureTransformClips: textureTransformClips)
     }
 
-    /// The key a clip is actually stored under. An expression named after a
-    /// preset is that preset, which is how VRM 0.x models predating the presets
-    /// name theirs.
-    func canonicalKey(for key: ExpressionKey) -> ExpressionKey? {
-        clips.canonicalKey(for: key)
-    }
-
     /// The input weight `key` was last set to, before any override scales it.
     package func weight(for key: ExpressionKey) -> Double {
-        guard let key = canonicalKey(for: key) else { return 0 }
-        return Double(weights[key] ?? 0)
+        guard let slot = slotsByKey[key] else { return 0 }
+        return Double(weights[slot])
     }
 
     /// Records input weights, reporting whether any actually moved: nothing has
@@ -208,15 +260,10 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
     package func storeWeights<Value: BinaryFloatingPoint>(_ values: [ExpressionKey: Value]) -> Bool {
         var changed = false
         for (key, value) in values {
-            guard let (key, clip) = clips.canonicalClip(for: key) else { continue }
-            let normalized = clip.normalizedWeight(Double(value))
-            let weight = normalized > 0 ? Float(normalized) : nil
-            guard weight != weights[key] else { continue }
-            if let weight {
-                weights[key] = weight
-            } else {
-                weights.removeValue(forKey: key)
-            }
+            guard let slot = slotsByKey[key] else { continue }
+            let weight = Float(slotClips[slot].normalizedWeight(Double(value)))
+            guard weight != weights[slot] else { continue }
+            weights[slot] = weight
             changed = true
         }
         return changed
@@ -225,53 +272,65 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
     /// Accumulates every active expression and writes what moved through
     /// `applier`.
     package func apply(with applier: ExpressionApplier<Mesh>) {
-        let effective = clips.effectiveWeights(of: weights)
-        var wroteAnything = false
+        var overrides = ExpressionOverrideStates()
+        for (slot, weight) in weights.enumerated() where weight > 0 {
+            overrides.accumulate(slotClips[slot], weight: Double(weight), excluding: slots[slot].overrideGroup)
+        }
+        let overridesAny = overrides.isSuppressingAnyGroup
 
-        scratchMorphWeights.removeAll(keepingCapacity: true)
-        scratchColors.removeAll(keepingCapacity: true)
-        scratchScales.removeAll(keepingCapacity: true)
-        scratchOffsets.removeAll(keepingCapacity: true)
+        for target in scratchMorphWeights.indices {
+            scratchMorphWeights[target] = 0
+        }
+        for target in colorTargets.indices {
+            scratchColors[target] = colorTargets[target].baseValue
+        }
+        for target in transformTargets.indices {
+            scratchScales[target] = transformTargets[target].baseScale
+            scratchOffsets[target] = transformTargets[target].baseOffset
+        }
 
-        for (key, weight) in effective {
-            for binding in clips[key]?.values ?? [] {
-                let morphKey = MorphKey(mesh: ObjectIdentifier(binding.mesh), targetIndex: binding.index)
-                scratchMorphWeights[morphKey, default: 0] += Float(binding.weight) * weight
+        for (index, slot) in slots.enumerated() {
+            var weight = weights[index]
+            guard weight > 0 else { continue }
+            // An overridden binary expression is suppressed outright rather than scaled,
+            // having no partial state.
+            if overridesAny, let group = slot.overrideGroup, overrides[group].isSuppressing {
+                weight = slot.isBinary ? 0 : weight * Float(overrides[group].factor)
+                guard weight > 0 else { continue }
             }
-            for binding in materialColorClips[key] ?? [] {
-                let colorKey = ColorKey(material: binding.material, type: binding.type)
-                scratchColors[colorKey, default: binding.baseValue] +=
-                    (binding.targetValue - binding.baseValue) * weight
+            for morph in slot.morphs {
+                scratchMorphWeights[morph.target] += morph.weight * weight
             }
-            for binding in textureTransformClips[key] ?? [] {
-                scratchScales[binding.material, default: binding.baseScale] +=
-                    (binding.targetScale - binding.baseScale) * weight
-                scratchOffsets[binding.material, default: binding.baseOffset] +=
-                    (binding.targetOffset - binding.baseOffset) * weight
+            for color in slot.colors {
+                scratchColors[color.target] += color.delta * weight
+            }
+            for transform in slot.transforms {
+                scratchScales[transform.target] += transform.scaleDelta * weight
+                scratchOffsets[transform.target] += transform.offsetDelta * weight
             }
         }
 
-        for (key, binding) in morphIndex {
-            let weight = scratchMorphWeights[key] ?? 0
-            guard appliedMorphWeights[key] != weight else { continue }
-            appliedMorphWeights[key] = weight
+        var wroteAnything = false
+        for (target, weight) in scratchMorphWeights.enumerated() where appliedMorphWeights[target] != weight {
+            appliedMorphWeights[target] = weight
             wroteAnything = true
+            let binding = morphTargets[target]
             applier.setMorphWeight(weight, binding.index, binding.mesh)
         }
-        for (key, binding) in colorIndex {
-            let color = scratchColors[key] ?? binding.baseValue
-            guard appliedColors[key] != color else { continue }
-            appliedColors[key] = color
+        for (target, color) in scratchColors.enumerated() where appliedColors[target] != color {
+            appliedColors[target] = color
             wroteAnything = true
+            let binding = colorTargets[target]
             applier.setMaterialColor(color, binding.type, binding.material)
         }
-        for (material, binding) in transformIndex {
-            let scale = scratchScales[material] ?? binding.baseScale
-            let offset = scratchOffsets[material] ?? binding.baseOffset
+        for target in transformTargets.indices {
+            let scale = scratchScales[target]
+            let offset = scratchOffsets[target]
             let applied = SIMD4<Float>(scale.x, scale.y, offset.x, offset.y)
-            guard appliedTransforms[material] != applied else { continue }
-            appliedTransforms[material] = applied
+            guard appliedTransforms[target] != applied else { continue }
+            appliedTransforms[target] = applied
             wroteAnything = true
+            let binding = transformTargets[target]
             applier.setTextureTransform(scale, offset, binding.baseRotation, binding.material)
         }
 

@@ -81,55 +81,6 @@ package struct ExpressionClip<Mesh> {
 
 package typealias ExpressionOverrideType = VRM1.Expressions.Expression.ExpressionOverrideType
 
-package extension Dictionary {
-    /// The weights left once the active expressions have overridden one another,
-    /// which is what a renderer applies. A binary expression is suppressed outright
-    /// rather than scaled, having no partial state.
-    func effectiveWeights<Mesh>(of weights: [ExpressionKey: Float]) -> [ExpressionKey: Float]
-        where Key == ExpressionKey, Value == ExpressionClip<Mesh> {
-        var states = ExpressionOverrideStates()
-        for (key, weight) in weights {
-            guard let clip = self[key] else { continue }
-            states.accumulate(clip, weight: Double(weight), excluding: key.overrideGroup)
-        }
-        guard states.isSuppressingAnyGroup else { return weights }
-
-        var effective: [ExpressionKey: Float] = [:]
-        effective.reserveCapacity(weights.count)
-        for (key, weight) in weights {
-            guard let state = key.overrideGroup.map({ states[$0] }), state.isSuppressing else {
-                effective[key] = weight
-                continue
-            }
-            let overridden = self[key]?.isBinary == true ? 0 : weight * Float(state.factor)
-            if overridden > 0 {
-                effective[key] = overridden
-            }
-        }
-        return effective
-    }
-}
-
-package extension Dictionary {
-    /// Resolves a custom key spelling a preset to the preset clip, while leaving
-    /// ordinary custom expressions untouched.
-    func canonicalKey<Mesh>(for key: ExpressionKey) -> ExpressionKey?
-        where Key == ExpressionKey, Value == ExpressionClip<Mesh> {
-        canonicalClip(for: key)?.key
-    }
-
-    /// ``canonicalKey(for:)`` with the clip it resolved to, so a caller that needs both
-    /// pays one lookup rather than two: a tracker hands over dozens of keys a frame.
-    func canonicalClip<Mesh>(for key: ExpressionKey) -> (key: ExpressionKey, clip: ExpressionClip<Mesh>)?
-        where Key == ExpressionKey, Value == ExpressionClip<Mesh> {
-        if let clip = self[key] { return (key, clip) }
-        guard case .custom(let name) = key,
-              let preset = ExpressionPreset(name: name),
-              let clip = self[.preset(preset)] else { return nil }
-        return (.preset(preset), clip)
-    }
-}
-
 /// Accumulates every active expression's override of one group, following
 /// VRMC_vrm: `block` zeroes the group outright, while simultaneous `blend`
 /// overrides add up before being saturated.
