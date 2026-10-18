@@ -105,7 +105,6 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
 
     private struct Spring {
         let center: Node?
-        /// The anchor of `center`.
         var centerAnchor: Int?
         /// Indices into the rig's collider table, shared between springs so a collider
         /// every strand of hair names is solved once a frame.
@@ -511,7 +510,7 @@ package extension SpringBoneRig {
             })
         }
         for boneGroup in secondaryAnimation.boneGroups where !boneGroup.bones.isEmpty {
-            // VRM 0.x writes -1 for "no centre", in a field it always writes.
+            // VRM 0.x writes -1 for "no center", in a field it always writes.
             let center = boneGroup.center >= 0 ? try node(boneGroup.center) : nil
             addVRM0Spring(center: center,
                           rootBones: try boneGroup.bones.map { try node($0) },

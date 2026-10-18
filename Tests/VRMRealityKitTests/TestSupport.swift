@@ -42,11 +42,8 @@ enum TestSupport {
         [MToonShader(outlinePass: .never)]
     }
 
-    /// The bundled Seed-san VRM 1.0 fixture.
     static var seedSanData: Data { VRMSampleAsset.seedSan.data }
 
-    /// The bundled AliciaSolid VRM 0.x fixture. The VRM 0.x loading paths need
-    /// a 0.x model; Seed-san is 1.0.
     static var aliciaSolidData: Data { VRMSampleAsset.aliciaSolid.data }
 
     /// Rewrites the fixture's glTF JSON in memory. Loaders accept the returned
@@ -80,7 +77,6 @@ enum TestSupport {
         }
     }
 
-    /// Rewrites the VRM 0.x fixture's glTF JSON in memory.
     static func modifiedAliciaSolidData(name: String,
                                         modify: (inout [String: JSONValue]) throws -> Void) throws -> Data {
         do {

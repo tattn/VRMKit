@@ -113,7 +113,6 @@ final class ImmersiveViewModel {
         }
     }
     
-    /// Starts or stops the bundled walk cycle, retargeted onto the model.
     func setVRMAPlaying(_ isPlaying: Bool) {
         guard isPlaying else {
             vrmaController?.stop()

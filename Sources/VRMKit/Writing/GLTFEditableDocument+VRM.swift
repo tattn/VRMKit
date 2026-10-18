@@ -5,9 +5,8 @@ extension GLTFEditableDocument {
     /// takes `1.0-beta`, but the two differ in what they hold.
     static let writableSpecVersion = "1.0"
 
-    /// Which VRM the document is, or an error for one this cannot write.
-    ///
-    /// Stricter than reading only in that a 1.0 spelling this cannot write is refused.
+    /// Which VRM the document is. Stricter than reading only in refusing a 1.0
+    /// spelling this cannot write.
     mutating func vrmSpecVersion() throws -> VRMSpecVersion {
         let version = try VRMSpecVersion(rootExtensions: rootExtensions)
         let name = version.extensionName

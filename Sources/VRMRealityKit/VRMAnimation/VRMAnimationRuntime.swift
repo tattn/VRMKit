@@ -92,8 +92,6 @@ final class VRMAnimationRuntime {
         let animation = try gltf.load(\.animations, at: animationIndex)
         let decoder = GLTFAnimationDecoder(document: vrmAnimation.document)
 
-        // A 0.x model faces the other way than the `.vrma`, so its world turns half a
-        // circle about Y. Identity leaves rotations and translations alone.
         let flip = entity.vrm.forwardDirection.z < 0
             ? simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
             : quat_identity_float
@@ -195,7 +193,6 @@ final class VRMAnimationRuntime {
             }
         }
 
-        /// The world-space rotation a source bone adds to its parent's.
         func delta(at nodeIndex: Int) -> RotationDelta? {
             rotationTracks[nodeIndex].map {
                 RotationDelta(track: $0,
@@ -204,9 +201,8 @@ final class VRMAnimationRuntime {
             }
         }
 
-        /// The source humanoid bones between `nodeIndex` and the nearest ancestor bone the
-        /// target model also has, root first, so a target lacking an optional bone still
-        /// takes its rotation through the descendants.
+        /// The deltas of the source bones above `nodeIndex` that ``RotationChannel/deltas``
+        /// takes ahead of the bone's own, root first.
         func skippedAncestorDeltas(above nodeIndex: Int) -> [RotationDelta] {
             var deltas: [RotationDelta] = []
             var ancestor = animationRest.parent(at: nodeIndex)
@@ -273,8 +269,6 @@ final class VRMAnimationRuntime {
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension VRMAnimationRuntime: GLTFAnimationApplying {
-    /// Poses the bound bones and expressions for `time`, collecting the bones it moved
-    /// so the caller re-solves those joints alone and skips a held pose entirely.
     func apply(at time: Float, movedNodes: inout [Entity]) {
         for binding in boneBindings {
             // The current transform is the base, so paths this animation does not drive
@@ -314,7 +308,6 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
         entity.setExpressions(weights)
     }
 
-    /// Aims the model's gaze where the animation states it.
     private func applyGaze(at time: Float) {
         guard let entity, let gazeTrack else { return }
         entity.lookAtTarget = .rotation(gazeTrack.value(at: time))

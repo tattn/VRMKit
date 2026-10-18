@@ -178,7 +178,6 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
     @MainActor
     init(animation: GLTF.Animation, entity: GLTFEntity) throws {
         let decoder = entity.animationDecoder
-        // Keyed by node index so all of a node's channels land in one binding.
         var transforms: [Int: TransformBinding] = [:]
         var weights: [WeightBinding] = []
 
@@ -225,8 +224,6 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
         weightBindings = weights
     }
 
-    /// Poses the bound entities for `time`, collecting the nodes it moved so the caller
-    /// re-solves those joints alone and skips a held pose entirely.
     @MainActor
     func apply(at time: Float, movedNodes: inout [Entity]) {
         for binding in transformBindings {

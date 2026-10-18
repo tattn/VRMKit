@@ -2,8 +2,7 @@ import Foundation
 
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#accessor
 
-/// Reads the bytes and stride of a glTF buffer view. Both loaders cache buffer
-/// views on their own scene data, so accessor expansion goes through this.
+/// Reads the bytes and stride of a glTF buffer view.
 package typealias BufferViewProvider = (Int) throws -> (bufferView: Data, stride: Int?)
 
 package func numberOfComponents(of type: GLTF.Accessor.`Type`) -> Int {

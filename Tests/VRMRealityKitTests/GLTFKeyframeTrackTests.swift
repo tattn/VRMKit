@@ -78,7 +78,7 @@ struct GLTFKeyframeTrackTests {
                      .zero, SIMD3<Float>(4, 0, 0), .zero])
 
         // With zero tangents the Hermite basis reduces to smoothstep: 0.5 at
-        // the midpoint, but steeper than linear at 1/4 of the way.
+        // the midpoint, but below linear at 1/4 of the way.
         #expect(track.value(at: 1).x.isApproximatelyEqual(to: 2))
         #expect(track.value(at: 0.5).x.isApproximatelyEqual(to: 4 * 0.15625))
     }

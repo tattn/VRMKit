@@ -137,7 +137,6 @@ final class GLTFDeformedMesh {
         return true
     }
 
-    /// The number of indices the parts drawn now cover.
     var drawnIndexCount: Int {
         lowLevelMesh.parts.reduce(0) { $0 + $1.indexCount }
     }

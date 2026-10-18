@@ -19,7 +19,8 @@ public struct GLTFAnimation: Sendable {
 @MainActor
 protocol GLTFAnimationApplying: AnyObject {
     /// Poses the bound targets for `time`, appending every node whose transform it
-    /// changed to `movedNodes`, so the caller re-solves those joints alone.
+    /// changed to `movedNodes`, so the caller re-solves those joints alone and skips a
+    /// held pose entirely.
     func apply(at time: Float, movedNodes: inout [Entity])
 }
 

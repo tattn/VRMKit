@@ -68,7 +68,6 @@ extension ModelEntity {
         applyMergedMesh(merged)
     }
 
-    /// The visibility one slot was built with.
     func initialMergedSlotVisibility(at slot: Int) -> Bool {
         mergedMesh?.initiallyVisibleSlots[safe: slot] ?? true
     }

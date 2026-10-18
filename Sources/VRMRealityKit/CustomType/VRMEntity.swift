@@ -43,7 +43,6 @@ public final class VRMEntity: GLTFEntity {
     private var springBones = SpringBoneRig<Entity>()
     private var nodeConstraints = NodeConstraintRig<Entity>()
     private var lookAt = LookAtRig<Entity>()
-    /// Mesh entity → the deformed meshes under it, resolved on the first write to each.
     private var deformedMeshesByMeshEntity: [Entity.ID: [GLTFDeformedMesh]] = [:]
 
     private lazy var expressionApplier = ExpressionApplier<Entity>(

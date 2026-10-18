@@ -364,7 +364,6 @@ private extension JSONObject {
         }
     }
 
-    /// The same object with one reference rewritten.
     func mapping(_ key: String, to array: GLTFArray, _ map: GLTFIndexMap) -> JSONObject {
         var object = self
         object.mapIndex(key, to: array, map)
@@ -399,7 +398,6 @@ private extension JSONObject {
         removeValue(forKey: name)
     }
 
-    /// Drops the object at `key` once it holds nothing.
     mutating func removeEmpty(_ key: String) {
         guard object(key)?.isEmpty == true else { return }
         removeValue(forKey: key)
@@ -420,8 +418,7 @@ extension GLTFReferences {
     /// Every rewrite maps a reference by index alone, so an out of range one would
     /// come out of a prune or a merge silently dropped, leaving a document that
     /// looks repaired rather than one that says what was wrong with it. That
-    /// includes a negative index in a list of references, where nothing is spelled
-    /// by leaving the element out rather than by writing -1.
+    /// includes a negative index in a list of references.
     static func validateIndices(of json: JSONObject) throws {
         try validateTopLevelIndices(of: json)
         try validateLocalIndices(of: json)

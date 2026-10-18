@@ -497,9 +497,9 @@ struct SpringBoneRigTests {
         #expect(Set(posed) == Set([nodes[1], nodes[2], nodes[4]].map(ObjectIdentifier.init)))
     }
 
-    /// `VRMC_springBone` has a spring's centre be its first joint or a node above it.
+    /// `VRMC_springBone` has a spring's center be its first joint or a node above it.
     @Test
-    func testACentreBelowTheSpringsFirstJointIsRefused() throws {
+    func testACenterBelowTheSpringsFirstJointIsRefused() throws {
         #expect(throws: VRMError.self) {
             try Self.build(springs: [[2, 3]], centers: [4])
         }
@@ -507,9 +507,9 @@ struct SpringBoneRigTests {
         try Self.build(springs: [[2, 3]], centers: [0])
     }
 
-    /// A centre another spring swings would move under the spring hanging in it.
+    /// A center another spring swings would move under the spring hanging in it.
     @Test
-    func testACentreAnotherSpringSwingsIsRefused() throws {
+    func testACenterAnotherSpringSwingsIsRefused() throws {
         #expect(throws: VRMError.self) {
             try Self.build(springs: [[1, 2], [3, 4]], centers: [nil, 2])
         }

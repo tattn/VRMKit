@@ -56,7 +56,7 @@ inline float mtoonAlpha(float alphaMode, float baseAlpha, float cutoff)
     return 1.0;
 }
 
-// Both surface entry points resolve opacity and write their result the same way.
+// Shared by the material's and the outline's surface entry points.
 template <bool Cutout>
 inline float mtoonOpacity(float opacityThreshold,
                    half4 baseSample,

@@ -192,7 +192,7 @@ struct MToonMaterialParameters {
 /// One material's packed parameter rows as a texture written into in place.
 ///
 /// The rows move on per-frame paths, so the resource is allocated once and every later
-/// write is a blit into it: the materials keep sampling the same ``resource``.
+/// write is a blit into it.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 final class MToonParameterTexture {
@@ -342,8 +342,8 @@ final class MToonParameterTexture {
 ///
 /// glTF's `magFilter` and `minFilter` are independent, and `minFilter` itself encodes
 /// both the minification texel filter and the mip filter. `MToonSampling.h` reads ``index``
-/// and applies all three itself: the 16 constant samplers a Metal entry point allows are
-/// already spent on addressing modes.
+/// and applies all three itself on its one sampler, as it does the wrap modes: the 16
+/// constant samplers a Metal entry point allows are shared with RealityKit's own shaders.
 struct MToonSamplerFilter {
     enum TexelFilter: Int, CaseIterable {
         case linear

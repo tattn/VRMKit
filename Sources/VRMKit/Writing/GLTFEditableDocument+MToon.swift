@@ -1,7 +1,8 @@
 import Foundation
 
-/// How ``GLTFEditableDocument/append(_:under:name:transform:materials:)`` writes
-/// the materials it copies over.
+/// How ``GLTFEditableDocument/append(_:under:name:transform:materials:)`` and
+/// ``GLTFEditableDocument/addMesh(_:under:name:transform:materials:)`` write the
+/// materials they bring in.
 public enum GLTFMaterialConversion: Equatable, Sendable {
     /// Copies them as they are, which for a VRM 0.x document means the material
     /// property telling its runtime to render the glTF material unchanged.
@@ -106,7 +107,6 @@ extension GLTFEditableDocument {
 
     /// VRM 0.x keeps its material settings in an array parallel to `materials`, so
     /// each added material needs an entry to keep the two lined up.
-    /// `VRM_USE_GLTFSHADER` says the glTF material describes itself.
     mutating func appendVRM0MaterialProperties(named names: [String?]) throws {
         guard !names.isEmpty, let properties = vrm0MaterialProperties() else { return }
         try setVRM0MaterialProperties(properties + names.map(VRM0MToonProperty.gltfShaderProperty(name:)))

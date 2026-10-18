@@ -36,8 +36,6 @@ extension GLTFEditableDocument {
         }
 
         let kept = Set(boneNodes.values.flatMap(hierarchy.lineage(of:)))
-        // The skeleton faces the way the model does; a 0.x model is turned so that it
-        // faces the way a `.vrma` is authored in.
         let facing = vrm.forwardDirection.z < 0
             ? simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
             : quat_identity_float

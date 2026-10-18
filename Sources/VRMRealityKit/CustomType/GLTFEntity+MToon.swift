@@ -13,8 +13,8 @@ extension GLTFEntity {
     /// caller tracking a light per frame.
     ///
     /// `direction` points from the surface toward the light, so a matching `DirectionalLight`
-    /// sits at `direction` and aims at the model. The defaults are a white light and a black
-    /// ambient, which feeds the MToon GI approximation.
+    /// sits at `direction` and aims at the model. Until set, the light is white and the
+    /// ambient, which feeds the MToon GI approximation, is black.
     public func setMToonLighting(direction: SIMD3<Float>, color: SIMD3<Float>, ambient: SIMD3<Float>) {
         let normalized = Self.normalizedMToonLightDirection(direction)
         updateMaterialStates(MToonAnimatableMaterialState.self) { state in

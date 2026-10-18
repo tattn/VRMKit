@@ -65,8 +65,8 @@ extension GLTFNodeTransform {
         }
     }
 
-    /// The transform a decoded node describes, TRS or matrix, as ``init(node:)`` reads
-    /// it off the JSON.
+    /// The transform a decoded node describes, TRS or matrix, read the way the
+    /// JSON overload reads it.
     package init(node: GLTF.Node) {
         if let matrix = node.matrix {
             let v = matrix.values

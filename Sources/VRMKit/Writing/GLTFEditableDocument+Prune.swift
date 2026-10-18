@@ -48,8 +48,6 @@ extension GLTFEditableDocument {
     /// What the walk cannot follow is what pruning would erase, so a document
     /// carrying it is refused, as one spread over several buffers is.
     private func validatePrunable() throws {
-        // A reference to an entry the document does not hold would come out of the
-        // compaction quietly deleted, which is repairing rather than pruning.
         try GLTFReferences.validateIndices(of: json)
         let unsupported = json.carriedExtensions().subtracting(GLTFExtension.prunable)
         guard unsupported.isEmpty else {

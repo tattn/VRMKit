@@ -93,8 +93,6 @@ private struct Walk {
     mutating func follow() {
         while let next = pending.popLast() {
             guard let entry = entries[next.array]?[safe: next.index] else { continue }
-            // A node the scenes never reached keeps its transform and nothing else,
-            // which the rewrite says by dropping what it hung together.
             let drawing = next.array != .nodes || drawn.contains(next.index)
             for (array, index, kind) in references(of: entry, { entry, map in
                 GLTFReferences.rewriting(entry, of: next.array, drawing: drawing, with: map)

@@ -356,7 +356,7 @@ struct GLTFGeometryDecoder: Sendable {
     }
 
     /// The tangent basis a normal map needs: glTF `TANGENT` when the primitive has
-    /// one, otherwise derived from the UVs. Skipped when no normal map samples it.
+    /// one, otherwise derived from the UVs.
     private func tangentFrame(rawTangents: [SIMD4<Float>]?,
                               positions: [SIMD3<Float>],
                               normals: [SIMD3<Float>],

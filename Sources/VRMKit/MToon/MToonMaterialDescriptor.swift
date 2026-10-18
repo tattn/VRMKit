@@ -61,9 +61,7 @@ package extension MToonMaterialDescriptor {
     /// unimplemented spec version is still MToon, so it is told apart from one
     /// carrying no MToon data at all.
     enum Resolution {
-        /// The material carries no MToon data.
         case none
-        /// The material's MToon data, decoded.
         case supported(MToonMaterialDescriptor)
         /// The material declares a `specVersion` ``supports(specVersion:)`` does not implement.
         case unsupportedVersion(String)

@@ -123,7 +123,6 @@ final class ContentViewModel {
     private var vrmaAnimation: VRMAnimation?
     private var vrmaController: GLTFAnimationPlaybackController?
 
-    /// The example's emotions the loaded model offers, named the way it names them.
     var availableExpressions: [ExpressionInfo] {
         vrmEntity?.availableExpressions.exampleEmotions ?? []
     }

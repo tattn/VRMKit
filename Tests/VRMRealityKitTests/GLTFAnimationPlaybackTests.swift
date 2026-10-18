@@ -470,7 +470,7 @@ struct GLTFAnimationPlaybackTests {
         return Data(json.utf8)
     }
 
-    /// Two identity rotation keyframes at t = 0 and t = 1, as FLOAT.
+    /// Keyframe times t = 0 and t = 1, as FLOAT.
     private var floatTimes: SamplerStorage {
         SamplerStorage(componentType: 5126, type: "SCALAR", count: 2, bytes: Data(littleEndianFloats: [0, 1]))
     }

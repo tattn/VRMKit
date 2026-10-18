@@ -184,7 +184,7 @@ private struct GLTFMerger {
 
     // MARK: - Rebasing
 
-    /// The arrays a merge copies into, and so the indices it has to rebase.
+    /// The arrays something can index into, and so the ones whose indices a merge rebases.
     private static let rebasedArrays: [GLTFArray] = [
         .bufferViews, .accessors, .samplers, .images, .textures, .materials, .meshes, .skins, .cameras, .nodes,
     ]

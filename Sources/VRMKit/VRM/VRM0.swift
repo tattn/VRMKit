@@ -292,13 +292,13 @@ public extension VRM0 {
             public let stiffness: Double
 
             // 0.x really does spell "stiffiness" this way; the typo stays out of the API.
-            // What a file leaves out reads as the UniVRM defaults.
             private enum CodingKeys: String, CodingKey {
                 case bones, center, colliderGroups, comment, dragForce, gravityDir
                 case gravityPower, hitRadius
                 case stiffness = "stiffiness"
             }
 
+            // What a file leaves out reads as the UniVRM defaults.
             public init(from decoder: any Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 bones = try container.decodeIfPresent([Int].self, forKey: .bones) ?? []

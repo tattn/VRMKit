@@ -260,7 +260,8 @@ package struct SpringBoneJoint {
     let boneLength: Float
 
     private let initialLocalRotation: simd_quatf
-    /// Both in the center's space, which is where they stay between frames.
+    /// Both kept between frames in the center's space, or in world space for a joint
+    /// without one.
     private var currentTail: SIMD3<Float>
     private var prevTail: SIMD3<Float>
 

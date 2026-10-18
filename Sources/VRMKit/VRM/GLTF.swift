@@ -3,7 +3,7 @@ import Foundation
 /// A glTF asset's typed model.
 ///
 /// glTF spells an empty top-level array by leaving it out, so each reads as empty
-/// when absent and is written only when it holds something.
+/// when absent.
 public struct GLTF: Codable, Sendable {
     public let extensionsUsed: [String]
     public let extensionsRequired: [String]
