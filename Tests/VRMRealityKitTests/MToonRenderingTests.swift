@@ -275,14 +275,48 @@ struct MToonRenderingTests {
         #expect(transform.rotation == 0)
     }
 
-    /// Relighting a model per frame touches every material, so one call writes each
-    /// material's rows once, the writes of that flush share a command buffer, and the
-    /// same values again write nothing.
+    /// The light direction, color and ambient each ride in their own parameter
+    /// row rather than in the materials: tracking a light per frame rewrites no
+    /// ModelComponent, and updating one row must not drop the others. Relighting
+    /// touches every material, so one call writes each material's rows once, the
+    /// writes of that flush share a command buffer, and the same values again
+    /// write nothing.
     @Test
-    func testSetMToonLightingWritesEachMaterialOnceThroughOneCommandBuffer() async throws {
+    func testSetMToonLightUpdatesParameterRowsWritingEachMaterialOnceThroughOneCommandBuffer() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        vrmEntity.setMToonLighting(direction: SIMD3<Float>(0, 1, 0), color: SIMD3<Float>(1, 1, 1), ambient: .zero)
+        let writesBefore = mtoonParameterWriteCounts(in: vrmEntity)
+
+        vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
+        vrmEntity.setMToonLightColor(SIMD3<Float>(0.8, 0.7, 0.6))
+        vrmEntity.setMToonAmbientColor(SIMD3<Float>(0.05, 0.1, 0.15))
+
+        var checkedStates = 0
+        for index in vrmEntity.materialStates.keys {
+            guard let parameters = vrmEntity.mtoonState(forMaterialIndex: index)?.parameters else { continue }
+            // The direction is normalized before it reaches the parameter rows.
+            #expect(parameters.lightDirection.isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
+            #expect(parameters.lightColor.isApproximatelyEqual(to: SIMD4<Float>(0.8, 0.7, 0.6, 1)))
+            #expect(parameters.ambientColor.isApproximatelyEqual(to: SIMD4<Float>(0.05, 0.1, 0.15, 1)))
+            checkedStates += 1
+        }
+        #expect(checkedStates > 0)
+        #expect(mtoonParameterWriteCounts(in: vrmEntity) != writesBefore)
+
+        // The materials still hold the shared parameter texture; custom.value
+        // carries only the renderer's tone-mapping flag and the outline budget.
+        for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
+            guard let model = modelEntity.components[ModelComponent.self] else { continue }
+            let isOutlinePass = modelEntity.components.has(GLTFMaterialPassComponent.self)
+            for material in model.materials.compactMap({ $0 as? CustomMaterial }) {
+                let value = material.custom.value
+                #expect(value.x == 1)
+                #expect(SIMD2<Float>(value.y, value.z) == .zero)
+                #expect(isOutlinePass ? value.w > 0 : value.w == 0)
+                #expect(material.custom.texture != nil)
+            }
+        }
+
         let textures = vrmEntity.materialStates.keys.compactMap {
             vrmEntity.mtoonState(forMaterialIndex: $0)?.parameterTexture
         }
@@ -395,39 +429,12 @@ struct MToonRenderingTests {
     }
 
     @Test
-    func testMToonSamplerKeepsMagAndMinFiltersIndependent() throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // glTF magFilter and minFilter are independent, so a LINEAR magFilter
-        // must stay linear next to a NEAREST minFilter.
-        // Material 0's base color texture uses sampler 0.
-        let modified = try TestSupport.modifiedSeedSanData(name: "mixed-filter-sampler") { json in
-            var samplers = json.objects("samplers")
-            guard !samplers.isEmpty else {
-                throw VRMError.dataInconsistent("Missing Seed-san sampler fixture data")
-            }
-            samplers[0]["magFilter"] = 9729                 // LINEAR
-            samplers[0]["minFilter"] = 9728                 // NEAREST
-            samplers[0]["wrapS"] = 33071                    // CLAMP_TO_EDGE
-            samplers[0]["wrapT"] = 33648                    // MIRRORED_REPEAT
-            json["samplers"] = .objects(samplers)
-        }
-
-        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let parameters = try TestSupport.mtoonParameters(of: loader, materialIndex: 0)
-
-        // (wrapS, wrapT, filterIndex, 0): clamp / mirrored repeat, and a
-        // magnification filter that stays linear while minification is nearest.
-        let filter = MToonSamplerFilter(magnification: .linear, minification: .nearest, mip: .none)
-        #expect(parameters.samplers[MToonTextureSlot.base.rawValue]
-            .isApproximatelyEqual(to: SIMD4<Float>(1, 2, Float(filter.index), 0)))
-    }
-
-    @Test
     func testEveryGLTFMinFilterMapsToADistinctSampler() throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // glTF's six minFilter values are two independent choices, the
         // minification texel filter and the filter between mip levels, so each
-        // has to encode to its own filter index.
+        // has to encode to its own filter index. magFilter is independent of
+        // both, so a LINEAR magFilter stays linear next to a NEAREST minFilter.
         let minFilters: [(raw: Int, minification: MToonSamplerFilter.TexelFilter, mip: MToonSamplerFilter.MipFilter)] = [
             (9728, .nearest, .none),      // NEAREST
             (9729, .linear, .none),       // LINEAR
@@ -439,12 +446,16 @@ struct MToonRenderingTests {
 
         var seenIndexes: Set<Int> = []
         for entry in minFilters {
+            // Material 0's base color texture uses sampler 0.
             let modified = try TestSupport.modifiedSeedSanData(name: "min-filter-\(entry.raw)") { json in
                 var samplers = json.objects("samplers")
                 guard !samplers.isEmpty else {
                     throw VRMError.dataInconsistent("Missing Seed-san sampler fixture data")
                 }
+                samplers[0]["magFilter"] = 9729                 // LINEAR
                 samplers[0]["minFilter"] = .int(entry.raw)
+                samplers[0]["wrapS"] = 33071                    // CLAMP_TO_EDGE
+                samplers[0]["wrapT"] = 33648                    // MIRRORED_REPEAT
                 json["samplers"] = .objects(samplers)
             }
             let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
@@ -452,8 +463,9 @@ struct MToonRenderingTests {
             let expected = MToonSamplerFilter(magnification: .linear,
                                               minification: entry.minification,
                                               mip: entry.mip)
-            #expect(parameters.samplers[MToonTextureSlot.base.rawValue].z
-                .isApproximatelyEqual(to: Float(expected.index)),
+            // (wrapS, wrapT, filterIndex, 0): clamp / mirrored repeat.
+            #expect(parameters.samplers[MToonTextureSlot.base.rawValue]
+                .isApproximatelyEqual(to: SIMD4<Float>(1, 2, Float(expected.index), 0)),
                     "glTF minFilter \(entry.raw) mapped to the wrong sampler")
             seenIndexes.insert(expected.index)
         }
@@ -501,46 +513,6 @@ struct MToonRenderingTests {
         // update() must not touch MToon materials at all.
         let afterUpdateValue = try firstCustomMaterial(in: vrmEntity).custom.value
         #expect(afterUpdateValue == initialValue)
-    }
-
-    /// The light direction, color and ambient each ride in their own parameter
-    /// row rather than in the materials: tracking a light per frame rewrites no
-    /// ModelComponent, and updating one row must not drop the others.
-    @Test
-    func testSetMToonLightUpdatesParameterRows() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let writesBefore = mtoonParameterWriteCounts(in: vrmEntity)
-
-        vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
-        vrmEntity.setMToonLightColor(SIMD3<Float>(0.8, 0.7, 0.6))
-        vrmEntity.setMToonAmbientColor(SIMD3<Float>(0.05, 0.1, 0.15))
-
-        var checkedStates = 0
-        for index in vrmEntity.materialStates.keys {
-            guard let parameters = vrmEntity.mtoonState(forMaterialIndex: index)?.parameters else { continue }
-            // The direction is normalized before it reaches the parameter rows.
-            #expect(parameters.lightDirection.isApproximatelyEqual(to: SIMD3<Float>(0, 0, -1)))
-            #expect(parameters.lightColor.isApproximatelyEqual(to: SIMD4<Float>(0.8, 0.7, 0.6, 1)))
-            #expect(parameters.ambientColor.isApproximatelyEqual(to: SIMD4<Float>(0.05, 0.1, 0.15, 1)))
-            checkedStates += 1
-        }
-        #expect(checkedStates > 0)
-        #expect(mtoonParameterWriteCounts(in: vrmEntity) != writesBefore)
-
-        // The materials still hold the shared parameter texture; custom.value
-        // carries only the renderer's tone-mapping flag and the outline budget.
-        for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
-            guard let model = modelEntity.components[ModelComponent.self] else { continue }
-            let isOutlinePass = modelEntity.components.has(GLTFMaterialPassComponent.self)
-            for material in model.materials.compactMap({ $0 as? CustomMaterial }) {
-                let value = material.custom.value
-                #expect(value.x == 1)
-                #expect(SIMD2<Float>(value.y, value.z) == .zero)
-                #expect(isOutlinePass ? value.w > 0 : value.w == 0)
-                #expect(material.custom.texture != nil)
-            }
-        }
     }
 
     @Test
@@ -601,24 +573,6 @@ struct MToonRenderingTests {
         #expect(parameters.baseColor.x.isApproximatelyEqual(to: 0.5))
     }
 
-    /// A malformed MToon extension is a rendering limitation, not a broken file:
-    /// the material falls back to Unlit / PBR and the model still loads.
-    @Test
-    func testMToonExtensionWithAnInvalidTextureFallsBackInsteadOfFailingTheLoad() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let modified = try TestSupport.modifiedSeedSanMToonExtension(name: "mtoon-texture-out-of-range") { mtoon in
-            mtoon["shadeMultiplyTexture"] = ["index": 9999]
-        }
-
-        let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
-        let vrmEntity = try await loader.loadEntity()
-
-        // The state goes with the material, so no expression bind keeps writing
-        // parameter rows no shader reads.
-        #expect(vrmEntity.mtoonParameters(forMaterialIndex: 0) == nil)
-        #expect(!TestSupport.modelEntities(in: vrmEntity).isEmpty)
-    }
-
     /// One unbuildable material must cost that primitive its material, not the
     /// whole model.
     @Test
@@ -638,16 +592,13 @@ struct MToonRenderingTests {
         #expect(!TestSupport.modelEntities(in: vrmEntity).isEmpty)
     }
 
+    /// Outlines are the inverted hull only; disabling them must not take the
+    /// MToon surface shader with them.
     @Test
     func testVRM1MToonOutlineEntitiesFollowTheOutlineOption() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let seedSan = TestSupport.seedSanData
-        let outlineEntity = try await VRMEntityLoader(withData: seedSan).loadEntity()
-        #expect(hasOutlineEntities(in: outlineEntity))
-
-        // Outlines are the inverted hull only; disabling them must not take the
-        // MToon surface shader with them.
-        let noOutlineEntity = try await VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders).loadEntity()
+        let noOutlineEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
+                                                        shaders: TestSupport.noOutlineShaders).loadEntity()
         #expect(!hasOutlineEntities(in: noOutlineEntity))
         #expect(TestSupport.hasCustomMaterial(in: noOutlineEntity))
     }

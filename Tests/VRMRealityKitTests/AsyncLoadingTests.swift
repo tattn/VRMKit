@@ -28,8 +28,8 @@ struct AsyncLoadingTests {
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testEveryLoadOfAModelBuildsTheSameMeshes(asset: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let first = meshShape(of: try await VRMEntityLoader(withData: asset.data).loadEntity())
-        let second = meshShape(of: try await VRMEntityLoader(withData: asset.data).loadEntity())
+        let first = meshShape(of: try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity())
+        let second = meshShape(of: try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity())
 
         #expect(!first.isEmpty)
         #expect(first.count == second.count)
@@ -45,7 +45,7 @@ struct AsyncLoadingTests {
     @Test
     func testACancelledLoadStopsBeforeItBuildsAnything() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data)
+        let loader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data, shaders: [])
 
         let load = Task { try await loader.loadEntity() }
         load.cancel()
@@ -116,33 +116,25 @@ struct AsyncLoadingTests {
 
     /// Preparing decodes each primitive once, and the build takes what is already
     /// there rather than expanding the accessors again. It takes rather than reads,
-    /// since the vertex data would otherwise be a second copy of the model.
+    /// since the vertex data would otherwise be a second copy of the model. A second
+    /// build of the scene clones the mesh templates the first one made, so preparing
+    /// for it reads no vertex at all.
     @Test
     func testPreparingDecodesEveryPrimitiveOfTheSceneOnce() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data)
-        let builder = loader.builder(sceneIndex: loader.gltf.scene ?? 0)
+        let loader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data, shaders: [])
+        let sceneIndex = loader.gltf.scene ?? 0
+        let builder = loader.builder(sceneIndex: sceneIndex)
 
         try await builder.prepareGeometry()
         #expect(!builder.prepared.primitives.isEmpty)
 
         _ = try builder.build()
         #expect(builder.prepared.primitives.isEmpty)
-    }
 
-    /// A second load of the same scene clones the mesh templates the first one
-    /// built, so preparing for it reads no vertex at all.
-    @Test
-    func testLoadingASceneASecondTimeDecodesNoPrimitive() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data)
-        let sceneIndex = loader.gltf.scene ?? 0
-
-        _ = try await loader.loadEntity(withSceneIndex: sceneIndex)
-        let builder = loader.builder(sceneIndex: sceneIndex)
-        try await builder.prepareGeometry()
-
-        #expect(builder.prepared.primitives.isEmpty)
+        let second = loader.builder(sceneIndex: sceneIndex)
+        try await second.prepareGeometry()
+        #expect(second.prepared.primitives.isEmpty)
         #expect(!loader.resources.meshTemplates.isEmpty)
     }
 }

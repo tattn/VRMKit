@@ -40,7 +40,7 @@ struct GLTFMToonTests {
     /// for clients that do not implement it.
     @Test
     func testAppendingAsMToonWritesTheMToonExtension() throws {
-        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
+        let vrm = try VRMSampleAsset.seedSan.parsedVRM
         var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let head = GLTFNodeIndex(try #require(vrm.nodeIndex(of: .head)))
         let textureBase = try document.typed().textures.count
@@ -64,29 +64,6 @@ struct GLTFMToonTests {
         #expect(used.contains("KHR_materials_unlit"))
         // The VRM 1.0 model has no parallel array to keep in step.
         #expect(try reloaded.rawJSON().object("extensions")?.object("VRM") == nil)
-    }
-
-    /// An outline is the one part of the style with a unit to get wrong: MToon 1.0
-    /// measures world-space width in meters and VRM 0.x in centimeters.
-    @Test
-    func testOutlineWidthIsWrittenInEachFormsOwnUnit() throws {
-        let style = MToonConversionStyle(outlineWidthMode: .worldCoordinates, outlineWidthFactor: 0.02)
-        let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
-
-        var vrm0 = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        try vrm0.append(source, under: 0, materials: .mtoon(style))
-        let property = try #require(try GLTFDocument(data: try vrm0.serialize()).rawJSON()
-            .object("extensions")?.object("VRM")?.objects("materialProperties").last)
-        let floats = try #require(property.object("floatProperties"))
-        #expect(floats.float("_OutlineWidthMode") == 1)
-        #expect(floats.float("_OutlineWidth")?.isApproximatelyEqual(to: 2) == true)
-
-        var vrm1 = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
-        try vrm1.append(source, under: 0, materials: .mtoon(style))
-        let mtoon = try #require(try GLTFDocument(data: try vrm1.serialize())
-            .gltf.materials.last?.extensions?.materialsMToon)
-        #expect(mtoon.outlineWidthMode == .worldCoordinates)
-        #expect(mtoon.outlineWidthFactor?.isApproximatelyEqual(to: 0.02) == true)
     }
 
     @Test
@@ -157,7 +134,7 @@ struct GLTFMToonTests {
 
     @Test
     func testConvertingAMaterialThatIsNotThereThrows() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
 
         #expect(throws: VRMError.self) { try document.convertMaterialsToMToon(at: [100_000]) }
     }

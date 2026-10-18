@@ -422,10 +422,11 @@ struct VRMSpringBoneWritingTests {
     /// refuses is not one a spring is written into.
     @Test
     func testASpringIsNotAddedToADocumentWhoseHierarchyALoaderRefuses() throws {
+        let model = try VRMSampleAsset.seedSan.parsedVRM
+        let head = try #require(model.nodeIndex(of: .head))
+        let hips = try #require(model.nodeIndex(of: .hips))
         let twoParents = try VRMSampleAsset.seedSan.rewritingJSON { json in
             var nodes = json.objects("nodes")
-            let head = try #require(try VRM(data: VRMSampleAsset.seedSan.data).nodeIndex(of: .head))
-            let hips = try #require(try VRM(data: VRMSampleAsset.seedSan.data).nodeIndex(of: .hips))
             nodes[hips]["children"] = .numbers((nodes[hips].ints("children") ?? []) + [head])
             json["nodes"] = .objects(nodes)
         }
@@ -506,12 +507,12 @@ private extension GLTFEditableDocument {
 private extension VRMSampleAsset {
     /// The head a hair ornament hangs off.
     var headNode: GLTFNodeIndex {
-        get throws { GLTFNodeIndex(try #require(try VRM(data: data).nodeIndex(of: .head))) }
+        get throws { GLTFNodeIndex(try #require(try parsedVRM.nodeIndex(of: .head))) }
     }
 
     var isVRM0: Bool {
         get throws {
-            if case .v0 = try VRM(data: data) { return true }
+            if case .v0 = try parsedVRM { return true }
             return false
         }
     }

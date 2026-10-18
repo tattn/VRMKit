@@ -11,39 +11,25 @@ import VRMTestSupport
 @Suite
 @MainActor
 struct VRMFirstPersonTests {
-    /// A `thirdPersonOnly` mesh goes in first person. What goes is the mesh,
-    /// not the node drawing it, so the nodes hanging off that one keep drawing.
-    @Test
-    func testVRM1ThirdPersonOnlyMeshIsHiddenInFirstPerson() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmLoader = try VRMEntityLoader(withData: TestSupport.seedSanData)
-        let vrmEntity = try await vrmLoader.loadEntity()
-        let node = try #require(vrmEntity.entity(forNodeAt: 0))
-        let mesh = try #require(node.children.first)
-
-        #expect(mesh.isEnabled == true)
-        vrmEntity.setFirstPersonRenderMode(.firstPerson)
-        #expect(mesh.isEnabled == false)
-        #expect(node.isEnabled == true)
-        vrmEntity.setFirstPersonRenderMode(.thirdPerson)
-        #expect(mesh.isEnabled == true)
-    }
-
     /// glTF lets two nodes draw one mesh, and VRM 1.0 annotates the node rather
     /// than the mesh, so one of the two may go in first person while the other
-    /// stays.
+    /// stays. What goes is the mesh, not the node drawing it, so the nodes hanging
+    /// off that one keep drawing.
     @Test
     func testVRM1AnnotatesEachNodeDrawingAMeshOnItsOwn() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Node 0 draws mesh 0 as `thirdPersonOnly`; the copy draws it as `both`.
         let data = try Self.seedSanSharingMeshZero(copyAnnotatedAs: "both")
-        let vrmLoader = try VRMEntityLoader(withData: data)
+        let vrmLoader = try VRMEntityLoader(withData: data, shaders: [])
         let vrmEntity = try await vrmLoader.loadEntity()
-        let annotated = try #require(vrmEntity.entity(forNodeAt: 0)?.children.first)
+        let node = try #require(vrmEntity.entity(forNodeAt: 0))
+        let annotated = try #require(node.children.first)
         let copy = try #require(vrmEntity.entity(forNodeAt: Self.seedSanMeshCopyNodeIndex)?.children.first)
+        #expect(annotated.isEnabled == true)
 
         vrmEntity.setFirstPersonRenderMode(.firstPerson)
         #expect(annotated.isEnabled == false)
+        #expect(node.isEnabled == true)
         #expect(copy.isEnabled == true)
 
         vrmEntity.setFirstPersonRenderMode(.thirdPerson)

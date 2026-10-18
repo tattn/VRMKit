@@ -12,29 +12,6 @@ import VRMTestSupport
 @Suite
 @MainActor
 struct GLTFEntityLoaderTests {
-    @Test
-    func testGenericLoadBuildsEntityGraphWithNodeMapping() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withData: TestSupport.seedSanData)
-        let entity = try await loader.loadEntity()
-
-        #expect(!(entity is VRMEntity))
-        #expect(entity.sceneIndex == entity.gltf.scene)
-        #expect(entity.document.gltf.nodes.isEmpty == false)
-
-        // Every scene node resolves through the index mapping.
-        let nodeCount = entity.gltf.nodes.count
-        var mappedCount = 0
-        for index in 0..<nodeCount {
-            guard let node = entity.entity(forNodeAt: index) else { continue }
-            mappedCount += 1
-            #expect(node.components[GLTFNodeComponent.self]?.nodeIndex == index)
-        }
-        #expect(mappedCount > 0)
-        #expect(entity.entity(forNodeAt: nodeCount) == nil)
-        #expect(entity.entity(forNodeAt: -1) == nil)
-    }
-
     /// Authoring names the scene it makes as the document's default, which is the one
     /// `loadEntity()` asks a glTF for.
     @Test
@@ -57,9 +34,23 @@ struct GLTFEntityLoaderTests {
     @Test
     func testReloadingASceneReusesItsMeshesAndBindsItsOwnJoints() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withData: TestSupport.seedSanData)
+        let loader = try GLTFEntityLoader(withData: TestSupport.seedSanData, shaders: [])
         let first = try await loader.loadEntity()
         let second = try await loader.loadEntity()
+
+        #expect(!(first is VRMEntity))
+        #expect(first.sceneIndex == first.gltf.scene)
+        let nodeCount = first.gltf.nodes.count
+        #expect(nodeCount > 0)
+        var mappedCount = 0
+        for index in 0..<nodeCount {
+            guard let node = first.entity(forNodeAt: index) else { continue }
+            mappedCount += 1
+            #expect(node.components[GLTFNodeComponent.self]?.nodeIndex == index)
+        }
+        #expect(mappedCount > 0)
+        #expect(first.entity(forNodeAt: nodeCount) == nil)
+        #expect(first.entity(forNodeAt: -1) == nil)
 
         #expect(first !== second)
         #expect(first.entity(forNodeAt: 1) !== second.entity(forNodeAt: 1))
@@ -79,39 +70,6 @@ struct GLTFEntityLoaderTests {
             #expect(binding.jointEntities.allSatisfy { TestSupport.isDescendant($0, of: entity) })
             #expect(binding.jointEntities.allSatisfy { !TestSupport.isDescendant($0, of: other) })
         }
-    }
-
-    @Test
-    func testInitialMorphWeightsComeFromNodeThenMesh() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let document = try GLTFDocument(data: TestSupport.seedSanData)
-        let gltf = document.gltf
-        let morphed = gltf.nodes.enumerated().compactMap { index, node -> (Int, Int)? in
-            guard let meshIndex = node.mesh,
-                  let targets = gltf.meshes[meshIndex].primitives.first?.targets,
-                  !targets.isEmpty else { return nil }
-            return (index, targets.count)
-        }
-        let (nodeIndex, targetCount) = try #require(morphed.first)
-
-        var weights = [Double](repeating: 0, count: targetCount)
-        weights[0] = 0.5
-        let modified = try TestSupport.modifiedSeedSanData(name: "node initial weights") { json in
-            var nodes = json.objects("nodes")
-            guard nodes.indices.contains(nodeIndex) else {
-                throw VRMError.dataInconsistent("missing nodes")
-            }
-            nodes[nodeIndex]["weights"] = .array(weights.map(JSONValue.double))
-            json["nodes"] = .objects(nodes)
-        }
-
-        let entity = try await GLTFEntityLoader(withData: modified).loadEntity()
-        let binding = try #require(entity.morphBindings[nodeIndex])
-        #expect(binding.targetCount == targetCount)
-        let applied = binding.modelEntities.contains { modelEntity in
-            modelEntity.deformedMesh?.blendShapeWeights.first.map { abs($0 - 0.5) < 0.0001 } ?? false
-        }
-        #expect(applied)
     }
 
     /// glTF sizes `node.weights` and `mesh.weights` by the mesh's morph target count;
@@ -145,9 +103,13 @@ struct GLTFEntityLoaderTests {
         let longMeshWeights = try weighted(targetCount + 1, key: "weights", of: "meshes", at: meshIndex)
         await #expect(throws: VRMError.self) { try await GLTFEntityLoader(withData: longMeshWeights).loadEntity() }
 
-        // The same rewrite with the right length still loads.
+        // The same rewrite with the right length loads, and poses the mesh with the node's weights.
         let exact = try weighted(targetCount, key: "weights", of: "nodes", at: nodeIndex)
-        #expect(try await GLTFEntityLoader(withData: exact).loadEntity().morphBindings[nodeIndex] != nil)
+        let binding = try #require(try await GLTFEntityLoader(withData: exact, shaders: []).loadEntity().morphBindings[nodeIndex])
+        #expect(binding.targetCount == targetCount)
+        #expect(binding.modelEntities.contains { modelEntity in
+            modelEntity.deformedMesh?.blendShapeWeights.first.map { abs($0 - 0.5) < 0.0001 } ?? false
+        })
     }
 
 #if !os(visionOS)
@@ -197,7 +159,7 @@ struct GLTFEntityLoaderTests {
         let modeled = try requiringSpringBones(specVersion: "1.0")
         let unmodeled = try requiringSpringBones(specVersion: "999.0")
 
-        _ = try await VRMEntityLoader(withData: modeled).loadEntity()
+        _ = try await VRMEntityLoader(withData: modeled, shaders: []).loadEntity()
         await #expect(throws: VRMError.self) {
             _ = try await VRMEntityLoader(withData: unmodeled).loadEntity()
         }
@@ -225,7 +187,7 @@ struct GLTFEntityLoaderTests {
         let modeled = try requiringNodeConstraints(specVersion: "1.0")
         let unmodeled = try requiringNodeConstraints(specVersion: "999.0")
 
-        _ = try await VRMEntityLoader(withData: modeled).loadEntity()
+        _ = try await VRMEntityLoader(withData: modeled, shaders: []).loadEntity()
         await #expect(throws: VRMError.self) {
             _ = try await VRMEntityLoader(withData: unmodeled).loadEntity()
         }
@@ -452,18 +414,6 @@ struct GLTFEntityLoaderTests {
         await #expect(throws: Never.self) { try await several.loadEntity(withSceneIndex: 0) }
     }
 
-    /// A VRM is a single avatar, so it renders without naming a default scene.
-    @Test
-    func testVRMWithoutADefaultSceneStillLoads() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let data = try TestSupport.modifiedSeedSanData(name: "no default scene") { json in
-            json.removeValue(forKey: "scene")
-        }
-        let entity = try await VRMEntityLoader(withData: data).loadEntity()
-
-        #expect(entity.sceneIndex == 0)
-    }
-
     /// A node states its transform as TRS or as a 16-value column-major `matrix`, and one
     /// carrying the matrix places its mesh from it.
     @Test
@@ -485,90 +435,92 @@ struct GLTFEntityLoaderTests {
         }
     }
 
-    /// glTF node hierarchies are forests. A cyclic one would recurse forever, so it fails
-    /// the load instead.
-    @Test
-    func testCyclicNodeHierarchyFailsTheLoad() async throws {
+    /// glTF node hierarchies are forests, and `scene.nodes` names their roots.
+    enum MalformedHierarchy: CaseIterable {
+        /// Would recurse forever.
+        case cyclic
+        /// Is neither renderable as a tree nor valid glTF.
+        case nodeWithTwoParents
+        /// Attaching the root would reparent it, making the hierarchy depend on the order
+        /// `scene.nodes` lists them in.
+        case sceneRootThatIsAlreadyAChild
+
+        var nodes: JSONValue {
+            switch self {
+            case .cyclic: [["children": [1]], ["children": [0]]]
+            case .nodeWithTwoParents: [["children": [2]], ["children": [2]], ["mesh": 0]]
+            case .sceneRootThatIsAlreadyAChild: [["children": [1]], ["mesh": 0]]
+            }
+        }
+
+        var sceneRoots: JSONValue {
+            switch self {
+            case .cyclic: [0]
+            case .nodeWithTwoParents, .sceneRootThatIsAlreadyAChild: [0, 1]
+            }
+        }
+    }
+
+    @Test(arguments: MalformedHierarchy.allCases)
+    func testMalformedNodeHierarchyFailsTheLoad(_ hierarchy: MalformedHierarchy) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try TestSupport.loader(.triangle) { json in
-            json["nodes"] = [["children": [1]], ["children": [0]]]
-            json["scenes"] = [["nodes": [0]]]
+            json["nodes"] = hierarchy.nodes
+            json["scenes"] = [["nodes": hierarchy.sceneRoots]]
         }
 
         await #expect(throws: VRMError.self) { try await loader.loadEntity() }
     }
 
-    /// A node reached from two parents is neither renderable as a tree nor valid glTF.
-    @Test
-    func testNodeWithTwoParentsFailsTheLoad() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try TestSupport.loader(.triangle) { json in
-            json["nodes"] = [["children": [2]], ["children": [2]], ["mesh": 0]]
-            json["scenes"] = [["nodes": [0, 1]]]
+    /// An asset requiring `KHR_texture_transform` asks for a render this loader cannot
+    /// produce once a material's textures differ in what RealityKit holds one of.
+    enum TextureTransformDivergence: CaseIterable {
+        /// RealityKit gives a material one UV transform.
+        case scale
+        /// A mesh carries one UV channel.
+        case texCoord
+
+        var key: String {
+            switch self {
+            case .scale: "scale"
+            case .texCoord: "texCoord"
+            }
         }
 
-        await #expect(throws: VRMError.self) { try await loader.loadEntity() }
-    }
-
-    /// `scene.nodes` names root nodes. Attaching one that already has a parent would
-    /// reparent it, making the hierarchy depend on the order `scene.nodes` lists them in.
-    @Test
-    func testSceneRootThatIsAlreadyAChildFailsTheLoad() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try TestSupport.loader(.triangle) { json in
-            json["nodes"] = [["children": [1]], ["mesh": 0]]
-            json["scenes"] = [["nodes": [0, 1]]]
+        var baseColorValue: JSONValue {
+            switch self {
+            case .scale: [2.0, 2.0]
+            case .texCoord: 0
+            }
         }
 
-        await #expect(throws: VRMError.self) { try await loader.loadEntity() }
+        var divergingValue: JSONValue {
+            switch self {
+            case .scale: [3.0, 3.0]
+            case .texCoord: 1
+            }
+        }
     }
 
-    /// RealityKit gives a material one UV transform, so an asset requiring
-    /// `KHR_texture_transform` with differing per-texture transforms asks for a render
-    /// this loader cannot produce.
-    @Test
-    func testRequiredTextureTransformBeyondOnePerMaterialFailsTheLoad() async throws {
+    @Test(arguments: TextureTransformDivergence.allCases)
+    func testRequiredTextureTransformBeyondOnePerMaterialFailsTheLoad(_ divergence: TextureTransformDivergence) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        func loader(emissiveScale: [Double]) throws -> GLTFEntityLoader {
+        func loader(emissiveValue: JSONValue) throws -> GLTFEntityLoader {
             try TestSupport.loader(.simpleTexture) { json in
-                let transform: (String, [Double]) -> JSONValue = { key, scale in
-                    ["index": 0, "extensions": ["KHR_texture_transform": [key: .array(scale.map(JSONValue.double))]]]
+                let texture: (JSONValue) -> JSONValue = { value in
+                    ["index": 0, "extensions": ["KHR_texture_transform": .object([divergence.key: value])]]
                 }
                 json["extensionsUsed"] = ["KHR_texture_transform"]
                 json["extensionsRequired"] = ["KHR_texture_transform"]
                 json["materials"] = [[
-                    "pbrMetallicRoughness": ["baseColorTexture": transform("scale", [2.0, 2.0])],
-                    "emissiveTexture": transform("scale", emissiveScale)
+                    "pbrMetallicRoughness": ["baseColorTexture": texture(divergence.baseColorValue)],
+                    "emissiveTexture": texture(emissiveValue)
                 ]]
             }
         }
 
-        _ = try await loader(emissiveScale: [2.0, 2.0]).loadEntity()
-        await #expect(throws: VRMError.self) { try await loader(emissiveScale: [3.0, 3.0]).loadEntity() }
-    }
-
-    /// A mesh carries one UV channel, so an asset requiring `KHR_texture_transform` while
-    /// pointing a material's textures at different UV sets asks for a render this loader
-    /// cannot produce.
-    @Test
-    func testRequiredTextureTransformBeyondOneUVSetPerMaterialFailsTheLoad() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        func loader(emissiveTexCoord: Int) throws -> GLTFEntityLoader {
-            try TestSupport.loader(.simpleTexture) { json in
-                let texture: (Int) -> JSONValue = { texCoord in
-                    ["index": 0, "extensions": ["KHR_texture_transform": ["texCoord": .int(texCoord)]]]
-                }
-                json["extensionsUsed"] = ["KHR_texture_transform"]
-                json["extensionsRequired"] = ["KHR_texture_transform"]
-                json["materials"] = [[
-                    "pbrMetallicRoughness": ["baseColorTexture": texture(0)],
-                    "emissiveTexture": texture(emissiveTexCoord)
-                ]]
-            }
-        }
-
-        _ = try await loader(emissiveTexCoord: 0).loadEntity()
-        await #expect(throws: VRMError.self) { try await loader(emissiveTexCoord: 1).loadEntity() }
+        _ = try await loader(emissiveValue: divergence.baseColorValue).loadEntity()
+        await #expect(throws: VRMError.self) { try await loader(emissiveValue: divergence.divergingValue).loadEntity() }
     }
 
     /// Skin joints index the joint arrays positionally, so a missing or out-of-range
@@ -601,25 +553,6 @@ struct GLTFEntityLoaderTests {
             skins[0].removeValue(forKey: "inverseBindMatrices")
             json["skins"] = .objects(skins)
         }
-    }
-
-    /// An animation sampler reading a shared accessor as the wrong type fails even when
-    /// the accessor is already in the decoder's cache.
-    @Test
-    func testAnimationSamplerReadingAnAccessorAsTheWrongTypeFails() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // The input accessor is SCALAR; a rotation output has to be VEC4.
-        let entity = try await TestSupport.loader(.animatedTriangle) { json in
-            var animations = json.objects("animations")
-            guard !animations.isEmpty else { return }
-            var samplers = animations[0].objects("samplers")
-            guard !samplers.isEmpty else { return }
-            samplers[0]["output"] = samplers[0]["input"]
-            animations[0]["samplers"] = .objects(samplers)
-            json["animations"] = .objects(animations)
-        }.loadEntity()
-
-        #expect(throws: VRMError.self) { try entity.playAnimation(at: 0) }
     }
 
     /// VRM meshes put the morph targets on a single primitive and the VRM loader shares

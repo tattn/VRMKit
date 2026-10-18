@@ -9,14 +9,25 @@ struct GLTFPruneTests {
     // MARK: - Detached subtrees
 
     /// The file shrinks by what the detached subtree drew, and what the model still
-    /// draws comes back byte for byte through indices that have moved. A second prune
-    /// finds nothing, which says the first left the document laid out the way it reads it.
+    /// draws comes back byte for byte through indices that have moved. Every index the VRM
+    /// extensions hold moves with the arrays, so the avatar names the same bones, and a
+    /// binding to what a node drew goes with the drawing. A second prune finds nothing,
+    /// which says the first left the document laid out the way it reads it.
     @Test(arguments: VRMSampleAsset.allCases)
-    func testPruneReclaimsWhatADetachedSubtreeDrew(asset: VRMSampleAsset) throws {
+    func testPruneReclaimsWhatADetachedSubtreeDrewAndKeepsTheVRMExtensionsOnTheSameEntries(asset: VRMSampleAsset) throws {
         var document = try GLTFEditableDocument(data: asset.data)
-        try document.detachNode(at: GLTFNodeIndex(try #require(drawingSceneRoot(of: try document.typed()))))
+        let original = try document.typed()
+        let detached = try #require(drawingSceneRoot(of: original))
+        let gone = [try #require(original.nodes[detached].name),
+                    try #require(original.nodes[detached].mesh.flatMap { original.meshes[$0].name })]
+        try document.detachNode(at: GLTFNodeIndex(detached))
         let before = try GLTFDocument(data: try document.serialize())
         let expected = try drawnContents(of: before)
+        let bones = try humanoidBoneNames(of: before)
+        let joints = try springBoneJointNames(of: before)
+        let subjects = try renderedSubjectNames(of: before)
+        #expect(!bones.isEmpty)
+        #expect(!subjects.isDisjoint(with: gone))
 
         let reclaimed = try document.prune()
 
@@ -29,34 +40,12 @@ struct GLTFPruneTests {
         #expect(saved.gltf.accessors.count < before.gltf.accessors.count)
         try expectAWellFormedDocument(saved)
         expectReadableAccessors(saved)
-
-        #expect(try document.prune().reclaimedByteCount == 0)
-        #expect(try document.serialize() == after)
-    }
-
-    /// Every index the VRM extensions hold moves with the arrays, so the avatar names
-    /// the same bones. A binding to what a node drew goes with the drawing.
-    @Test(arguments: VRMSampleAsset.allCases)
-    func testPruneKeepsTheVRMExtensionsPointingAtTheSameEntries(asset: VRMSampleAsset) throws {
-        var document = try GLTFEditableDocument(data: asset.data)
-        let detached = try #require(drawingSceneRoot(of: try document.typed()))
-        let gone = [try #require(try document.typed().nodes[detached].name),
-                    try #require(try document.typed().nodes[detached].mesh
-                        .flatMap { try document.typed().meshes[$0].name })]
-        try document.detachNode(at: GLTFNodeIndex(detached))
-        let before = try GLTFDocument(data: try document.serialize())
-        let bones = try humanoidBoneNames(of: before)
-        let joints = try springBoneJointNames(of: before)
-        let subjects = try renderedSubjectNames(of: before)
-        #expect(!bones.isEmpty)
-        #expect(!subjects.isDisjoint(with: gone))
-
-        try document.prune()
-
-        let saved = try GLTFDocument(data: try document.serialize())
         #expect(try humanoidBoneNames(of: saved) == bones)
         #expect(try springBoneJointNames(of: saved) == joints)
         #expect(try renderedSubjectNames(of: saved) == subjects.subtracting(gone))
+
+        #expect(try document.prune().reclaimedByteCount == 0)
+        #expect(try document.serialize() == after)
     }
 
     /// A VRM's thumbnail is not drawn by any scene, so a document detached down to

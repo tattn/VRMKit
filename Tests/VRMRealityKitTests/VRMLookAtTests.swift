@@ -35,7 +35,7 @@ struct VRMLookAtTests {
     @Test
     func testAVRM0BoneLookAtTurnsTheEyesThroughTheModelsCurves() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData, shaders: []).loadEntity()
         let leftEye = try #require(entity.humanoid.node(for: .leftEye))
         let rightEye = try #require(entity.humanoid.node(for: .rightEye))
         let restLeft = leftEye.orientation
@@ -67,7 +67,7 @@ struct VRMLookAtTests {
     @Test
     func testAVRM1ExpressionLookAtWeighsTheLookExpressions() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
 
         // Seed-san maps 90 degrees of gaze onto a full weight.
         entity.lookAtTarget = .position(try Self.target(yaw: 45,

@@ -55,7 +55,9 @@ struct EntityCloneTests {
     }
 
     /// A copy with its own material parameters starts from the original's and then
-    /// takes lighting on its own, each holding parameter rows of its own.
+    /// takes lighting on its own, each holding parameter rows of its own. It keeps what
+    /// the original's expressions had written to its materials at the call, however the
+    /// original moves on.
     @Test
     func testACloneWithOwnMaterialParametersIsLitOnItsOwn() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
@@ -63,7 +65,12 @@ struct EntityCloneTests {
                                                   shaders: TestSupport.noOutlineShaders).loadEntity()
         let original = SIMD3<Float>(1, 0, 0)
         vrmEntity.setMToonLightDirection(original)
+        // Seed-san's happy expression shifts the UV of material 11.
+        vrmEntity.setExpression(value: 1, for: .preset(.happy))
         let copy = vrmEntity.cloneWithOwnMaterialParameters()
+        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+        #expect(try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0))
+        #expect(try TestSupport.mtoonParameters(in: copy, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0.25))
         let index = try #require(vrmEntity.materialIndices(under: vrmEntity).sorted().first {
             vrmEntity.mtoonParameters(forMaterialIndex: $0) != nil
         })
@@ -130,7 +137,7 @@ struct EntityCloneTests {
     @Test
     func testACloneWithOwnMaterialParametersCarriesThePoseItsJointsDescribe() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
         let solved = TestSupport.jointRotations(in: vrmEntity)
 
@@ -143,22 +150,6 @@ struct EntityCloneTests {
         let copy = vrmEntity.cloneWithOwnMaterialParameters()
         #expect(TestSupport.jointRotations(in: copy) != solved)
         #expect(TestSupport.jointRotations(in: copy) == TestSupport.jointRotations(in: vrmEntity))
-    }
-
-    /// The copy keeps what the original's expressions had written to its materials
-    /// at the call, however the original moves on.
-    @Test
-    func testACloneWithOwnMaterialParametersKeepsWhatExpressionsHadWritten() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
-                                                  shaders: TestSupport.noOutlineShaders).loadEntity()
-        // Seed-san's happy expression shifts the UV of material 11.
-        vrmEntity.setExpression(value: 1, for: .preset(.happy))
-        let copy = vrmEntity.cloneWithOwnMaterialParameters()
-        vrmEntity.setExpression(value: 0, for: .preset(.happy))
-
-        #expect(try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0))
-        #expect(try TestSupport.mtoonParameters(in: copy, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0.25))
     }
 }
 #endif

@@ -118,11 +118,12 @@ struct GLTFAnimationAuthoringTests {
 
     // MARK: - Rest skeleton
 
-    /// The copy keeps the bones' names and local transforms, so it rests where the
-    /// model does, and hangs them under one root the model did not have.
+    /// The copy keeps the bones' names and local transforms, and hangs them under one root
+    /// the model did not have. The hips rest above that root in world space where they rest
+    /// in the model, so every node between the two came along with its transform.
     @Test
-    func testTheRestSkeletonCopiesTheHumanoidNodesOfAVRM1Model() throws {
-        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
+    func testTheRestSkeletonCopiesTheHumanoidNodesOfAVRM1ModelAndRestsWhereTheModelDoes() throws {
+        let vrm = try VRMSampleAsset.seedSan.parsedVRM
         var document = GLTFEditableDocument()
 
         let skeleton = try document.addRestSkeleton(of: vrm)
@@ -148,18 +149,7 @@ struct GLTFAnimationAuthoringTests {
         let hierarchy = try GLTFNodeHierarchy(nodes: source)
         let kept = Set(vrm.boneNodes.values.flatMap(hierarchy.lineage(of:)))
         #expect(nodes.count == kept.count + 1)
-    }
 
-    /// The hips rest above the root in world space where they rest in the model, so
-    /// every node between the two came along with its transform.
-    @Test
-    func testTheRestSkeletonRestsWhereTheModelDoes() throws {
-        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
-        var document = GLTFEditableDocument()
-
-        let skeleton = try document.addRestSkeleton(of: vrm)
-
-        let saved = try GLTFDocument(data: try document.serialize())
         let hips = try #require(skeleton.bones[.hips])
         let copied = try saved.gltf.worldMatrix(at: hips.rawValue)
         let original = try vrm.document.gltf.worldMatrix(at: try #require(vrm.boneNodes[.hips]))
@@ -170,7 +160,7 @@ struct GLTFAnimationAuthoringTests {
     /// is turned about at the root while the bones keep their own local transforms.
     @Test
     func testTheRestSkeletonOfAVRM0ModelIsTurnedToFacePlusZ() throws {
-        let vrm = try VRM(data: VRMSampleAsset.aliciaSolid.data)
+        let vrm = try VRMSampleAsset.aliciaSolid.parsedVRM
         var document = GLTFEditableDocument()
 
         let skeleton = try document.addRestSkeleton(of: vrm)
@@ -191,32 +181,12 @@ struct GLTFAnimationAuthoringTests {
 
     // MARK: - VRMC_vrm_animation
 
-    /// The extension written reads back through the same parser any `.vrma` does.
+    /// The extension written reads back through the same parser any `.vrma` does. Each
+    /// expression gets a node named as it is, and the extension names them by preset and
+    /// custom name, which is how a reader finds the weight tracks.
     @Test
-    func testTheHumanoidIsDeclaredAsAVRMAnimation() throws {
-        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
-        var document = GLTFEditableDocument()
-        let skeleton = try document.addRestSkeleton(of: vrm)
-        try document.addAnimation(tracks: [
-            GLTFAnimationTrack(node: try #require(skeleton.bones[.hips]), times: [0],
-                               values: .rotation([quat_identity_float])),
-        ])
-
-        try document.setVRMAnimationHumanoid(skeleton.bones)
-
-        let animation = try VRMAnimation(data: try document.serialize())
-        #expect(animation.specVersion == "1.0")
-        #expect(animation.humanoid?.humanBones.count == skeleton.bones.count)
-        #expect(animation.humanoid?.humanBones["hips"]?.node == skeleton.bones[.hips]?.rawValue)
-        #expect(animation.humanoid?.humanBones["leftThumbMetacarpal"]?.node == skeleton.bones[.leftThumbMetacarpal]?.rawValue)
-        #expect(animation.document.gltf.extensionsUsed.contains("VRMC_vrm_animation"))
-    }
-
-    /// Each expression gets a node named as it is, and the extension names them by
-    /// preset and custom name, which is how a reader finds the weight tracks.
-    @Test
-    func testExpressionNodesAreDeclaredAsVRMAnimationExpressions() throws {
-        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
+    func testTheHumanoidAndExpressionNodesAreDeclaredAsAVRMAnimation() throws {
+        let vrm = try VRMSampleAsset.seedSan.parsedVRM
         var document = GLTFEditableDocument()
         let skeleton = try document.addRestSkeleton(of: vrm)
 
@@ -229,7 +199,11 @@ struct GLTFAnimationAuthoringTests {
         try document.setVRMAnimationExpressions(nodes)
 
         let animation = try VRMAnimation(data: try document.serialize())
+        #expect(animation.specVersion == "1.0")
+        #expect(animation.document.gltf.extensionsUsed.contains("VRMC_vrm_animation"))
         #expect(animation.humanoid?.humanBones.count == skeleton.bones.count)
+        #expect(animation.humanoid?.humanBones["hips"]?.node == skeleton.bones[.hips]?.rawValue)
+        #expect(animation.humanoid?.humanBones["leftThumbMetacarpal"]?.node == skeleton.bones[.leftThumbMetacarpal]?.rawValue)
         let expressions = try #require(animation.expressions)
         #expect(expressions.preset?["happy"]?.node == nodes.preset["happy"]?.rawValue)
         #expect(expressions.preset?["blink"]?.node == nodes.preset["blink"]?.rawValue)

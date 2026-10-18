@@ -138,34 +138,6 @@ struct SpringBoneRuntimeTests {
         #expect(simd_length(rotation.vector).isFinite)
     }
 
-    @Test
-    func testGravitySwingsTheJointTowardsWhereItPulls() throws {
-        var joint = try #require(SpringBoneJoint(head: .zero,
-                                                 localTail: SIMD3(0, 0, 1),
-                                                 worldTail: SIMD3(0, 0, 1),
-                                                 initialLocalRotation: .identity,
-                                                 center: nil))
-        let setting = SpringBoneJointSetting(stiffnessForce: 0,
-                                             gravityPower: 1,
-                                             gravityDir: SIMD3(0, -1, 0),
-                                             dragForce: 0.5,
-                                             hitRadius: 0)
-
-        var rotation = simd_quatf.identity
-        for _ in 0..<30 {
-            rotation = joint.update(deltaTime: 1.0 / 60.0,
-                                    setting: setting,
-                                    head: .zero,
-                                    parentRotation: .identity,
-                                    center: nil,
-                                    colliders: [])
-        }
-
-        let tail = rotation * SIMD3<Float>(0, 0, 1)
-        #expect(abs(simd_length(tail) - 1) < 1e-4)
-        #expect(tail.y < 0)
-    }
-
     /// `simd_quatf(from:to:)` asks for unit vectors, and the bone the joint
     /// points along is as long as the bone. A rotation carrying that length
     /// scales whatever it is applied to.

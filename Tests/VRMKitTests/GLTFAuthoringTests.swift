@@ -370,27 +370,14 @@ struct GLTFAuthoringTests {
         GLTFTriangleMesh(positions: .triangle,
                          indices: [0, 1, 2],
                          material: GLTFSimpleMaterial(alphaMode: .mask(cutoff: .nan))),
+        // glTF holds PNG and JPEG and nothing else; transcoding is the caller's to do.
+        .plate(material: .webP),
     ])
     func testAMeshGLTFCannotDescribeIsRefusedWithoutChangingTheDocument(mesh: GLTFTriangleMesh) throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.addMesh(mesh, under: 0) }
-
-        #expect(try document.serialize() == before)
-    }
-
-    /// glTF holds PNG and JPEG and nothing else; transcoding is the caller's to do.
-    @Test
-    func testAnImageThatIsNeitherPNGNorJPEGIsRefusedWithoutChangingTheDocument() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let before = try document.serialize()
-        var material = GLTFSimpleMaterial.picture
-        material.baseColorImage = Data("RIFF____WEBPVP8 ".utf8)
-
-        #expect(throws: VRMError.self) {
-            try document.addMesh(.plate(material: material), under: 0)
-        }
 
         #expect(try document.serialize() == before)
     }
@@ -426,6 +413,13 @@ private extension GLTFSimpleMaterial {
                            isUnlit: true,
                            alphaMode: .blend,
                            isDoubleSided: true)
+    }
+
+    /// `picture` with a WebP header where its PNG was.
+    static var webP: GLTFSimpleMaterial {
+        var material = picture
+        material.baseColorImage = Data("RIFF____WEBPVP8 ".utf8)
+        return material
     }
 }
 

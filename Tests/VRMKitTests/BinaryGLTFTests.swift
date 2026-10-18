@@ -125,33 +125,31 @@ struct BinaryGLTFTests {
         }
     }
 
+    /// The length is the largest multiple of 4 a chunk can declare, so it gets past the
+    /// alignment check to the one that bounds a chunk by the container.
     @Test
     func testRejectsChunkLengthsBeyondTheFile() {
+        let overrunningLength: UInt32 = 0xFFFF_FFFC
+
         var jsonOverrun = VRMSampleAsset.aliciaSolid.data
-        jsonOverrun.writeUInt32LE(.max, at: 12)
+        jsonOverrun.writeUInt32LE(overrunningLength, at: 12)
         #expect(throws: (any Error).self) { try BinaryGLTF(data: jsonOverrun) }
 
         var binaryOverrun = VRMSampleAsset.aliciaSolid.data
         let binaryChunkOffset = 20 + Int(binaryOverrun.uint32LE(at: 12))
-        binaryOverrun.writeUInt32LE(.max, at: binaryChunkOffset)
+        binaryOverrun.writeUInt32LE(overrunningLength, at: binaryChunkOffset)
         #expect(throws: (any Error).self) { try BinaryGLTF(data: binaryOverrun) }
     }
 
     /// The header length names the size of the whole GLB, so a shorter file is truncated
-    /// and its chunk offsets cannot be trusted.
-    @Test
-    func testRejectsAHeaderLengthBeyondTheFile() {
-        var overrunLength = VRMSampleAsset.aliciaSolid.data
-        overrunLength.writeUInt32LE(UInt32(overrunLength.count + 4), at: 8)
-        #expect(throws: (any Error).self) { try BinaryGLTF(data: overrunLength) }
-    }
-
-    /// The header length is the whole GLB, so bytes past it are not part of one.
-    @Test
-    func testRejectsBytesPastTheHeaderLength() {
-        var trailingBytes = VRMSampleAsset.aliciaSolid.data
-        trailingBytes.append(contentsOf: [0, 0, 0, 0])
-        #expect(throws: (any Error).self) { try BinaryGLTF(data: trailingBytes) }
+    /// and its chunk offsets cannot be trusted, and bytes past it are not part of one.
+    @Test(arguments: [(declaredBeyondTheFile: 4, bytesPastTheHeaderLength: 0), (0, 4)])
+    func testRejectsAHeaderLengthThatIsNotTheFileLength(declaredBeyondTheFile: Int, bytesPastTheHeaderLength: Int) {
+        var data = VRMSampleAsset.aliciaSolid.data
+        let declaredLength = data.count + declaredBeyondTheFile
+        data.append(contentsOf: [UInt8](repeating: 0, count: bytesPastTheHeaderLength))
+        data.writeUInt32LE(UInt32(declaredLength), at: 8)
+        #expect(throws: (any Error).self) { try BinaryGLTF(data: data) }
     }
 
     /// The spec has readers ignore chunk types they do not know, so a file with one still
@@ -163,17 +161,6 @@ struct BinaryGLTFTests {
         let binaryGltf = try BinaryGLTF(data: unknownChunk)
         #expect(binaryGltf.gltf.asset.version == "2.0")
         #expect(binaryGltf.binaryBuffer != nil)
-    }
-
-    /// The header length bounds the chunks, so a chunk reaching past it is malformed even
-    /// when the bytes it names are present in the file.
-    @Test
-    func testRejectsAChunkBeyondTheHeaderLength() {
-        var overrun = appendingChunk(type: 0x4E574E55, payload: Data([1, 2, 3, 4]),
-                                     to: VRMSampleAsset.aliciaSolid.data)
-        // Leave the trailing chunk in the file but outside the declared length.
-        overrun.writeUInt32LE(UInt32(overrun.count - 4), at: 8)
-        #expect(throws: (any Error).self) { try BinaryGLTF(data: overrun) }
     }
 
     /// A GLB whose first chunk is not the JSON chunk is not loadable: everything else in

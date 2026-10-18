@@ -7,10 +7,13 @@ import VRMTestSupport
 @Suite
 struct VRM1Tests {
     
+    /// Swift Testing builds the suite once per test, and every test reads the same model.
+    private static let model = Result { try VRM1(data: VRMSampleAsset.seedSan.data) }
+
     let vrm: VRM1
 
     init() throws {
-        vrm = try VRM1(data: VRMSampleAsset.seedSan.data)
+        vrm = try Self.model.get()
     }
     
     @Test

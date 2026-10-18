@@ -12,14 +12,33 @@ import VRMTestSupport
 @Suite
 @MainActor
 struct MaterialShaderChainTests {
+    enum StandardPathChain: CaseIterable {
+        case empty
+        case declining
+        case `default`
+    }
 
-    /// A chain-less loader renders everything through the built-in Unlit / PBR
-    /// path.
-    @Test
-    func testEmptyShaderChainRendersStandardMaterials() throws {
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private final class DecliningShader: GLTFMaterialShader {
+        func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
+            nil
+        }
+    }
+
+    /// A chain without a shader for the material renders it through the built-in
+    /// Unlit / PBR path with no runtime state: an empty chain, one whose shader
+    /// declines, and the default, whose MToon shader only takes authored MToon.
+    @Test(arguments: StandardPathChain.allCases)
+    func testChainWithoutATakingShaderRendersStandardMaterials(chain: StandardPathChain) throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url, shaders: [])
+        let url = GLTFSampleAsset.simpleTexture.url
+        let loader = switch chain {
+        case .empty: try GLTFEntityLoader(withURL: url, shaders: [])
+        case .declining: try GLTFEntityLoader(withURL: url, shaders: [DecliningShader()])
+        case .default: try GLTFEntityLoader(withURL: url)
+        }
         #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
+        #expect(loader.makeAnimatableMaterialState(forMaterialIndex: 0) == nil)
     }
 
     /// The first shader returning a material wins; later shaders and the
@@ -47,20 +66,6 @@ struct MaterialShaderChainTests {
             let materials = modelEntity.components[ModelComponent.self]?.materials ?? []
             #expect(materials.allSatisfy { $0 is UnlitMaterial })
         }
-    }
-
-    @Test
-    func testDecliningShaderFallsThroughToTheStandardPath() throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        final class DecliningShader: GLTFMaterialShader {
-            func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
-                nil
-            }
-        }
-
-        let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
-                                          shaders: [DecliningShader()])
-        #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
     }
 
     /// The mechanism MToon's outline pass is drawn through.
@@ -316,34 +321,34 @@ struct MaterialShaderChainTests {
 #if !os(visionOS)
     /// A document that merely *uses* `VRMC_materials_mtoon` renders a material
     /// MToon cannot build through the rest of the chain, here the built-in
-    /// Unlit path, since the material is authored as MToon.
+    /// Unlit path, since the material is authored as MToon. A malformed MToon
+    /// extension is a rendering limitation, not a broken file, so the model still loads.
     @Test
     func testUnbuildableMToonMaterialFallsThroughWhenTheExtensionIsOptional() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: Self.brokenMToonSeedSanData(isRequired: false))
-        _ = try await loader.loadEntity()
+        let entity = try await loader.loadEntity()
         #expect(try loader.material(withMaterialIndex: 0) is UnlitMaterial)
+        // The state goes with the material, so no expression bind keeps writing
+        // parameter rows no shader reads.
+        #expect(entity.mtoonParameters(forMaterialIndex: 0) == nil)
+        #expect(!TestSupport.modelEntities(in: entity).isEmpty)
     }
 
     /// A generic glTF load honors `extensionsRequired`, so a document that cannot
     /// be drawn without `VRMC_materials_mtoon` fails rather than approximating.
     @Test
-    func testUnbuildableMToonMaterialFailsTheGLTFLoadWhenTheExtensionIsRequired() async throws {
+    func testUnbuildableRequiredMToonMaterialFailsTheGLTFLoadAndFallsBackToTheDefaultMaterialInAVRM() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withData: Self.brokenMToonSeedSanData(isRequired: true))
+        let required = try Self.brokenMToonSeedSanData(isRequired: true)
         await #expect(throws: (any Error).self) {
-            try await loader.loadEntity()
+            try await GLTFEntityLoader(withData: required).loadEntity()
         }
-    }
-
-    /// A VRM honors `extensionsRequired` too, so the material MToon could not build renders
-    /// as the default material rather than an approximation.
-    @Test
-    func testUnbuildableRequiredMToonMaterialFallsBackToTheDefaultMaterialInAVRM() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: Self.brokenMToonSeedSanData(isRequired: true))
-        let entity = try await loader.loadEntity()
-        #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
+        // A VRM is held to the same requirement, so the material renders as the
+        // default material rather than an approximation.
+        let vrmLoader = try VRMEntityLoader(withData: required)
+        let entity = try await vrmLoader.loadEntity()
+        #expect(try vrmLoader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
         // The rest of the model still renders as MToon.
         #expect(TestSupport.hasCustomMaterial(in: entity))
     }
@@ -428,15 +433,6 @@ struct MaterialShaderChainTests {
         let functions = MToonShaderFunctions(surface: .init(named: "noSuchSurface", in: library))
         let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url,
                                           shaders: [MToonShader(source: .convertAll, functions: functions)])
-        #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
-        #expect(loader.makeAnimatableMaterialState(forMaterialIndex: 0) == nil)
-    }
-
-    /// `.authoredOnly` is the default source.
-    @Test
-    func testAuthoredOnlyLeavesAPlainGLTFMaterialStandard() throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url)
         #expect(try loader.material(withMaterialIndex: 0) is PhysicallyBasedMaterial)
         #expect(loader.makeAnimatableMaterialState(forMaterialIndex: 0) == nil)
     }

@@ -5,10 +5,13 @@ import VRMTestSupport
 @Suite
 struct VRM0Tests {
 
+    /// Swift Testing builds the suite once per test, and every test reads the same model.
+    private static let model = Result { try VRM0(data: VRMSampleAsset.aliciaSolid.data) }
+
     let vrm: VRM0
 
     init() throws {
-        vrm = try VRM0(data: VRMSampleAsset.aliciaSolid.data)
+        vrm = try Self.model.get()
     }
 
     @Test

@@ -10,7 +10,7 @@ struct GLTFMergeTests {
     /// save. Everything the model already had comes out untouched, indices included.
     @Test
     func testAppendingUnderAHumanoidBoneKeepsTheModelIntact() throws {
-        let vrm = try VRM(data: VRMSampleAsset.aliciaSolid.data)
+        let vrm = try VRMSampleAsset.aliciaSolid.parsedVRM
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let hand = try #require(vrm.nodeIndex(of: .leftHand))
         let before = try document.typed()
@@ -35,27 +35,44 @@ struct GLTFMergeTests {
     }
 
     /// VRM 0.x reads its material settings out of an array parallel to `materials`, so
-    /// appending a material has to extend it too.
+    /// appending a material has to extend it too. And a GLB has nowhere to keep a texture
+    /// but inside itself, so an image the source left in a file of its own is read into
+    /// the buffer.
     @Test
-    func testAppendingToAVRM0KeepsMaterialPropertiesParallel() throws {
+    func testAppendingToAVRM0KeepsMaterialPropertiesParallelAndEmbedsImagesInTheBuffer() throws {
         var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
-        let materialsBefore = try document.typed().materials.count
+        let before = try document.typed()
+        let imageBase = before.images.count
+        let textureBase = before.textures.count
+        let samplerBase = before.samplers.count
 
         try document.append(source, under: 0)
 
         let merged = try VRM0(data: try document.serialize())
         let materials = merged.document.gltf.materials
-        #expect(materials.count == materialsBefore + 1)
+        #expect(materials.count == before.materials.count + 1)
         #expect(merged.materialProperties.count == materials.count)
         #expect(merged.materialProperties.last?.shader == "VRM_USE_GLTFSHADER")
         #expect(merged.materialProperties.last?.name == materials.last?.name ?? "")
         #expect(merged.materialProperties.dropLast().allSatisfy { $0.shader != "VRM_USE_GLTFSHADER" })
+
+        let image = try #require(merged.document.gltf.images[safe: imageBase])
+        #expect(image.uri == nil)
+        #expect(image.mimeType == "image/png")
+        let expected = try Data(contentsOf: GLTFSampleAsset.simpleTexture.rootDirectory
+            .appendingPathComponent("testTexture.png"))
+        #expect(try merged.document.bufferViewData(at: try #require(image.bufferView)).data == expected)
+
+        let texture = try #require(merged.document.gltf.textures[safe: textureBase])
+        #expect(texture.source == imageBase)
+        #expect(texture.sampler == samplerBase)
+        #expect(materials.last?.pbrMetallicRoughness?.baseColorTexture?.index == textureBase)
     }
 
     @Test
     func testAppendingToAVRM1LeavesItsExtensionsAlone() throws {
-        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
+        let vrm = try VRMSampleAsset.seedSan.parsedVRM
         var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
         let head = try #require(vrm.nodeIndex(of: .head))
 
@@ -163,34 +180,6 @@ struct GLTFMergeTests {
                                 indices: animations.flatMap { $0.samplers.flatMap { [$0.input, $0.output] } })
     }
 
-    /// A GLB has nowhere to keep a texture but inside itself, so an image the source left
-    /// in a file of its own is read into the buffer.
-    @Test
-    func testAppendedImagesAreEmbeddedInTheBuffer() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let source = try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url)
-        let before = try document.typed()
-        let imageBase = before.images.count
-        let textureBase = before.textures.count
-        let samplerBase = before.samplers.count
-
-        try document.append(source, under: 0)
-
-        let merged = try GLTFDocument(data: try document.serialize())
-        let image = try #require(merged.gltf.images[safe: imageBase])
-        #expect(image.uri == nil)
-        #expect(image.mimeType == "image/png")
-        let expected = try Data(contentsOf: GLTFSampleAsset.simpleTexture.rootDirectory
-            .appendingPathComponent("testTexture.png"))
-        #expect(try merged.bufferViewData(at: try #require(image.bufferView)).data == expected)
-
-        let texture = try #require(merged.gltf.textures[safe: textureBase])
-        #expect(texture.source == imageBase)
-        #expect(texture.sampler == samplerBase)
-        let material = try #require(merged.gltf.materials.last)
-        #expect(material.pbrMetallicRoughness?.baseColorTexture?.index == textureBase)
-    }
-
     /// Every buffer view starts on a 4 byte boundary, whatever length the buffers being
     /// concatenated happen to have.
     @Test
@@ -231,42 +220,6 @@ struct GLTFMergeTests {
         }
     }
 
-    @Test
-    func testAppendingACompressedSourceFails() throws {
-        let draco = try GLTFSampleAsset.triangle.rewritingJSON {
-            $0["extensionsRequired"] = ["KHR_draco_mesh_compression"]
-            $0["extensionsUsed"] = ["KHR_draco_mesh_compression"]
-        }
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let source = try GLTFDocument(data: draco, rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
-
-        #expect(throws: VRMError.self) { try document.append(source, under: 0) }
-    }
-
-    @Test
-    func testAppendingASourceWithUnrebasableRootExtensionsFails() throws {
-        let lit = try GLTFSampleAsset.triangle.rewritingJSON {
-            $0["extensions"] = ["KHR_lights_punctual": ["lights": [["type": "point"]]]]
-        }
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let source = try GLTFDocument(data: lit, rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
-
-        #expect(throws: VRMError.self) { try document.append(source, under: 0) }
-    }
-
-    /// A merge rebases indices, and an extension it has never heard of may hold some, so
-    /// what may be merged is an allowlist.
-    @Test
-    func testAppendingASourceUsingAnUnknownExtensionFails() throws {
-        let unknown = try GLTFSampleAsset.triangle.rewritingJSON {
-            $0["extensionsUsed"] = ["EXT_something_nobody_here_has_read"]
-        }
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let source = try GLTFDocument(data: unknown, rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
-
-        #expect(throws: VRMError.self) { try document.append(source, under: 0) }
-    }
-
     /// A key ending in `Texture` outside the slots glTF defines is the document's own
     /// field, so rewriting its `index` would change what the merge carries over untouched.
     @Test
@@ -290,21 +243,6 @@ struct GLTFMergeTests {
         #expect(baseColor?.index("index") == texturesBefore)
     }
 
-    /// A material extension the source never declared slips past the list of what a merge
-    /// may carry, so the materials are checked as well.
-    @Test
-    func testAppendingASourceWithAnUndeclaredMaterialExtensionFails() throws {
-        let unknown = try GLTFSampleAsset.simpleTexture.rewritingJSON { json in
-            var materials = json.objects("materials")
-            materials[0]["extensions"] = ["ACME_materials_glitter": ["glitterTexture": ["index": 0]]]
-            json["materials"] = .objects(materials)
-        }
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let source = try GLTFDocument(data: unknown, rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
-
-        #expect(throws: VRMError.self) { try document.append(source, under: 0) }
-    }
-
     /// An extension the source could not be rendered without stays required after the merge.
     @Test
     func testAppendingCarriesOverWhatTheSourceRequires() throws {
@@ -322,9 +260,19 @@ struct GLTFMergeTests {
         #expect(merged.strings("extensionsRequired").contains("KHR_materials_unlit"))
     }
 
+    /// What the merge checks of the source alone, it checks before the target is touched,
+    /// so any target will do.
+    @Test(arguments: UnmergeableSource.allCases)
+    func testAppendingASourceTheMergeCannotCarryFails(unmergeable: UnmergeableSource) throws {
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
+        let source = try unmergeable.document
+
+        #expect(throws: VRMError.self) { try document.append(source, under: 0) }
+    }
+
     @Test
     func testAppendingUnderAMissingNodeChangesNothing() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) {
@@ -378,22 +326,12 @@ struct GLTFMergeTests {
 
     @Test
     func testAppendingASceneOutOfRangeFails() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let source = try GLTFDocument(withURL: GLTFSampleAsset.triangle.url)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.append(source, sceneAt: 7, under: 0) }
         #expect(try document.serialize() == before)
-    }
-
-    /// A VRM 0.x model keeps a material's MToon settings in its root extension, so copying
-    /// its nodes alone would strip their shading.
-    @Test
-    func testAppendingAVRM0SourceFails() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
-        let source = try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
-
-        #expect(throws: VRMError.self) { try document.append(source, under: 0) }
     }
 
     /// A VRM 1.0 model describes its materials on the materials themselves, so only what
@@ -428,26 +366,75 @@ struct GLTFMergeTests {
         #expect(try document.serialize() == before)
     }
 
+}
+
+// MARK: - Fixtures
+
+/// Sources the merge refuses on their own account, whatever they are appended to.
+enum UnmergeableSource: CaseIterable, Sendable {
+    case compressed
+    case unrebasableRootExtension
+    /// A merge rebases indices, and an extension it has never heard of may hold some, so
+    /// what may be merged is an allowlist.
+    case unknownExtension
+    /// A material extension the source never declared slips past the list of what a merge
+    /// may carry, so the materials are checked as well.
+    case undeclaredMaterialExtension
     /// glTF has a document declare every extension it uses, so one carried without being
     /// declared is read off the document itself rather than trusted: its indices would
     /// come over pointing into the source's own arrays.
-    @Test
-    func testAppendingASourceWithAnUndeclaredNestedExtensionFails() throws {
-        let undeclared = try GLTFSampleAsset.simpleTexture.rewritingJSON { json in
-            json.mapObjects(.meshes) { mesh in
-                var mesh = mesh
-                mesh.mapObjects("primitives") { primitive in
-                    var primitive = primitive
-                    primitive["extensions"] = ["KHR_draco_mesh_compression": ["bufferView": 0]]
-                    return primitive
+    case undeclaredNestedExtension
+    /// A VRM 0.x model keeps a material's MToon settings in its root extension, so copying
+    /// its nodes alone would strip their shading.
+    case vrm0
+
+    var document: GLTFDocument {
+        get throws {
+            switch self {
+            case .compressed:
+                try Self.triangle {
+                    $0["extensionsRequired"] = ["KHR_draco_mesh_compression"]
+                    $0["extensionsUsed"] = ["KHR_draco_mesh_compression"]
                 }
-                return mesh
+            case .unrebasableRootExtension:
+                try Self.triangle {
+                    $0["extensions"] = ["KHR_lights_punctual": ["lights": [["type": "point"]]]]
+                }
+            case .unknownExtension:
+                try Self.triangle {
+                    $0["extensionsUsed"] = ["EXT_something_nobody_here_has_read"]
+                }
+            case .undeclaredMaterialExtension:
+                try Self.simpleTexture { json in
+                    var materials = json.objects("materials")
+                    materials[0]["extensions"] = ["ACME_materials_glitter": ["glitterTexture": ["index": 0]]]
+                    json["materials"] = .objects(materials)
+                }
+            case .undeclaredNestedExtension:
+                try Self.simpleTexture { json in
+                    json.mapObjects(.meshes) { mesh in
+                        var mesh = mesh
+                        mesh.mapObjects("primitives") { primitive in
+                            var primitive = primitive
+                            primitive["extensions"] = ["KHR_draco_mesh_compression": ["bufferView": 0]]
+                            return primitive
+                        }
+                        return mesh
+                    }
+                }
+            case .vrm0:
+                try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
             }
         }
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
-        let source = try GLTFDocument(data: undeclared,
-                                      rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
+    }
 
-        #expect(throws: VRMError.self) { try document.append(source, under: 0) }
+    private static func triangle(_ modify: (inout [String: JSONValue]) throws -> Void) throws -> GLTFDocument {
+        try GLTFDocument(data: try GLTFSampleAsset.triangle.rewritingJSON(modify),
+                         rootDirectory: GLTFSampleAsset.triangle.rootDirectory)
+    }
+
+    private static func simpleTexture(_ modify: (inout [String: JSONValue]) throws -> Void) throws -> GLTFDocument {
+        try GLTFDocument(data: try GLTFSampleAsset.simpleTexture.rewritingJSON(modify),
+                         rootDirectory: GLTFSampleAsset.simpleTexture.rootDirectory)
     }
 }

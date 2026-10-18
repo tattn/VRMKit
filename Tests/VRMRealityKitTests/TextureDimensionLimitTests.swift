@@ -22,12 +22,23 @@ struct TextureDimensionLimitTests {
         return try #require(context.makeImage())
     }
 
+    typealias Clamp = (width: Int, height: Int, limit: Int?, expectedWidth: Int, expectedHeight: Int)
+
+    /// The longest side meets the limit and the aspect ratio holds, while no limit
+    /// leaves the authored size alone.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @Test func noLimitLeavesTheAuthoredSizeAlone() throws {
-        let authored = try image(width: 512, height: 256)
-        let result = GLTFSceneBuilder.clamped(authored, to: nil)
-        #expect(result.width == 512)
-        #expect(result.height == 256)
+    @Test(arguments: [
+        (512, 256, nil, 512, 256),
+        (1024, 512, 256, 256, 128),
+        (64, 1024, 128, 8, 128),
+        // A side that would round to zero still has to be a drawable pixel.
+        (4096, 1, 16, 16, 1)
+    ] as [Clamp])
+    func anImageIsDrawnWithinTheLimitAtItsAspectRatio(_ clamp: Clamp) throws {
+        let authored = try image(width: clamp.width, height: clamp.height)
+        let result = GLTFSceneBuilder.clamped(authored, to: clamp.limit)
+        #expect(result.width == clamp.expectedWidth)
+        #expect(result.height == clamp.expectedHeight)
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -35,31 +46,6 @@ struct TextureDimensionLimitTests {
         let authored = try image(width: 256, height: 128)
         let result = GLTFSceneBuilder.clamped(authored, to: 256)
         #expect(result === authored)
-    }
-
-    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @Test func theLongestSideMeetsTheLimitAndTheAspectRatioHolds() throws {
-        let authored = try image(width: 1024, height: 512)
-        let result = GLTFSceneBuilder.clamped(authored, to: 256)
-        #expect(result.width == 256)
-        #expect(result.height == 128)
-    }
-
-    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @Test func aVeryTallImageIsLimitedByItsHeight() throws {
-        let authored = try image(width: 64, height: 1024)
-        let result = GLTFSceneBuilder.clamped(authored, to: 128)
-        #expect(result.height == 128)
-        #expect(result.width == 8)
-    }
-
-    /// A side that would round to zero still has to be a drawable pixel.
-    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @Test func anExtremeAspectRatioKeepsAtLeastOnePixel() throws {
-        let authored = try image(width: 4096, height: 1)
-        let result = GLTFSceneBuilder.clamped(authored, to: 16)
-        #expect(result.width == 16)
-        #expect(result.height == 1)
     }
 
     /// A PNG with alpha decodes as non-premultiplied, a format Core Graphics draws into

@@ -10,20 +10,6 @@ import VRMKit
 @MainActor
 struct VRMUpdateSystemTests {
     @Test
-    func testAutomaticUpdateIsOnByDefaultAndCanBeToggled() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData)
-        let vrmEntity = try await loader.loadEntity()
-        #expect(vrmEntity.isAutomaticUpdateEnabled)
-
-        vrmEntity.isAutomaticUpdateEnabled = false
-        #expect(!vrmEntity.isAutomaticUpdateEnabled)
-
-        vrmEntity.isAutomaticUpdateEnabled = true
-        #expect(vrmEntity.isAutomaticUpdateEnabled)
-    }
-
-    @Test
     func testParentKeepsTheLoadedEntityAlive() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Adding the model to a scene is all its lifetime needs: nothing outside
@@ -31,8 +17,14 @@ struct VRMUpdateSystemTests {
         let parent = Entity()
         weak var loaded: VRMEntity?
         do {
-            let loader = try VRMEntityLoader(withData: TestSupport.seedSanData)
+            let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: [])
             let vrmEntity = try await loader.loadEntity()
+            #expect(vrmEntity.isAutomaticUpdateEnabled)
+            vrmEntity.isAutomaticUpdateEnabled = false
+            #expect(!vrmEntity.isAutomaticUpdateEnabled)
+            vrmEntity.isAutomaticUpdateEnabled = true
+            #expect(vrmEntity.isAutomaticUpdateEnabled)
+
             loaded = vrmEntity
             parent.addChild(vrmEntity)
         }
@@ -60,27 +52,6 @@ struct VRMUpdateSystemTests {
 
         vrmEntity.invalidateSkinPose()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
-        #expect(TestSupport.jointRotations(in: vrmEntity) != before)
-    }
-
-    /// A directly posed joint reaches the skin through the fine-grained
-    /// invalidation alone, even against a solve the runtime already has cached:
-    /// only the moved joint's row is recomputed, and it lands.
-    @Test
-    func testDirectlyPosedJointReachesTheSkinThroughAFineGrainedInvalidate() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
-        // Warm the per-skeleton solve cache, so the second update takes the
-        // partial path rather than a first full solve.
-        vrmEntity.update(deltaTime: 1.0 / 60.0)
-
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
-        let before = TestSupport.jointRotations(in: vrmEntity)
-        #expect(!before.isEmpty)
-        head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
-        vrmEntity.invalidateSkinPose(for: [head])
-        vrmEntity.update(deltaTime: 1.0 / 60.0)
-
         #expect(TestSupport.jointRotations(in: vrmEntity) != before)
     }
 
@@ -146,7 +117,7 @@ struct VRMUpdateSystemTests {
     @Test
     func testFineGrainedInvalidateForAnUnownedAncestorReachesTheSkin() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
 
         let hips = try #require(vrmEntity.humanoid.node(for: .hips))

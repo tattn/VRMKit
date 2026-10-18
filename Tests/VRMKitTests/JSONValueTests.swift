@@ -130,11 +130,19 @@ struct JSONValueTests {
     func testNumbersReadAsTheKindTheFieldAsksFor() {
         #expect(JSONValue.double(2.0).intValue == 2)
         #expect(JSONValue.double(2.5).intValue == nil)
+        #expect(JSONValue.int(0).indexValue == 0)
+        #expect(JSONValue.int(7).indexValue == 7)
+        // A `Float` would round this to its neighbour, so an index never passes through one.
+        #expect(JSONValue.int(16_777_217).indexValue == 16_777_217)
         #expect(JSONValue.int(-1).indexValue == nil)
         #expect(JSONValue.int(Int(Int32.max)).indexValue == Int(Int32.max))
         #expect(JSONValue.int(Int(Int32.max) + 1).indexValue == nil)
+        #expect(JSONValue.double(1.5).indexValue == nil)
+        #expect(JSONValue.double(.nan).indexValue == nil)
         #expect(JSONValue.string("3").intValue == nil)
+        #expect(JSONValue.string("3").indexValue == nil)
         #expect(JSONValue.bool(true).intValue == nil)
+        #expect(JSONValue.bool(true).indexValue == nil)
         // A `Float` cannot hold 1e100, and an infinity in a renderer is worse
         // than falling back to a default.
         #expect(JSONValue.double(1e100).floatValue == nil)

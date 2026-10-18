@@ -5,23 +5,6 @@ import VRMTestSupport
 
 @Suite
 struct MToonMaterialDescriptorTests {
-    /// JSON numbers reach the VRM extensions as untyped `JSONValue`s, and glTF
-    /// indices have to survive that intact: `Float` rounds `16_777_217` to its
-    /// neighbour and `Int32.max` past its own range.
-    @Test
-    func testIndexCoercionAcceptsOnlyExactNonNegativeInt32Values() {
-        #expect(JSONValue.int(0).indexValue == 0)
-        #expect(JSONValue.int(7).indexValue == 7)
-        #expect(JSONValue.int(16_777_217).indexValue == 16_777_217)
-        #expect(JSONValue.int(Int(Int32.max)).indexValue == Int(Int32.max))
-        #expect(JSONValue.int(Int(Int32.max) + 1).indexValue == nil)
-        #expect(JSONValue.int(-1).indexValue == nil)
-        #expect(JSONValue.double(1.5).indexValue == nil)
-        #expect(JSONValue.double(.nan).indexValue == nil)
-        #expect(JSONValue.bool(true).indexValue == nil)
-        #expect(JSONValue.string("3").indexValue == nil)
-    }
-
     @Test
     func testVRM0DefaultValuesMigrateToMToon10Domain() throws {
         let descriptor = try #require(MToonMaterialDescriptor(material: material(),

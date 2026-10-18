@@ -13,7 +13,6 @@ import VRMTestSupport
 @MainActor
 struct OutputColorSpaceTests {
     private static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
-    private static let displayP3 = CGColorSpace(name: CGColorSpace.displayP3)!
 
     private func image(rgb: [UInt8], space: CGColorSpace) throws -> CGImage {
         let provider = try #require(CGDataProvider(data: Data(rgb + [255]) as CFData))
@@ -28,17 +27,19 @@ struct OutputColorSpaceTests {
         encoded <= 0.04045 ? encoded / 12.92 : pow((encoded + 0.055) / 1.055, 2.4)
     }
 
+    /// An sRGB output tags color images as Display P3. A Display P3 output reads any
+    /// profile as sRGB, since glTF has loaders ignore an embedded profile: the pixels
+    /// are sRGB numbers regardless.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @Test func anSRGBOutputTagsColorImagesAsDisplayP3() throws {
-        let tagged = GLTFOutputColorSpace.sRGB.colorImage(try image(rgb: [200, 100, 0], space: Self.sRGB))
-        #expect(tagged.colorSpace?.name == CGColorSpace.displayP3)
-    }
-
-    /// glTF has loaders ignore an embedded profile: the pixels are sRGB numbers regardless.
-    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @Test func aDisplayP3OutputReadsAnyProfileAsSRGB() throws {
-        let tagged = GLTFOutputColorSpace.displayP3.colorImage(try image(rgb: [200, 100, 0], space: Self.displayP3))
-        #expect(tagged.colorSpace?.name == CGColorSpace.sRGB)
+    @Test(arguments: [
+        (GLTFOutputColorSpace.sRGB, CGColorSpace.sRGB as String, CGColorSpace.displayP3 as String),
+        (.displayP3, CGColorSpace.displayP3 as String, CGColorSpace.sRGB as String)
+    ])
+    func aColorImageIsTaggedForTheOutput(outputColorSpace: GLTFOutputColorSpace,
+                                         embedded: String, tagged: String) throws {
+        let space = try #require(CGColorSpace(name: embedded as CFString))
+        let result = outputColorSpace.colorImage(try image(rgb: [200, 100, 0], space: space))
+        #expect(result.colorSpace?.name == tagged as CFString)
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

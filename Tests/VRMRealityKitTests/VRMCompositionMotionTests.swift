@@ -13,13 +13,17 @@ import VRMTestSupport
 @MainActor
 struct VRMCompositionMotionTests {
     /// A merged prop brings its animation with it, and the avatar's entity plays it
-    /// through the API every glTF scene has.
+    /// through the API every glTF scene has. The VRM update then poses the avatar
+    /// around it without disturbing it, and leaves the merged nodes no chain names
+    /// hanging rigidly, which says the swing of a written chain comes from the chain.
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testAnAnimationMergedIntoAVRMPlaysOnIt(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let composed = try ComposedModel(model: model)
         let entity = try await composed.loadEntity()
         let propeller = try #require(entity.entity(forNodeAt: composed.animatedNode))
+        let ornament = try composed.ornament.map { try #require(entity.entity(forNodeAt: $0)) }
+        let head = try #require(entity.humanoid.node(for: .head))
 
         #expect(entity.animations.count == 1)
         let controller = try entity.playAnimation(at: 0)
@@ -29,25 +33,17 @@ struct VRMCompositionMotionTests {
         #expect(controller.time.isApproximatelyEqual(to: 0.25))
         let quarter = simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(0, 0, 1))
         #expect(abs(simd_dot(propeller.transform.rotation, quarter)) > 0.999)
-    }
 
-    @Test
-    func testAMergedAnimationAndTheVRMUpdateDoNotDisturbEachOther() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let composed = try ComposedModel(model: .seedSan)
-        let entity = try await composed.loadEntity()
-        let propeller = try #require(entity.entity(forNodeAt: composed.animatedNode))
-        let head = try #require(entity.humanoid.node(for: .head))
-
-        try entity.playAnimation(at: 0)
-        entity.updateAnimations(deltaTime: 0.25)
         let animated = propeller.transform.rotation
-        head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
+        head.transform.rotation = simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(1, 0, 0))
         let joints = TestSupport.jointRotations(in: entity)
-        entity.update(deltaTime: 1.0 / 60.0)
+        for _ in 0..<10 {
+            entity.update(deltaTime: 1.0 / 60.0)
+        }
 
         #expect(TestSupport.jointRotations(in: entity) != joints)
         #expect(abs(simd_dot(propeller.transform.rotation, animated)) > 0.999)
+        #expect(ornament.allSatisfy { $0.transform.rotation.isApproximatelyIdentity })
     }
 
     /// A written chain is one the loader reads and the spring runtime drives: moving what
@@ -75,24 +71,6 @@ struct VRMCompositionMotionTests {
         // and writes nothing to it, while 0.x swings every node below the root.
         let tailSwings = try #require(ornament.last).transform.rotation.isApproximatelyIdentity == false
         #expect(tailSwings == composed.isVRM0)
-    }
-
-    /// Without a chain the same nodes hang rigidly, which says the swing above came
-    /// from the chain.
-    @Test
-    func testMergedNodesWithoutAChainDoNotSwing() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let composed = try ComposedModel(model: .seedSan)
-        let entity = try await composed.loadEntity()
-        let ornament = try composed.ornament.map { try #require(entity.entity(forNodeAt: $0)) }
-        let head = try #require(entity.humanoid.node(for: .head))
-
-        head.transform.rotation = simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(1, 0, 0))
-        for _ in 0..<10 {
-            entity.update(deltaTime: 1.0 / 60.0)
-        }
-
-        #expect(ornament.allSatisfy { $0.transform.rotation.isApproximatelyIdentity })
     }
 }
 

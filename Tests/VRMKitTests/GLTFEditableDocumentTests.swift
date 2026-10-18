@@ -64,7 +64,9 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testAddNodeAttachesToItsParentAndKeepsExistingIndices() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        // A fixture whose nodes have names, so a node moved by the edit shows up as one.
+        let asset = GLTFSampleAsset.textureTransformTest
+        var document = try GLTFEditableDocument(data: asset.data, rootDirectory: asset.rootDirectory)
         let nodesBefore = try document.typed().nodes
 
         let transform = GLTFNodeTransform(translation: SIMD3(1, 2, 3),
@@ -83,7 +85,7 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testAddNodeWithoutParentBecomesASceneRoot() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
 
         let index = try document.addNode(name: "root item")
 
@@ -122,7 +124,7 @@ struct GLTFEditableDocumentTests {
     /// An edit that throws leaves the document as it was, not one orphaned node larger.
     @Test
     func testAddNodeUnderAMissingParentChangesNothing() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.seedSan.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let before = try document.serialize()
 
         #expect(throws: VRMError.self) { try document.addNode(name: "item", parent: 100_000) }
@@ -131,7 +133,7 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testSetTransformReplacesAMatrixWithItsTRS() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let index = try document.addNode(name: "item")
         try document.updateNode(at: index.rawValue) { $0["matrix"] = .numbers(GLTF.Matrix.identity.values) }
 
@@ -145,7 +147,7 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testNonFiniteTransformsAreRefusedWithoutChangingTheDocument() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let index = try document.addNode(name: "item")
         let before = try document.serialize()
 
@@ -162,7 +164,7 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testTransformOfAMatrixNodeIsDecomposed() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let index = try document.addNode(name: "item")
         let transform = GLTFNodeTransform(translation: SIMD3(1, 2, 3),
                                           rotation: simd_quatf(angle: .pi / 3, axis: normalize(SIMD3(1, 1, 0))),
@@ -207,7 +209,7 @@ struct GLTFEditableDocumentTests {
     /// rotation at all.
     @Test(arguments: [Float(4), 1e-4, 1e-20, 1e20, 1e30])
     func testANonUnitRotationIsWrittenNormalized(magnitude: Float) throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let index = try document.addNode(name: "item")
         let turn = simd_quatf(angle: .pi / 3, axis: normalize(SIMD3<Float>(0, 1, 0)))
 
@@ -223,7 +225,7 @@ struct GLTFEditableDocumentTests {
     /// A rotation of no length names none at all, rather than NaNs.
     @Test
     func testAZeroRotationIsWrittenAsNone() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let index = try document.addNode(name: "item")
 
         try document.setTransform(GLTFNodeTransform(rotation: simd_quatf(vector: .zero)), nodeAt: index)
@@ -233,7 +235,7 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testSetNameRenamesAndClearsANode() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
 
         try document.setName("renamed", nodeAt: 0)
         #expect(try document.typed().nodes[0].name == "renamed")
@@ -246,7 +248,7 @@ struct GLTFEditableDocumentTests {
     /// unreachable, ready to be attached again.
     @Test
     func testDetachNodeUnlinksTheSubtreeWithoutMovingOrErasingAnything() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let parent = try document.addNode(name: "container")
         let child = try document.addNode(name: "child", parent: parent)
         let nodesBefore = try document.typed().nodes.count
@@ -271,7 +273,7 @@ struct GLTFEditableDocumentTests {
     /// was under.
     @Test
     func testMoveNodeLeavesItsOldParentAndKeepsItsIndex() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let first = try document.addNode(name: "first")
         let second = try document.addNode(name: "second")
         let moved = try document.addNode(name: "moved", parent: first)
@@ -286,7 +288,7 @@ struct GLTFEditableDocumentTests {
 
     @Test
     func testMoveNodeWithoutAParentMakesItASceneRoot() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let parent = try document.addNode(name: "parent")
         let child = try document.addNode(name: "child", parent: parent)
 
@@ -300,7 +302,7 @@ struct GLTFEditableDocumentTests {
     /// A cycle would be walked forever, so the move is refused before any link is cut.
     @Test
     func testMoveNodeUnderItsOwnDescendantIsRefusedAndChangesNothing() throws {
-        var document = try GLTFEditableDocument(data: VRMSampleAsset.aliciaSolid.data)
+        var document = try GLTFEditableDocument(data: GLTFSampleAsset.boxVertexColors.data)
         let parent = try document.addNode(name: "parent")
         let child = try document.addNode(name: "child", parent: parent)
         let grandchild = try document.addNode(name: "grandchild", parent: child)

@@ -141,9 +141,10 @@ struct MToonOutlineTests {
     }
 
     /// The runtime API reaches every MToon material of a VRM, and hiding the
-    /// outlines leaves the main passes rendering.
+    /// outlines leaves the main passes rendering. A reset goes back to the
+    /// visibility the shader built the pass with, for its materials alone.
     @Test
-    func testRuntimeOutlineVisibilityLeavesMainPassesAlone() async throws {
+    func testRuntimeOutlineVisibilityLeavesMainPassesAloneAndResetsToWhatTheShaderBuilt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let outlines = outlineEntities(in: entity)
@@ -156,6 +157,13 @@ struct MToonOutlineTests {
         }
         #expect(!mainPasses.isEmpty)
         #expect(mainPasses.allSatisfy { $0.isEnabled })
+
+        entity.resetPassEnabled(named: MToonShader.outlinePassName, forMaterials: [0])
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { !$0 })
+
+        entity.resetPassEnabled(named: MToonShader.outlinePassName)
+        #expect(outlineSlotVisibility(in: entity).allSatisfy { $0 })
     }
 
     /// Pass visibility is read from the entity graph, so it works on a recursive
@@ -179,6 +187,9 @@ struct MToonOutlineTests {
     // MARK: - Pass visibility by material
 
     /// A material set reaches those materials alone, and a reset puts them back.
+    /// Materials that draw no such pass are skipped, an empty selection included.
+    /// The unit is the material, so selecting a subtree whose material is shared
+    /// reaches everywhere that material draws.
     @Test
     func testPassVisibilityForMaterialsReachesOnlyThem() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -188,53 +199,16 @@ struct MToonOutlineTests {
         #expect(!outlineSlotVisibility(in: entity, materialIndex: 0).isEmpty)
         #expect(!outlineSlotVisibility(in: entity, materialIndex: 1).isEmpty)
 
-        entity.setPassEnabled(false, named: MToonShader.outlinePassName, forMaterials: [0])
-        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
-        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { $0 })
-
-        entity.resetPassEnabled(named: MToonShader.outlinePassName, forMaterials: [0])
-        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
-    }
-
-    /// A reset goes back to the visibility the shader built the pass with, for its
-    /// materials alone.
-    @Test
-    func testResettingPassVisibilityRestoresWhatTheShaderBuilt() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        entity.setPassEnabled(false, named: MToonShader.outlinePassName)
-
-        entity.resetPassEnabled(named: MToonShader.outlinePassName, forMaterials: [0])
-        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
-        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { !$0 })
-
-        entity.resetPassEnabled(named: MToonShader.outlinePassName)
-        #expect(outlineSlotVisibility(in: entity).allSatisfy { $0 })
-    }
-
-    /// Materials that draw no such pass are skipped, an empty selection included.
-    @Test
-    func testPassVisibilityWithoutThePassInTheSelectionIsANoOp() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san material 3, an eye without an outline, builds no pass, and material
         // 12 is not MToon.
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let visibility = outlineSlotVisibility(in: entity)
-
         entity.setPassEnabled(false, named: MToonShader.outlinePassName, forMaterials: [3, 12])
         #expect(outlineSlotVisibility(in: entity) == visibility)
         entity.setPassEnabled(false, named: MToonShader.outlinePassName, forMaterials: [])
         #expect(outlineSlotVisibility(in: entity) == visibility)
-    }
 
-    /// The unit is the material, so selecting a subtree whose material is shared
-    /// reaches everywhere that material draws.
-    @Test
-    func testPassVisibilityOnASharedMaterialReachesEverywhereItDraws() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san's "hair_tail" mesh (node 1) draws material 0, which the
         // "hair" mesh (node 0) shares.
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let hairTail = try #require(entity.entity(forNodeAt: 1))
         let selection = entity.materialIndices(under: hairTail)
         #expect(selection == [0])
@@ -242,6 +216,11 @@ struct MToonOutlineTests {
         entity.setPassEnabled(false, named: MToonShader.outlinePassName, forMaterials: selection)
         let hair = try #require(entity.entity(forNodeAt: 0))
         #expect(outlineSlotVisibility(in: hair, materialIndex: 0).allSatisfy { !$0 })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { $0 })
+
+        entity.resetPassEnabled(named: MToonShader.outlinePassName, forMaterials: selection)
+        #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
     }
 #endif
 }

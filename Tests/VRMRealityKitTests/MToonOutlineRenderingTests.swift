@@ -14,7 +14,7 @@ import VRMTestSupport
 struct MToonOutlineRenderingTests {
     private static let size = 256
     /// Leaves room around the cube for the outline band to land in.
-    private nonisolated static let cubeScale: Float = 0.3
+    private static let cubeScale: Float = 0.3
     private static let width: Float = 0.06
 
     /// A cube turned 45°, since head-on every normal would point at the camera and
@@ -23,10 +23,9 @@ struct MToonOutlineRenderingTests {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func cube(outlinedWith mode: MToonOutlineWidthMode?,
                       scale: SIMD3<Float>,
-                      x: Float = 0,
-                      width: Float = MToonOutlineRenderingTests.width) async throws -> Entity {
+                      x: Float = 0) async throws -> Entity {
         let style = MToonConversionStyle(outlineWidthMode: mode ?? .worldCoordinates,
-                                         outlineWidthFactor: mode == nil ? 0 : width,
+                                         outlineWidthFactor: mode == nil ? 0 : Self.width,
                                          outlineColorFactor: SIMD4<Float>(1, 0, 0, 1))
         let entity = try await GLTFEntityLoader(withURL: GLTFSampleAsset.animatedMorphCube.url,
                                                       shaders: [MToonShader(source: .convertAll(style))]).loadEntity()
@@ -41,9 +40,8 @@ struct MToonOutlineRenderingTests {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func cube(outlinedWith mode: MToonOutlineWidthMode?,
                       scale: Float,
-                      x: Float = 0,
-                      width: Float = MToonOutlineRenderingTests.width) async throws -> Entity {
-        try await cube(outlinedWith: mode, scale: SIMD3<Float>(repeating: scale), x: x, width: width)
+                      x: Float = 0) async throws -> Entity {
+        try await cube(outlinedWith: mode, scale: SIMD3<Float>(repeating: scale), x: x)
     }
 
     private func isDrawn(_ pixel: SIMD3<Float>) -> Bool { pixel.max() > 8 }
@@ -53,37 +51,53 @@ struct MToonOutlineRenderingTests {
         image[image.count / 2].count(where: isDrawn)
     }
 
-    /// How many pixels the outline adds to the silhouette's width, measured with
-    /// and without it so the cube's own size cancels out.
-    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private func outlineGrowth(mode: MToonOutlineWidthMode,
-                               scale: SIMD3<Float> = SIMD3<Float>(repeating: cubeScale),
-                               viewport: (width: Int, height: Int) = (size, size)) async throws -> Int {
-        let bare = try OffscreenRenderer.render(await cube(outlinedWith: nil, scale: scale),
-                                                width: viewport.width, height: viewport.height)
-        let outlined = try OffscreenRenderer.render(await cube(outlinedWith: mode, scale: scale),
-                                                    width: viewport.width, height: viewport.height)
-        return silhouetteWidth(outlined) - silhouetteWidth(bare)
-    }
-
     /// Neither width mode inherits the model-to-world scale: a screen-space width is
     /// a fraction of the screen and a world-space one a distance in meters, so
     /// doubling the entity leaves the outline exactly as thick. Squashing it moves
-    /// the normals the outline is pushed along, but not the band either.
-    @Test(arguments: [
-        (MToonOutlineWidthMode.screenCoordinates, SIMD3<Float>(repeating: cubeScale * 2)),
-        (.worldCoordinates, SIMD3<Float>(repeating: cubeScale * 2)),
-        (.screenCoordinates, SIMD3<Float>(cubeScale * 2, cubeScale * 0.5, cubeScale))
-    ])
-    func testOutlineWidthIgnoresEntityScale(mode: MToonOutlineWidthMode, scaled: SIMD3<Float>) async throws {
+    /// the normals the outline is pushed along, but not the band either. MToon
+    /// measures a screen-space width against the screen *height*, and the camera
+    /// frames the same height either way, so widening the viewport must not change
+    /// the sideways band.
+    @Test
+    func testOutlineWidthIgnoresEntityScaleAndIsMeasuredAgainstScreenHeight() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
               TestSupport.isMToonRenderingAvailable else { return }
-        let atScale = try await outlineGrowth(mode: mode, scale: SIMD3<Float>(repeating: Self.cubeScale))
-        let atOtherScale = try await outlineGrowth(mode: mode, scale: scaled)
+        let atScale = SIMD3<Float>(repeating: Self.cubeScale)
+        let doubled = SIMD3<Float>(repeating: Self.cubeScale * 2)
+        let squashed = SIMD3<Float>(Self.cubeScale * 2, Self.cubeScale * 0.5, Self.cubeScale)
 
-        #expect(atScale > 4, "no outline band to measure")
-        #expect(abs(atOtherScale - atScale) <= 2,
-                "\(mode) outline grew the silhouette by \(atScale)px, then \(atOtherScale)px at scale \(scaled)")
+        func drawnWidth(_ mode: MToonOutlineWidthMode?,
+                        scale: SIMD3<Float>,
+                        viewportWidth: Int = Self.size) async throws -> Int {
+            let image = try OffscreenRenderer.render(await cube(outlinedWith: mode, scale: scale),
+                                                     width: viewportWidth, height: Self.size)
+            return silhouetteWidth(image)
+        }
+
+        // How many pixels the outline adds to the silhouette's width, measured
+        // against the bare cube so the cube's own size cancels out.
+        let bare = try await drawnWidth(nil, scale: atScale)
+        let bareDoubled = try await drawnWidth(nil, scale: doubled)
+        let screen = try await drawnWidth(.screenCoordinates, scale: atScale) - bare
+        let world = try await drawnWidth(.worldCoordinates, scale: atScale) - bare
+        #expect(screen > 4, "no screen-space outline band to measure")
+        #expect(world > 4, "no world-space outline band to measure")
+
+        let variants: [(name: String, baseline: Int, growth: Int)] = [
+            ("screen-space at twice the scale", screen,
+             try await drawnWidth(.screenCoordinates, scale: doubled) - bareDoubled),
+            ("world-space at twice the scale", world,
+             try await drawnWidth(.worldCoordinates, scale: doubled) - bareDoubled),
+            ("screen-space squashed to \(squashed)", screen,
+             try await drawnWidth(.screenCoordinates, scale: squashed) - drawnWidth(nil, scale: squashed)),
+            ("screen-space on a 2:1 viewport", screen,
+             try await drawnWidth(.screenCoordinates, scale: atScale, viewportWidth: Self.size * 2)
+                - drawnWidth(nil, scale: atScale, viewportWidth: Self.size * 2))
+        ]
+        for variant in variants {
+            #expect(abs(variant.growth - variant.baseline) <= 2,
+                    "\(variant.name): the outline grew the silhouette by \(variant.growth)px, \(variant.baseline)px at the baseline")
+        }
     }
 
     /// What separates the two modes: pull the camera back and a screen-space
@@ -96,19 +110,18 @@ struct MToonOutlineRenderingTests {
         let near: Float = 1.2
         let far = near * 3
 
-        func growth(_ mode: MToonOutlineWidthMode, at distance: Float, width: Float) async throws -> Int {
-            let bare = try OffscreenRenderer.renderPerspective(await cube(outlinedWith: nil, scale: Self.cubeScale),
-                                                               size: Self.size, distance: distance)
-            let outlined = try OffscreenRenderer.renderPerspective(
-                await cube(outlinedWith: mode, scale: Self.cubeScale, width: width),
-                size: Self.size, distance: distance)
-            return silhouetteWidth(outlined) - silhouetteWidth(bare)
+        func drawnWidth(_ mode: MToonOutlineWidthMode?, at distance: Float) async throws -> Int {
+            let image = try OffscreenRenderer.renderPerspective(await cube(outlinedWith: mode, scale: Self.cubeScale),
+                                                                size: Self.size, distance: distance)
+            return silhouetteWidth(image)
         }
 
-        let screenNear = try await growth(.screenCoordinates, at: near, width: Self.width)
-        let screenFar = try await growth(.screenCoordinates, at: far, width: Self.width)
-        let worldNear = try await growth(.worldCoordinates, at: near, width: Self.width)
-        let worldFar = try await growth(.worldCoordinates, at: far, width: Self.width)
+        let bareNear = try await drawnWidth(nil, at: near)
+        let bareFar = try await drawnWidth(nil, at: far)
+        let screenNear = try await drawnWidth(.screenCoordinates, at: near) - bareNear
+        let screenFar = try await drawnWidth(.screenCoordinates, at: far) - bareFar
+        let worldNear = try await drawnWidth(.worldCoordinates, at: near) - bareNear
+        let worldFar = try await drawnWidth(.worldCoordinates, at: far) - bareFar
 
         #expect(screenNear > 8, "no outline band to measure")
         // Held, not fixed: the width comes from a first-order probe of the
@@ -237,20 +250,5 @@ struct MToonOutlineRenderingTests {
         #expect(blue.z > blue.y, "the blue outline written in place measured \(blue)")
     }
 #endif
-
-    /// MToon measures a screen-space width against the screen *height*, and the
-    /// camera frames the same height either way, so widening the viewport must
-    /// not change the sideways band.
-    @Test
-    func testScreenCoordinateWidthIsMeasuredAgainstScreenHeight() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), OffscreenRenderer.isAvailable,
-              TestSupport.isMToonRenderingAvailable else { return }
-        let square = try await outlineGrowth(mode: .screenCoordinates, viewport: (Self.size, Self.size))
-        let wide = try await outlineGrowth(mode: .screenCoordinates, viewport: (Self.size * 2, Self.size))
-
-        #expect(square > 4, "no outline band to measure")
-        #expect(abs(wide - square) <= 2,
-                "screen-space outline grew the silhouette by \(square)px on a square viewport, \(wide)px on a 2:1 one")
-    }
 }
 #endif

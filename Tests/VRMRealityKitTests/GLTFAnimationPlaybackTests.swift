@@ -487,123 +487,137 @@ struct GLTFAnimationPlaybackTests {
         return bytes
     }
 
-    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    @MainActor
-    private func loadAnimated(path: String, input: SamplerStorage, output: SamplerStorage) async throws -> GLTFEntity {
-        try await GLTFEntityLoader(withData: samplerFixture(path: path, input: input, output: output)).loadEntity()
+    /// How a hand-written sampler stores its keyframes, against what the spec allows.
+    enum SamplerStorageCase: CaseIterable {
+        /// The spec fixes a sampler input to FLOAT scalars. `PackedAccessor` converts
+        /// integer components to Float just as happily, so only the decoder's own check
+        /// keeps a malformed input out.
+        case integerInput
+        /// A sampler input starts at or after zero.
+        case negativeInput
+        /// A rotation is a unit quantity, so the spec also stores it as normalized integers.
+        case normalizedShortRotation
+        /// An unnormalized integer rotation is not a unit quantity.
+        case unnormalizedShortRotation
+        /// A translation is not a unit quantity either.
+        case normalizedShortTranslation
+        /// A rotation or a weight normalizes bytes and shorts only: UNSIGNED_INT is
+        /// reserved for primitive indices, and normalizing it is forbidden outright.
+        case normalizedUnsignedIntRotation
+
+        var isPlayable: Bool { self == .normalizedShortRotation }
     }
 
-    /// The spec fixes a sampler input to FLOAT scalars starting at or after zero.
-    /// `PackedAccessor` converts integer components to Float just as happily, so
-    /// only the decoder's own check keeps a malformed input out.
-    @Test
-    func testAnimationInputMustBeNonNegativeFloats() async throws {
+    @Test(arguments: SamplerStorageCase.allCases)
+    func testAnimationSamplerStorageFollowsTheSpec(_ storage: SamplerStorageCase) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        var integerTimes = Data()
-        integerTimes.appendLittleEndian([0, 1])
-        let integer = try await loadAnimated(path: "rotation",
-                                             input: SamplerStorage(componentType: 5123, type: "SCALAR",
-                                                                   count: 2, bytes: integerTimes),
-                                             output: floatRotations)
-        #expect(throws: VRMError.self) { try integer.playAnimation(at: 0) }
+        let sampler = sampler(storedAs: storage)
+        let entity = try await GLTFEntityLoader(withData: samplerFixture(path: sampler.path,
+                                                                         input: sampler.input,
+                                                                         output: sampler.output)).loadEntity()
 
-        let negative = try await loadAnimated(path: "rotation",
-                                              input: SamplerStorage(componentType: 5126, type: "SCALAR", count: 2,
-                                                                    bytes: Data(littleEndianFloats: [-1, 1])),
-                                              output: floatRotations)
-        #expect(throws: VRMError.self) { try negative.playAnimation(at: 0) }
+        if storage.isPlayable {
+            #expect(try !entity.playAnimation(at: 0).isComplete)
+        } else {
+            #expect(throws: VRMError.self) { try entity.playAnimation(at: 0) }
+        }
     }
 
-    /// A rotation is a unit quantity, so the spec also stores it as normalized
-    /// integers. A translation is not, and neither is an unnormalized rotation.
-    @Test
-    func testAnimationOutputComponentTypeFollowsTheTargetPath() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let normalized = try await loadAnimated(path: "rotation",
-                                                input: floatTimes,
-                                                output: SamplerStorage(componentType: 5122, type: "VEC4", count: 2,
-                                                                       bytes: shortRotationBytes, normalized: true))
-        let controller = try normalized.playAnimation(at: 0)
-        #expect(!controller.isComplete)
-
-        let unnormalized = try await loadAnimated(path: "rotation",
-                                                  input: floatTimes,
-                                                  output: SamplerStorage(componentType: 5122, type: "VEC4", count: 2,
-                                                                         bytes: shortRotationBytes))
-        #expect(throws: VRMError.self) { try unnormalized.playAnimation(at: 0) }
-
-        var shortVectors = Data()
-        shortVectors.appendLittleEndian([0, 0, 0, 0, 0, 0])
-        let translation = try await loadAnimated(path: "translation",
-                                                 input: floatTimes,
-                                                 output: SamplerStorage(componentType: 5122, type: "VEC3", count: 2,
-                                                                        bytes: shortVectors, normalized: true))
-        #expect(throws: VRMError.self) { try translation.playAnimation(at: 0) }
+    private func sampler(storedAs storage: SamplerStorageCase) -> (path: String, input: SamplerStorage, output: SamplerStorage) {
+        switch storage {
+        case .integerInput:
+            var integerTimes = Data()
+            integerTimes.appendLittleEndian([0, 1])
+            return ("rotation", SamplerStorage(componentType: 5123, type: "SCALAR", count: 2, bytes: integerTimes),
+                    floatRotations)
+        case .negativeInput:
+            return ("rotation", SamplerStorage(componentType: 5126, type: "SCALAR", count: 2,
+                                               bytes: Data(littleEndianFloats: [-1, 1])),
+                    floatRotations)
+        case .normalizedShortRotation:
+            return ("rotation", floatTimes,
+                    SamplerStorage(componentType: 5122, type: "VEC4", count: 2, bytes: shortRotationBytes, normalized: true))
+        case .unnormalizedShortRotation:
+            return ("rotation", floatTimes,
+                    SamplerStorage(componentType: 5122, type: "VEC4", count: 2, bytes: shortRotationBytes))
+        case .normalizedShortTranslation:
+            var shortVectors = Data()
+            shortVectors.appendLittleEndian([0, 0, 0, 0, 0, 0])
+            return ("translation", floatTimes,
+                    SamplerStorage(componentType: 5122, type: "VEC3", count: 2, bytes: shortVectors, normalized: true))
+        case .normalizedUnsignedIntRotation:
+            var intRotations = Data()
+            intRotations.appendLittleEndian(unsignedInts: [0, 0, 0, .max, 0, 0, 0, .max])
+            return ("rotation", floatTimes,
+                    SamplerStorage(componentType: 5125, type: "VEC4", count: 2, bytes: intRotations, normalized: true))
+        }
     }
 
-    /// A rotation or a weight normalizes bytes and shorts only: UNSIGNED_INT is
-    /// reserved for primitive indices, and normalizing it is forbidden outright.
-    @Test
-    func testUnsignedIntAnimationOutputIsRejectedEvenWhenNormalized() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        var intRotations = Data()
-        intRotations.appendLittleEndian(unsignedInts: [0, 0, 0, .max, 0, 0, 0, .max])
-        let rotation = try await loadAnimated(path: "rotation",
-                                              input: floatTimes,
-                                              output: SamplerStorage(componentType: 5125, type: "VEC4", count: 2,
-                                                                     bytes: intRotations, normalized: true))
-        #expect(throws: VRMError.self) { try rotation.playAnimation(at: 0) }
-    }
+    /// AnimatedTriangle rewritten into an animation only playback can reject: the
+    /// metadata pass reads neither channels nor sampler outputs.
+    enum MalformedAnimation: CaseIterable {
+        /// A sampler reads a shared accessor as the wrong type, which fails even when the
+        /// accessor is already in the decoder's cache.
+        case samplerReadingAnAccessorAsTheWrongType
+        /// At most one channel of an animation may drive a given (node, path): a file
+        /// with two leaves the winner to chance.
+        case duplicateChannelTarget
+        /// A channel targets a node of the document.
+        case channelTargetOutOfRange
+        /// An animated node states its transform as TRS rather than as a `matrix`.
+        case channelTargetingAMatrixNode
 
-    /// At most one channel of an animation may drive a given (node, path): a
-    /// file with two leaves the winner to chance, so it has to be rejected.
-    @Test
-    func testDuplicateChannelTargetsAreRejected() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try TestSupport.loader(.animatedTriangle) { json in
+        func rewrite(_ json: inout [String: JSONValue]) throws {
+            switch self {
+            case .samplerReadingAnAccessorAsTheWrongType:
+                try Self.editFirstAnimation(in: &json) { animation in
+                    var samplers = animation.objects("samplers")
+                    guard !samplers.isEmpty else { throw GLBRewriter.Error.invalidJSON }
+                    // The input accessor is SCALAR; a rotation output has to be VEC4.
+                    samplers[0]["output"] = samplers[0]["input"]
+                    animation["samplers"] = .objects(samplers)
+                }
+            case .duplicateChannelTarget:
+                try Self.editFirstAnimation(in: &json) { animation in
+                    let channels = animation.objects("channels")
+                    guard let channel = channels.first else { throw GLBRewriter.Error.invalidJSON }
+                    animation["channels"] = .objects(channels + [channel])
+                }
+            case .channelTargetOutOfRange:
+                try Self.editFirstAnimation(in: &json) { animation in
+                    var channels = animation.objects("channels")
+                    guard !channels.isEmpty, var target = channels[0].object("target") else {
+                        throw GLBRewriter.Error.invalidJSON
+                    }
+                    target["node"] = 1
+                    channels[0]["target"] = .object(target)
+                    animation["channels"] = .objects(channels)
+                }
+            case .channelTargetingAMatrixNode:
+                var nodes = json.objects("nodes")
+                guard !nodes.isEmpty else { throw GLBRewriter.Error.invalidJSON }
+                nodes[0]["rotation"] = nil
+                nodes[0]["matrix"] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+                json["nodes"] = .objects(nodes)
+            }
+        }
+
+        private static func editFirstAnimation(in json: inout [String: JSONValue],
+                                               _ edit: (inout [String: JSONValue]) throws -> Void) throws {
             var animations = json.objects("animations")
             guard !animations.isEmpty else { throw GLBRewriter.Error.invalidJSON }
-            let channels = animations[0].objects("channels")
-            guard let channel = channels.first else { throw GLBRewriter.Error.invalidJSON }
-            animations[0]["channels"] = .objects(channels + [channel])
+            try edit(&animations[0])
             json["animations"] = .objects(animations)
         }
-        let entity = try await loader.loadEntity()
-
-        // The metadata pass does not read channels, so only playback rejects it.
-        #expect(entity.animations.count == 1)
-        #expect(throws: VRMError.self) { try entity.playAnimation(at: 0) }
     }
 
-    /// A channel targets a node of the document, and an animated node states
-    /// its transform as TRS rather than as a `matrix`.
-    @Test
-    func testAnimationChannelTargetsAreValidated() async throws {
+    @Test(arguments: MalformedAnimation.allCases)
+    func testAMalformedAnimationIsRejectedOnPlayback(_ malformation: MalformedAnimation) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let outOfRange = try await TestSupport.loader(.animatedTriangle) { json in
-            var animations = json.objects("animations")
-            guard !animations.isEmpty else { throw GLBRewriter.Error.invalidJSON }
-            var channels = animations[0].objects("channels")
-            guard !channels.isEmpty, var target = channels[0].object("target") else {
-                throw GLBRewriter.Error.invalidJSON
-            }
-            target["node"] = 1
-            channels[0]["target"] = .object(target)
-            animations[0]["channels"] = .objects(channels)
-            json["animations"] = .objects(animations)
-        }.loadEntity()
-        #expect(throws: VRMError.self) { try outOfRange.playAnimation(at: 0) }
+        let entity = try await TestSupport.loader(.animatedTriangle, rewritingJSON: malformation.rewrite).loadEntity()
 
-        let matrixNode = try await TestSupport.loader(.animatedTriangle) { json in
-            var nodes = json.objects("nodes")
-            guard !nodes.isEmpty else {
-                throw GLBRewriter.Error.invalidJSON
-            }
-            nodes[0]["rotation"] = nil
-            nodes[0]["matrix"] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
-            json["nodes"] = .objects(nodes)
-        }.loadEntity()
-        #expect(throws: VRMError.self) { try matrixNode.playAnimation(at: 0) }
+        #expect(entity.animations.count == 1)
+        #expect(throws: VRMError.self) { try entity.playAnimation(at: 0) }
     }
 }
 #endif

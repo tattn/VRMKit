@@ -14,13 +14,19 @@ struct VRMEntityTests {
     @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
     func testLoadEntityReturnsTheEntityItsVRMAndItsThumbnail(asset: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try VRMEntityLoader(withData: asset.data)
+        let loader = try VRMEntityLoader(withData: asset.data, shaders: [])
         let entity = try await loader.loadEntity()
 
         #expect(entity.document === entity.vrm.document)
         #expect(!entity.availableExpressions.isEmpty)
         #expect(entity.humanoid.node(for: .head) != nil)
         #expect(try entity.vrm.thumbnail.width > 0)
+
+        // A VRM is a single avatar, so it renders without naming a default scene.
+        if asset == .aliciaSolid {
+            #expect(entity.gltf.scene == nil)
+            #expect(entity.sceneIndex == 0)
+        }
 
         // A VRM 1.0 model states its presets under the names 1.0 spells them with,
         // unlike a 0.x one, which names its groups whatever it likes.

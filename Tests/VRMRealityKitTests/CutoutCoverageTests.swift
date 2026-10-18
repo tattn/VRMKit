@@ -24,69 +24,43 @@ struct CutoutCoverageTests {
     }
 
     /// One triangle covering the top-left half of the plane.
-    private let topLeft: [SIMD2<Float>] = [SIMD2(0, 0), SIMD2(1, 0), SIMD2(0, 1)]
+    private nonisolated static let topLeft: [SIMD2<Float>] = [SIMD2(0, 0), SIMD2(1, 0), SIMD2(0, 1)]
 
-    @Test
-    func testTrianglesOverOpaqueTexelsSampleOnlyOpaqueTexels() {
-        let plane = plane(transparent: [(x: 3, y: 3)])
-        #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: topLeft,
-                                                 indices: [0, 1, 2],
-                                                 sampling: .init(),
-                                                 alphaFactor: 1,
-                                                 cutoff: 0.5) == true)
+    /// Triangles drawn over a plane opaque but for one texel, and whether they
+    /// sample only opaque texels.
+    struct Sample: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let transparent: (x: Int, y: Int)
+        var texcoords: [SIMD2<Float>] = CutoutCoverageTests.topLeft
+        var indices: [UInt32] = [0, 1, 2]
+        var sampling = GLTFCutoutCoverage.Sampling()
+        let samplesOnlyOpaqueTexels: Bool
     }
 
-    @Test
-    func testTriangleOverTransparentTexelCutsOut() {
-        let plane = plane(transparent: [(x: 0, y: 0)])
-        #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: topLeft,
-                                                 indices: [0, 1, 2],
-                                                 sampling: .init(),
+    @Test(arguments: [
+        Sample(testDescription: "triangles over opaque texels", transparent: (3, 3),
+               samplesOnlyOpaqueTexels: true),
+        Sample(testDescription: "a triangle over a transparent texel", transparent: (0, 0),
+               samplesOnlyOpaqueTexels: false),
+        Sample(testDescription: "the other winding", transparent: (0, 0), indices: [0, 2, 1],
+               samplesOnlyOpaqueTexels: false),
+        Sample(testDescription: "repeating UVs wrapping into the plane", transparent: (0, 0),
+               texcoords: [SIMD2(1, 1), SIMD2(2, 1), SIMD2(1, 2)],
+               sampling: .init(wrapS: .REPEAT, wrapT: .REPEAT), samplesOnlyOpaqueTexels: false),
+        Sample(testDescription: "clamped UVs past the plane", transparent: (0, 0),
+               texcoords: [SIMD2(1, 1), SIMD2(2, 1), SIMD2(1, 2)],
+               sampling: .init(wrapS: .CLAMP_TO_EDGE, wrapT: .CLAMP_TO_EDGE), samplesOnlyOpaqueTexels: true),
+        Sample(testDescription: "a texture transform moving the sampled texels", transparent: (3, 3),
+               sampling: .init(transform: GLTFUVTransform(scale: SIMD2(1, 1), offset: SIMD2(0.5, 0.5))),
+               samplesOnlyOpaqueTexels: false)
+    ])
+    func testTheTexelsATriangleSamplesDecideWhetherItCutsOut(_ sample: Sample) {
+        #expect(Coverage.samplesOnlyOpaqueTexels(of: plane(transparent: [sample.transparent]),
+                                                 texcoords: sample.texcoords,
+                                                 indices: sample.indices,
+                                                 sampling: sample.sampling,
                                                  alphaFactor: 1,
-                                                 cutoff: 0.5) == false)
-    }
-
-    @Test
-    func testWindingDoesNotMatter() {
-        let plane = plane(transparent: [(x: 0, y: 0)])
-        #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: topLeft,
-                                                 indices: [0, 2, 1],
-                                                 sampling: .init(),
-                                                 alphaFactor: 1,
-                                                 cutoff: 0.5) == false)
-    }
-
-    @Test
-    func testRepeatingUVsWrapIntoThePlane() {
-        let plane = plane(transparent: [(x: 0, y: 0)])
-        let shifted: [SIMD2<Float>] = [SIMD2(1, 1), SIMD2(2, 1), SIMD2(1, 2)]
-        #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: shifted,
-                                                 indices: [0, 1, 2],
-                                                 sampling: .init(wrapS: .REPEAT, wrapT: .REPEAT),
-                                                 alphaFactor: 1,
-                                                 cutoff: 0.5) == false)
-        #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: shifted,
-                                                 indices: [0, 1, 2],
-                                                 sampling: .init(wrapS: .CLAMP_TO_EDGE, wrapT: .CLAMP_TO_EDGE),
-                                                 alphaFactor: 1,
-                                                 cutoff: 0.5) == true)
-    }
-
-    @Test
-    func testTextureTransformMovesTheSampledTexels() {
-        let plane = plane(transparent: [(x: 3, y: 3)])
-        let transform = GLTFUVTransform(scale: SIMD2(1, 1), offset: SIMD2(0.5, 0.5))
-        #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: topLeft,
-                                                 indices: [0, 1, 2],
-                                                 sampling: .init(transform: transform),
-                                                 alphaFactor: 1,
-                                                 cutoff: 0.5) == false)
+                                                 cutoff: 0.5) == sample.samplesOnlyOpaqueTexels)
     }
 
     @Test
@@ -95,21 +69,21 @@ struct CutoutCoverageTests {
         alpha[0] = 160
         let plane = Coverage.AlphaPlane(width: 4, height: 4, alpha: alpha)
         #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: topLeft,
+                                                 texcoords: Self.topLeft,
                                                  indices: [0, 1, 2],
                                                  sampling: .init(),
                                                  alphaFactor: 1,
                                                  cutoff: 0.5) == true)
         // 160 / 255 × 0.7 < 0.5
         #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: topLeft,
+                                                 texcoords: Self.topLeft,
                                                  indices: [0, 1, 2],
                                                  sampling: .init(),
                                                  alphaFactor: 0.7,
                                                  cutoff: 0.5) == false)
         // A factor under the cutoff cuts the whole material out: nothing to decide.
         #expect(Coverage.samplesOnlyOpaqueTexels(of: plane,
-                                                 texcoords: topLeft,
+                                                 texcoords: Self.topLeft,
                                                  indices: [0, 1, 2],
                                                  sampling: .init(),
                                                  alphaFactor: 0.4,
@@ -119,7 +93,7 @@ struct CutoutCoverageTests {
     @Test
     func testImageWithoutAlphaIsOpaqueEverywhere() {
         #expect(Coverage.samplesOnlyOpaqueTexels(of: nil,
-                                                 texcoords: topLeft,
+                                                 texcoords: Self.topLeft,
                                                  indices: [0, 1, 2],
                                                  sampling: .init(),
                                                  alphaFactor: 1,
