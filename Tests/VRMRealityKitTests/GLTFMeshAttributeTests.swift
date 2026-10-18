@@ -85,6 +85,37 @@ struct GLTFMeshAttributeTests {
         #expect(Float(agreeingTriangles) > Float(checkedTriangles) * 0.9)
     }
 
+    /// RealityKit hands a surface shader the tangent of a right-handed frame, so each vertex's
+    /// hand rides in uv1 for MToon to turn a mirrored tangent back; a mesh without tangents
+    /// carries no uv1.
+    @Test
+    func testTangentFrameHandRidesInUV1() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: TestSupport.noOutlineShaders)
+        let vrmEntity = try await loader.loadEntity()
+
+        var checkedMeshes = 0
+        for modelEntity in TestSupport.modelEntities(in: vrmEntity) {
+            guard let mesh = modelEntity.deformedMesh else { continue }
+            let geometry = mesh.geometry
+            let uv1 = mesh.lowLevelMesh.descriptor.vertexAttributes.first { $0.semantic == .uv1 }
+            guard !geometry.tangents.isEmpty else {
+                #expect(uv1 == nil)
+                continue
+            }
+            let attribute = try #require(uv1)
+            let bufferIndex = mesh.lowLevelMesh.descriptor.vertexLayouts[attribute.layoutIndex].bufferIndex
+            var hands: [SIMD2<Float>] = []
+            mesh.lowLevelMesh.withUnsafeBytes(bufferIndex: bufferIndex) { hands = Array($0.bindMemory(to: SIMD2<Float>.self)) }
+            for index in 0..<geometry.vertexCount {
+                let hand = simd_dot(simd_cross(geometry.normals[index], geometry.tangents[index]), geometry.bitangents[index])
+                #expect(hands[index].x == (hand < 0 ? -1 : 1))
+            }
+            checkedMeshes += 1
+        }
+        #expect(checkedMeshes > 0)
+    }
+
     /// glTF requires every vertex attribute to match POSITION in length, so a
     /// short NORMAL accessor has to fail the load.
     @Test

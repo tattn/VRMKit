@@ -114,7 +114,10 @@ inline float3 mtoonShadingNormal(realitykit::surface_parameters params,
     if (dot(rawTangent, rawTangent) < 0.000001 || dot(rawBitangent, rawBitangent) < 0.000001) {
         return geometryNormal;
     }
-    float3 tangent = normalize(rawTangent);
+    // RealityKit makes the tangent frame right-handed, turning the tangent over where the mesh's
+    // frame is left-handed (mirrored UVs). The loader passes that hand in uv1.x to turn it back,
+    // as glTF's tangent w does; a mesh without tangents reaches no further than the check above.
+    float3 tangent = normalize(rawTangent) * (params.geometry().uv1().x < 0.0 ? -1.0 : 1.0);
     float3 bitangent = normalize(rawBitangent);
     return normalize(tangent * float(tangentNormal.x)
                    + bitangent * float(tangentNormal.y)

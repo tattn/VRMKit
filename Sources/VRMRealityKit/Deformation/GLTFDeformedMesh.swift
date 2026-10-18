@@ -66,6 +66,11 @@ final class GLTFDeformedMesh {
                 geometry.texcoords.withUnsafeBytes { raw.copyMemory(from: $0) }
             }
         }
+        if let index = source.tangentHandednessBufferIndex {
+            lowLevelMesh.withUnsafeMutableBytes(bufferIndex: index) { raw in
+                source.tangentHandedness.withUnsafeBytes { raw.copyMemory(from: $0) }
+            }
+        }
         // The rest pose is what the mesh draws until a solve arrives; a static mesh
         // keeps it for good.
         Self.writeRestPose(of: geometry, into: lowLevelMesh)

@@ -21,6 +21,13 @@ final class GLTFMeshSource {
     let baseNormals: MTLBuffer?
     let baseTangents: MTLBuffer?
     let baseBitangents: MTLBuffer?
+    /// Per vertex, x is 1 where the rest tangent, bitangent and normal make a right-handed
+    /// frame and -1 where they make a left-handed one (mirrored UVs), drawn as uv1 from
+    /// ``tangentHandednessBufferIndex``. RealityKit hands a surface shader the tangent of a
+    /// right-handed frame, turning it over where the frame is left-handed, so MToon turns it
+    /// back by this sign as glTF's tangent `w` would. Empty for a mesh without tangents.
+    let tangentHandedness: [SIMD2<Float>]
+    let tangentHandednessBufferIndex: Int?
 
     struct Skin {
         let joints: MTLBuffer
@@ -72,11 +79,28 @@ final class GLTFMeshSource {
             layouts.append(LowLevelMesh.Layout(bufferIndex: Self.texcoordBufferIndex,
                                                bufferStride: MemoryLayout<SIMD2<Float>>.stride))
         }
+        tangentHandedness = Self.tangentHandedness(of: geometry)
+        if tangentHandedness.isEmpty {
+            tangentHandednessBufferIndex = nil
+        } else {
+            tangentHandednessBufferIndex = layouts.count
+            attributes.append(.init(semantic: .uv1, format: .float2, layoutIndex: layouts.count, offset: 0))
+            layouts.append(LowLevelMesh.Layout(bufferIndex: layouts.count, bufferStride: MemoryLayout<SIMD2<Float>>.stride))
+        }
         descriptor = LowLevelMesh.Descriptor(vertexCapacity: geometry.vertexCount,
                                              vertexAttributes: attributes,
                                              vertexLayouts: layouts,
                                              indexCapacity: geometry.indices.count,
                                              indexType: .uint32)
+    }
+
+    /// Skinning and morphing turn the frame without mirroring it, so the rest pose decides the hand for good.
+    private static func tangentHandedness(of geometry: GLTFMeshGeometry) -> [SIMD2<Float>] {
+        guard !geometry.tangents.isEmpty, geometry.normals.count == geometry.vertexCount else { return [] }
+        return (0..<geometry.vertexCount).map { index in
+            let hand = simd_dot(simd_cross(geometry.normals[index], geometry.tangents[index]), geometry.bitangents[index])
+            return SIMD2(hand < 0 ? -1 : 1, 0)
+        }
     }
 }
 #endif
