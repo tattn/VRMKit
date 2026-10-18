@@ -114,6 +114,27 @@ public class GLTFEntity: Entity {
     /// glTF node index → the entity built for it, for this scene.
     private var nodeEntities: [Entity?]?
 
+    /// Every node transform of the model, which the runtimes pose and skinning reads (see
+    /// ``GLTFPose``). Nil on a `clone(recursive:)` copy, which has no runtime.
+    ///
+    /// Write a node here rather than to its entity: the entity is a copy of it, kept as
+    /// ``nodeEntitySynchronization`` says.
+    public private(set) var pose: GLTFPose?
+
+    /// Which node entities stay a copy of ``pose``. Every one by default, so code that reads
+    /// a node entity, or hangs something under it, sees the pose. Narrowing it saves the
+    /// renderer's work per node written, which is most of what posing a model costs.
+    public var nodeEntitySynchronization: GLTFNodeEntitySynchronization = .all {
+        didSet {
+            guard nodeEntitySynchronization != oldValue else { return }
+            synchronizedNodes = nil
+            synchronizeNodeEntities()
+        }
+    }
+
+    /// Per node, whether its entity is kept a copy of the pose; nil until first asked.
+    private var synchronizedNodes: [Bool]?
+
     /// Whether this entity carries the bindings the animation runtime drives. A
     /// `clone(recursive:)` copy carries none, since they would point at the original's
     /// entities: load the scene again to get one.
@@ -126,14 +147,23 @@ public class GLTFEntity: Entity {
         return nodeEntities[index]
     }
 
+    /// The index in ``pose`` of the node `entity` was built for, or nil when it is not one of
+    /// this scene's node entities.
+    public func nodeIndex(of entity: Entity) -> Int? {
+        guard let index = entity.components[GLTFNodeComponent.self]?.nodeIndex,
+              entity === self.entity(forNodeAt: index) else { return nil }
+        return index
+    }
+
     struct SkinBinding {
         let modelEntity: ModelEntity
-        let skeleton: MeshResource.Skeleton
-        let jointEntities: [Entity]
-        /// Each joint's parent in the skeleton, read off `skeleton` once: the solve reads
+        /// The node each joint was built for, in the skeleton's order.
+        let jointNodes: [Int]
+        /// Each joint's parent in the skeleton, read off the skeleton once: the solve reads
         /// a row per joint per frame, and the skeleton hands its joints out by copy.
         let parentIndices: [Int?]
-        /// Stands in for `skeleton.id`, so the per-frame solve dedups without hashing strings.
+        /// Stands in for the skeleton's id, so bindings of one skeleton share a solve without
+        /// hashing strings.
         let skeletonKey: Int
         /// The mesh the solved pose is written to.
         let deformedMesh: GLTFDeformedMesh?
@@ -149,34 +179,39 @@ public class GLTFEntity: Entity {
 
     private(set) var skinBindings: [SkinBinding] = []
     private var skeletonKeys: [String: Int] = [:]
-    /// Joint entity → every (skeleton, joint index) it poses, resolved once at
-    /// registration for the fine-grained dirty path.
-    private var jointSlots: [Entity.ID: [(skeletonKey: Int, jointIndex: Int)]] = [:]
 
-    /// The last pose solved for one skeleton, kept across frames so a solve
-    /// recomputes only the joints that moved.
-    private struct SolvedSkeletonPose {
-        /// The model world the pose was read against, which keeps a binding drawn
-        /// elsewhere from reusing what another solved in the same pass.
-        var modelWorld: simd_float4x4
-        var transforms: [Transform]
-        /// Rows read through the scene graph rather than off the joint's own
-        /// transform: the skeleton's roots and seams. Nodes outside the skeleton
-        /// move them, so every solve re-reads and compares these.
-        var dependentRows: Set<Int>
+    /// The bindings that read one skeleton in one model space, which solve to the same rows:
+    /// a mesh and its outline twin, or the render-queue groups of one mesh.
+    private struct SkinSolve {
+        let jointNodes: [Int]
+        let parentIndices: [Int?]
+        /// The node the meshes hang under, nil for the model's root, and where the meshes
+        /// stand below it: a joint the skeleton gives no parent is read in the meshes' space.
+        let anchorNode: Int?
+        let anchorOffset: simd_float4x4
+        var meshes: [GLTFDeformedMesh]
+        var rows: [Transform] = []
+        /// Rows read through the model rather than off the joint's own transform: the
+        /// skeleton's roots, and joints whose skeleton parent is not their node's parent.
+        /// Nodes outside the skeleton move them, so every solve re-reads them.
+        var dependentRows: [Int] = []
+
+        func isDependent(_ row: Int) -> Bool {
+            dependentRows.contains(row)
+        }
     }
 
-    private var solvedPoses: [Int: SolvedSkeletonPose] = [:]
-
-    /// Whether any joint may have moved since the skin pose was last solved. Every
-    /// runtime that poses a joint without saying which sets this rather than solving
-    /// the skeleton itself.
-    private var isSkinPoseDirty = false
-    /// The joints known to have moved, per skeleton, for runtimes that do say.
-    private var dirtyJoints: [Int: Set<Int>] = [:]
-    /// Whether a moved node no skeleton owns asks the next solve to re-read the
-    /// rows read through the scene graph, which such a node can sit on.
-    private var needsDependentRowSolve = false
+    private var skinSolves: [SkinSolve] = []
+    /// Node → every (solve, row) it poses.
+    private var skinRowsByNode: [[(solve: Int, row: Int)]] = []
+    /// Whether ``skinSolves`` has to be built.
+    private var needsSkinSolveSetUp = true
+    /// Whether a mesh entity may have moved within the model, which re-reads where each
+    /// solve's meshes stand and rebuilds the solves only if one did.
+    private var needsSkinAnchorCheck = false
+    /// Whether the node entities were read back since the runtime last ran, so the update
+    /// does not read them twice.
+    private var hasAdoptedNodeEntities = false
 
     struct MorphBinding {
         var modelEntities: [ModelEntity]
@@ -214,9 +249,6 @@ public class GLTFEntity: Entity {
     private var cachedRestPose: GLTFRestPose?
     var animationRuntimes: [Int: GLTFAnimationRuntime] = [:]
     var activeAnimationControllers: [GLTFAnimationPlaybackController] = []
-    /// The nodes this frame's animation tick moved, reused across frames so the hot
-    /// path collects them without allocating.
-    var movedAnimationNodes: [Entity] = []
 
     /// Registers the components this entity relies on, exactly once per process.
     @MainActor private static let registerRealityKitTypes: Void = {
@@ -252,8 +284,15 @@ public class GLTFEntity: Entity {
         return pose
     }
 
-    func setNodeEntities(_ nodes: [Entity?]) {
+    func setNodeEntities(_ nodes: [Entity?]) throws {
         nodeEntities = nodes
+        let hierarchy = try GLTFNodeHierarchy(nodes: gltf.nodes)
+        let pose = GLTFPose(parents: gltf.nodes.indices.map { hierarchy.parent(at: $0) },
+                            locals: gltf.nodes.map { GLTFNodeTransform($0.localTransform) })
+        pose.didWriteLocalTransform = { [unowned self] index, transform in
+            MainActor.assumeIsolated { copyToNodeEntity(transform, ofNode: index) }
+        }
+        self.pose = pose
     }
 
     /// The pose is solved by ``flushDeformation()`` once the entity graph is complete.
@@ -266,18 +305,61 @@ public class GLTFEntity: Entity {
         } else {
             key = skeletonKeys.count
             skeletonKeys[skeleton.id] = key
-            // Bindings sharing a skeleton share its joint entities, so the lookup is
-            // built once per skeleton.
-            for (jointIndex, joint) in jointEntities.enumerated() {
-                jointSlots[joint.id, default: []].append((key, jointIndex))
-            }
         }
         skinBindings.append(SkinBinding(modelEntity: modelEntity,
-                                        skeleton: skeleton,
-                                        jointEntities: jointEntities,
+                                        jointNodes: jointEntities.map { $0.components[GLTFNodeComponent.self]?.nodeIndex ?? -1 },
                                         parentIndices: skeleton.joints.map(\.parentIndex),
                                         skeletonKey: key,
                                         deformedMesh: modelEntity.deformedMesh))
+        needsSkinSolveSetUp = true
+    }
+
+    // MARK: - Node entities
+
+    private func copyToNodeEntity(_ transform: GLTFNodeTransform, ofNode index: Int) {
+        guard isSynchronized(index), let entity = entity(forNodeAt: index) else { return }
+        entity.transform = Transform(transform)
+    }
+
+    private func isSynchronized(_ index: Int) -> Bool {
+        guard case .nodes(let requested) = nodeEntitySynchronization else { return true }
+        if synchronizedNodes == nil, let pose {
+            // A node's world transform folds in every node above it, so those are kept too, and
+            // so are the nodes the model's own meshes hang under, which draw where their entities say.
+            var mask = [Bool](repeating: false, count: pose.nodeCount)
+            let meshAnchors = ownModelEntities.compactMap { anchor(of: $0).node }
+            for node in requested.union(meshAnchors) where mask.indices.contains(node) {
+                var current: Int? = node
+                while let index = current, !mask[index] {
+                    mask[index] = true
+                    current = pose.parent(ofNode: index)
+                }
+            }
+            synchronizedNodes = mask
+        }
+        return synchronizedNodes?[safe: index] ?? false
+    }
+
+    /// Copies the pose into every node entity ``nodeEntitySynchronization`` keeps, or into all
+    /// of them, for when the kept set grows or a copy of the graph is taken.
+    private func synchronizeNodeEntities(includingUnsynchronized: Bool = false) {
+        guard let pose, let nodeEntities else { return }
+        for (index, entity) in nodeEntities.enumerated() {
+            guard let entity, includingUnsynchronized || isSynchronized(index) else { continue }
+            let transform = Transform(pose.localTransform(ofNode: index))
+            if entity.transform != transform {
+                entity.transform = transform
+            }
+        }
+    }
+
+    /// Reads where this entity stands in the world into ``GLTFPose/rootMatrix``, which the
+    /// pose's world-space reads fold in. The update does this before the runtimes run, so
+    /// call it only to read world space after moving the entity within the same frame.
+    public func refreshPoseRoot() {
+        guard let pose else { return }
+        pose.rootMatrix = transformMatrix(relativeTo: nil)
+        pose.rootRotation = orientation(relativeTo: nil)
     }
 
     func registerMorphBindings(forNodeAt nodeIndex: Int, modelEntities: [ModelEntity], targetCount: Int) {
@@ -309,9 +391,10 @@ public class GLTFEntity: Entity {
     /// carries no animation bindings. Before a one-off render of the copy, call
     /// ``waitForMaterialStateWrites()`` on it.
     public func cloneWithOwnMaterialParameters() -> Self {
-        // The copy carries the meshes as they are skinned now, so they are solved against
-        // the joints it is about to copy.
+        // The copy carries the meshes as they are skinned now, and its node entities the
+        // pose, so what hangs under them is copied where the pose puts it.
         updateSkinPose()
+        synchronizeNodeEntities(includingUnsynchronized: true)
         let copy = clone(recursive: true)
         copy.freezeDeformedMeshes()
         // A glTF entity attached under this one, such as an accessory, is a document of its own,
@@ -598,26 +681,44 @@ public class GLTFEntity: Entity {
     /// knows better overrides this.
     public var frontDirection: SIMD3<Float> { SIMD3(0, 0, 1) }
 
-    /// Tells the runtime a joint entity was posed from outside it, so the skinned meshes
-    /// catch up on the next update. Animation, constraints and spring bones already do this.
+    /// Takes the transforms of node entities posed from outside the runtime into ``pose``,
+    /// which the runtimes and skinning read from then on. Writing ``pose`` directly needs no
+    /// call. Only the node entities ``nodeEntitySynchronization`` keeps are read: the others
+    /// do not hold the pose.
     public func invalidateSkinPose() {
-        isSkinPoseDirty = true
+        adoptNodeEntityTransforms()
+        hasAdoptedNodeEntities = true
+        // A mesh entity moved within the model reads its root joints from a new place.
+        needsSkinAnchorCheck = true
     }
 
-    /// ``invalidateSkinPose()`` narrowed to the joints that actually moved: only their
-    /// rows, and the rows read through the scene graph, are re-solved on the next
-    /// update. A node no skeleton owns still schedules that pass, since a skeleton's
-    /// root or seam row may be read through it.
+    /// While every node entity is kept a copy of the pose, code may still pose one without
+    /// saying so, as it could before the pose existed, so each update starts by reading
+    /// them back. A narrower ``nodeEntitySynchronization`` asks the caller to write ``pose``.
+    func adoptNodeEntitiesPosedFromOutside() {
+        defer { hasAdoptedNodeEntities = false }
+        guard nodeEntitySynchronization == .all, !hasAdoptedNodeEntities else { return }
+        adoptNodeEntityTransforms()
+    }
+
+    private func adoptNodeEntityTransforms() {
+        guard let pose, let nodeEntities else { return }
+        for (index, entity) in nodeEntities.enumerated() {
+            guard let entity, isSynchronized(index) else { continue }
+            pose.adoptLocalTransform(GLTFNodeTransform(entity.transform), ofNode: index)
+        }
+    }
+
+    /// ``invalidateSkinPose()`` narrowed to the entities that were posed. An entity that is
+    /// no node, such as a mesh entity moved within the model, has its meshes re-anchored.
     public func invalidateSkinPose(for joints: some Sequence<Entity>) {
-        guard !isSkinPoseDirty else { return }
+        guard let pose else { return }
         for joint in joints {
-            guard let slots = jointSlots[joint.id] else {
-                needsDependentRowSolve = true
+            guard let index = nodeIndex(of: joint) else {
+                needsSkinAnchorCheck = true
                 continue
             }
-            for slot in slots {
-                dirtyJoints[slot.skeletonKey, default: []].insert(slot.jointIndex)
-            }
+            pose.adoptLocalTransform(GLTFNodeTransform(joint.transform), ofNode: index)
         }
     }
 
@@ -675,149 +776,179 @@ public class GLTFEntity: Entity {
         commandBuffer.commit()
     }
 
-    /// Re-solves the skin pose only where a joint has moved since the last solve, so a
-    /// model holding a pose stops rewriting every skeleton each frame, and one moving
-    /// its eyes alone rewrites only the skeletons the eyes belong to.
+    /// Re-solves the skin pose only where a node has moved since the last solve, so a
+    /// model holding a pose rewrites no skeleton, and one moving its eyes alone rewrites
+    /// only the rows of the eyes.
     func flushSkinPoseIfNeeded() {
-        guard isSkinPoseDirty || needsDependentRowSolve || !dirtyJoints.isEmpty else { return }
-        solveSkinPose()
-    }
-
-    private func solveSkinPose() {
-        let solvesAllJoints = isSkinPoseDirty
-        isSkinPoseDirty = false
-        needsDependentRowSolve = false
-        let dirty = dirtyJoints
-        dirtyJoints.removeAll(keepingCapacity: true)
-        guard !skinBindings.isEmpty else { return }
-
-        // What each skeleton resolved to in this pass, shared by the bindings drawing
-        // it, such as a mesh and its outline twin.
-        var changedPoses: [Int: [Transform]] = [:]
-        var unchangedKeys: Set<Int> = []
-        for binding in skinBindings {
-            let key = binding.skeletonKey
-            // A skeleton with no moved joint and no row read through the scene graph
-            // cannot have changed, and is skipped before its world is even read.
-            if !solvesAllJoints, dirty[key] == nil,
-               let cached = solvedPoses[key], cached.dependentRows.isEmpty {
-                continue
-            }
-            let modelWorld = binding.modelEntity.transformMatrix(relativeTo: nil)
-            let previous = solvedPoses[key]
-            if let cached = previous {
-                if cached.modelWorld == modelWorld {
-                    if let pose = changedPoses[key] {
-                        setSkinPose(pose, for: binding)
-                        continue
-                    }
-                    if unchangedKeys.contains(key) { continue }
-                }
-                // A moved model world is no reason to solve fully: only the rows read
-                // through the scene graph are read against it, which a partial solve re-reads.
-                if !solvesAllJoints {
-                    solvePartially(cached, dirtyRows: dirty[key], for: binding, modelWorld: modelWorld,
-                                   changedPoses: &changedPoses, unchangedKeys: &unchangedKeys)
-                    continue
-                }
-            }
-            let solved = jointTransforms(for: binding)
-            solvedPoses[key] = SolvedSkeletonPose(modelWorld: modelWorld,
-                                                  transforms: solved.transforms,
-                                                  dependentRows: solved.dependentRows)
-            // An app that cannot say which joint it posed asks for a full solve every
-            // frame, so the pose is often the one the skeleton already holds, and
-            // writing it back is the expensive half, not solving it.
-            if let previous, previous.transforms == solved.transforms {
-                unchangedKeys.insert(key)
-                continue
-            }
-            changedPoses[key] = solved.transforms
-            unchangedKeys.remove(key)
-            setSkinPose(solved.transforms, for: binding)
-        }
-    }
-
-    /// Recomputes only the moved rows and the scene-graph-read rows of one solved
-    /// skeleton. Joints are posed in their skeleton parent's space, so a moved joint
-    /// rewrites its own row alone: its subtree hangs off it in the skeleton. A pose
-    /// no row of which changed is not written back to any binding.
-    private func solvePartially(_ cached: SolvedSkeletonPose,
-                                dirtyRows: Set<Int>?,
-                                for binding: SkinBinding,
-                                modelWorld: simd_float4x4,
-                                changedPoses: inout [Int: [Transform]],
-                                unchangedKeys: inout Set<Int>) {
-        var updated = cached
-        updated.modelWorld = modelWorld
-        var changed = false
-        for row in dirtyRows ?? [] where row < updated.transforms.count && !updated.dependentRows.contains(row) {
-            let (transform, isDependent) = jointTransform(at: row, of: binding)
-            if isDependent {
-                // A joint reparented since the last full solve reads through the
-                // scene graph from now on.
-                updated.dependentRows.insert(row)
-            }
-            if transform != updated.transforms[row] {
-                updated.transforms[row] = transform
-                changed = true
+        guard let pose else { return }
+        if needsSkinAnchorCheck {
+            needsSkinAnchorCheck = false
+            needsSkinSolveSetUp = needsSkinSolveSetUp || skinSolves.contains { solve in
+                guard let mesh = solve.meshes.first,
+                      let binding = skinBindings.first(where: { $0.deformedMesh === mesh }) else { return false }
+                let anchor = anchor(of: binding.modelEntity)
+                return anchor.node != solve.anchorNode || anchor.offset != solve.anchorOffset
             }
         }
-        for row in updated.dependentRows where row < updated.transforms.count {
-            let transform = jointTransform(at: row, of: binding).transform
-            if transform != updated.transforms[row] {
-                updated.transforms[row] = transform
-                changed = true
+        if needsSkinSolveSetUp {
+            setUpSkinSolves(pose: pose)
+            _ = pose.takeNodesMovedForSkinning()
+            for index in skinSolves.indices {
+                solveAllRows(of: index, pose: pose)
             }
-        }
-        solvedPoses[binding.skeletonKey] = updated
-        guard changed else {
-            unchangedKeys.insert(binding.skeletonKey)
             return
         }
-        changedPoses[binding.skeletonKey] = updated.transforms
-        setSkinPose(updated.transforms, for: binding)
+        guard pose.hasNodesMovedForSkinning else { return }
+        var changed = [Bool](repeating: false, count: skinSolves.count)
+        for node in pose.takeNodesMovedForSkinning() where node < skinRowsByNode.count {
+            for (solve, row) in skinRowsByNode[node] where !skinSolves[solve].isDependent(row) {
+                let transform = Transform(pose.localTransform(ofNode: node))
+                if skinSolves[solve].rows[row] != transform {
+                    skinSolves[solve].rows[row] = transform
+                    changed[solve] = true
+                }
+            }
+        }
+        // A root or seam row is read through nodes outside its joint, any of which may be the
+        // one that moved, and a skeleton has only a few of them.
+        for solve in skinSolves.indices {
+            for row in skinSolves[solve].dependentRows {
+                let transform = dependentRow(row, of: skinSolves[solve], pose: pose)
+                if skinSolves[solve].rows[row] != transform {
+                    skinSolves[solve].rows[row] = transform
+                    changed[solve] = true
+                }
+            }
+            if changed[solve] {
+                setSkinPose(of: solve)
+            }
+        }
     }
 
-    private func setSkinPose(_ transforms: [Transform], for binding: SkinBinding) {
-        binding.deformedMesh?.setJointTransforms(transforms)
+    private func setUpSkinSolves(pose: GLTFPose) {
+        needsSkinSolveSetUp = false
+        var solves: [SkinSolve] = []
+        var solvesByKey: [Int: [Int]] = [:]
+        for binding in skinBindings {
+            guard let mesh = binding.deformedMesh else { continue }
+            let (anchorNode, anchorOffset) = anchor(of: binding.modelEntity)
+            if let existing = solvesByKey[binding.skeletonKey]?.first(where: {
+                solves[$0].anchorNode == anchorNode && solves[$0].anchorOffset == anchorOffset
+            }) {
+                solves[existing].meshes.append(mesh)
+                continue
+            }
+            solvesByKey[binding.skeletonKey, default: []].append(solves.count)
+            solves.append(SkinSolve(jointNodes: binding.jointNodes,
+                                    parentIndices: binding.parentIndices,
+                                    anchorNode: anchorNode,
+                                    anchorOffset: anchorOffset,
+                                    meshes: [mesh]))
+        }
+        var rowsByNode = [[(solve: Int, row: Int)]](repeating: [], count: pose.nodeCount)
+        for (solveIndex, solve) in solves.enumerated() {
+            for (row, node) in solve.jointNodes.enumerated() where rowsByNode.indices.contains(node) {
+                rowsByNode[node].append((solveIndex, row))
+            }
+        }
+        // The rows already written are kept, so a mesh is rewritten only when its pose changes.
+        for index in solves.indices {
+            if let previous = skinSolves.first(where: { $0.meshes.first === solves[index].meshes.first }),
+               previous.jointNodes == solves[index].jointNodes {
+                solves[index].rows = previous.rows
+            }
+        }
+        skinSolves = solves
+        skinRowsByNode = rowsByNode
+    }
+
+    /// The node a model entity hangs under, nil for the model's root, and where it stands
+    /// below that node.
+    private func anchor(of modelEntity: Entity) -> (node: Int?, offset: simd_float4x4) {
+        var current = modelEntity.parent
+        while let entity = current, entity !== self {
+            if let index = nodeIndex(of: entity) {
+                return (index, modelEntity.transformMatrix(relativeTo: entity))
+            }
+            current = entity.parent
+        }
+        return (nil, modelEntity.transformMatrix(relativeTo: self))
+    }
+
+    private func solveAllRows(of index: Int, pose: GLTFPose) {
+        var solve = skinSolves[index]
+        var rows: [Transform] = []
+        var dependentRows: [Int] = []
+        rows.reserveCapacity(solve.jointNodes.count)
+        for row in solve.jointNodes.indices {
+            if readsThroughModel(row, of: solve, pose: pose) {
+                dependentRows.append(row)
+                rows.append(dependentRow(row, of: solve, pose: pose))
+            } else {
+                rows.append(Transform(pose.localTransform(ofNode: solve.jointNodes[row])))
+            }
+        }
+        solve.dependentRows = dependentRows
+        let changed = solve.rows != rows
+        solve.rows = rows
+        skinSolves[index] = solve
+        if changed {
+            setSkinPose(of: index)
+        }
     }
 
     /// A skeleton pose is each joint read in the space of the joint above it, which a
-    /// joint's own transform already is whenever the skeleton and the scene graph agree
+    /// joint's own transform already is whenever the skeleton and the node hierarchy agree
     /// about its parent. glTF skins are authored that way, so the common case is free.
-    private func jointTransforms(for binding: SkinBinding) -> (transforms: [Transform], dependentRows: Set<Int>) {
-        var transforms: [Transform] = []
-        var dependentRows: Set<Int> = []
-        transforms.reserveCapacity(binding.jointEntities.count)
-        for index in 0..<binding.jointEntities.count {
-            let (transform, isDependent) = jointTransform(at: index, of: binding)
-            transforms.append(transform)
-            if isDependent {
-                dependentRows.insert(index)
-            }
-        }
-        return (transforms, dependentRows)
+    private func readsThroughModel(_ row: Int, of solve: SkinSolve, pose: GLTFPose) -> Bool {
+        let node = solve.jointNodes[row]
+        guard node >= 0, let parentRow = solve.parentIndices[safe: row] ?? nil,
+              let parentNode = solve.jointNodes[safe: parentRow] else { return true }
+        return pose.parent(ofNode: node) != parentNode
     }
 
-    /// One row of a skeleton pose, and whether it was read through the scene graph:
-    /// such a row can move without its joint being touched.
-    private func jointTransform(at index: Int, of binding: SkinBinding) -> (transform: Transform, isDependent: Bool) {
-        let jointEntities = binding.jointEntities
-        let parentIndices = binding.parentIndices
-        let joint = jointEntities[index]
-        // A joint the skeleton gives no parent is read in the model's space.
-        let base: Entity
-        if index < parentIndices.count, let parentIndex = parentIndices[index], parentIndex < jointEntities.count {
-            base = jointEntities[parentIndex]
+    private func dependentRow(_ row: Int, of solve: SkinSolve, pose: GLTFPose) -> Transform {
+        let node = solve.jointNodes[row]
+        guard node >= 0 else { return Transform() }
+        let base: simd_float4x4
+        if let parentRow = solve.parentIndices[safe: row] ?? nil,
+           let parentNode = solve.jointNodes[safe: parentRow], parentNode >= 0 {
+            base = pose.modelMatrix(ofNode: parentNode)
         } else {
-            base = binding.modelEntity
+            base = (solve.anchorNode.map { pose.modelMatrix(ofNode: $0) } ?? matrix_identity_float4x4) * solve.anchorOffset
         }
-        if joint.parent === base {
-            return (joint.transform, false)
-        }
-        return (Transform(matrix: joint.transformMatrix(relativeTo: base)), true)
+        return Transform(matrix: base.inverse * pose.modelMatrix(ofNode: node))
     }
+
+    private func setSkinPose(of index: Int) {
+        for mesh in skinSolves[index].meshes {
+            mesh.setJointTransforms(skinSolves[index].rows)
+        }
+    }
+}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+extension Transform {
+    init(_ transform: GLTFNodeTransform) {
+        self.init(scale: transform.scale, rotation: transform.rotation, translation: transform.translation)
+    }
+}
+
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+extension GLTFNodeTransform {
+    init(_ transform: Transform) {
+        self.init(translation: transform.translation, rotation: transform.rotation, scale: transform.scale)
+    }
+}
+
+/// Which node entities of a ``GLTFEntity`` stay a copy of its ``GLTFEntity/pose``.
+public enum GLTFNodeEntitySynchronization: Equatable, Sendable {
+    /// Every node entity.
+    case all
+    /// These nodes, by index in the pose, such as the bones something is attached to, the
+    /// nodes the model's own meshes hang under, and every node above them. The other node
+    /// entities keep the transform they had.
+    case nodes(Set<Int>)
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

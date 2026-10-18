@@ -66,9 +66,10 @@ struct GLTFEntityLoaderTests {
         // Each entity's bindings stay within its own graph.
         for (entity, other) in [(first, second), (second, first)] {
             let binding = try #require(entity.skinBindings.first)
-            #expect(!binding.jointEntities.isEmpty)
-            #expect(binding.jointEntities.allSatisfy { TestSupport.isDescendant($0, of: entity) })
-            #expect(binding.jointEntities.allSatisfy { !TestSupport.isDescendant($0, of: other) })
+            let joints = binding.jointNodes.compactMap(entity.entity(forNodeAt:))
+            #expect(!joints.isEmpty && joints.count == binding.jointNodes.count)
+            #expect(joints.allSatisfy { TestSupport.isDescendant($0, of: entity) })
+            #expect(joints.allSatisfy { !TestSupport.isDescendant($0, of: other) })
         }
     }
 

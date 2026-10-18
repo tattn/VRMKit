@@ -129,11 +129,12 @@ The eyes stay on the target as either it or the model moves. VRM 0.x and 1.0 sha
 
 ```swift
 let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-model.humanoid.node(for: .neck)?.transform.rotation *= neckRotation
-model.invalidateSkinPose()
+if let pose = model.pose, let neck = model.humanoid.nodeIndex(for: .neck) {
+    pose.setLocalRotation(pose.localTransform(ofNode: neck).rotation * neckRotation, ofNode: neck)
+}
 ```
 
-Call `invalidateSkinPose()` after moving a bone yourself. Animation, constraints and spring bones call it for you.
+The model's pose (`GLTFEntity.pose`) is what animation, constraints, spring bones and skinning read and write, and its node entities are a copy of it. A bone written to its entity still works: the next update reads the entities back, or `invalidateSkinPose()` does at once. Set `nodeEntitySynchronization` to `.nodes(...)` to keep only the bones you read or attach things to up to date, which saves most of the cost of posing a model.
 
 ## VRM animation (.vrma)
 

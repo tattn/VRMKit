@@ -161,7 +161,7 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
     /// Every transform channel of one node, so a node animated on more than one path
     /// takes a single `Transform` write per frame.
     private struct TransformBinding {
-        let target: Entity
+        let nodeIndex: Int
         var translation: GLTFKeyframeTrack<SIMD3<Float>>?
         var rotation: GLTFKeyframeTrack<simd_quatf>?
         var scale: GLTFKeyframeTrack<SIMD3<Float>>?
@@ -198,8 +198,8 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
                 continue
             }
 
-            guard let target = entity.entity(forNodeAt: channel.nodeIndex) else { continue }
-            var binding = transforms[channel.nodeIndex] ?? TransformBinding(target: target)
+            guard entity.entity(forNodeAt: channel.nodeIndex) != nil else { continue }
+            var binding = transforms[channel.nodeIndex] ?? TransformBinding(nodeIndex: channel.nodeIndex)
             switch channel.path {
             case .translation:
                 binding.translation = try .init(times: times,
@@ -225,20 +225,15 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
     }
 
     @MainActor
-    func apply(at time: Float, movedNodes: inout [Entity]) {
+    func apply(at time: Float, to pose: GLTFPose) {
         for binding in transformBindings {
             // The current transform is the base, so paths this animation does not drive
             // keep whatever else wrote them.
-            let current = binding.target.transform
-            var transform = current
+            var transform = pose.localTransform(ofNode: binding.nodeIndex)
             if let value = binding.translation?.value(at: time) { transform.translation = value }
             if let value = binding.rotation?.value(at: time) { transform.rotation = value }
             if let value = binding.scale?.value(at: time) { transform.scale = value }
-            // Assigning `Entity.transform` invalidates the subtree's cached world
-            // transforms, so a held pose must not write at all.
-            guard transform != current else { continue }
-            binding.target.transform = transform
-            movedNodes.append(binding.target)
+            pose.setLocalTransform(transform, ofNode: binding.nodeIndex)
         }
         for binding in weightBindings {
             let weights = binding.track.value(at: time)

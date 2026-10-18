@@ -126,7 +126,7 @@ final class GLTFSceneBuilder {
         for node in gltfScene.nodes ?? [] {
             root.addChild(try self.node(withNodeIndex: node))
         }
-        root.setNodeEntities(nodes)
+        try root.setNodeEntities(nodes)
         return BuiltScene(nodes: nodes, meshes: sceneMeshes)
     }
 

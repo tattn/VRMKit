@@ -26,7 +26,7 @@ struct RealityKitCostBenchmark {
     private func jointIDs(of entity: GLTFEntity) -> Set<Entity.ID> {
         var ids: Set<Entity.ID> = []
         for binding in entity.skinBindings {
-            for joint in binding.jointEntities { ids.insert(joint.id) }
+            for joint in binding.jointNodes.compactMap(entity.entity(forNodeAt:)) { ids.insert(joint.id) }
         }
         return ids
     }
@@ -94,7 +94,7 @@ struct RealityKitCostBenchmark {
             print("BENCH \(name): models parented under a joint: \(modelsUnderJoints.count)")
             for binding in entity.skinBindings {
                 let pass = binding.modelEntity.components[GLTFMaterialPassComponent.self]?.name ?? "-"
-                print("  skeleton \(binding.skeletonKey) joints \(binding.jointEntities.count)"
+                print("  skeleton \(binding.skeletonKey) joints \(binding.jointNodes.count)"
                       + " pass \(pass) name \(binding.modelEntity.name)")
             }
         }
@@ -359,6 +359,22 @@ struct RealityKitCostBenchmark {
             bodyNarrow.invalidateSkinPose(for: narrowBones)
             bodyNarrow.update(deltaTime: 1.0 / 60.0)
         })
+
+        // The same bones written to the pose instead, with every node entity kept a copy of
+        // it and with none kept, which is what an app drawing the skin itself can ask for.
+        for (label, synchronization) in [("body pose", GLTFNodeEntitySynchronization.all),
+                                          ("body pose unsynced", .nodes([]))] {
+            let entity = try await loadSettled()
+            entity.nodeEntitySynchronization = synchronization
+            let pose = try #require(entity.pose)
+            let (bones, rotation) = boneDriver(entity)
+            let indices = bones.compactMap(entity.nodeIndex(of:))
+            report(label, microsecondsPerUpdate {
+                let value = rotation()
+                for index in indices { pose.setLocalRotation(value, ofNode: index) }
+                entity.update(deltaTime: 1.0 / 60.0)
+            })
+        }
 
         // `Entity.transform` is a computed property over `TransformComponent`, so
         // assigning members one at a time is a get-modify-set, and a world-transform

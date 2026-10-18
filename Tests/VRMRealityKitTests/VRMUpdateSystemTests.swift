@@ -33,55 +33,42 @@ struct VRMUpdateSystemTests {
         #expect(parent.children.first === loaded)
     }
 
-    /// A model with neither spring bones nor node constraints holds whatever
-    /// pose it was last put in, so its per-frame update stops re-solving every
-    /// skeleton. Posing a joint directly is what says otherwise.
+    /// A model with neither spring bones nor node constraints holds whatever pose it was
+    /// last put in, so its per-frame update moves nothing for the skin to re-solve, while a
+    /// joint posed on its entity reaches the skin on the next update.
     @Test
-    func testAStaticModelSolvesItsSkinOnlyOnceInvalidated() async throws {
+    func testAStaticModelResolvesItsSkinOnlyWhenAJointMoves() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let data = try TestSupport.staticSeedSanData()
         let vrmEntity = try await VRMEntityLoader(withData: data, shaders: []).loadEntity()
+        let pose = try #require(vrmEntity.pose)
 
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        vrmEntity.update(deltaTime: 1.0 / 60.0)
         let before = TestSupport.jointRotations(in: vrmEntity)
         #expect(!before.isEmpty)
-
-        head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
+        #expect(!pose.hasNodesMovedForSkinning)
         #expect(TestSupport.jointRotations(in: vrmEntity) == before)
 
-        vrmEntity.invalidateSkinPose()
+        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
         #expect(TestSupport.jointRotations(in: vrmEntity) != before)
     }
 
-    /// Moving the model does not turn a fine-grained invalidation back into a whole
-    /// re-solve: a joint posed without being named stays out of the skin, exactly as
-    /// it does with the model held still.
+    /// The skin is solved in the model's own space, so moving the model moves no row.
     @Test
-    func testAMovedModelRootKeepsTheInvalidationFineGrained() async throws {
+    func testMovingTheModelRootLeavesTheSkinPose() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
-
-        // A toe sits under no row any skeleton reads through the scene graph, so only
-        // a whole re-solve reaches it.
-        let toe = try #require(vrmEntity.humanoid.node(for: .leftToes))
-        let neck = try #require(vrmEntity.humanoid.node(for: .neck))
         let before = TestSupport.jointRotations(in: vrmEntity)
         #expect(!before.isEmpty)
 
-        toe.transform.rotation *= simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         vrmEntity.transform.translation += SIMD3<Float>(0.5, 0, 0.25)
-        vrmEntity.invalidateSkinPose(for: [neck])
+        vrmEntity.transform.rotation = simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(0, 1, 0))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
-
         #expect(TestSupport.jointRotations(in: vrmEntity) == before)
-
-        // Naming it still lands, so the pose was not merely frozen.
-        vrmEntity.invalidateSkinPose(for: [toe])
-        vrmEntity.update(deltaTime: 1.0 / 60.0)
-        #expect(TestSupport.jointRotations(in: vrmEntity) != before)
     }
 
     /// The fine-grained invalidation solves the same pose the whole-model one

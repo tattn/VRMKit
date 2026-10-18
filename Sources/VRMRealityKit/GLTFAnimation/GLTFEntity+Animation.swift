@@ -18,10 +18,8 @@ public struct GLTFAnimation: Sendable {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 protocol GLTFAnimationApplying: AnyObject {
-    /// Poses the bound targets for `time`, appending every node whose transform it
-    /// changed to `movedNodes`, so the caller re-solves those joints alone and skips a
-    /// held pose entirely.
-    func apply(at time: Float, movedNodes: inout [Entity])
+    /// Poses the bound targets for `time` in `pose`, which notes the nodes that moved.
+    func apply(at time: Float, to pose: GLTFPose)
 }
 
 /// Controls one running glTF or VRM animation, in the spirit of RealityKit's
@@ -84,13 +82,13 @@ public final class GLTFAnimationPlaybackController {
         isComplete = true
     }
 
-    func advance(deltaTime: TimeInterval, movedNodes: inout [Entity]) {
+    func advance(deltaTime: TimeInterval) {
         guard !isComplete else { return }
         let duration = animation.duration
         // A zero-length animation holds a single pose, which looping cannot change: it
         // completes rather than reapplying it every frame.
         guard duration > 0 else {
-            apply(movedNodes: &movedNodes)
+            apply()
             isComplete = true
             return
         }
@@ -106,12 +104,13 @@ public final class GLTFAnimationPlaybackController {
                 isComplete = true
             }
         }
-        apply(movedNodes: &movedNodes)
+        apply()
     }
 
     /// Poses the model for the current time, collecting the joints it moved.
-    func apply(movedNodes: inout [Entity]) {
-        runtime?.apply(at: Float(time), movedNodes: &movedNodes)
+    func apply() {
+        guard let pose = entity?.pose else { return }
+        runtime?.apply(at: Float(time), to: pose)
     }
 }
 
@@ -190,9 +189,7 @@ extension GLTFEntity {
                                                          speed: speed)
         activeAnimationControllers.append(controller)
         components.set(GLTFAnimationPlaybackComponent())
-        var movedNodes: [Entity] = []
-        controller.apply(movedNodes: &movedNodes)
-        invalidateSkinPose(for: movedNodes)
+        controller.apply()
         flushDeformation()
         return controller
     }
@@ -216,13 +213,10 @@ extension GLTFEntity {
             components.remove(GLTFAnimationPlaybackComponent.self)
             return
         }
-        movedAnimationNodes.removeAll(keepingCapacity: true)
+        adoptNodeEntitiesPosedFromOutside()
         for controller in activeAnimationControllers {
-            controller.advance(deltaTime: deltaTime, movedNodes: &movedAnimationNodes)
+            controller.advance(deltaTime: deltaTime)
         }
-        // A paused or held pose leaves the skeleton where the last solve put it, and a
-        // looping animation that rests moves only the joints something else has taken.
-        invalidateSkinPose(for: movedAnimationNodes)
         // A model driving its own per-frame update solves the pose and submits the
         // deformation at the end of it, after this frame's constraints and spring bones.
         if !refreshesSkinningPerFrame {
@@ -236,12 +230,10 @@ extension GLTFEntity {
     func applyPose(seekedBy controller: GLTFAnimationPlaybackController) {
         // A stopped controller has left the list, so everything running outranks it.
         let first = activeAnimationControllers.firstIndex { $0 === controller }.map { $0 + 1 } ?? 0
-        var movedNodes: [Entity] = []
-        controller.apply(movedNodes: &movedNodes)
+        controller.apply()
         for outranking in activeAnimationControllers[first...] {
-            outranking.apply(movedNodes: &movedNodes)
+            outranking.apply()
         }
-        invalidateSkinPose(for: movedNodes)
         flushDeformation()
     }
 

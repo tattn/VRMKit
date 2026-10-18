@@ -40,9 +40,9 @@ public final class VRMEntity: GLTFEntity {
     private let expressions = ExpressionRuntime<Entity>()
     var expressionClips: [ExpressionKey: ExpressionClip] { expressions.clips }
     private var firstPersonAnnotations: [FirstPersonAnnotation] = []
-    private var springBones = SpringBoneRig<Entity>()
-    private var nodeConstraints = NodeConstraintRig<Entity>()
-    private var lookAt = LookAtRig<Entity>()
+    private var springBones = SpringBoneRig<GLTFPoseNode>()
+    private var nodeConstraints = NodeConstraintRig<GLTFPoseNode>()
+    private var lookAt = LookAtRig<GLTFPoseNode>()
     private var deformedMeshesByMeshEntity: [Entity.ID: [GLTFDeformedMesh]] = [:]
 
     private lazy var expressionApplier = ExpressionApplier<Entity>(
@@ -119,7 +119,10 @@ public final class VRMEntity: GLTFEntity {
     ///
     /// `center` has to be above the joint, and no spring may swing it, as for a spring's center.
     public func setSpringBoneCenter(_ center: Entity, share: Float, forJoint joint: Entity) throws {
-        try springBones.setCenter(center, share: share, forJoint: joint)
+        guard let pose, let centerIndex = nodeIndex(of: center), let jointIndex = nodeIndex(of: joint) else {
+            throw VRMError._dataInconsistent("a spring-bone center and its joint have to be nodes of this model")
+        }
+        try springBones.setCenter(pose.nodes[centerIndex], share: share, forJoint: pose.nodes[jointIndex])
     }
 
     /// The versions disagree about which way a model faces, and loading converts no
@@ -203,16 +206,25 @@ public final class VRMEntity: GLTFEntity {
                               hierarchy: GLTFNodeHierarchy,
                               builder: GLTFSceneBuilder) throws {
         nodeConstraints = try NodeConstraintRig.make(vrm: vrm, gltfNodes: gltfNodes, hierarchy: hierarchy) {
-            try builder.node(withNodeIndex: $0)
+            try poseNode(at: $0, builder: builder)
         }
     }
 
     func setUpSpringBones(builder: GLTFSceneBuilder) throws {
-        springBones = try SpringBoneRig.make(vrm: vrm) { try builder.node(withNodeIndex: $0) }
+        springBones = try SpringBoneRig.make(vrm: vrm) { try poseNode(at: $0, builder: builder) }
     }
 
     func setUpLookAt(builder: GLTFSceneBuilder) throws {
-        lookAt = try LookAtRig.make(vrm: vrm) { try builder.node(withNodeIndex: $0) }
+        lookAt = try LookAtRig.make(vrm: vrm) { try poseNode(at: $0, builder: builder) }
+    }
+
+    /// The pose's node for a glTF node, which the scene has to have built.
+    private func poseNode(at index: Int, builder: GLTFSceneBuilder) throws -> GLTFPoseNode {
+        _ = try builder.node(withNodeIndex: index)
+        guard let pose, pose.nodes.indices.contains(index) else {
+            throw VRMError._dataInconsistent("node \(index) is not part of this model's pose")
+        }
+        return pose.nodes[index]
     }
 
     /// What the eyes follow, nil to leave them at rest.
@@ -224,16 +236,15 @@ public final class VRMEntity: GLTFEntity {
         get { lookAt.target }
         set {
             lookAt.target = newValue
+            refreshPoseRoot()
             applyLookAt()
         }
     }
 
     private func applyLookAt() {
         switch lookAt.apply() {
-        case .unchanged:
+        case .unchanged, .posedBones:
             break
-        case .posedBones:
-            invalidateSkinPose(for: lookAt.posedNodes)
         case .weights(let weights):
             guard expressions.storeWeights(weights) else { return }
             expressions.apply(with: expressionApplier)
@@ -264,23 +275,20 @@ public final class VRMEntity: GLTFEntity {
     /// Advances node constraints, the gaze, spring bones and skinning by one frame.
     ///
     /// ``VRMUpdateSystem`` calls this once per render frame, so set
-    /// ``isAutomaticUpdateEnabled`` to `false` before driving the timing manually. The skin
-    /// pose is re-solved only when a joint has moved, so posing a humanoid bone directly has
-    /// to be followed by ``GLTFEntity/invalidateSkinPose()``.
+    /// ``isAutomaticUpdateEnabled`` to `false` before driving the timing manually. A bone
+    /// posed through ``GLTFEntity/pose`` needs nothing more; one posed on its entity has to
+    /// be followed by ``GLTFEntity/invalidateSkinPose()``.
     public func update(deltaTime: TimeInterval) {
         let deltaTime = max(0, deltaTime)
+        refreshPoseRoot()
+        adoptNodeEntitiesPosedFromOutside()
         // Skinning runs last so this frame's constraint and spring-bone poses reach the
-        // skinned meshes in the same frame they are solved. Each runtime hands over the
-        // joints it moved, so only their skeletons are re-solved.
-        if nodeConstraints.apply() {
-            invalidateSkinPose(for: nodeConstraints.posedNodes)
-        }
+        // skinned meshes in the same frame they are solved.
+        _ = nodeConstraints.apply()
         // After the constraints, which may have posed the head the gaze is measured from,
         // and before the springs, which nothing about the eyes feeds into.
         applyLookAt()
-        if springBones.update(deltaTime: deltaTime) {
-            invalidateSkinPose(for: springBones.posedNodes)
-        }
+        _ = springBones.update(deltaTime: deltaTime)
         flushDeformation()
     }
 

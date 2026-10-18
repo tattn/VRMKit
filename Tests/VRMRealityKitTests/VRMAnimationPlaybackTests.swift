@@ -38,22 +38,25 @@ struct VRMAnimationPlaybackTests {
         return SIMD2(yaw, pitch)
     }
 
-    /// A running animation invalidates only the bones it moved, so a joint posed
-    /// without being named stays out of the skin exactly as it does with no animation
-    /// playing. The fixture drives the hips, spine and left thumb, never a toe.
+    /// A joint the animation does not drive keeps what was written to it, whether to its
+    /// entity or to the pose, and the skin follows. The fixture drives the hips, spine and
+    /// left thumb, never a toe.
     @Test
-    func testARunningAnimationKeepsTheInvalidationFineGrained() async throws {
+    func testARunningAnimationKeepsAJointItDoesNotDrive() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        func posedRotations(poseToe: Bool, nameToe: Bool) async throws -> [SIMD4<Float>] {
+        enum Write { case none, entity, pose }
+        func posedRotations(_ write: Write) async throws -> [SIMD4<Float>] {
             let entity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
             try entity.playAnimation(fixture(), loops: true)
             let toe = try #require(entity.humanoid.node(for: .leftToes))
+            let toeIndex = try #require(entity.nodeIndex(of: toe))
+            let pose = try #require(entity.pose)
             for _ in 0..<4 {
-                if poseToe {
-                    toe.transform.rotation *= simd_quatf(angle: 0.2, axis: SIMD3<Float>(1, 0, 0))
-                    if nameToe {
-                        entity.invalidateSkinPose(for: [toe])
-                    }
+                let turned = toe.transform.rotation * simd_quatf(angle: 0.2, axis: SIMD3<Float>(1, 0, 0))
+                switch write {
+                case .none: break
+                case .entity: toe.transform.rotation = turned
+                case .pose: pose.setLocalRotation(turned, ofNode: toeIndex)
                 }
                 entity.updateAnimations(deltaTime: 1.0 / 60.0)
                 entity.update(deltaTime: 1.0 / 60.0)
@@ -61,10 +64,11 @@ struct VRMAnimationPlaybackTests {
             return TestSupport.jointRotations(in: entity)
         }
 
-        let untouched = try await posedRotations(poseToe: false, nameToe: false)
+        let untouched = try await posedRotations(.none)
         #expect(!untouched.isEmpty)
-        #expect(try await posedRotations(poseToe: true, nameToe: false) == untouched)
-        #expect(try await posedRotations(poseToe: true, nameToe: true) != untouched)
+        let posedOnEntity = try await posedRotations(.entity)
+        #expect(posedOnEntity != untouched)
+        #expect(try await posedRotations(.pose) == posedOnEntity)
     }
 
     @Test

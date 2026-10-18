@@ -27,19 +27,18 @@ struct VRMSpringBoneEntityTests {
         var checkedJoints = 0
         for binding in vrmEntity.skinBindings {
             let modelEntity = binding.modelEntity
-            let skeleton = binding.skeleton
             guard let jointTransforms = binding.deformedMesh?.jointTransforms,
-                  jointTransforms.count == skeleton.joints.count else {
+                  jointTransforms.count == binding.jointNodes.count else {
                 continue
             }
-            let jointEntities = skeleton.joints.map { vrmEntity.findEntity(named: $0.name) }
+            let jointEntities = binding.jointNodes.map { vrmEntity.entity(forNodeAt: $0) }
             let jointWorlds = jointEntities.map { $0?.transformMatrix(relativeTo: nil) }
             let modelWorldInverse = modelEntity.transformMatrix(relativeTo: nil).inverse
 
-            for index in skeleton.joints.indices {
+            for index in binding.jointNodes.indices {
                 guard let jointWorld = jointWorlds[index] else { continue }
                 let expected: simd_float4x4
-                if let parentIndex = skeleton.joints[index].parentIndex,
+                if let parentIndex = binding.parentIndices[index],
                    let parentWorld = jointWorlds[parentIndex] {
                     expected = parentWorld.inverse * jointWorld
                 } else {

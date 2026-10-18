@@ -86,9 +86,7 @@ struct GLTFSampleAssetRenderingTests {
 
         let binding = try #require(entity.skinBindings.first)
         // SimpleSkin's skin lists two joints, nodes 1 and 2.
-        #expect(binding.jointEntities.count == 2)
-        #expect(binding.jointEntities[0] === entity.entity(forNodeAt: 1))
-        #expect(binding.jointEntities[1] === entity.entity(forNodeAt: 2))
+        #expect(binding.jointNodes == [1, 2])
         #expect(binding.deformedMesh?.jointTransforms != nil)
     }
 
@@ -164,9 +162,9 @@ struct GLTFSampleAssetRenderingTests {
 
         // The binding must drive this graph's joints, not a second copy of them.
         let binding = try #require(entity.skinBindings.first)
-        #expect(binding.jointEntities.count == 2)
-        #expect(binding.jointEntities[0] === jointRoot)
-        #expect(binding.jointEntities[1] === entity.entity(forNodeAt: 2))
+        #expect(binding.jointNodes.count == 2)
+        #expect(entity.entity(forNodeAt: binding.jointNodes[0]) === jointRoot)
+        #expect(binding.jointNodes[1] == 2)
         #expect(TestSupport.isDescendant(binding.modelEntity, of: meshNode))
     }
 

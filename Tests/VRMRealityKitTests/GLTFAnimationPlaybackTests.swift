@@ -366,10 +366,11 @@ struct GLTFAnimationPlaybackTests {
         let entity = try await TestSupport.loadEntity(.animatedTriangle)
         let controller = try entity.playAnimation(at: 0, loops: true)
 
-        func movedNodes(deltaTime: TimeInterval) -> [Entity] {
-            var moved: [Entity] = []
-            controller.advance(deltaTime: deltaTime, movedNodes: &moved)
-            return moved
+        let pose = try #require(entity.pose)
+        func movedNodes(deltaTime: TimeInterval) -> [Int] {
+            _ = pose.takeNodesMovedForSkinning()
+            controller.advance(deltaTime: deltaTime)
+            return pose.takeNodesMovedForSkinning()
         }
 
         // A real advance moves the node...

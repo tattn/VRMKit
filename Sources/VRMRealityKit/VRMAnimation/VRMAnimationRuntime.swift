@@ -21,7 +21,7 @@ final class VRMAnimationRuntime {
     /// Every retargeted channel of one animation node, so a bone animated on rotation
     /// and translation takes a single `Transform` write per frame.
     private struct BoneBinding {
-        let target: Entity
+        let nodeIndex: Int
         var rotation: RotationChannel?
         var translation: TranslationChannel?
     }
@@ -238,7 +238,7 @@ final class VRMAnimationRuntime {
                                        * modelTransform * animationRest.parentWorldMatrix(at: nodeIndex))
             }
             guard rotation != nil || translation != nil else { continue }
-            bones.append(BoneBinding(target: target.entity, rotation: rotation, translation: translation))
+            bones.append(BoneBinding(nodeIndex: target.nodeIndex, rotation: rotation, translation: translation))
         }
 
         boneBindings = bones
@@ -269,23 +269,18 @@ final class VRMAnimationRuntime {
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension VRMAnimationRuntime: GLTFAnimationApplying {
-    func apply(at time: Float, movedNodes: inout [Entity]) {
+    func apply(at time: Float, to pose: GLTFPose) {
         for binding in boneBindings {
             // The current transform is the base, so paths this animation does not drive
             // keep whatever else wrote them.
-            let current = binding.target.transform
-            var transform = current
+            var transform = pose.localTransform(ofNode: binding.nodeIndex)
             if let channel = binding.rotation {
                 transform.rotation = channel.value(at: time)
             }
             if let channel = binding.translation {
                 transform.translation = channel.value(at: time)
             }
-            // Assigning `Entity.transform` invalidates the subtree's cached world
-            // transforms, so a held pose must not write at all.
-            guard transform != current else { continue }
-            binding.target.transform = transform
-            movedNodes.append(binding.target)
+            pose.setLocalTransform(transform, ofNode: binding.nodeIndex)
         }
 
         applyExpressions(at: time)
