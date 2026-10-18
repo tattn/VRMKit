@@ -230,5 +230,6 @@ void mtoonOutlineGeometry(realitykit::geometry_parameters params)
     if (outlineParams.y > 1.5h) {
         width = realityKitApproximateScreenOutlineWidth(params, width, worldDirection);
     }
-    params.geometry().set_world_position_offset(worldDirection * mtoonBudgetedOutlineWidth(params, width, worldDirection));
+    float3 offset = worldDirection * mtoonBudgetedOutlineWidth(params, width, worldDirection);
+    params.geometry().set_world_position_offset(offset + realityKitAwayFromCamera(params) * realityKitOutlineDepthPush);
 }

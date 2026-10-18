@@ -188,6 +188,23 @@ inline float2 mtoonVertexAnimatedUV(realitykit::texture::textures textures,
                                       uvAnimationMaskSampler, uvTransform, uvTransformRotation);
 }
 
+// How far the outline shell is pushed away from the camera (meters). Where the shell
+// meets its body, as at the tips of double-sided hair, the body has to show; at equal
+// depth the order RealityKit draws the two in would decide instead, and that order
+// changes as entities are hidden and shown again.
+constant float realityKitOutlineDepthPush = 0.0005;
+
+// The world-space direction from the camera through the vertex. Moving a vertex
+// along it changes only its depth, not where it lands on screen.
+inline float3 realityKitAwayFromCamera(realitykit::geometry_parameters params)
+{
+    float4x4 modelToView = params.uniforms().model_to_view();
+    float4 viewPosition = modelToView * float4(params.geometry().model_position(), 1.0);
+    float4x4 worldToView = modelToView * params.uniforms().world_to_model();
+    float3x3 viewRotation = float3x3(worldToView[0].xyz, worldToView[1].xyz, worldToView[2].xyz);
+    return normalize(transpose(viewRotation) * viewPosition.xyz);
+}
+
 // RealityKit's geometry_parameters exposes projection matrices but no viewport
 // size, so a screen-coordinate width is a fraction of the normalized screen
 // height rather than a pixel count.
