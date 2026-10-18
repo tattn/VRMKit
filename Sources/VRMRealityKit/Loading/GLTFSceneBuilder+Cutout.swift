@@ -145,8 +145,8 @@ extension GLTFSceneBuilder {
         if let baseTexture {
             imageIndex = try gltf.imageIndex(ofTextureAt: baseTexture.index)
             if let sampler = try gltfSampler(withTextureIndex: baseTexture.index) {
-                sampling.wrapS = sampler.wrapS ?? .REPEAT
-                sampling.wrapT = sampler.wrapT ?? .REPEAT
+                sampling.wrapS = sampler.wrapS
+                sampling.wrapT = sampler.wrapT
             }
         }
         return CutoutCoverageWork(materialIndex: index,
