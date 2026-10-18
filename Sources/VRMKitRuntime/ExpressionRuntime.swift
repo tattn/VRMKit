@@ -69,6 +69,47 @@ package struct ExpressionApplier<Mesh: AnyObject> {
     }
 }
 
+/// One expression of one loaded model, looked up once with its key so that setting weights
+/// every frame hashes nothing (``ExpressionWeights``).
+public struct ExpressionHandle: Hashable, Sendable {
+    package let slot: Int
+}
+
+/// Expression weights set by ``ExpressionHandle``, the input a face tracker or other per-frame
+/// driver hands a model in one go. Only the weights set since the last ``reset()`` are applied;
+/// the other expressions keep what they had, such as what the model's gaze sets. Weights clamp to
+/// 0...1 when applied.
+public struct ExpressionWeights: Equatable, Sendable {
+    package private(set) var values: [Float]
+    private var isSet: [Bool]
+    package private(set) var setSlots: [Int] = []
+
+    package init(count: Int) {
+        values = Array(repeating: 0, count: count)
+        isSet = Array(repeating: false, count: count)
+    }
+
+    public subscript(handle: ExpressionHandle) -> Float {
+        get { values[handle.slot] }
+        set {
+            values[handle.slot] = newValue
+            if !isSet[handle.slot] {
+                isSet[handle.slot] = true
+                setSlots.append(handle.slot)
+            }
+        }
+    }
+
+    /// Forgets every weight set, so the next apply changes nothing until one is set again.
+    public mutating func reset() {
+        for slot in setSlots {
+            values[slot] = 0
+            isSet[slot] = false
+        }
+        setSlots.removeAll(keepingCapacity: true)
+    }
+}
+
 /// What applying needs of one expression besides its clip, held outside the generic
 /// runtime so the per-frame loop touches no type generic over the mesh. Targets are
 /// indices into the runtime's target lists.
@@ -247,6 +288,26 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
         setUp(clips: clips,
               materialColorClips: materialColorClips,
               textureTransformClips: textureTransformClips)
+    }
+
+    /// The handle `key` drives, a custom key spelling a preset driving the preset.
+    package func handle(for key: ExpressionKey) -> ExpressionHandle? {
+        slotsByKey[key].map(ExpressionHandle.init(slot:))
+    }
+
+    package var expressionCount: Int { slots.count }
+
+    /// Records the input weights `values` sets, reporting whether any moved.
+    package func storeWeights(_ values: ExpressionWeights) -> Bool {
+        guard values.values.count == weights.count else { return false }
+        var changed = false
+        for slot in values.setSlots {
+            let weight = Float(slotClips[slot].normalizedWeight(Double(values.values[slot])))
+            guard weight != weights[slot] else { continue }
+            weights[slot] = weight
+            changed = true
+        }
+        return changed
     }
 
     /// The input weight `key` was last set to, before any override scales it.

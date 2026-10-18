@@ -119,6 +119,16 @@ for expression in model.availableExpressions {
 }
 ```
 
+A face tracker setting the face every frame looks each key up once and then sets the weights by handle, which hashes no key per frame. Expressions it leaves unset keep their weights:
+
+```swift
+let jawOpen = model.expressionHandle(for: .custom("jawOpen"))
+var weights = model.makeExpressionWeights()
+// every frame
+if let jawOpen { weights[jawOpen] = trackedJawOpen }
+model.setExpressions(weights)
+```
+
 VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`, and `ExpressionPreset.vrm0PresetName` spells it back the 0.x way. `setExpressions` applies several weights at once, which suits per-frame face tracking.
 
 ## Look at

@@ -58,12 +58,35 @@ struct ExpressionCostBenchmark {
         // does not carry, which still have to be looked up and rejected.
         let trackedKeys = ownKeys + Self.perfectSyncNames.map { ExpressionKey.custom($0) }
 
+        print(String(format: "BENCH handles (%d): %.1f µs/frame",
+                     ownKeys.count, microsecondsPerFrame(drivingHandlesOf: entity, keys: ownKeys)))
         for (label, keys) in [("model keys", ownKeys), ("tracker keys", trackedKeys)] {
             print(String(format: "BENCH %@ (%d): %.1f µs/frame",
                          label, keys.count, microsecondsPerFrame(driving: entity, keys: keys)))
             print(String(format: "BENCH %@ (%d) held: %.1f µs/frame",
                          label, keys.count, microsecondsPerFrame(holding: entity, keys: keys)))
         }
+    }
+
+    /// Times the per-frame call of a driver that looked its keys up once: every weight moves, by handle.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func microsecondsPerFrame(drivingHandlesOf entity: VRMEntity, keys: [ExpressionKey], frames requested: Int = 2000) -> Double {
+        let frames = ProcessInfo.processInfo.environment["VRMKIT_BENCH_FRAMES"].flatMap(Int.init) ?? requested
+        let handles = keys.compactMap(entity.expressionHandle(for:))
+        var weights = entity.makeExpressionWeights()
+
+        func frame(_ index: Int) {
+            let base = Float(index % 100) / 100
+            for (offset, handle) in handles.enumerated() {
+                weights[handle] = min(1, base + Float(offset % 7) / 100)
+            }
+            entity.setExpressions(weights)
+        }
+
+        for index in 0..<(frames / 4) { frame(index) }
+        let start = CFAbsoluteTimeGetCurrent()
+        for index in 0..<frames { frame(index) }
+        return (CFAbsoluteTimeGetCurrent() - start) * 1_000_000 / Double(frames)
     }
 
     /// Times a frame that hands over weights none of which moved: `storeWeights` still

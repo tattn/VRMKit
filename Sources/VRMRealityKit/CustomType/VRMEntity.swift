@@ -329,6 +329,26 @@ public final class VRMEntity: GLTFEntity {
         expressions.apply(with: expressionApplier)
     }
 
+    /// The handle to set `key` with in ``ExpressionWeights``, or nil when the model offers no such
+    /// expression. Look it up once: a handle holds for as long as the model.
+    public func expressionHandle(for key: ExpressionKey) -> ExpressionHandle? {
+        expressions.handle(for: key)
+    }
+
+    /// Expression weights for this model, none set yet, to set by handle and hand to
+    /// ``setExpressions(_:)-(ExpressionWeights)`` every frame.
+    public func makeExpressionWeights() -> ExpressionWeights {
+        ExpressionWeights(count: expressions.expressionCount)
+    }
+
+    /// Sets the weights `weights` sets and re-applies the result once, for a caller driving the
+    /// face every frame, which then hashes no key. `weights` has to come from this model's
+    /// ``makeExpressionWeights()``.
+    public func setExpressions(_ weights: ExpressionWeights) {
+        guard expressions.storeWeights(weights) else { return }
+        expressions.apply(with: expressionApplier)
+    }
+
     public func expression(for key: ExpressionKey) -> CGFloat {
         CGFloat(expressions.weight(for: key))
     }

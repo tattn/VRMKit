@@ -11,6 +11,33 @@ import VRMTestSupport
 @Suite
 @MainActor
 struct VRMExpressionTests {
+    /// Weights set by handle land as the same weights set by key, every expression at once, and a
+    /// custom key spelling a preset finds the preset.
+    @Test
+    func testWeightsSetByHandleMatchWeightsSetByKey() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let byKey = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let byHandle = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        #expect(byHandle.expressionHandle(for: .custom("happy")) == byHandle.expressionHandle(for: .preset(.happy)))
+        #expect(byHandle.expressionHandle(for: .custom("notAnExpression")) == nil)
+
+        var weights = byHandle.makeExpressionWeights()
+        for (key, value) in [(ExpressionKey.preset(.aa), Float(0.6)), (.preset(.blink), 1), (.preset(.relaxed), 0.3)] {
+            weights[try #require(byHandle.expressionHandle(for: key))] = value
+            byKey.setExpression(value: CGFloat(value), for: key)
+        }
+        byHandle.setExpressions(weights)
+        #expect(TestSupport.morphWeights(in: byHandle) == TestSupport.morphWeights(in: byKey))
+        #expect(byHandle.expression(for: .preset(.aa)) == byKey.expression(for: .preset(.aa)))
+
+        // Only what is set lands: an expression left unset keeps its weight.
+        weights.reset()
+        weights[try #require(byHandle.expressionHandle(for: .preset(.aa)))] = 0
+        byHandle.setExpressions(weights)
+        #expect(byHandle.expression(for: .preset(.aa)) == 0)
+        #expect(byHandle.expression(for: .preset(.blink)) == 1)
+    }
+
     @Test
     func testBlockingExpressionOverrideSuppressesBlinkAndLookAtWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }

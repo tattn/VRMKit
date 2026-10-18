@@ -236,6 +236,13 @@ enum TestSupport {
         return state.parameters
     }
 
+    /// Every model's morph weights, in a fixed order.
+    @MainActor
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    static func morphWeights(in root: Entity) -> [[Float]] {
+        modelEntities(in: root).compactMap { $0.deformedMesh?.blendShapeWeights }
+    }
+
     /// The blend-shape weight currently applied for a glTF morph target index,
     /// read back from the mesh the way it is deformed.
     @MainActor
