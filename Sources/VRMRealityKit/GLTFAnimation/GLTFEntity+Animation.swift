@@ -107,7 +107,7 @@ public final class GLTFAnimationPlaybackController {
         apply()
     }
 
-    /// Poses the model for the current time, collecting the joints it moved.
+    /// Poses the model for the current time.
     func apply() {
         guard let pose = entity?.pose else { return }
         runtime?.apply(at: Float(time), to: pose)

@@ -303,7 +303,7 @@ public final class VRMEntity: GLTFEntity {
     }
 
     private func followPose(deltaTime: TimeInterval) {
-        _ = nodeConstraints.apply()
+        nodeConstraints.apply()
         // After the constraints, which may have posed the head the gaze is measured from,
         // and before the springs, which nothing about the eyes feeds into.
         applyLookAt()

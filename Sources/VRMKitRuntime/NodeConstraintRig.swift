@@ -17,10 +17,6 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
 
     private var bindings: [Binding] = []
 
-    /// The nodes the constraints write rotations to, so a renderer can re-skin
-    /// only what an apply actually moved.
-    package private(set) var posedNodes: [Node] = []
-
     package init() {}
 
     /// The constraints the glTF nodes declare, or none for a VRM 0.x model. `node`
@@ -58,21 +54,17 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
             targetIndex: { $0.targetIndex },
             dependencies: { $0.descriptor.dependencies(destination: $0.targetIndex, in: hierarchy) }
         )
-        rig.posedNodes = rig.bindings.map(\.target)
         return rig
     }
 
-    /// Poses every constrained node and answers whether any of them moved,
-    /// which is what tells a renderer its skin pose is stale.
-    package func apply() -> Bool {
-        var moved = false
-        for binding in bindings where apply(binding) {
-            moved = true
+    /// Poses every constrained node.
+    package func apply() {
+        for binding in bindings {
+            apply(binding)
         }
-        return moved
     }
 
-    private func apply(_ binding: Binding) -> Bool {
+    private func apply(_ binding: Binding) {
         let target = binding.target
         let source = binding.source
         let rotation = VRMNodeConstraintRuntime.evaluate(
@@ -84,6 +76,6 @@ package struct NodeConstraintRig<Node: VRMRuntimeNode> where Node.RuntimeNode ==
             destinationParentWorldRotation: target.runtimeParent?.worldRotation ?? quat_identity_float,
             destinationWorldPosition: target.worldPosition
         )
-        return target.setLocalRotationIfMoved(rotation)
+        _ = target.setLocalRotationIfMoved(rotation)
     }
 }

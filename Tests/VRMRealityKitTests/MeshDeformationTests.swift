@@ -45,7 +45,7 @@ struct MeshDeformationTests {
     private func waitForDeformation() throws {
         let fence = try GLTFEntity.deformationFence()
         let commandBuffer = try #require(fence.device.makeCommandQueue()?.makeCommandBuffer())
-        commandBuffer.encodeWaitForEvent(fence.event, value: fence.value)
+        fence.wait(in: commandBuffer)
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
     }

@@ -162,9 +162,6 @@ public class GLTFEntity: Entity {
         /// Each joint's parent in the skeleton, read off the skeleton once: the solve reads
         /// a row per joint per frame, and the skeleton hands its joints out by copy.
         let parentIndices: [Int?]
-        /// Stands in for the skeleton's id, so bindings of one skeleton share a solve without
-        /// hashing strings.
-        let skeletonKey: Int
         /// The mesh the solved pose is written to.
         let deformedMesh: GLTFDeformedMesh?
     }
@@ -178,7 +175,6 @@ public class GLTFEntity: Entity {
     }
 
     private(set) var skinBindings: [SkinBinding] = []
-    private var skeletonKeys: [String: Int] = [:]
 
     /// The bindings that read one skeleton in one model space, which solve to the same rows:
     /// a mesh and its outline twin, or the render-queue groups of one mesh.
@@ -189,6 +185,8 @@ public class GLTFEntity: Entity {
         /// stand below it: a joint the skeleton gives no parent is read in the meshes' space.
         let anchorNode: Int?
         let anchorOffset: simd_float4x4
+        /// An entity drawing the meshes, whose place within the model the anchor was read from.
+        let anchorEntity: Entity
         var meshes: [GLTFDeformedMesh]
         var rows: [Transform] = []
         /// Rows read through the model rather than off the joint's own transform: the
@@ -202,6 +200,7 @@ public class GLTFEntity: Entity {
     }
 
     private var skinSolves: [SkinSolve] = []
+    private var changedSkinSolves: [Bool] = []
     /// Node → every (solve, row) it poses.
     private var skinRowsByNode: [[(solve: Int, row: Int)]] = []
     /// Whether ``skinSolves`` has to be built.
@@ -284,10 +283,12 @@ public class GLTFEntity: Entity {
         return pose
     }
 
-    func setNodeEntities(_ nodes: [Entity?]) throws {
+    /// The builder has validated the node hierarchy by now.
+    func setNodeEntities(_ nodes: [Entity?]) {
         nodeEntities = nodes
-        let hierarchy = try GLTFNodeHierarchy(nodes: gltf.nodes)
-        let pose = GLTFPose(parents: gltf.nodes.indices.map { hierarchy.parent(at: $0) },
+        // The locals are read as the node entities were given them, so the pose and the
+        // entities agree to the bit from the start.
+        let pose = GLTFPose(children: gltf.nodes.map { $0.children ?? [] },
                             locals: gltf.nodes.map { GLTFNodeTransform($0.localTransform) })
         pose.didWriteLocalTransform = { [unowned self] index, transform in
             MainActor.assumeIsolated { copyToNodeEntity(transform, ofNode: index) }
@@ -299,17 +300,9 @@ public class GLTFEntity: Entity {
     func registerSkinBinding(modelEntity: ModelEntity,
                              skeleton: MeshResource.Skeleton,
                              jointEntities: [Entity]) {
-        let key: Int
-        if let existing = skeletonKeys[skeleton.id] {
-            key = existing
-        } else {
-            key = skeletonKeys.count
-            skeletonKeys[skeleton.id] = key
-        }
         skinBindings.append(SkinBinding(modelEntity: modelEntity,
                                         jointNodes: jointEntities.map { $0.components[GLTFNodeComponent.self]?.nodeIndex ?? -1 },
                                         parentIndices: skeleton.joints.map(\.parentIndex),
-                                        skeletonKey: key,
                                         deformedMesh: modelEntity.deformedMesh))
         needsSkinSolveSetUp = true
     }
@@ -507,8 +500,7 @@ public class GLTFEntity: Entity {
     // MARK: - Materials drawn by the caller
 
     /// What a command buffer of the same device waits on to read the vertices every skinning and
-    /// morphing submitted so far writes, such as after this frame's update:
-    /// `commandBuffer.encodeWaitForEvent(fence.event, value: fence.value)`.
+    /// morphing submitted so far writes, such as after this frame's update (``GLTFDeformationFence/wait(in:)``).
     public static func deformationFence() throws -> GLTFDeformationFence {
         let context = try GLTFDeformationContext.shared()
         return GLTFDeformationFence(event: context.completion, value: context.submittedValue, device: context.device)
@@ -784,9 +776,7 @@ public class GLTFEntity: Entity {
         if needsSkinAnchorCheck {
             needsSkinAnchorCheck = false
             needsSkinSolveSetUp = needsSkinSolveSetUp || skinSolves.contains { solve in
-                guard let mesh = solve.meshes.first,
-                      let binding = skinBindings.first(where: { $0.deformedMesh === mesh }) else { return false }
-                let anchor = anchor(of: binding.modelEntity)
+                let anchor = anchor(of: solve.anchorEntity)
                 return anchor.node != solve.anchorNode || anchor.offset != solve.anchorOffset
             }
         }
@@ -799,13 +789,14 @@ public class GLTFEntity: Entity {
             return
         }
         guard pose.hasNodesMovedForSkinning else { return }
-        var changed = [Bool](repeating: false, count: skinSolves.count)
-        for node in pose.takeNodesMovedForSkinning() where node < skinRowsByNode.count {
+        changedSkinSolves.removeAll(keepingCapacity: true)
+        changedSkinSolves.append(contentsOf: repeatElement(false, count: skinSolves.count))
+        for node in pose.takeNodesMovedForSkinning() where node < skinRowsByNode.count && !skinRowsByNode[node].isEmpty {
+            let transform = Transform(pose.localTransform(ofNode: node))
             for (solve, row) in skinRowsByNode[node] where !skinSolves[solve].isDependent(row) {
-                let transform = Transform(pose.localTransform(ofNode: node))
                 if skinSolves[solve].rows[row] != transform {
                     skinSolves[solve].rows[row] = transform
-                    changed[solve] = true
+                    changedSkinSolves[solve] = true
                 }
             }
         }
@@ -816,10 +807,10 @@ public class GLTFEntity: Entity {
                 let transform = dependentRow(row, of: skinSolves[solve], pose: pose)
                 if skinSolves[solve].rows[row] != transform {
                     skinSolves[solve].rows[row] = transform
-                    changed[solve] = true
+                    changedSkinSolves[solve] = true
                 }
             }
-            if changed[solve] {
+            if changedSkinSolves[solve] {
                 setSkinPose(of: solve)
             }
         }
@@ -828,21 +819,20 @@ public class GLTFEntity: Entity {
     private func setUpSkinSolves(pose: GLTFPose) {
         needsSkinSolveSetUp = false
         var solves: [SkinSolve] = []
-        var solvesByKey: [Int: [Int]] = [:]
         for binding in skinBindings {
             guard let mesh = binding.deformedMesh else { continue }
             let (anchorNode, anchorOffset) = anchor(of: binding.modelEntity)
-            if let existing = solvesByKey[binding.skeletonKey]?.first(where: {
-                solves[$0].anchorNode == anchorNode && solves[$0].anchorOffset == anchorOffset
+            if let existing = solves.firstIndex(where: {
+                $0.jointNodes == binding.jointNodes && $0.anchorNode == anchorNode && $0.anchorOffset == anchorOffset
             }) {
                 solves[existing].meshes.append(mesh)
                 continue
             }
-            solvesByKey[binding.skeletonKey, default: []].append(solves.count)
             solves.append(SkinSolve(jointNodes: binding.jointNodes,
                                     parentIndices: binding.parentIndices,
                                     anchorNode: anchorNode,
                                     anchorOffset: anchorOffset,
+                                    anchorEntity: binding.modelEntity,
                                     meshes: [mesh]))
         }
         var rowsByNode = [[(solve: Int, row: Int)]](repeating: [], count: pose.nodeCount)
@@ -947,6 +937,11 @@ public struct GLTFDeformationFence: @unchecked Sendable {
     public let value: UInt64
     /// The device the vertices live on, which a command buffer waiting on the fence has to share.
     public let device: any MTLDevice
+
+    /// Has `commandBuffer`, of ``device``, wait for the fence before it runs.
+    public func wait(in commandBuffer: any MTLCommandBuffer) {
+        commandBuffer.encodeWaitForEvent(event, value: value)
+    }
 }
 
 /// Which node entities of a ``GLTFEntity`` stay a copy of its ``GLTFEntity/pose``.

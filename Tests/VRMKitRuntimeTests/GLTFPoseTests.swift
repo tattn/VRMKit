@@ -9,7 +9,7 @@ import VRMKit
 struct GLTFPoseTests {
     /// Root → child → grandchild, each a unit along +x from its parent.
     private static func chain() -> GLTFPose {
-        GLTFPose(parents: [nil, 0, 1],
+        GLTFPose(children: [[1], [2], []],
                  locals: [GLTFNodeTransform(),
                           GLTFNodeTransform(translation: SIMD3(1, 0, 0)),
                           GLTFNodeTransform(translation: SIMD3(1, 0, 0))])

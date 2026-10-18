@@ -118,19 +118,15 @@ final class VRMAnimationRuntime {
             }
         }
 
-        /// Resolved through the entity, so the rest lookups and transform writes address
-        /// the same node.
-        func targetNode(for bone: HumanoidBone) -> (entity: Entity, nodeIndex: Int)? {
-            guard let target = entity.humanoid.node(for: bone),
-                  let nodeIndex = target.components[GLTFNodeComponent.self]?.nodeIndex else { return nil }
-            return (target, nodeIndex)
+        func targetNode(for bone: HumanoidBone) -> Int? {
+            entity.humanoid.nodeIndex(for: bone)
         }
 
         var hipsScale: Float = 1
         if let animationHips = vrmAnimation.humanoid?.humanBones[HumanoidBone.hips.rawValue]?.node,
            let targetHips = targetNode(for: .hips) {
             let animationHeight = animationRest.worldPosition(at: animationHips).y
-            let targetHeight = targetRest.worldPosition(at: targetHips.nodeIndex).y
+            let targetHeight = targetRest.worldPosition(at: targetHips).y
             if animationHeight > .ulpOfOne, targetHeight > .ulpOfOne {
                 hipsScale = targetHeight / animationHeight
             }
@@ -228,17 +224,17 @@ final class VRMAnimationRuntime {
             }
             let rotation = deltas.isEmpty ? nil : RotationChannel(
                 deltas: deltas,
-                pre: targetRest.parentWorldRotation(at: target.nodeIndex).inverse,
-                post: targetRest.worldRotation(at: target.nodeIndex))
+                pre: targetRest.parentWorldRotation(at: target).inverse,
+                post: targetRest.worldRotation(at: target))
             // The spec keeps every humanoid translation but the hips' out of a `.vrma`;
             // one that carries them anyway is not retargeted.
             let translation = (bone == .hips ? translationTracks[nodeIndex] : nil).map {
                 TranslationChannel(track: $0,
-                                   transform: targetRest.parentWorldMatrix(at: target.nodeIndex).inverse
+                                   transform: targetRest.parentWorldMatrix(at: target).inverse
                                        * modelTransform * animationRest.parentWorldMatrix(at: nodeIndex))
             }
             guard rotation != nil || translation != nil else { continue }
-            bones.append(BoneBinding(nodeIndex: target.nodeIndex, rotation: rotation, translation: translation))
+            bones.append(BoneBinding(nodeIndex: target, rotation: rotation, translation: translation))
         }
 
         boneBindings = bones

@@ -24,8 +24,9 @@ public final class GLTFPose {
 
     /// Where the model's root stands in the world, which the world-space reads fold in.
     public var rootMatrix = matrix_identity_float4x4
-    public var rootRotation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+    public var rootRotation = quat_identity_float
 
+    private var invalidationStack: [Int] = []
     private var movedForSkinning: [Bool]
     private var movedForSkinningList: [Int] = []
 
@@ -37,21 +38,21 @@ public final class GLTFPose {
     package private(set) lazy var nodes: [GLTFPoseNode] = (0..<nodeCount).map { GLTFPoseNode(pose: self, index: $0) }
 
     /// - Parameters:
-    ///   - parents: each node's parent index, nil for a root. The indices have to describe
-    ///     a forest, which a validated glTF node hierarchy does.
+    ///   - children: each node's children, in the order the document lists them. They have to
+    ///     describe a forest, which a validated glTF node hierarchy does.
     ///   - locals: each node's rest transform in its parent's space.
-    public init(parents: [Int?], locals: [GLTFNodeTransform]) {
-        precondition(parents.count == locals.count, "a pose needs one parent entry per node")
+    public init(children: [[Int]], locals: [GLTFNodeTransform]) {
+        precondition(children.count == locals.count, "a pose needs one children entry per node")
         nodeCount = locals.count
-        self.parents = parents.map { $0 ?? -1 }
-        var children = [[Int]](repeating: [], count: locals.count)
-        for (index, parent) in parents.enumerated() {
-            if let parent { children[parent].append(index) }
+        var parents = [Int](repeating: -1, count: locals.count)
+        for (index, nodeChildren) in children.enumerated() {
+            for child in nodeChildren { parents[child] = index }
         }
+        self.parents = parents
         childIndices = children
         self.locals = locals
         modelMatrices = Array(repeating: matrix_identity_float4x4, count: locals.count)
-        modelRotations = Array(repeating: simd_quatf(ix: 0, iy: 0, iz: 0, r: 1), count: locals.count)
+        modelRotations = Array(repeating: quat_identity_float, count: locals.count)
         isModelValid = Array(repeating: false, count: locals.count)
         movedForSkinning = Array(repeating: false, count: locals.count)
     }
@@ -121,8 +122,19 @@ public final class GLTFPose {
     }
 
     public func worldPosition(ofNode index: Int) -> SIMD3<Float> {
-        let column = worldMatrix(ofNode: index).columns.3
-        return SIMD3(column.x, column.y, column.z)
+        worldMatrix(ofNode: index).translation
+    }
+
+    /// Writes the node's rotation so that it faces `rotation` in world space.
+    public func setWorldRotation(_ rotation: simd_quatf, ofNode index: Int) {
+        let parent = parent(ofNode: index).map { worldRotation(ofNode: $0) } ?? rootRotation
+        setLocalRotation(parent.inverse * rotation, ofNode: index)
+    }
+
+    /// Writes the node's translation so that it stands at `position` in world space.
+    public func setWorldPosition(_ position: SIMD3<Float>, ofNode index: Int) {
+        let parent = parent(ofNode: index).map { worldMatrix(ofNode: $0) } ?? rootMatrix
+        setLocalTranslation(parent.inverse.multiplyPoint(position), ofNode: index)
     }
 
     // MARK: - What moved
@@ -157,11 +169,11 @@ public final class GLTFPose {
     /// stops there: a chain posed root to tip invalidates each node once.
     private func invalidateModel(below index: Int) {
         guard isModelValid[index] else { return }
-        var stack = [index]
-        while let node = stack.popLast() {
+        invalidationStack.append(index)
+        while let node = invalidationStack.popLast() {
             guard isModelValid[node] else { continue }
             isModelValid[node] = false
-            stack.append(contentsOf: childIndices[node])
+            invalidationStack.append(contentsOf: childIndices[node])
         }
     }
 

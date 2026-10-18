@@ -94,7 +94,7 @@ struct RealityKitCostBenchmark {
             print("BENCH \(name): models parented under a joint: \(modelsUnderJoints.count)")
             for binding in entity.skinBindings {
                 let pass = binding.modelEntity.components[GLTFMaterialPassComponent.self]?.name ?? "-"
-                print("  skeleton \(binding.skeletonKey) joints \(binding.jointNodes.count)"
+                print("  skeleton joints \(binding.jointNodes.count)"
                       + " pass \(pass) name \(binding.modelEntity.name)")
             }
         }
