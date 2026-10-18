@@ -205,7 +205,12 @@ extension GLTFEntity {
         pruneCompletedAnimations()
     }
 
-    func updateAnimations(deltaTime: TimeInterval) {
+    /// Advances the running glTF animations by one frame.
+    ///
+    /// ``GLTFAnimationSystem`` calls this once per render frame. Call it yourself only for a
+    /// scene that RealityKit does not update, and before ``VRMEntity/update(deltaTime:)`` so the
+    /// VRM runtime sees this frame's animated pose.
+    public func updateAnimations(deltaTime: TimeInterval) {
         // A clone inherits the marker component but not the controllers.
         guard !activeAnimationControllers.isEmpty else {
             components.remove(GLTFAnimationPlaybackComponent.self)
