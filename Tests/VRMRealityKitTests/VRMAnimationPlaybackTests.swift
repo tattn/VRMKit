@@ -58,7 +58,6 @@ struct VRMAnimationPlaybackTests {
                 case .entity: toe.transform.rotation = turned
                 case .pose: pose.setLocalRotation(turned, ofNode: toeIndex)
                 }
-                entity.updateAnimations(deltaTime: 1.0 / 60.0)
                 entity.update(deltaTime: 1.0 / 60.0)
             }
             return TestSupport.jointRotations(in: entity)

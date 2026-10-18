@@ -119,7 +119,8 @@ public final class GLTFAnimationPlaybackController {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct GLTFAnimationPlaybackComponent: Component {}
 
-/// Advances the running glTF animations of every ``GLTFEntity`` once per render frame.
+/// Advances the running glTF animations of every ``GLTFEntity`` once per render frame. A
+/// ``VRMEntity`` advances its own as the first step of ``VRMEntity/update(deltaTime:)``.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct GLTFAnimationSystem: System {
     private static let query = EntityQuery(where: .has(GLTFAnimationPlaybackComponent.self))
@@ -128,7 +129,8 @@ public struct GLTFAnimationSystem: System {
 
     public func update(context: SceneUpdateContext) {
         for entity in context.entities(matching: Self.query, updatingSystemWhen: .rendering) {
-            (entity as? GLTFEntity)?.updateAnimations(deltaTime: context.deltaTime)
+            guard let gltf = entity as? GLTFEntity, !(gltf is VRMEntity) else { continue }
+            gltf.updateAnimations(deltaTime: context.deltaTime)
         }
     }
 }
@@ -202,25 +204,26 @@ extension GLTFEntity {
         pruneCompletedAnimations()
     }
 
-    /// Advances the running glTF animations by one frame.
+    /// Advances the running glTF animations by one frame and skins the result.
     ///
     /// ``GLTFAnimationSystem`` calls this once per render frame. Call it yourself only for a
-    /// scene that RealityKit does not update, and before ``VRMEntity/update(deltaTime:)`` so the
-    /// VRM runtime sees this frame's animated pose.
+    /// scene that RealityKit does not update. A ``VRMEntity`` advances its animations in
+    /// ``VRMEntity/update(deltaTime:)``, so call that instead.
     public func updateAnimations(deltaTime: TimeInterval) {
+        adoptNodeEntitiesPosedFromOutside()
+        advanceAnimations(deltaTime: deltaTime)
+        flushDeformation()
+    }
+
+    /// Moves every running animation on by `deltaTime` and poses the model for it.
+    func advanceAnimations(deltaTime: TimeInterval) {
         // A clone inherits the marker component but not the controllers.
         guard !activeAnimationControllers.isEmpty else {
             components.remove(GLTFAnimationPlaybackComponent.self)
             return
         }
-        adoptNodeEntitiesPosedFromOutside()
         for controller in activeAnimationControllers {
             controller.advance(deltaTime: deltaTime)
-        }
-        // A model driving its own per-frame update solves the pose and submits the
-        // deformation at the end of it, after this frame's constraints and spring bones.
-        if !refreshesSkinningPerFrame {
-            flushDeformation()
         }
         pruneCompletedAnimations()
     }

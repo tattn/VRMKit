@@ -44,6 +44,7 @@ public final class VRMEntity: GLTFEntity {
     private var nodeConstraints = NodeConstraintRig<GLTFPoseNode>()
     private var lookAt = LookAtRig<GLTFPoseNode>()
     private var deformedMeshesByMeshEntity: [Entity.ID: [GLTFDeformedMesh]] = [:]
+    private var updateHandlers: [VRMUpdateStage: @MainActor (TimeInterval) -> Void] = [:]
 
     private lazy var expressionApplier = ExpressionApplier<Entity>(
         setMorphWeight: { [unowned self] weight, targetIndex, mesh in
@@ -95,10 +96,6 @@ public final class VRMEntity: GLTFEntity {
             }
         }
     }
-
-    /// ``update(deltaTime:)`` ends by flushing the skin pose, so the animation tick
-    /// must not solve it too.
-    override var refreshesSkinningPerFrame: Bool { isAutomaticUpdateEnabled }
 
     /// How the spring bones swing: the wind pushing them, if any.
     public var springBoneConfiguration: SpringBoneConfiguration {
@@ -272,7 +269,9 @@ public final class VRMEntity: GLTFEntity {
         return try builder.material(withMaterialIndex: index).currentTextureTransform
     }
 
-    /// Advances node constraints, the gaze, spring bones and skinning by one frame.
+    /// Advances the model by one frame: its animations, the code set with
+    /// ``setUpdateHandler(_:at:)``, node constraints, the gaze, spring bones and skinning, in
+    /// that order.
     ///
     /// ``VRMUpdateSystem`` calls this once per render frame, so set
     /// ``isAutomaticUpdateEnabled`` to `false` before driving the timing manually. A bone
@@ -282,14 +281,40 @@ public final class VRMEntity: GLTFEntity {
         let deltaTime = max(0, deltaTime)
         refreshPoseRoot()
         adoptNodeEntitiesPosedFromOutside()
-        // Skinning runs last so this frame's constraint and spring-bone poses reach the
-        // skinned meshes in the same frame they are solved.
+        advanceAnimations(deltaTime: deltaTime)
+        if let handler = updateHandlers[.afterAnimation] {
+            handler(deltaTime)
+            // The handler may have moved the model, which the runtimes below measure from.
+            refreshPoseRoot()
+        }
+        followPose(deltaTime: deltaTime)
+        updateHandlers[.beforeSkinning]?(deltaTime)
+        flushDeformation()
+    }
+
+    /// Advances only what follows the pose: node constraints, the gaze and spring bones, then
+    /// skins the result. No animation advances and no update handler runs, so a pose held still
+    /// keeps its shape while its spring bones settle.
+    public func updateSecondaryMotion(deltaTime: TimeInterval) {
+        refreshPoseRoot()
+        adoptNodeEntitiesPosedFromOutside()
+        followPose(deltaTime: max(0, deltaTime))
+        flushDeformation()
+    }
+
+    private func followPose(deltaTime: TimeInterval) {
         _ = nodeConstraints.apply()
         // After the constraints, which may have posed the head the gaze is measured from,
         // and before the springs, which nothing about the eyes feeds into.
         applyLookAt()
         _ = springBones.update(deltaTime: deltaTime)
-        flushDeformation()
+    }
+
+    /// Runs `handler` at `stage` of every ``update(deltaTime:)``, with the frame's time, in
+    /// place of the one set there before; nil removes it. This is where code that poses the
+    /// model every frame, such as tracking or IK, fits into the frame.
+    public func setUpdateHandler(_ handler: (@MainActor (TimeInterval) -> Void)?, at stage: VRMUpdateStage) {
+        updateHandlers[stage] = handler
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
@@ -362,6 +387,16 @@ public final class VRMEntity: GLTFEntity {
         deformedMeshesByMeshEntity[mesh.id] = meshes
         return meshes
     }
+}
+
+/// Where in ``VRMEntity/update(deltaTime:)`` a handler set with
+/// ``VRMEntity/setUpdateHandler(_:at:)`` runs.
+public enum VRMUpdateStage: Sendable {
+    /// After the animations pose the model, before the node constraints, the gaze and the
+    /// spring bones read the pose.
+    case afterAnimation
+    /// After the spring bones, before the pose is skinned.
+    case beforeSkinning
 }
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

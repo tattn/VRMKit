@@ -35,6 +35,8 @@ struct VRMCompositionMotionTests {
         #expect(abs(simd_dot(propeller.transform.rotation, quarter)) > 0.999)
 
         let animated = propeller.transform.rotation
+        // The update advances the animation too, so it is held where it is while the springs swing.
+        controller.isPaused = true
         head.transform.rotation = simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(1, 0, 0))
         let joints = TestSupport.jointRotations(in: entity)
         for _ in 0..<10 {

@@ -117,5 +117,55 @@ struct VRMUpdateSystemTests {
 
         #expect(TestSupport.jointRotations(in: vrmEntity) != before)
     }
+
+    /// Code set to pose the model runs at its stage of each update, with the frame's time,
+    /// and what it writes to the pose reaches the skin in that same update.
+    @Test
+    func testUpdateHandlersRunAtTheirStagesAndReachTheSkin() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        let pose = try #require(vrmEntity.pose)
+        let head = try #require(vrmEntity.humanoid.nodeIndex(for: .head))
+        vrmEntity.update(deltaTime: 1.0 / 60.0)
+        let before = TestSupport.jointRotations(in: vrmEntity)
+
+        var calls: [(VRMUpdateStage, TimeInterval)] = []
+        let turn = simd_quatf(angle: 0.5, axis: SIMD3<Float>(1, 0, 0))
+        vrmEntity.setUpdateHandler({ deltaTime in
+            calls.append((.afterAnimation, deltaTime))
+            pose.setLocalRotation(turn, ofNode: head)
+        }, at: .afterAnimation)
+        vrmEntity.setUpdateHandler({ calls.append((.beforeSkinning, $0)) }, at: .beforeSkinning)
+        vrmEntity.update(deltaTime: 0.02)
+
+        #expect(calls.map(\.0) == [.afterAnimation, .beforeSkinning])
+        #expect(calls.allSatisfy { $0.1 == 0.02 })
+        #expect(TestSupport.jointRotations(in: vrmEntity) != before)
+
+        vrmEntity.setUpdateHandler(nil, at: .afterAnimation)
+        vrmEntity.setUpdateHandler(nil, at: .beforeSkinning)
+        calls.removeAll()
+        vrmEntity.update(deltaTime: 0.02)
+        #expect(calls.isEmpty)
+    }
+
+
+    /// Settling a held pose swings the spring bones without advancing the animations or running
+    /// the code that poses the model each frame.
+    @Test
+    func testSecondaryMotionLeavesAnimationsAndHandlersAlone() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        var handled = false
+        vrmEntity.setUpdateHandler({ _ in handled = true }, at: .afterAnimation)
+        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
+        let before = TestSupport.jointRotations(in: vrmEntity)
+
+        vrmEntity.updateSecondaryMotion(deltaTime: 1.0 / 60.0)
+        #expect(!handled)
+        #expect(TestSupport.jointRotations(in: vrmEntity) != before)
+    }
+
 }
 #endif

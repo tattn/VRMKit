@@ -91,7 +91,15 @@ struct ContentView: View {
 
 `loadEntity()` returns a `VRMEntity`, which drives expressions, humanoid bones, spring bones and animation.
 
-Skinning, constraints and spring bones update every frame automatically. To drive the timing yourself, set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)`. Spring bones step at a fixed rate, so they swing the same at every display refresh rate.
+Animations, skinning, constraints and spring bones update every frame automatically. To drive the timing yourself, set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)`. Spring bones step at a fixed rate, so they swing the same at every display refresh rate.
+
+Code that poses the model every frame, such as tracking or IK, runs inside that update at a fixed point:
+
+```swift
+model.setUpdateHandler({ deltaTime in
+    // after the animations, before the constraints and spring bones read the pose
+}, at: .afterAnimation)
+```
 
 ```swift
 model.springBoneConfiguration.externalForce = SIMD3<Float>(1, 0, 0) // wind

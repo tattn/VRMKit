@@ -673,10 +673,6 @@ public class GLTFEntity: Entity {
         }
     }
 
-    /// Whether this entity already refreshes its skin pose once per frame on its own,
-    /// in which case the animation tick must not solve the same skeleton.
-    var refreshesSkinningPerFrame: Bool { false }
-
     /// The way this entity faces. A plain glTF scene is taken to face +Z; a model that
     /// knows better overrides this.
     public var frontDirection: SIMD3<Float> { SIMD3(0, 0, 1) }
