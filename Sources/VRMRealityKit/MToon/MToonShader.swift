@@ -435,6 +435,8 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
     /// This entity's own rows on the GPU, written in place. The loader hands every entity
     /// graph the same material, so the first flush swaps in this one.
     private(set) var parameterTexture: MToonParameterTexture?
+    /// The rows ``parameterTexture`` holds.
+    private var flushedRows: [SIMD4<Float>]?
     /// Whether ``apply(to:)`` has put ``parameterTexture`` on the materials yet.
     private var isParameterTextureInstalled = false
 
@@ -444,6 +446,16 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 
     /// The direction toward the light, normalized, as ``GLTFEntity/setMToonLighting(direction:color:ambient:)`` set it.
     public var lightDirection: SIMD3<Float> { parameters.lightDirection }
+
+    /// Every parameter row the MToon functions read, for a caller drawing the material with Metal
+    /// itself (``GLTFEntity/setDrawnByCaller(_:forMaterials:)``): the rows, the sampler rows and
+    /// then the user rows, as `Shaders/MToonRealityKit.h` lays them out. The layout is not a stable
+    /// API, so read the rows with the header from the revision in use.
+    public var parameterRows: [SIMD4<Float>] { parameters.packedRows }
+
+    /// Counts the flushes that changed ``parameterRows``, so a caller copies the rows only
+    /// when the count moves.
+    public private(set) var parameterRevision = 0
 
     /// Read in Metal as `mtoonUserParameter(textures, index)`.
     public func userParameter(at index: Int) -> SIMD4<Float> {
@@ -514,13 +526,18 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
     }
 
     public func prepareFlush() -> Bool {
+        let rows = parameters.packedRows
+        // A setter claims its value whether or not it moved, as an expression writing the same
+        // color every frame does, so only rows that differ reach the GPU.
+        guard rows != flushedRows else { return true }
         do {
-            let rows = parameters.packedRows
             if let parameterTexture {
                 try parameterTexture.write(rows: rows)
             } else {
                 parameterTexture = try MToonParameterTexture(rows: rows)
             }
+            flushedRows = rows
+            parameterRevision += 1
             return true
         } catch {
             MToonShader.logger.error("Failed to update MToon parameter texture: \(error.localizedDescription, privacy: .public)")

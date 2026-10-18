@@ -773,6 +773,13 @@ final class GLTFSceneBuilder {
         (try? shadedMaterial(withMaterialIndex: index))?.makeAnimatableState?()
     }
 
+    /// How the material at `index` draws: the alpha mode its shader was handed and the render
+    /// queue it asked for.
+    func materialDrawing(forMaterialIndex index: Int) -> (alphaMode: GLTF.Material.AlphaMode, renderQueue: Int?) {
+        ((try? makeMaterialShaderContext(withMaterialIndex: index))?.resolvedAlphaMode ?? .OPAQUE,
+         (try? shadedMaterial(withMaterialIndex: index))?.renderQueue)
+    }
+
     /// How many render queues the materials this builder's scene draws with ask for.
     private func modelRenderQueueCount() throws -> Int {
         if let cachedModelRenderQueueCount { return cachedModelRenderQueueCount }

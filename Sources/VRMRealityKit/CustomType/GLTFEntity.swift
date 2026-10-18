@@ -32,8 +32,8 @@ public struct GLTFMaterialPassComponent: Component {
 
 /// The triangles of one material in one deformed mesh, as ``GLTFEntity/geometry(ofMaterial:)`` returns them.
 /// The vertices are in `modelEntity`'s space, in the mesh's vertex buffers as its descriptor
-/// lays them out. `indexRange` counts the mesh's `UInt32` indices, and `materialSlot` is the
-/// material's place in `modelEntity`'s `ModelComponent`.
+/// lays them out, and `materialSlot` is the material's place in `modelEntity`'s `ModelComponent`,
+/// whose material says the rest of how it draws, such as its face culling and depth writes.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 public struct GLTFMaterialGeometry {
     public let modelEntity: ModelEntity
@@ -42,7 +42,31 @@ public struct GLTFMaterialGeometry {
     public let passName: String?
     public let materialSlot: Int
     public let mesh: LowLevelMesh
-    public let indexRange: Range<Int>
+    /// How the material cuts out or blends as the loader draws it, which can differ from the
+    /// document: a MASK material that would discard nothing draws `.OPAQUE`.
+    public let alphaMode: GLTF.Material.AlphaMode
+    /// Where a blended material draws among the blended materials, lower first, as
+    /// ``GLTFShadedMaterial/renderQueue`` says. Nil unless blended.
+    public let renderQueue: Int?
+    let slot: GLTFMeshGeometry.Slot
+
+    /// The triangles drawn now, counted in the mesh's `UInt32` indices: without those a
+    /// first-person camera cuts, while ``VRMEntity/setFirstPersonRenderMode(_:)`` asks for it.
+    @MainActor
+    public var indexRange: Range<Int> {
+        slot.indexRange(isFirstPerson: modelEntity.mergedMesh?.isFirstPerson ?? false)
+    }
+
+    /// Whether the triangles show now: the pass is enabled
+    /// (``GLTFEntity/setPassEnabled(_:named:forMaterials:)``), something is left after a
+    /// first-person cut, and the mesh's entity is enabled. The model entity itself is disabled
+    /// while RealityKit draws nothing of it, as when every slot is drawn by the caller.
+    @MainActor
+    public var isVisible: Bool {
+        (modelEntity.mergedMesh?.visibleSlots[safe: materialSlot] ?? true)
+            && !indexRange.isEmpty
+            && modelEntity.parent?.isEnabledInHierarchy == true
+    }
 }
 
 /// The glTF skin a model entity is skinned by. It survives `clone(recursive:)`, so a
@@ -176,6 +200,9 @@ public class GLTFEntity: Entity {
         /// Present when what renders the material makes one, as MToon does.
         var animatable: (any VRMAnimatableMaterialState)?
         var needsFlush = false
+        /// How the loader draws the material, which a caller drawing it itself draws it as.
+        var alphaMode: GLTF.Material.AlphaMode = .OPAQUE
+        var renderQueue: Int?
     }
 
     var materialStates: [Int: MaterialRuntimeState] = [:]
@@ -264,8 +291,11 @@ public class GLTFEntity: Entity {
     /// sharing it shares them.
     func registerMaterialBinding(modelEntity: ModelEntity, slot: Int, materialIndex: Int, builder: GLTFSceneBuilder) {
         if materialStates[materialIndex] == nil {
+            let drawing = builder.materialDrawing(forMaterialIndex: materialIndex)
             materialStates[materialIndex] = MaterialRuntimeState(
-                animatable: builder.makeAnimatableMaterialState(forMaterialIndex: materialIndex)
+                animatable: builder.makeAnimatableMaterialState(forMaterialIndex: materialIndex),
+                alphaMode: drawing.alphaMode,
+                renderQueue: drawing.renderQueue
             )
         }
         materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
@@ -317,9 +347,12 @@ public class GLTFEntity: Entity {
             }
             for case let (slot, materialIndex?) in indices.enumerated() {
                 if materialStates[materialIndex] == nil {
-                    let detached = original.materialStates[materialIndex]?.animatable?.detached()
+                    let originalState = original.materialStates[materialIndex]
+                    let detached = originalState?.animatable?.detached()
                     materialStates[materialIndex] = MaterialRuntimeState(animatable: detached,
-                                                                         needsFlush: detached != nil)
+                                                                         needsFlush: detached != nil,
+                                                                         alphaMode: originalState?.alphaMode ?? .OPAQUE,
+                                                                         renderQueue: originalState?.renderQueue)
                 }
                 materialStates[materialIndex]?.bindings.append(MaterialBinding(modelEntity: modelEntity, slot: slot))
             }
@@ -397,7 +430,8 @@ public class GLTFEntity: Entity {
     /// Where the material at `materialIndex` draws from, one entry per mesh and render pass drawing
     /// it, for a caller rendering it with Metal itself or giving its materials more to read.
     public func geometry(ofMaterial materialIndex: Int) -> [GLTFMaterialGeometry] {
-        (materialStates[materialIndex]?.bindings ?? []).compactMap { binding in
+        guard let state = materialStates[materialIndex] else { return [] }
+        return state.bindings.compactMap { binding in
             let modelEntity = binding.modelEntity
             guard let mesh = modelEntity.deformedMesh,
                   let slot = mesh.drawnSlots[safe: binding.slot] else { return nil }
@@ -405,24 +439,21 @@ public class GLTFEntity: Entity {
                                         passName: modelEntity.components[GLTFMaterialPassComponent.self]?.name,
                                         materialSlot: binding.slot,
                                         mesh: mesh.lowLevelMesh,
-                                        indexRange: mesh.geometry.slots[slot].indexRange(isFirstPerson: false))
+                                        alphaMode: state.alphaMode,
+                                        renderQueue: state.renderQueue,
+                                        slot: mesh.geometry.slots[slot])
         }
     }
 
     /// Stops RealityKit drawing `materials`, additional render passes included, while their
     /// vertices keep deforming every frame, for a caller that draws them from
-    /// ``geometry(ofMaterial:)``. `false` draws them again.
+    /// ``geometry(ofMaterial:)``. `false` draws them again. Whether a pass shows stays
+    /// with ``setPassEnabled(_:named:forMaterials:)`` either way, and
+    /// ``GLTFMaterialGeometry/isVisible`` tells the caller.
     public func setDrawnByCaller(_ isDrawnByCaller: Bool, forMaterials materials: Set<Int>) {
         for materialIndex in materials {
             for binding in materialStates[materialIndex]?.bindings ?? [] {
-                if let mesh = binding.modelEntity.deformedMesh {
-                    if isDrawnByCaller {
-                        mesh.callerDrawnSlots.insert(binding.slot)
-                    } else {
-                        mesh.callerDrawnSlots.remove(binding.slot)
-                    }
-                }
-                binding.modelEntity.setMergedSlotVisibility(!isDrawnByCaller, slots: [binding.slot])
+                binding.modelEntity.setMergedSlotsDrawnByCaller(isDrawnByCaller, slots: [binding.slot])
             }
         }
     }

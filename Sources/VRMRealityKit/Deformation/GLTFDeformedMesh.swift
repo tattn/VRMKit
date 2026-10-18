@@ -32,15 +32,13 @@ final class GLTFDeformedMesh {
     let isFrozen: Bool
 
     private var needsDeformation = false
-    /// Whether the parts drawn now cover anything. A mesh drawing nothing, such as a
-    /// hidden render pass, is not deformed until something of it shows again.
-    private var drawsAnything = true
-    /// The drawn slots hidden for a caller that draws them itself, which keep the mesh
-    /// deformed while nothing of it shows.
-    var callerDrawnSlots: Set<Int> = []
+    /// Whether the visible slots cover anything, drawn here or by a caller drawing them itself.
+    /// A mesh showing nothing, such as a hidden render pass, is not deformed until something
+    /// of it shows again.
+    private var showsAnything = true
     /// Whether a dispatch would change what the mesh draws.
     var isDeformationPending: Bool {
-        needsDeformation && (drawsAnything || !callerDrawnSlots.isEmpty) && !isFrozen && source.isDeformable
+        needsDeformation && showsAnything && !isFrozen && source.isDeformable
     }
     private let jointMatricesBuffer: MTLBuffer?
     private let morphWeightsBuffer: MTLBuffer?
@@ -108,15 +106,18 @@ final class GLTFDeformedMesh {
 
     // MARK: - Parts
 
-    /// Draws the drawn slots `visibleSlots` says, cut for a first-person camera when
-    /// asked, and returns whether anything is left to draw. A mesh with nothing to
-    /// draw keeps its last parts: the entity hides instead.
-    func setParts(visibleSlots: [Bool], isFirstPerson: Bool) -> Bool {
+    /// Draws the drawn slots `visibleSlots` says, but those in `callerDrawnSlots`, cut for a
+    /// first-person camera when asked, and returns whether anything is left to draw. A mesh with
+    /// nothing to draw keeps its last parts: the entity hides instead.
+    func setParts(visibleSlots: [Bool], callerDrawnSlots: Set<Int>, isFirstPerson: Bool) -> Bool {
         var parts: [LowLevelMesh.Part] = []
+        var showsAnything = false
         for (materialIndex, slot) in drawnSlots.enumerated() where visibleSlots[safe: materialIndex] ?? true {
             let slot = geometry.slots[slot]
             let range = slot.indexRange(isFirstPerson: isFirstPerson)
             guard !range.isEmpty else { continue }
+            showsAnything = true
+            guard !callerDrawnSlots.contains(materialIndex) else { continue }
             parts.append(LowLevelMesh.Part(indexOffset: range.lowerBound * MemoryLayout<UInt32>.stride,
                                            indexCount: range.count,
                                            topology: .triangle,
@@ -124,9 +125,9 @@ final class GLTFDeformedMesh {
                                            bounds: slot.bounds))
         }
         // A mesh shown again after a hidden stretch has missed the poses written meanwhile.
-        if !drawsAnything, !parts.isEmpty { needsDeformation = true }
-        drawsAnything = !parts.isEmpty
-        guard drawsAnything else { return false }
+        if !self.showsAnything, showsAnything { needsDeformation = true }
+        self.showsAnything = showsAnything
+        guard !parts.isEmpty else { return false }
         lowLevelMesh.parts.replaceAll(parts)
         return true
     }
