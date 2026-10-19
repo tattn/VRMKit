@@ -36,6 +36,11 @@ final class GLTFDeformedMesh {
     /// A mesh showing nothing, such as a hidden render pass, is not deformed until something
     /// of it shows again.
     private var showsAnything = true
+    /// Whether RealityKit draws any of the visible slots. A caller draws the rest from the vertices
+    /// of one mesh of the source (``GLTFMaterialGeometry/callerMesh``), so a mesh RealityKit draws
+    /// nothing of is not deformed until RealityKit draws it again.
+    private(set) var isDrawnByRealityKit = true
+    private var missedDeformation = false
     /// Whether a dispatch would change what the mesh draws.
     var isDeformationPending: Bool {
         needsDeformation && showsAnything && !isFrozen && source.isDeformable
@@ -129,9 +134,15 @@ final class GLTFDeformedMesh {
                                            materialIndex: materialIndex,
                                            bounds: slot.bounds))
         }
-        // A mesh shown again after a hidden stretch has missed the poses written meanwhile.
+        // A mesh shown again after a hidden stretch has missed the poses written meanwhile, and so has
+        // one RealityKit draws again after a caller drew all of it.
         if !self.showsAnything, showsAnything { needsDeformation = true }
+        if !parts.isEmpty, missedDeformation {
+            needsDeformation = true
+            missedDeformation = false
+        }
         self.showsAnything = showsAnything
+        isDrawnByRealityKit = !parts.isEmpty
         guard !parts.isEmpty else { return false }
         lowLevelMesh.parts.replaceAll(parts)
         return true
@@ -169,11 +180,21 @@ final class GLTFDeformedMesh {
     // MARK: - Deformation
 
     /// The buffer this submit's vertices go to, taken from RealityKit before anything is
-    /// encoded on `commandBuffer`. Nil when the mesh has nothing to deform.
-    func beginDeformation(using commandBuffer: MTLCommandBuffer) -> MTLBuffer? {
-        guard isDeformationPending else { return nil }
+    /// encoded on `commandBuffer`. Nil when the mesh has nothing to deform. `forCaller` deforms
+    /// the mesh a caller reads the source's vertices from whenever the source deforms, even while
+    /// it shows nothing itself.
+    func beginDeformation(using commandBuffer: MTLCommandBuffer, forCaller: Bool = false) -> MTLBuffer? {
+        guard forCaller ? !isFrozen && source.isDeformable : isDeformationPending else { return nil }
         needsDeformation = false
         return lowLevelMesh.replace(bufferIndex: 0, using: commandBuffer)
+    }
+
+    /// Leaves out a deformation of a mesh only a caller draws, which reads the vertices elsewhere.
+    /// RealityKit drawing it again deforms it again.
+    func skipDeformation() {
+        guard isDeformationPending else { return }
+        needsDeformation = false
+        missedDeformation = true
     }
 
     /// The most vertex buffers one dispatch writes, as many as the kernel has outputs.

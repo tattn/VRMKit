@@ -42,6 +42,10 @@ public struct GLTFMaterialGeometry {
     public let passName: String?
     public let materialSlot: Int
     public let mesh: LowLevelMesh
+    /// Where a caller drawing the material itself reads the vertices from: one mesh per glTF mesh,
+    /// read by every material and pass drawing it, laid out and indexed like `mesh`, and deformed
+    /// whenever any of them is. A mesh RealityKit draws nothing of is not deformed itself.
+    public let callerMesh: LowLevelMesh
     /// How the material cuts out or blends as the loader draws it, which can differ from the
     /// document: a MASK material that would discard nothing draws `.OPAQUE`.
     public let alphaMode: GLTF.Material.AlphaMode
@@ -173,6 +177,11 @@ public class GLTFEntity: Entity {
 
     func registerDeformedMesh(_ mesh: GLTFDeformedMesh) {
         deformedMeshes.append(mesh)
+    }
+
+    /// The mesh a caller reads the vertices of `mesh`'s source from: the first registered.
+    private func callerMesh(of mesh: GLTFDeformedMesh) -> GLTFDeformedMesh {
+        deformedMeshes.first { $0.source === mesh.source } ?? mesh
     }
 
     private(set) var skinBindings: [SkinBinding] = []
@@ -520,6 +529,7 @@ public class GLTFEntity: Entity {
                                         passName: modelEntity.components[GLTFMaterialPassComponent.self]?.name,
                                         materialSlot: binding.slot,
                                         mesh: mesh.lowLevelMesh,
+                                        callerMesh: callerMesh(of: mesh).lowLevelMesh,
                                         alphaMode: state.alphaMode,
                                         renderQueue: state.renderQueue,
                                         slot: mesh.geometry.slots[slot])
@@ -737,6 +747,10 @@ public class GLTFEntity: Entity {
     /// hold the same pose and weights, so the first of them deforms the vertices once
     /// into the vertex buffers of them all. Every dispatch shares one compute encoder:
     /// an encoder costs the GPU more than a dispatch does.
+    ///
+    /// A caller drawing materials itself reads every mesh of a source from one
+    /// (``GLTFMaterialGeometry/callerMesh``), written whenever the source deforms, so the meshes
+    /// RealityKit draws nothing of are not written.
     func flushDeformation() {
         flushSkinPoseIfNeeded()
         guard let pending = deformedMeshes.first(where: \.isDeformationPending) else { return }
@@ -748,8 +762,14 @@ public class GLTFEntity: Entity {
         // The interval is the CPU side of a submit, for a trace to set against the GPU's.
         let interval = Self.signposter.beginInterval("VRMKit deformation")
         defer { Self.signposter.endInterval("VRMKit deformation", interval) }
+        let deformingSources = Set(deformedMeshes.lazy.filter(\.isDeformationPending).map { ObjectIdentifier($0.source) })
         for mesh in deformedMeshes {
-            guard let output = mesh.beginDeformation(using: commandBuffer) else { continue }
+            let readByCaller = deformingSources.contains(ObjectIdentifier(mesh.source)) && callerMesh(of: mesh) === mesh
+            if !readByCaller, !mesh.isDrawnByRealityKit {
+                mesh.skipDeformation()
+                continue
+            }
+            guard let output = mesh.beginDeformation(using: commandBuffer, forCaller: readByCaller) else { continue }
             let source = ObjectIdentifier(mesh.source)
             if let index = deformationBySource[source],
                deformations[index].outputs.count < GLTFDeformedMesh.maxOutputCount {
