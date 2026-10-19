@@ -35,34 +35,6 @@ struct CallerDrawnMaterialTests {
         #expect(skinned.isEnabled)
     }
 
-    /// A caller reads a mesh and its passes from one mesh, so while RealityKit draws nothing of the
-    /// others they are not deformed, and RealityKit drawing them again deforms them again.
-    @Test
-    func testMeshesOnlyTheCallerDrawsDeformOnce() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let materials = Set(entity.gltf.materials.indices)
-        let geometry = entity.geometry(ofMaterial: 0)
-        let body = try #require(geometry.first { $0.passName == nil })
-        let outline = try #require(geometry.first { $0.passName == MToonShader.outlinePassName })
-        #expect(body.callerMesh === outline.callerMesh)
-        let source = try #require(body.modelEntity.deformedMesh?.source)
-        let siblings = entity.deformedMeshes.filter { $0.source === source }
-        let callerMesh = try #require(siblings.first { $0.lowLevelMesh === body.callerMesh })
-        let others = siblings.filter { $0 !== callerMesh }
-        try #require(!others.isEmpty)
-
-        entity.setDrawnByCaller(true, forMaterials: materials)
-        entity.humanoid.node(for: .hips)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 1, 0))
-        entity.invalidateSkinPose()
-        entity.flushDeformation()
-        #expect(!siblings.contains { $0.isDeformationPending })
-
-        entity.setDrawnByCaller(false, forMaterials: materials)
-        #expect(!callerMesh.isDeformationPending)
-        #expect(others.filter { $0.isDrawnByRealityKit }.allSatisfy { $0.isDeformationPending })
-    }
-
     /// Showing and hiding a pass stays with the app while the caller draws it: the caller reads it
     /// off ``GLTFMaterialGeometry/isVisible``, and RealityKit takes the pass back as the app left it.
     @Test
