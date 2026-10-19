@@ -29,6 +29,7 @@ public final class GLTFPose {
     private var invalidationStack: [Int] = []
     private var movedForSkinning: [Bool]
     private var movedForSkinningList: [Int] = []
+    private var takenMovedForSkinningList: [Int] = []
 
     /// Called with every local transform a runtime writes, for a renderer keeping its scene
     /// graph a copy of the pose. Not called for ``adoptLocalTransform(_:ofNode:)``.
@@ -150,10 +151,11 @@ public final class GLTFPose {
 
     /// The nodes written since the last call, for skinning to re-solve only their rows.
     package func takeNodesMovedForSkinning() -> [Int] {
-        let moved = movedForSkinningList
-        for index in moved { movedForSkinning[index] = false }
+        for index in movedForSkinningList { movedForSkinning[index] = false }
+        // Two buffers take turns, so handing the list over allocates nothing frame after frame.
+        swap(&takenMovedForSkinningList, &movedForSkinningList)
         movedForSkinningList.removeAll(keepingCapacity: true)
-        return moved
+        return takenMovedForSkinningList
     }
 
     package var hasNodesMovedForSkinning: Bool { !movedForSkinningList.isEmpty }
