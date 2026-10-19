@@ -103,19 +103,24 @@ struct OutputColorSpaceTests {
         let expected = SIMD3<Float>(Self.linear(Float(Self.probe.x) / 255), Self.linear(Float(Self.probe.y) / 255),
                                     Self.linear(Float(Self.probe.z) / 255))
         let texel = try await loadedTexel(outputColorSpace: .sRGB)
-#if os(visionOS)
-        // The visionOS simulator in CI reads a texture tagged Display P3 back as all zero,
-        // however long it waits, so an empty read there says nothing about its colors.
-        let isReadable = texel != .zero
-#else
-        let isReadable = true
-#endif
-        if isReadable {
+        if Self.isReadable(texel) {
             #expect(abs(texel - expected).max() < 0.005, "\(texel) vs \(expected)")
         }
         // RealityKit's own conversion pulls the orange toward gray.
         let converted = try await loadedTexel(outputColorSpace: .displayP3)
-        #expect(converted.x < expected.x - 0.02 && converted.z > expected.z + 0.01, "\(converted)")
+        if Self.isReadable(converted) {
+            #expect(converted.x < expected.x - 0.02 && converted.z > expected.z + 0.01, "\(converted)")
+        }
+    }
+
+    /// The visionOS simulator in CI can read a loaded texture back as all zero, however
+    /// long it waits, so an empty read there says nothing about its colors.
+    private static func isReadable(_ texel: SIMD3<Float>) -> Bool {
+#if os(visionOS)
+        texel != .zero
+#else
+        true
+#endif
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
