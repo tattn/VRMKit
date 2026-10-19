@@ -42,6 +42,9 @@ public struct GLTFMaterialGeometry {
     public let passName: String?
     public let materialSlot: Int
     public let mesh: LowLevelMesh
+    /// What the mesh is deformed with, for a caller deforming it itself (``GLTFEntity/isDeformedByCaller``).
+    /// Every material and pass drawing one glTF mesh has the same.
+    public let deformation: GLTFMeshDeformation
     /// How the material cuts out or blends as the loader draws it, which can differ from the
     /// document: a MASK material that would discard nothing draws `.OPAQUE`.
     public let alphaMode: GLTF.Material.AlphaMode
@@ -173,6 +176,25 @@ public class GLTFEntity: Entity {
 
     func registerDeformedMesh(_ mesh: GLTFDeformedMesh) {
         deformedMeshes.append(mesh)
+    }
+
+    /// Leaves skinning and morphing to the caller, which reads what to deform with from
+    /// ``meshDeformations``: the pose and weights keep being solved, but no vertex is written,
+    /// so RealityKit draws the vertices as they were. `false` writes the meshes that moved
+    /// meanwhile on the next update. ``snapshot()`` writes them either way, since its copy draws
+    /// with RealityKit.
+    public var isDeformedByCaller = false
+
+    /// What each glTF mesh this entity draws is deformed with, one per mesh, the meshes of glTF
+    /// entities nested under it aside.
+    public var meshDeformations: [GLTFMeshDeformation] {
+        var seen: Set<ObjectIdentifier> = []
+        return deformedMeshes.filter { seen.insert(ObjectIdentifier($0.source)).inserted }.map(GLTFMeshDeformation.init)
+    }
+
+    /// The mesh whose pose and weights stand for every mesh of `mesh`'s source: the first registered.
+    private func deformationMesh(of mesh: GLTFDeformedMesh) -> GLTFDeformedMesh {
+        deformedMeshes.first { $0.source === mesh.source } ?? mesh
     }
 
     private(set) var skinBindings: [SkinBinding] = []
@@ -388,8 +410,11 @@ public class GLTFEntity: Entity {
     /// to share the textures and meshes.
     public func snapshot() -> Self {
         // The copy carries the meshes as they are skinned now, and its node entities the
-        // pose, so what hangs under them is copied where the pose puts it.
-        updateSkinPose()
+        // pose, so what hangs under them is copied where the pose puts it. It draws with
+        // RealityKit, so the vertices a caller deforms itself are written for it too.
+        for entity in gltfEntitiesInHierarchy {
+            entity.flushDeformation(evenIfDeformedByCaller: true)
+        }
         synchronizeNodeEntities(includingUnsynchronized: true)
         let copy = clone(recursive: true)
         copy.freezeDeformedMeshes()
@@ -520,6 +545,7 @@ public class GLTFEntity: Entity {
                                         passName: modelEntity.components[GLTFMaterialPassComponent.self]?.name,
                                         materialSlot: binding.slot,
                                         mesh: mesh.lowLevelMesh,
+                                        deformation: GLTFMeshDeformation(mesh: deformationMesh(of: mesh)),
                                         alphaMode: state.alphaMode,
                                         renderQueue: state.renderQueue,
                                         slot: mesh.geometry.slots[slot])
@@ -737,9 +763,10 @@ public class GLTFEntity: Entity {
     /// hold the same pose and weights, so the first of them deforms the vertices once
     /// into the vertex buffers of them all. Every dispatch shares one compute encoder:
     /// an encoder costs the GPU more than a dispatch does.
-    func flushDeformation() {
+    func flushDeformation(evenIfDeformedByCaller: Bool = false) {
         flushSkinPoseIfNeeded()
-        guard let pending = deformedMeshes.first(where: \.isDeformationPending) else { return }
+        guard !isDeformedByCaller || evenIfDeformedByCaller,
+              let pending = deformedMeshes.first(where: \.isDeformationPending) else { return }
         let context = pending.source.context
         guard let commandBuffer = context.commandQueue.makeCommandBuffer() else { return }
         commandBuffer.label = "VRMKit deformation"

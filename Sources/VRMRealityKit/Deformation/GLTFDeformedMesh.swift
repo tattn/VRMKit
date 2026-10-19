@@ -32,6 +32,8 @@ final class GLTFDeformedMesh {
     let isFrozen: Bool
 
     private var needsDeformation = false
+    /// Moves with every change to the pose or the weights, for a caller deforming the mesh itself.
+    private(set) var inputRevision: UInt64 = 0
     /// Whether the visible slots cover anything, drawn here or by a caller drawing them itself.
     /// A mesh showing nothing, such as a hidden render pass, is not deformed until something
     /// of it shows again.
@@ -155,6 +157,7 @@ final class GLTFDeformedMesh {
         guard blendShapeWeights.indices.contains(target), blendShapeWeights[target] != weight else { return }
         blendShapeWeights[target] = weight
         needsDeformation = true
+        inputRevision &+= 1
     }
 
     /// Takes the solved skeleton pose, each joint in its skeleton parent's space. The
@@ -164,6 +167,7 @@ final class GLTFDeformedMesh {
         guard source.skin != nil else { return }
         jointTransforms = transforms
         needsDeformation = true
+        inputRevision &+= 1
     }
 
     // MARK: - Deformation
@@ -199,8 +203,8 @@ final class GLTFDeformedMesh {
                 }
             }
         }
-        if let skin = source.skin, let jointMatricesBuffer, let jointTransforms {
-            Self.writeJointMatrices(of: jointTransforms, for: skin.skeleton, into: jointMatricesBuffer)
+        if source.skin != nil, let jointMatricesBuffer, jointTransforms != nil {
+            writeJointMatrices(into: jointMatricesBuffer.contents().assumingMemoryBound(to: simd_float4x4.self))
         }
 
         var uniforms = GLTFDeformationUniforms(vertexCount: UInt32(geometry.vertexCount),
@@ -232,13 +236,15 @@ final class GLTFDeformedMesh {
                                      threadsPerThreadgroup: MTLSize(width: width, height: 1, depth: 1))
     }
 
-    /// Writes the matrices the kernel skins with, each joint's model-space pose times
-    /// its inverse bind matrix, into `buffer`.
-    private static func writeJointMatrices(of transforms: [Transform],
-                                           for skeleton: MeshResource.Skeleton,
-                                           into buffer: MTLBuffer) {
+    /// Writes the matrices the kernel skins with, each joint's model-space pose times its
+    /// inverse bind matrix, one per joint of the skeleton. Identity before the first solve.
+    func writeJointMatrices(into matrices: UnsafeMutablePointer<simd_float4x4>) {
+        guard let skeleton = source.skin?.skeleton else { return }
         let joints = skeleton.joints
-        let matrices = buffer.contents().assumingMemoryBound(to: simd_float4x4.self)
+        guard let transforms = jointTransforms else {
+            for index in joints.indices { matrices[index] = matrix_identity_float4x4 }
+            return
+        }
         // The skeleton lists parents first, so a parent's model-space pose is settled
         // by the time its child reads it.
         for index in joints.indices {
