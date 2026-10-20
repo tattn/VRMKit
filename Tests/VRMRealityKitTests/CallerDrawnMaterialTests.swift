@@ -129,6 +129,28 @@ struct CallerDrawnMaterialTests {
         #expect(state.parameterRows == state.parameters.packedRows)
     }
 
+    /// Nothing RealityKit draws reads a caller-drawn material's GPU rows, so changes wait in the
+    /// state, as the caller reads them, and reach the GPU once the material is handed back.
+    @Test
+    func testCallerDrawnMToonRowsReachTheGPUWhenHandedBack() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
+        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let state = try #require(entity.materialState(MToonAnimatableMaterialState.self, ofMaterial: 0))
+        // The first flush builds the texture
+        entity.setMToonLighting(direction: SIMD3(0, 1, 0), color: SIMD3(1, 1, 1), ambient: SIMD3(0, 0, 0))
+        let texture = try #require(state.parameterTexture)
+        let writes = texture.writeCount
+
+        entity.setDrawnByCaller(true, forMaterials: [0])
+        entity.setMToonLighting(direction: SIMD3(0, 0, 1), color: SIMD3(0.5, 0.25, 1), ambient: SIMD3(0.1, 0.2, 0.3))
+        #expect(state.parameterRows == state.parameters.packedRows)
+        #expect(state.lightDirection == SIMD3(0, 0, 1))
+        #expect(texture.writeCount == writes)
+
+        entity.setDrawnByCaller(false, forMaterials: [0])
+        #expect(texture.writeCount == writes + 1)
+    }
+
     /// The ranges are the material's own triangles in the mesh's index buffer, in the material
     /// itself and in its outline pass, which says its name. Without MToon there is no outline pass.
     @Test

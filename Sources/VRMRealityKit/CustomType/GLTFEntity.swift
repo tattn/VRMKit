@@ -257,6 +257,9 @@ public class GLTFEntity: Entity {
         /// Present when what renders the material makes one, as MToon does.
         var animatable: (any VRMAnimatableMaterialState)?
         var needsFlush = false
+        /// Set by ``GLTFEntity/setDrawnByCaller(_:forMaterials:)``: nothing RealityKit draws reads
+        /// the material's GPU rows, so a flush leaves it dirty until the caller hands it back.
+        var isDrawnByCaller = false
         /// How the loader draws the material, which a caller drawing it itself draws it as.
         var alphaMode: GLTF.Material.AlphaMode = .OPAQUE
         var renderQueue: Int?
@@ -557,11 +560,20 @@ public class GLTFEntity: Entity {
     /// ``geometry(ofMaterial:)``. `false` draws them again. Whether a pass shows stays
     /// with ``setPassEnabled(_:named:forMaterials:)`` either way, and
     /// ``GLTFMaterialGeometry/isVisible`` tells the caller.
+    ///
+    /// The caller reads a drawn material's parameters off its runtime state, such as
+    /// ``MToonAnimatableMaterialState/parameterRows``, so they stop reaching RealityKit's
+    /// textures until handed back, which writes the latest. A plain `clone(recursive:)`
+    /// samples the same textures; a ``snapshot()`` holds rows of its own.
     public func setDrawnByCaller(_ isDrawnByCaller: Bool, forMaterials materials: Set<Int>) {
         for materialIndex in materials {
+            materialStates[materialIndex]?.isDrawnByCaller = isDrawnByCaller
             for binding in materialStates[materialIndex]?.bindings ?? [] {
                 binding.modelEntity.setMergedSlotsDrawnByCaller(isDrawnByCaller, slots: [binding.slot])
             }
+        }
+        if !isDrawnByCaller {
+            flushDirtyMaterialStates()
         }
     }
 
@@ -668,7 +680,7 @@ public class GLTFEntity: Entity {
 
     private func flushDirtyMaterialStatesNow() -> Bool {
         var didFlushAll = true
-        for (materialIndex, state) in materialStates where state.needsFlush {
+        for (materialIndex, state) in materialStates where state.needsFlush && !state.isDrawnByCaller {
             guard let animatable = state.animatable, animatable.prepareFlush() else {
                 // The GPU still holds the previous values: stay dirty and retry next flush.
                 didFlushAll = false
