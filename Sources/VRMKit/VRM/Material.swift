@@ -34,6 +34,25 @@ extension GLTF {
             case _doubleSided = "doubleSided"
         }
 
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            name = try container.decodeIfPresent(String.self, forKey: .name)
+            extensions = try container.decodeIfPresent(MaterialExtensions.self, forKey: .extensions)
+            extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+            pbrMetallicRoughness = try container.decodeIfPresent(PbrMetallicRoughness.self,
+                                                                 forKey: .pbrMetallicRoughness)
+            normalTexture = try container.decodeIfPresent(NormalTextureInfo.self, forKey: .normalTexture)
+            occlusionTexture = try container.decodeIfPresent(OcclusionTextureInfo.self, forKey: .occlusionTexture)
+            emissiveTexture = try container.decodeIfPresent(TextureInfo.self, forKey: .emissiveTexture)
+            // Read leniently like the VRM extensions' vectors: a VRoid Studio export writes
+            // the factor with 4 components, and UniVRM loads it.
+            _emissiveFactor = try container.decodeIfPresent([Double].self, forKey: ._emissiveFactor)
+                .map { SIMD3<Float>($0, default: .zero) }
+            _alphaMode = try container.decodeIfPresent(AlphaMode.self, forKey: ._alphaMode)
+            _alphaCutoff = try container.decodeIfPresent(Float.self, forKey: ._alphaCutoff)
+            _doubleSided = try container.decodeIfPresent(Bool.self, forKey: ._doubleSided)
+        }
+
         public struct PbrMetallicRoughness: Codable, Sendable {
             let _baseColorFactor: SIMD4<Float>?
             public var baseColorFactor: SIMD4<Float> { _baseColorFactor ?? SIMD4<Float>(repeating: 1) }
@@ -53,6 +72,19 @@ extension GLTF {
                 case metallicRoughnessTexture
                 case extensions
                 case extras
+            }
+
+            public init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                _baseColorFactor = try container.decodeIfPresent([Double].self, forKey: ._baseColorFactor)
+                    .map { SIMD4<Float>($0, default: SIMD4<Float>(repeating: 1)) }
+                baseColorTexture = try container.decodeIfPresent(TextureInfo.self, forKey: .baseColorTexture)
+                _metallicFactor = try container.decodeIfPresent(Float.self, forKey: ._metallicFactor)
+                _roughnessFactor = try container.decodeIfPresent(Float.self, forKey: ._roughnessFactor)
+                metallicRoughnessTexture = try container.decodeIfPresent(TextureInfo.self,
+                                                                         forKey: .metallicRoughnessTexture)
+                extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+                extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
             }
         }
 
