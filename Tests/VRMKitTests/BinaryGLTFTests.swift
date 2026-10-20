@@ -182,13 +182,22 @@ struct BinaryGLTFTests {
         #expect(throws: (any Error).self) { try BinaryGLTF(data: leftover) }
     }
 
-    /// Every chunk starts and ends on a 4 byte boundary, so a length that is not a
-    /// multiple of 4 misaligns every chunk behind it.
-    @Test
-    func testRejectsAChunkLengthThatBreaksTheAlignment() {
-        var misaligned = VRMSampleAsset.aliciaSolid.data
-        misaligned.writeUInt32LE(misaligned.uint32LE(at: 12) - 1, at: 12)
-        #expect(throws: (any Error).self) { try BinaryGLTF(data: misaligned) }
+    /// Files in the wild state the BIN chunk's unpadded length, which is not the multiple
+    /// of 4 the spec asks for, whether or not they then pad the file to a boundary. UniVRM
+    /// loads them, so the length is taken as written and the padding is not a leftover.
+    @Test(arguments: [true, false])
+    func testLoadsABINChunkWhoseLengthIsNotAMultipleOf4(keepsPadding: Bool) throws {
+        var unpadded = VRMSampleAsset.aliciaSolid.data
+        let binaryChunkOffset = 20 + Int(unpadded.uint32LE(at: 12))
+        let binaryLength = Int(unpadded.uint32LE(at: binaryChunkOffset))
+        unpadded.writeUInt32LE(UInt32(binaryLength - 1), at: binaryChunkOffset)
+        if !keepsPadding {
+            unpadded.removeLast()
+            unpadded.writeUInt32LE(UInt32(unpadded.count), at: 8)
+        }
+
+        let binaryGltf = try BinaryGLTF(data: unpadded)
+        #expect(binaryGltf.binaryBuffer?.count == binaryLength - 1)
     }
 
     /// The spec fixes the BIN chunk at index 1, so a file pushing it behind an unknown

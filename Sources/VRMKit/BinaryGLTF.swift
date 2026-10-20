@@ -56,17 +56,15 @@ extension BinaryGLTF {
         }
 
         // Chunk 0 holds the JSON, chunk 1 the optional BIN. The spec says to skip other types.
+        // A chunk length is read as written even when it is not the multiple of 4 the spec
+        // asks for: files in the wild state the BIN chunk's unpadded length, and UniVRM
+        // loads them.
         var json: (gltf: GLTF, tree: JSONValue)?
         var binaryBuffer: Data?
         var chunkIndex = 0
         while length - reader.bytesRead >= Self.chunkHeaderLength {
             let rawChunkLength = try reader.readUInt32()
             let chunkType = try reader.readUInt32()
-            guard rawChunkLength.isMultiple(of: 4) else {
-                throw VRMError._dataInconsistent(
-                    "GLB chunk of \(rawChunkLength) bytes breaks the container's 4 byte alignment"
-                )
-            }
             guard let chunkLength = Int(exactly: rawChunkLength),
                   chunkLength <= length - reader.bytesRead else {
                 throw VRMError._dataInconsistent(
@@ -95,8 +93,9 @@ extension BinaryGLTF {
             chunkIndex += 1
         }
 
-        // Bytes left inside the declared length belong to no chunk.
-        guard reader.bytesRead == length else {
+        // Bytes left inside the declared length belong to no chunk, except the padding a
+        // writer puts after a chunk whose stated length is not a multiple of 4.
+        guard length - reader.bytesRead < 4 else {
             throw VRMError._dataInconsistent(
                 "GLB has \(length - reader.bytesRead) bytes left over after its last chunk"
             )
