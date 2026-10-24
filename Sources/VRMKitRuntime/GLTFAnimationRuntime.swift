@@ -1,25 +1,22 @@
-#if canImport(RealityKit)
 import Foundation
-import RealityKit
-import simd
+import SIMDCompat
 import VRMKit
-import VRMKitRuntime
 
 /// Decodes animation accessors into typed keyframe values, off a cache: exporters
 /// routinely share one input accessor across many samplers.
-final class GLTFAnimationDecoder {
+package final class GLTFAnimationDecoder {
     private let accessors: PackedAccessorCache
     private let nodes: [GLTF.Node]
     private var inputTimes: [Int: [Float]] = [:]
 
-    init(document: GLTFDocument) {
+    package init(document: GLTFDocument) {
         accessors = PackedAccessorCache(document: document)
         nodes = document.gltf.nodes
     }
 
     /// A sampler input. The spec fixes it to FLOAT scalars that start at or after zero
     /// and increase strictly, and ``GLTFKeyframeTrack`` reads that ordering as given.
-    func times(at accessorIndex: Int) throws -> [Float] {
+    package func times(at accessorIndex: Int) throws -> [Float] {
         if let cached = inputTimes[accessorIndex] { return cached }
         let accessor = try accessors.accessor(at: accessorIndex)
         guard accessor.componentType == .float else {
@@ -37,11 +34,11 @@ final class GLTFAnimationDecoder {
 
     /// Morph target weights. Like rotations they are unit quantities, so the spec also
     /// allows normalized integer storage.
-    func weights(at accessorIndex: Int) throws -> [Float] {
+    package func weights(at accessorIndex: Int) throws -> [Float] {
         try output(at: accessorIndex, type: .SCALAR, allowsNormalizedIntegers: true)
     }
 
-    func vector3s(at accessorIndex: Int) throws -> [SIMD3<Float>] {
+    package func vector3s(at accessorIndex: Int) throws -> [SIMD3<Float>] {
         let floats = try output(at: accessorIndex, type: .VEC3, allowsNormalizedIntegers: false)
         return stride(from: 0, to: floats.count - floats.count % 3, by: 3).map {
             SIMD3<Float>(floats[$0], floats[$0 + 1], floats[$0 + 2])
@@ -50,8 +47,8 @@ final class GLTFAnimationDecoder {
 
     /// Rotation output as quaternions. Only the keyframe values are unit quaternions:
     /// a CUBICSPLINE output's tangents carry their slope in the length.
-    func quaternions(at accessorIndex: Int,
-                     interpolation: GLTF.Animation.Sampler.Interpolation) throws -> [simd_quatf] {
+    package func quaternions(at accessorIndex: Int,
+                             interpolation: GLTF.Animation.Sampler.Interpolation) throws -> [simd_quatf] {
         let floats = try output(at: accessorIndex, type: .VEC4, allowsNormalizedIntegers: true)
         let isSpline = interpolation == .CUBICSPLINE
         return stride(from: 0, to: floats.count - floats.count % 4, by: 4).enumerated().map { element, offset in
@@ -86,15 +83,15 @@ final class GLTFAnimationDecoder {
         return try accessor.floatComponents(type)
     }
 
-    struct Channel {
-        let nodeIndex: Int
-        let path: GLTF.Animation.Channel.Target.TargetPath
-        let sampler: GLTF.Animation.Sampler
+    package struct Channel {
+        package let nodeIndex: Int
+        package let path: GLTF.Animation.Channel.Target.TargetPath
+        package let sampler: GLTF.Animation.Sampler
     }
 
     /// The animation's channels, checked against the spec's rules. Channels without a node
     /// target or with an unknown path are dropped rather than rejected, as the spec says.
-    func validatedChannels(of animation: GLTF.Animation) throws -> [Channel] {
+    package func validatedChannels(of animation: GLTF.Animation) throws -> [Channel] {
         struct TargetKey: Hashable {
             let node: Int
             let path: GLTF.Animation.Channel.Target.TargetPath
@@ -134,7 +131,7 @@ final class GLTFAnimationDecoder {
     /// The animation's length: the last keyframe time any of its samplers holds. Read
     /// from the times themselves rather than the accessor's `max`, which a file may
     /// disagree with.
-    func duration(of animation: GLTF.Animation) -> TimeInterval {
+    package func duration(of animation: GLTF.Animation) -> TimeInterval {
         var duration: Float = 0
         for sampler in animation.samplers {
             if let last = try? times(at: sampler.input).last {
@@ -146,7 +143,7 @@ final class GLTFAnimationDecoder {
 
     /// Groups a weights output into one `[Float]` per keyframe element, sized by the
     /// morph target count of the mesh the channel drives.
-    static func weightGroups(scalars: [Float], groupCount: Int, targetCount: Int) throws -> [[Float]] {
+    package static func weightGroups(scalars: [Float], groupCount: Int, targetCount: Int) throws -> [[Float]] {
         guard targetCount > 0, scalars.count == groupCount * targetCount else {
             throw VRMError._dataInconsistent(
                 "weights animation output holds \(scalars.count) values, not the \(groupCount) keyframe elements × \(targetCount) morph targets it drives"
@@ -156,11 +153,10 @@ final class GLTFAnimationDecoder {
     }
 }
 
-/// One glTF animation decoded and bound to the entities it drives.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-final class GLTFAnimationRuntime: GLTFAnimationApplying {
+/// One glTF animation decoded and bound to the nodes it drives.
+package final class GLTFAnimationRuntime: GLTFAnimationApplying {
     /// Every transform channel of one node, so a node animated on more than one path
-    /// takes a single `Transform` write per frame.
+    /// takes a single transform write per frame.
     private struct TransformBinding {
         let nodeIndex: Int
         var translation: GLTFKeyframeTrack<SIMD3<Float>>?
@@ -169,16 +165,21 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
     }
 
     private struct WeightBinding {
-        let modelEntities: [ModelEntity]
+        let nodeIndex: Int
         let track: GLTFKeyframeTrack<[Float]>
     }
 
     private let transformBindings: [TransformBinding]
     private let weightBindings: [WeightBinding]
 
-    @MainActor
-    init(animation: GLTF.Animation, entity: GLTFEntity) throws {
-        let decoder = entity.animationDecoder
+    /// - Parameters:
+    ///   - posedNodes: The nodes the model poses. Channels of any other node are dropped.
+    ///   - morphTargetCounts: The morph target count of the mesh each node draws, for the
+    ///     nodes whose mesh morphs. A `weights` channel of any other node is dropped.
+    package init(animation: GLTF.Animation,
+                 decoder: GLTFAnimationDecoder,
+                 posedNodes: Set<Int>,
+                 morphTargetCounts: [Int: Int]) throws {
         var transforms: [Int: TransformBinding] = [:]
         var weights: [WeightBinding] = []
 
@@ -186,20 +187,20 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
             let times = try decoder.times(at: channel.sampler.input)
 
             if channel.path == .weights {
-                guard let binding = entity.morphBindings[channel.nodeIndex], !binding.modelEntities.isEmpty else { continue }
+                guard let targetCount = morphTargetCounts[channel.nodeIndex] else { continue }
                 let scalars = try decoder.weights(at: channel.sampler.output)
                 let perKeyframe = channel.sampler.interpolation == .CUBICSPLINE ? 3 : 1
                 let groups = try GLTFAnimationDecoder.weightGroups(scalars: scalars,
                                                                    groupCount: times.count * perKeyframe,
-                                                                   targetCount: binding.targetCount)
-                weights.append(WeightBinding(modelEntities: binding.modelEntities,
+                                                                   targetCount: targetCount)
+                weights.append(WeightBinding(nodeIndex: channel.nodeIndex,
                                              track: try .init(times: times,
                                                               interpolation: channel.sampler.interpolation,
                                                               values: groups)))
                 continue
             }
 
-            guard entity.entity(forNodeAt: channel.nodeIndex) != nil else { continue }
+            guard posedNodes.contains(channel.nodeIndex) else { continue }
             var binding = transforms[channel.nodeIndex] ?? TransformBinding(nodeIndex: channel.nodeIndex)
             switch channel.path {
             case .translation:
@@ -225,8 +226,7 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
         weightBindings = weights
     }
 
-    @MainActor
-    func apply(at time: Float, to pose: GLTFPose) {
+    package func apply(at time: Float, to pose: GLTFPose, output: inout GLTFAnimationOutput) {
         for binding in transformBindings {
             // The current transform is the base, so paths this animation does not drive
             // keep whatever else wrote them.
@@ -237,11 +237,7 @@ final class GLTFAnimationRuntime: GLTFAnimationApplying {
             pose.setLocalTransform(transform, ofNode: binding.nodeIndex)
         }
         for binding in weightBindings {
-            let weights = binding.track.value(at: time)
-            for modelEntity in binding.modelEntities {
-                modelEntity.deformedMesh?.setBlendShapeWeights(weights)
-            }
+            output.morphWeights[binding.nodeIndex] = binding.track.value(at: time)
         }
     }
 }
-#endif

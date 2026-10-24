@@ -1,12 +1,9 @@
-#if canImport(RealityKit)
 import Foundation
-import RealityKit
-import simd
+import SIMDCompat
 import VRMKit
-import VRMKitRuntime
 
 /// One VRM animation (`VRMC_vrm_animation`) decoded and retargeted onto the
-/// humanoid bones and expressions of a ``VRMEntity``.
+/// humanoid bones and expressions of a model.
 ///
 /// The spec rests both skeletons in T-pose, so a bone's animated local rotation carries
 /// over after re-expressing it between the two rest orientations, and the hips translation
@@ -15,11 +12,24 @@ import VRMKitRuntime
 ///
 /// The gaze retargets as angles rather than transforms, so it carries over whichever way
 /// either side faces.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-@MainActor
-final class VRMAnimationRuntime {
+package final class VRMAnimationRuntime {
+    /// What retargeting reads of the model an animation plays on.
+    package struct Model: Sendable {
+        /// Whether the model faces -Z, as VRM 0.x models do, which turns the animation 180°.
+        package let facesNegativeZ: Bool
+        /// The node of each humanoid bone the model has.
+        package let humanoidNodes: [HumanoidBone: Int]
+        package let restPose: GLTFRestPose
+
+        package init(facesNegativeZ: Bool, humanoidNodes: [HumanoidBone: Int], restPose: GLTFRestPose) {
+            self.facesNegativeZ = facesNegativeZ
+            self.humanoidNodes = humanoidNodes
+            self.restPose = restPose
+        }
+    }
+
     /// Every retargeted channel of one animation node, so a bone animated on rotation
-    /// and translation takes a single `Transform` write per frame.
+    /// and translation takes a single transform write per frame.
     private struct BoneBinding {
         let nodeIndex: Int
         var rotation: RotationChannel?
@@ -73,8 +83,6 @@ final class VRMAnimationRuntime {
         let track: GLTFKeyframeTrack<SIMD3<Float>>
     }
 
-    /// Weak, so the runtime does not keep the model it poses alive.
-    private weak var entity: VRMEntity?
     private let boneBindings: [BoneBinding]
     private let expressionBindings: [ExpressionBinding]
     /// The gaze the animation states as the rotation of its look-at node. Its
@@ -83,22 +91,21 @@ final class VRMAnimationRuntime {
     private let gazeTrack: GLTFKeyframeTrack<simd_quatf>?
 
     /// Metadata the playback controller shows.
-    let name: String?
-    let duration: TimeInterval
+    package let name: String?
+    package let duration: TimeInterval
 
-    init(animation vrmAnimation: VRMAnimation, animationIndex: Int, entity: VRMEntity) throws {
-        self.entity = entity
+    package init(animation vrmAnimation: VRMAnimation, animationIndex: Int, model: Model) throws {
         let gltf = vrmAnimation.document.gltf
         let animation = try gltf.load(\.animations, at: animationIndex)
         let decoder = GLTFAnimationDecoder(document: vrmAnimation.document)
 
-        let flip = entity.vrm.forwardDirection.z < 0
+        let flip = model.facesNegativeZ
             ? simd_quatf(angle: .pi, axis: SIMD3<Float>(0, 1, 0))
             : quat_identity_float
 
         // The animation's document has nowhere to cache one; the model's does.
         let animationRest = try GLTFRestPose(nodes: gltf.nodes)
-        let targetRest = try entity.restPose()
+        let targetRest = model.restPose
 
         var boneByNode: [Int: HumanoidBone] = [:]
         for (name, humanBone) in vrmAnimation.humanoid?.humanBones ?? [:] {
@@ -119,7 +126,7 @@ final class VRMAnimationRuntime {
         }
 
         func targetNode(for bone: HumanoidBone) -> Int? {
-            entity.humanoid.nodeIndex(for: bone)
+            model.humanoidNodes[bone]
         }
 
         var hipsScale: Float = 1
@@ -263,9 +270,8 @@ final class VRMAnimationRuntime {
     }
 }
 
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension VRMAnimationRuntime: GLTFAnimationApplying {
-    func apply(at time: Float, to pose: GLTFPose) {
+    package func apply(at time: Float, to pose: GLTFPose, output: inout GLTFAnimationOutput) {
         for binding in boneBindings {
             // The current transform is the base, so paths this animation does not drive
             // keep whatever else wrote them.
@@ -278,30 +284,16 @@ extension VRMAnimationRuntime: GLTFAnimationApplying {
             }
             pose.setLocalTransform(transform, ofNode: binding.nodeIndex)
         }
-
-        applyExpressions(at: time)
-        applyGaze(at: time)
-    }
-
-    /// Sampled weights go to the entity in full every frame, so an animation started
-    /// later can take an expression over. ``VRMEntity/setExpressions(_:)`` drops the
-    /// ones that did not move.
-    private func applyExpressions(at time: Float) {
-        guard let entity, !expressionBindings.isEmpty else { return }
-        var weights: [ExpressionKey: CGFloat] = [:]
+        // Sampled weights go out in full every frame, so an animation started later can
+        // take an expression over.
         for binding in expressionBindings {
-            let weight = CGFloat(min(max(binding.track.value(at: time).x, 0), 1))
+            let weight = min(max(binding.track.value(at: time).x, 0), 1)
             for key in binding.keys {
-                weights[key] = weight
+                output.expressionWeights[key] = weight
             }
         }
-        // Sent together so the entity re-accumulates its bindings once.
-        entity.setExpressions(weights)
-    }
-
-    private func applyGaze(at time: Float) {
-        guard let entity, let gazeTrack else { return }
-        entity.lookAtTarget = .rotation(gazeTrack.value(at: time))
+        if let gazeTrack {
+            output.gaze = gazeTrack.value(at: time)
+        }
     }
 }
-#endif

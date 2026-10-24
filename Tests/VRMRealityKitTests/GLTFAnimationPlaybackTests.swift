@@ -369,7 +369,7 @@ struct GLTFAnimationPlaybackTests {
         let pose = try #require(entity.pose)
         func movedNodes(deltaTime: TimeInterval) -> [Int] {
             _ = pose.takeNodesMovedForSkinning()
-            controller.advance(deltaTime: deltaTime)
+            entity.advanceAnimations(deltaTime: deltaTime)
             return pose.takeNodesMovedForSkinning()
         }
 

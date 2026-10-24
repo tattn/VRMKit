@@ -274,7 +274,7 @@ public class GLTFEntity: Entity {
     lazy var animationDecoder = GLTFAnimationDecoder(document: document)
     private var cachedRestPose: GLTFRestPose?
     var animationRuntimes: [Int: GLTFAnimationRuntime] = [:]
-    var activeAnimationControllers: [GLTFAnimationPlaybackController] = []
+    var activeAnimationPlayer: GLTFAnimationPlayer?
 
     /// Registers the components this entity relies on, exactly once per process.
     @MainActor private static let registerRealityKitTypes: Void = {

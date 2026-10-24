@@ -2,6 +2,7 @@
 import Foundation
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension VRMEntity {
@@ -34,16 +35,22 @@ extension VRMEntity {
         }
         // Retargeting is specific to this (animation, model) pair, so unlike a
         // glTF runtime it is built per playback and owned by its controller.
+        let model = VRMAnimationRuntime.Model(
+            facesNegativeZ: vrm.forwardDirection.z < 0,
+            humanoidNodes: Dictionary(uniqueKeysWithValues: HumanoidBone.allCases.compactMap { bone in
+                humanoid.nodeIndex(for: bone).map { (bone, $0) }
+            }),
+            restPose: try restPose())
         let runtime = try VRMAnimationRuntime(animation: animation,
                                               animationIndex: animationIndex,
-                                              entity: self)
-        return startPlayback(GLTFAnimation(index: animationIndex,
-                                           name: runtime.name,
-                                           duration: runtime.duration),
-                             runtime: runtime,
-                             ownsRuntime: true,
-                             loops: loops,
-                             speed: speed)
+                                              model: model)
+        return try startPlayback(GLTFAnimation(index: animationIndex,
+                                               name: runtime.name,
+                                               duration: runtime.duration),
+                                 runtime: runtime,
+                                 ownsRuntime: true,
+                                 loops: loops,
+                                 speed: speed)
     }
 }
 #endif

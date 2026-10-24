@@ -1,24 +1,21 @@
-#if canImport(RealityKit)
-import RealityKit
-import simd
+import SIMDCompat
 import VRMKit
 
 /// The rest pose a glTF node hierarchy describes before any animation runs, in
 /// world space. VRM animation retargeting is defined against it: both the
 /// animation's skeleton and a VRM model's humanoid rest in T-pose, and their
 /// rest orientations are what re-expresses one's local rotations in the other.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-struct GLTFRestPose {
+package struct GLTFRestPose: Sendable {
     private let hierarchy: GLTFNodeHierarchy
     private let worlds: [simd_float4x4]
 
     /// - Throws: when the nodes describe no hierarchy a model could be built
     ///   from, which a `.vrma` never goes through a scene load to find out.
-    init(nodes: [GLTF.Node]) throws {
+    package init(nodes: [GLTF.Node]) throws {
         let hierarchy = try GLTFNodeHierarchy(nodes: nodes)
         self.hierarchy = hierarchy
 
-        let locals = nodes.map(\.localTransform.matrix)
+        let locals = nodes.map { GLTFNodeTransform(node: $0).matrix }
         var worlds = [simd_float4x4?](repeating: nil, count: nodes.count)
         // The hierarchy is a validated forest, so this recursion terminates.
         func world(at index: Int) -> simd_float4x4 {
@@ -32,35 +29,34 @@ struct GLTFRestPose {
         self.worlds = nodes.indices.map { world(at: $0) }
     }
 
-    func contains(_ index: Int) -> Bool {
+    package func contains(_ index: Int) -> Bool {
         worlds.indices.contains(index)
     }
 
-    func parent(at index: Int) -> Int? {
+    package func parent(at index: Int) -> Int? {
         hierarchy.parent(at: index)
     }
 
     /// The node's rest transform in world space, its parents' folded in.
-    func worldMatrix(at index: Int) -> simd_float4x4 {
+    package func worldMatrix(at index: Int) -> simd_float4x4 {
         contains(index) ? worlds[index] : matrix_identity_float4x4
     }
 
-    func parentWorldMatrix(at index: Int) -> simd_float4x4 {
+    package func parentWorldMatrix(at index: Int) -> simd_float4x4 {
         guard let parent = parent(at: index) else { return matrix_identity_float4x4 }
         return worldMatrix(at: parent)
     }
 
-    func worldRotation(at index: Int) -> simd_quatf {
-        contains(index) ? Transform(matrix: worlds[index]).rotation : quat_identity_float
+    package func worldRotation(at index: Int) -> simd_quatf {
+        contains(index) ? GLTFNodeTransform(matrix: worlds[index]).rotation : quat_identity_float
     }
 
-    func parentWorldRotation(at index: Int) -> simd_quatf {
+    package func parentWorldRotation(at index: Int) -> simd_quatf {
         guard let parent = parent(at: index) else { return quat_identity_float }
         return worldRotation(at: parent)
     }
 
-    func worldPosition(at index: Int) -> SIMD3<Float> {
+    package func worldPosition(at index: Int) -> SIMD3<Float> {
         contains(index) ? worlds[index].translation : .zero
     }
 }
-#endif

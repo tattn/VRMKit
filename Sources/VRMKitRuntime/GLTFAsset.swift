@@ -95,6 +95,11 @@ public final class GLTFAsset: Sendable {
         meshIndicesByNode[index].map { meshes[$0] }
     }
 
+    /// A pose of the nodes at rest, for one model built from the asset to move.
+    public func makePose() -> GLTFPose {
+        GLTFPose(children: nodes.map(\.children), locals: nodes.map(\.restTransform))
+    }
+
     /// The image the texture at `index` reads.
     ///
     /// - Throws: when the texture takes its image from an extension this package does not read.

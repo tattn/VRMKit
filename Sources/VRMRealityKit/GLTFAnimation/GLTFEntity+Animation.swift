@@ -2,117 +2,7 @@
 import Foundation
 import RealityKit
 import VRMKit
-
-/// Metadata of one glTF animation, identified by `index`: `name` is optional and
-/// may repeat.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-public struct GLTFAnimation: Sendable {
-    public let index: Int
-    public let name: String?
-    public let duration: TimeInterval
-}
-
-/// What a playback controller drives: one decoded animation bound to what it poses.
-/// glTF animations bind entities by node index; VRM animations retarget onto
-/// humanoid bones.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-@MainActor
-protocol GLTFAnimationApplying: AnyObject {
-    /// Poses the bound targets for `time` in `pose`, which notes the nodes that moved.
-    func apply(at time: Float, to pose: GLTFPose)
-}
-
-/// Controls one running glTF or VRM animation, in the spirit of RealityKit's
-/// `AnimationPlaybackController`.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-@MainActor
-public final class GLTFAnimationPlaybackController {
-    public let animation: GLTFAnimation
-    /// Playback rate multiplier. A negative rate plays backwards, starting at the
-    /// animation's end rather than at 0. A non-finite rate is refused, since it would
-    /// put NaN through every pose it drives.
-    public var speed: Float {
-        didSet { if !speed.isFinite { speed = oldValue } }
-    }
-    /// While paused time does not advance, and the pose reached keeps being re-applied.
-    public var isPaused = false
-    public let loops: Bool
-    public private(set) var time: TimeInterval
-    /// Set when a non-looping animation reaches its end or ``stop()`` is called.
-    public private(set) var isComplete = false
-
-    /// Weak, so a controller kept past its playback does not hold the scene alive.
-    private weak var entity: GLTFEntity?
-    /// A runtime built for this playback alone is owned here, living exactly as long as
-    /// the controller; a cached one is borrowed.
-    private weak var runtime: (any GLTFAnimationApplying)?
-    private let ownedRuntime: (any GLTFAnimationApplying)?
-
-    init(animation: GLTFAnimation,
-         runtime: any GLTFAnimationApplying,
-         ownsRuntime: Bool,
-         entity: GLTFEntity,
-         loops: Bool,
-         speed: Float) {
-        self.animation = animation
-        self.runtime = runtime
-        self.ownedRuntime = ownsRuntime ? runtime : nil
-        self.entity = entity
-        self.loops = loops
-        self.speed = speed.isFinite ? speed : 1
-        self.time = self.speed < 0 ? animation.duration : 0
-    }
-
-    /// Jumps to `time`, clamped into the animation, and applies that pose immediately
-    /// without resuming a completed animation. Animations started later still win.
-    /// A non-finite time is refused, as a non-finite ``speed`` is.
-    public func seek(to newTime: TimeInterval) {
-        guard newTime.isFinite else { return }
-        time = min(max(newTime, 0), animation.duration)
-        entity?.applyPose(seekedBy: self)
-    }
-
-    /// Ends playback, holding the current pose.
-    public func stop() {
-        markComplete()
-        entity?.pruneCompletedAnimations()
-    }
-
-    func markComplete() {
-        isComplete = true
-    }
-
-    func advance(deltaTime: TimeInterval) {
-        guard !isComplete else { return }
-        let duration = animation.duration
-        // A zero-length animation holds a single pose, which looping cannot change: it
-        // completes rather than reapplying it every frame.
-        guard duration > 0 else {
-            apply()
-            isComplete = true
-            return
-        }
-        // Pausing stops time, not the playback: the pose is re-applied every frame so an
-        // animation this one outranks cannot take its targets over.
-        if !isPaused {
-            time += deltaTime * TimeInterval(speed)
-            if loops {
-                time = time.truncatingRemainder(dividingBy: duration)
-                if time < 0 { time += duration }
-            } else if time >= duration || time < 0 {
-                time = min(max(time, 0), duration)
-                isComplete = true
-            }
-        }
-        apply()
-    }
-
-    /// Poses the model for the current time.
-    func apply() {
-        guard let pose = entity?.pose else { return }
-        runtime?.apply(at: Float(time), to: pose)
-    }
-}
+import VRMKitRuntime
 
 /// Marks a ``GLTFEntity`` with running animations, so ``GLTFAnimationSystem``
 /// only visits entities that actually need a tick.
@@ -166,11 +56,11 @@ extension GLTFEntity {
         guard metadata.indices.contains(index) else {
             throw VRMError._dataInconsistent("animation index \(index) is out of range for \(metadata.count) animations")
         }
-        return startPlayback(metadata[index],
-                             runtime: try animationRuntime(at: index),
-                             ownsRuntime: false,
-                             loops: loops,
-                             speed: speed)
+        return try startPlayback(metadata[index],
+                                 runtime: try animationRuntime(at: index),
+                                 ownsRuntime: false,
+                                 loops: loops,
+                                 speed: speed)
     }
 
     /// Puts `runtime` on the render tick under a new controller, and poses the model once
@@ -182,26 +72,20 @@ extension GLTFEntity {
                        runtime: any GLTFAnimationApplying,
                        ownsRuntime: Bool,
                        loops: Bool,
-                       speed: Float) -> GLTFAnimationPlaybackController {
-        let controller = GLTFAnimationPlaybackController(animation: animation,
-                                                         runtime: runtime,
-                                                         ownsRuntime: ownsRuntime,
-                                                         entity: self,
-                                                         loops: loops,
-                                                         speed: speed)
-        activeAnimationControllers.append(controller)
+                       speed: Float) throws -> GLTFAnimationPlaybackController {
+        let controller = try animationPlayer().start(animation,
+                                                     runtime: runtime,
+                                                     ownsRuntime: ownsRuntime,
+                                                     loops: loops,
+                                                     speed: speed)
         components.set(GLTFAnimationPlaybackComponent())
-        controller.apply()
         flushDeformation()
         return controller
     }
 
     /// Stops every running glTF animation, holding the current pose.
     public func stopAnimations() {
-        for controller in activeAnimationControllers {
-            controller.markComplete()
-        }
-        pruneCompletedAnimations()
+        activeAnimationPlayer?.stopAll()
     }
 
     /// Advances the running glTF animations by one frame and skins the result.
@@ -217,40 +101,61 @@ extension GLTFEntity {
 
     /// Moves every running animation on by `deltaTime` and poses the model for it.
     func advanceAnimations(deltaTime: TimeInterval) {
-        // A clone inherits the marker component but not the controllers.
-        guard !activeAnimationControllers.isEmpty else {
+        // A clone inherits the marker component but not the player.
+        guard let player = activeAnimationPlayer, player.isPlaying else {
             components.remove(GLTFAnimationPlaybackComponent.self)
             return
         }
-        for controller in activeAnimationControllers {
-            controller.advance(deltaTime: deltaTime)
-        }
-        pruneCompletedAnimations()
+        player.advance(deltaTime: deltaTime)
     }
 
-    /// Poses the model for a seek: the seeked animation first, then every animation that
-    /// outranks it, so a seek cannot break the playback order.
-    func applyPose(seekedBy controller: GLTFAnimationPlaybackController) {
-        // A stopped controller has left the list, so everything running outranks it.
-        let first = activeAnimationControllers.firstIndex { $0 === controller }.map { $0 + 1 } ?? 0
-        controller.apply()
-        for outranking in activeAnimationControllers[first...] {
-            outranking.apply()
+    /// The model's animation player, made on first use: it poses through ``pose`` and hands
+    /// the rest of what the animations set to the entities drawing it.
+    private func animationPlayer() throws -> GLTFAnimationPlayer {
+        if let activeAnimationPlayer { return activeAnimationPlayer }
+        guard let pose else {
+            throw VRMError._notSupported("this entity has no pose to animate")
         }
-        flushDeformation()
+        let player = GLTFAnimationPlayer(pose: pose)
+        player.didApply = { [unowned self] output in
+            MainActor.assumeIsolated { applyAnimationOutput(output) }
+        }
+        player.didSeek = { [unowned self] in
+            MainActor.assumeIsolated { flushDeformation() }
+        }
+        player.didFinish = { [unowned self] in
+            MainActor.assumeIsolated { components.remove(GLTFAnimationPlaybackComponent.self) }
+        }
+        activeAnimationPlayer = player
+        return player
     }
 
-    func pruneCompletedAnimations() {
-        activeAnimationControllers.removeAll(where: \.isComplete)
-        if activeAnimationControllers.isEmpty {
-            components.remove(GLTFAnimationPlaybackComponent.self)
+    /// Hands what the animations set beyond the pose to what draws it.
+    func applyAnimationOutput(_ output: GLTFAnimationOutput) {
+        for (nodeIndex, weights) in output.morphWeights {
+            for modelEntity in morphBindings[nodeIndex]?.modelEntities ?? [] {
+                modelEntity.deformedMesh?.setBlendShapeWeights(weights)
+            }
+        }
+        guard let vrm = self as? VRMEntity else { return }
+        if !output.expressionWeights.isEmpty {
+            // Sent together so the entity re-accumulates its bindings once.
+            vrm.setExpressions(output.expressionWeights.mapValues { CGFloat($0) })
+        }
+        if let gaze = output.gaze {
+            vrm.lookAtTarget = .rotation(gaze)
         }
     }
 
     private func animationRuntime(at index: Int) throws -> GLTFAnimationRuntime {
         if let cached = animationRuntimes[index] { return cached }
         let animation = try gltf.load(\.animations, at: index)
-        let runtime = try GLTFAnimationRuntime(animation: animation, entity: self)
+        let runtime = try GLTFAnimationRuntime(animation: animation,
+                                               decoder: animationDecoder,
+                                               posedNodes: Set(gltf.nodes.indices.filter { entity(forNodeAt: $0) != nil }),
+                                               morphTargetCounts: morphBindings.compactMapValues {
+                                                   $0.modelEntities.isEmpty ? nil : $0.targetCount
+                                               })
         animationRuntimes[index] = runtime
         return runtime
     }
