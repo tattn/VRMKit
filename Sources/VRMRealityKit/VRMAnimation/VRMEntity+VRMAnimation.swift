@@ -28,29 +28,14 @@ extension VRMEntity {
                               animationIndex: Int = 0,
                               loops: Bool = false,
                               speed: Float = 1) throws -> GLTFAnimationPlaybackController {
-        guard hasRuntimeBindings else {
+        guard let instance else {
             throw VRMError._notSupported(
                 "this entity is a copy of a loaded VRM scene and carries no animation bindings; load the scene again to animate it"
             )
         }
-        // Retargeting is specific to this (animation, model) pair, so unlike a
-        // glTF runtime it is built per playback and owned by its controller.
-        let model = VRMAnimationRuntime.Model(
-            facesNegativeZ: vrm.forwardDirection.z < 0,
-            humanoidNodes: Dictionary(uniqueKeysWithValues: HumanoidBone.allCases.compactMap { bone in
-                humanoid.nodeIndex(for: bone).map { (bone, $0) }
-            }),
-            restPose: try restPose())
-        let runtime = try VRMAnimationRuntime(animation: animation,
-                                              animationIndex: animationIndex,
-                                              model: model)
-        return try startPlayback(GLTFAnimation(index: animationIndex,
-                                               name: runtime.name,
-                                               duration: runtime.duration),
-                                 runtime: runtime,
-                                 ownsRuntime: true,
-                                 loops: loops,
-                                 speed: speed)
+        let controller = try instance.playAnimation(animation, animationIndex: animationIndex, loops: loops, speed: speed)
+        didStartPlayback()
+        return controller
     }
 }
 #endif

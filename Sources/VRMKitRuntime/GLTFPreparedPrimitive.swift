@@ -1,11 +1,10 @@
 import SIMDCompat
 
-/// One primitive decoded and conditioned for the build: its geometry, and what the build
-/// would otherwise derive from it on the actor one vertex at a time.
+/// One primitive decoded, with what a mesh derives from it vertex by vertex: the
+/// first-person mask and the skin influences.
 package struct GLTFPreparedPrimitive: @unchecked Sendable {
     package let geometry: GLTFPrimitiveGeometry
-    /// Whether ``firstPersonMask`` was cut for a node with head joints. A template drawn
-    /// with the other cut derives its own mask.
+    /// Whether ``firstPersonMask`` was cut for a node with head joints.
     package let cutsHead: Bool
     package let firstPersonMask: FirstPersonPrimitiveMask
     /// Nil for an unskinned primitive.

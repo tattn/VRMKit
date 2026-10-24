@@ -134,7 +134,7 @@ public final class GLTFAnimationPlaybackController {
 /// started last wins what they share.
 package final class GLTFAnimationPlayer {
     package let pose: GLTFPose
-    package private(set) var controllers: [GLTFAnimationPlaybackController] = []
+    private var controllers: [GLTFAnimationPlaybackController] = []
     /// Passes on what an apply set beyond the pose: the morph weights, the expressions and
     /// the gaze.
     package var didApply: ((GLTFAnimationOutput) -> Void)?

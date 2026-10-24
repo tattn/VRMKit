@@ -5,11 +5,10 @@ import VRMKit
 /// VRM 0.x material properties, the first-person cut and VRM's morph target sharing.
 ///
 /// What a VRM adds on top of the scene, the humanoid, the expressions, the constraints
-/// and the spring bones, is set up by whoever builds the model from the asset.
-package final class VRMAssetProfile: GLTFAssetProfile, @unchecked Sendable {
+/// and the spring bones, is ``VRMInstance``'s.
+package final class VRMAssetProfile: GLTFAssetProfile, Sendable {
     package let vrm: VRM
-    private let lock = NSLock()
-    private var firstPersonPlan: VRMFirstPersonPlan?
+    private let firstPersonPlan = Locked<VRMFirstPersonPlan?>(nil)
 
     package init(vrm: VRM) {
         self.vrm = vrm
@@ -99,12 +98,12 @@ package final class VRMAssetProfile: GLTFAssetProfile, @unchecked Sendable {
 
     /// Which meshes a first-person camera cuts, resolved once per model.
     private func firstPerson(hierarchy: GLTFNodeHierarchy) -> VRMFirstPersonPlan {
-        lock.lock()
-        defer { lock.unlock() }
-        if let firstPersonPlan { return firstPersonPlan }
-        let plan = VRMFirstPersonPlan(vrm: vrm, gltf: vrm.document.gltf, hierarchy: hierarchy)
-        firstPersonPlan = plan
-        return plan
+        firstPersonPlan.withLock { plan in
+            if let plan { return plan }
+            let made = VRMFirstPersonPlan(vrm: vrm, gltf: vrm.document.gltf, hierarchy: hierarchy)
+            plan = made
+            return made
+        }
     }
 
     package func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {

@@ -2,7 +2,7 @@ import Foundation
 import SIMDCompat
 import VRMKit
 
-/// A limitation a decode ran into, logged once per key by the loader.
+/// A limitation a decode ran into, for a renderer to report once per key.
 package struct GLTFGeometryWarning: Sendable {
     package let key: String
     package let message: String
@@ -64,8 +64,8 @@ package struct GLTFPrimitiveGeometry: Sendable {
 
 /// Turns a glTF primitive into the vertex buffers a renderer draws.
 ///
-/// Nothing here touches RealityKit or the scene graph, which is what lets a
-/// load decode every primitive of a model at once.
+/// Nothing here touches a renderer, which is what lets a load decode every primitive
+/// of a model at once.
 package struct GLTFGeometryDecoder: Sendable {
     package let accessors: PackedAccessorCache
     /// Which UV set each material's textures are read from, resolved before the
@@ -226,8 +226,8 @@ package struct GLTFGeometryDecoder: Sendable {
         }
     }
 
-    /// RealityKit meshes carry one UV channel, so a material sampling several
-    /// sets renders through whichever of them this primitive can supply.
+    /// A decoded mesh carries one UV channel, so a material sampling several sets
+    /// renders through whichever of them this primitive can supply.
     private func texcoordAttributeKey(
         forMaterialIndex materialIndex: Int?,
         attributes: [GLTF.Mesh.Primitive.AttributeKey: Int],
@@ -241,7 +241,7 @@ package struct GLTFGeometryDecoder: Sendable {
         if isMixed || !isAvailable {
             warnings.append(GLTFGeometryWarning(key: "texCoord-\(materialIndex)", message: """
                 Material \(materialIndex) samples UV set \(selected)\(isMixed ? " among others" : ""); \
-                RealityKit meshes carry one UV channel, so \
+                a decoded mesh carries one UV channel, so \
                 \(isAvailable ? "that set is used for every texture" : "TEXCOORD_0 is used instead").
                 """))
         }
@@ -250,7 +250,8 @@ package struct GLTFGeometryDecoder: Sendable {
 
     // MARK: - Attributes
 
-    /// UVs arrive V-flipped: glTF's origin is top-left, RealityKit's is bottom-left.
+    /// UVs arrive V-flipped, with the origin bottom-left as RealityKit reads them rather
+    /// than glTF's top-left. The generated tangent basis is derived from these UVs.
     private func vector2s(_ accessorIndex: Int) throws -> [SIMD2<Float>] {
         try accessors.floatElements(at: accessorIndex, type: .VEC2) {
             SIMD2<Float>($0(0), 1.0 - $0(1))
@@ -360,8 +361,8 @@ package struct GLTFGeometryDecoder: Sendable {
 
     // MARK: - Tangents
 
-    /// A complete tangent basis. RealityKit derives neither buffer from the other,
-    /// so both are filled together or left empty together.
+    /// A complete tangent basis. A renderer is handed both buffers rather than deriving
+    /// one from the other, so both are filled together or left empty together.
     private struct TangentFrame {
         static let empty = TangentFrame(tangents: [], bitangents: [])
 

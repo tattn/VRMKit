@@ -272,7 +272,6 @@ public class GLTFEntity: Entity {
     var animationMetadata: [GLTFAnimation]?
     /// One decoder for the whole document: samplers routinely share an input accessor.
     lazy var animationDecoder = GLTFAnimationDecoder(document: document)
-    private var cachedRestPose: GLTFRestPose?
     var animationRuntimes: [Int: GLTFAnimationRuntime] = [:]
     var activeAnimationPlayer: GLTFAnimationPlayer?
 
@@ -304,14 +303,6 @@ public class GLTFEntity: Entity {
     public required init() {
         super.init()
         _ = Self.registerRealityKitTypes
-    }
-
-    /// The pose the document describes before any animation runs, solved once.
-    func restPose() throws -> GLTFRestPose {
-        if let cachedRestPose { return cachedRestPose }
-        let pose = try GLTFRestPose(nodes: gltf.nodes)
-        cachedRestPose = pose
-        return pose
     }
 
     /// The builder has validated the node hierarchy by now.

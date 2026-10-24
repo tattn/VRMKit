@@ -5,10 +5,9 @@ import VRMKit
 /// The vertex data behind one model entity of a loaded glTF, as authored: the rest
 /// pose, before any skinning or morphing.
 ///
-/// Plain arrays, so any renderer can upload them. A RealityKit entity draws from a mesh
-/// the loader deforms itself, which has no readable contents, so anything that needs to
-/// know where a vertex sits reads it here. Every slot of the merged mesh shares the one
-/// vertex array and draws its own range of `indices`.
+/// Plain arrays any renderer can upload, and where anything that needs to know where a
+/// vertex sits reads it. Every slot of the merged mesh shares the one vertex array and
+/// draws its own range of `indices`.
 public struct GLTFMeshGeometry: Sendable {
     /// One material slot of the merged mesh, built from one glTF primitive.
     public struct Slot: Sendable {

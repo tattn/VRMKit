@@ -56,32 +56,21 @@ extension GLTFEntity {
         guard metadata.indices.contains(index) else {
             throw VRMError._dataInconsistent("animation index \(index) is out of range for \(metadata.count) animations")
         }
-        return try startPlayback(metadata[index],
-                                 runtime: try animationRuntime(at: index),
-                                 ownsRuntime: false,
-                                 loops: loops,
-                                 speed: speed)
-    }
-
-    /// Puts `runtime` on the render tick under a new controller, and poses the model once
-    /// so the first frame is already correct.
-    ///
-    /// - Parameter ownsRuntime: whether the controller is the runtime's only owner, for
-    ///   runtimes built per playback rather than cached on the entity.
-    func startPlayback(_ animation: GLTFAnimation,
-                       runtime: any GLTFAnimationApplying,
-                       ownsRuntime: Bool,
-                       loops: Bool,
-                       speed: Float) throws -> GLTFAnimationPlaybackController {
-        let controller = try animationPlayer().start(animation,
-                                                     runtime: runtime,
-                                                     ownsRuntime: ownsRuntime,
+        let controller = try animationPlayer().start(metadata[index],
+                                                     runtime: try animationRuntime(at: index),
+                                                     ownsRuntime: false,
                                                      loops: loops,
                                                      speed: speed)
+        didStartPlayback()
+        return controller
+    }
+
+    /// Puts a playback just started on the render tick, and skins the model once so the
+    /// first frame is already correct.
+    func didStartPlayback() {
         components.set(GLTFAnimationPlaybackComponent())
         applyPlaybackOutput()
         flushDeformation()
-        return controller
     }
 
     /// Stops every running glTF animation, holding the current pose.

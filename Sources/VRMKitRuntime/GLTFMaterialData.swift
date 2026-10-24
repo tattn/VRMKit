@@ -75,7 +75,7 @@ public struct GLTFMaterialData: Sendable {
                                        transparentWithZWrite: resolution.descriptor?.transparentWithZWrite ?? false,
                                        offset: resolution.descriptor?.renderQueueOffsetNumber ?? 0)
         let textures = GLTFAssetReader.sampledTextures(of: material)
-        texCoord = GLTFAssetReader.resolvedTexCoord(of: material).selected
+        texCoord = textures.first?.texCoord ?? 0
         let uvAccessed = resolution.descriptor?.uvAccessedTextures ?? textures
         uvTransform = uvAccessed.first?.transform ?? GLTFUVTransform()
     }

@@ -46,6 +46,8 @@ public final class VRMInstance: GLTFInstance {
     private var nodeConstraints = NodeConstraintRig<GLTFPoseNode>()
     private var lookAt = LookAtRig<GLTFPoseNode>()
     private let firstPerson: VRMFirstPersonPlan
+    /// The pose the document describes before any animation runs, which retargeting reads.
+    private var restPose: GLTFRestPose?
     private var updateHandlers: [VRMUpdateStage: (TimeInterval) -> Void] = [:]
     private var materialValues: [Int: GLTFFrameOutput.MaterialValues] = [:]
     private var changedMaterials: Set<Int> = []
@@ -242,9 +244,11 @@ public final class VRMInstance: GLTFInstance {
                               animationIndex: Int = 0,
                               loops: Bool = false,
                               speed: Float = 1) throws -> GLTFAnimationPlaybackController {
+        let restPose = try self.restPose ?? GLTFRestPose(nodes: asset.document.gltf.nodes)
+        self.restPose = restPose
         let model = VRMAnimationRuntime.Model(facesNegativeZ: vrm.forwardDirection.z < 0,
                                               humanoidNodes: humanoidNodes,
-                                              restPose: try GLTFRestPose(nodes: asset.document.gltf.nodes))
+                                              restPose: restPose)
         // Retargeting is specific to this (animation, model) pair, so it is built per
         // playback and owned by its controller.
         let runtime = try VRMAnimationRuntime(animation: animation, animationIndex: animationIndex, model: model)
