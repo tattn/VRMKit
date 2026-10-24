@@ -5,8 +5,9 @@ import VRMKit
 import VRMTestSupport
 @testable import VRMKitRuntime
 
-/// What a scene draws, read with no renderer: the nodes, the skins parents first, and one
-/// mesh per way a node draws a glTF mesh, its slots each naming their material.
+/// What a scene draws, read with no renderer: the nodes, the skins parents first, one mesh
+/// per way a node draws a glTF mesh, its slots each naming their material, the materials as
+/// read and the images as stored.
 @Suite
 struct GLTFAssetTests {
     @Test(arguments: VRMSampleAsset.allCases)
@@ -63,6 +64,67 @@ struct GLTFAssetTests {
         #expect(morphedMesh.geometry.blendShapeTargetCount == 2)
         let node = try #require(morphed.meshIndicesByNode.keys.first)
         #expect(morphed.nodes[node].initialMorphWeights == [0.5, 0.5])
+    }
+
+    // MARK: - Materials and images
+
+    /// A VRM 1.0 model's materials read as MToon, and the images they sample say how they are read.
+    @Test
+    func testAVRM1ModelsMaterialsReadAsMToon() async throws {
+        let read = try await GLTFAsset.load(vrm: try VRM(data: VRMSampleAsset.seedSan.data))
+        #expect(read.materials.count == read.document.gltf.materials.count)
+        let mtoon = read.materials.compactMap { material -> MToonMaterialDescriptor? in
+            guard case .mtoon(let descriptor) = material.shading else { return nil }
+            return descriptor
+        }
+        #expect(!mtoon.isEmpty)
+        let base = try #require(mtoon.compactMap(\.baseColorTexture).first)
+        #expect(read.images[try read.imageIndex(ofTexture: base.index)].usages.contains(.color))
+        for material in read.materials {
+            #expect((material.renderQueue != nil) == (material.alphaMode == .BLEND))
+        }
+    }
+
+    /// VRM 0.x shader metadata decides how a material draws: an unlit shader reads flat, and
+    /// a transparent one blends in the queue the model recorded.
+    @Test
+    func testAVRM0ModelsUnlitShadersReadFlatInTheirRecordedQueue() async throws {
+        let vrm = try VRM(data: VRMSampleAsset.aliciaSolid.data)
+        let read = try await GLTFAsset.load(vrm: vrm)
+        for material in read.materials {
+            guard case .unlit = material.shading else {
+                Issue.record("material \(material.index) reads as \(material.shading)")
+                continue
+            }
+            let property = try #require(vrm.vrm0MaterialProperty(at: material.index))
+            #expect(material.renderQueue == (material.alphaMode == .BLEND ? property.renderQueue : nil))
+        }
+        #expect(read.materials.contains { $0.alphaMode == .BLEND })
+        #expect(read.images.contains { $0.usages == [.color] })
+    }
+
+    @Test
+    func testAPlainGLTFsImageIsReadAsStored() async throws {
+        let read = try await GLTFAsset.load(document: try GLTFDocument(withURL: GLTFSampleAsset.simpleTexture.url))
+        let material = try #require(read.materials.first)
+        guard case .physicallyBased = material.shading else {
+            Issue.record("a metallic-roughness material reads as \(material.shading)")
+            return
+        }
+        let image = try #require(read.images.first)
+        #expect(image.usages == [.color])
+        #expect(image.mimeType == "image/png")
+        #expect(try image.data().starts(with: [0x89, 0x50, 0x4E, 0x47]))
+        #expect(try read.sampler(ofTexture: 0) != nil)
+    }
+
+    /// `KHR_texture_transform` is read once per material, off its first UV-accessed texture.
+    @Test
+    func testAMaterialReadsThroughItsFirstTexturesTransform() async throws {
+        let read = try await GLTFAsset.load(document: try GLTFDocument(withURL: GLTFSampleAsset.textureTransformTest.url))
+        #expect(read.materials[0].uvTransform.offset == SIMD2(0.5, 0))
+        #expect(read.materials[1].uvTransform.offset == SIMD2(0, 0.5))
+        #expect(abs(read.materials[3].uvTransform.rotation - 0.39269908) < 1e-6)
     }
 
     private func ancestors(of node: Int, in asset: GLTFAsset) -> [Int] {

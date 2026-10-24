@@ -7,53 +7,53 @@ import SIMDCompat
 ///
 /// Declares no initializer of its own, so the memberwise one stays available to
 /// ``VRM0MToonProperty``.
-package struct MToonMaterialDescriptor: Equatable, Sendable {
-    package enum CullMode {
+public struct MToonMaterialDescriptor: Equatable, Sendable {
+    public enum CullMode: Sendable {
         case none
         case front
         case back
     }
 
-    package typealias OutlineWidthMode = MToonOutlineWidthMode
+    public typealias OutlineWidthMode = MToonOutlineWidthMode
 
     /// Shared with the standard material paths; the aliases keep the vocabulary local.
-    package typealias UVTransform = GLTFUVTransform
-    package typealias Texture = GLTFSampledTexture
+    public typealias UVTransform = GLTFUVTransform
+    public typealias Texture = GLTFSampledTexture
 
-    package var baseColorFactor: SIMD4<Float>
-    package var emissiveFactor: SIMD3<Float>
-    package var shadeColorFactor: SIMD4<Float>
-    package var shadingShiftFactor: Float
-    package var shadingShiftTextureScale: Float
-    package var shadingToonyFactor: Float
-    package var giEqualizationFactor: Float
-    package var matcapFactor: SIMD3<Float>
-    package var parametricRimColorFactor: SIMD4<Float>
-    package var rimLightingMixFactor: Float
-    package var parametricRimFresnelPowerFactor: Float
-    package var parametricRimLiftFactor: Float
-    package var outlineWidthMode: OutlineWidthMode
-    package var outlineWidthFactor: Float
-    package var outlineColorFactor: SIMD4<Float>
-    package var outlineLightingMixFactor: Float
-    package var uvAnimationScrollXSpeedFactor: Float
-    package var uvAnimationScrollYSpeedFactor: Float
-    package var uvAnimationRotationSpeedFactor: Float
-    package var transparentWithZWrite: Bool
-    package var renderQueueOffsetNumber: Int
-    package var alphaMode: GLTF.Material.AlphaMode
-    package var alphaCutoff: Float
-    package var cullMode: CullMode
-    package var normalScale: Float
-    package var baseColorTexture: Texture?
-    package var emissiveTexture: Texture?
-    package var shadeMultiplyTexture: Texture?
-    package var shadingShiftTexture: Texture?
-    package var normalTexture: Texture?
-    package var matcapTexture: Texture?
-    package var rimMultiplyTexture: Texture?
-    package var outlineWidthMultiplyTexture: Texture?
-    package var uvAnimationMaskTexture: Texture?
+    public package(set) var baseColorFactor: SIMD4<Float>
+    public package(set) var emissiveFactor: SIMD3<Float>
+    public package(set) var shadeColorFactor: SIMD4<Float>
+    public package(set) var shadingShiftFactor: Float
+    public package(set) var shadingShiftTextureScale: Float
+    public package(set) var shadingToonyFactor: Float
+    public package(set) var giEqualizationFactor: Float
+    public package(set) var matcapFactor: SIMD3<Float>
+    public package(set) var parametricRimColorFactor: SIMD4<Float>
+    public package(set) var rimLightingMixFactor: Float
+    public package(set) var parametricRimFresnelPowerFactor: Float
+    public package(set) var parametricRimLiftFactor: Float
+    public package(set) var outlineWidthMode: OutlineWidthMode
+    public package(set) var outlineWidthFactor: Float
+    public package(set) var outlineColorFactor: SIMD4<Float>
+    public package(set) var outlineLightingMixFactor: Float
+    public package(set) var uvAnimationScrollXSpeedFactor: Float
+    public package(set) var uvAnimationScrollYSpeedFactor: Float
+    public package(set) var uvAnimationRotationSpeedFactor: Float
+    public package(set) var transparentWithZWrite: Bool
+    public package(set) var renderQueueOffsetNumber: Int
+    public package(set) var alphaMode: GLTF.Material.AlphaMode
+    public package(set) var alphaCutoff: Float
+    public package(set) var cullMode: CullMode
+    public package(set) var normalScale: Float
+    public package(set) var baseColorTexture: Texture?
+    public package(set) var emissiveTexture: Texture?
+    public package(set) var shadeMultiplyTexture: Texture?
+    public package(set) var shadingShiftTexture: Texture?
+    public package(set) var normalTexture: Texture?
+    public package(set) var matcapTexture: Texture?
+    public package(set) var rimMultiplyTexture: Texture?
+    public package(set) var outlineWidthMultiplyTexture: Texture?
+    public package(set) var uvAnimationMaskTexture: Texture?
 }
 
 package extension MToonMaterialDescriptor {

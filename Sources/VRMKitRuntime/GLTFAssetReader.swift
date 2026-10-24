@@ -87,6 +87,7 @@ package struct GLTFAssetReader: Sendable {
             }
             meshIndicesByNode[item.nodeIndex] = indicesByKey[key]
         }
+        let materials = materials()
         return GLTFAsset(document: document,
                          sceneIndex: sceneIndex,
                          rootNodes: roots,
@@ -94,7 +95,30 @@ package struct GLTFAssetReader: Sendable {
                          skins: skins,
                          meshes: meshes,
                          meshIndicesByNode: meshIndicesByNode,
+                         materials: materials,
+                         images: images(sampledBy: materials),
                          warnings: warnings)
+    }
+
+    package func materials() -> [GLTFMaterialData] {
+        gltf.materials.enumerated().map { index, material in
+            GLTFMaterialData(index: index,
+                             material: material,
+                             materialProperty: profile.vrm0MaterialProperty(atMaterialIndex: index))
+        }
+    }
+
+    private func images(sampledBy materials: [GLTFMaterialData]) -> [GLTFImageSource] {
+        var usages = [Set<GLTFImageSource.Usage>](repeating: [], count: gltf.images.count)
+        for material in materials {
+            for (texture, usage) in material.sampledTextures {
+                // A texture taking its image from an unread extension draws nothing of it.
+                guard let image = try? gltf.imageIndex(ofTextureAt: texture.index),
+                      usages.indices.contains(image) else { continue }
+                usages[image].insert(usage)
+            }
+        }
+        return usages.indices.map { GLTFImageSource(index: $0, document: document, usages: usages[$0]) }
     }
 
     private func nodes() throws -> [GLTFAsset.Node] {

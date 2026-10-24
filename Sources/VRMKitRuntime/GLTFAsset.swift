@@ -3,7 +3,8 @@ import SIMDCompat
 import VRMKit
 
 /// What one scene of a glTF document draws, read without any renderer: the node
-/// hierarchy, the skins and the vertex data of every mesh the scene draws.
+/// hierarchy, the skins, the vertex data of every mesh the scene draws, the materials as
+/// read and the images as stored.
 ///
 /// A renderer builds its own resources from this. Every model built from one asset
 /// shares its vertex data, so nothing here changes once it is loaded.
@@ -20,6 +21,10 @@ public final class GLTFAsset: Sendable {
     public let meshes: [Mesh]
     /// Which of ``meshes`` each node of the scene that draws a mesh draws.
     public let meshIndicesByNode: [Int: Int]
+    /// Every material of the document, by glTF material index.
+    public let materials: [GLTFMaterialData]
+    /// Every image of the document, by glTF image index.
+    public let images: [GLTFImageSource]
     /// What the read ran into that a renderer may want to report, once each.
     package let warnings: [GLTFGeometryWarning]
 
@@ -70,6 +75,8 @@ public final class GLTFAsset: Sendable {
                  skins: [Skin],
                  meshes: [Mesh],
                  meshIndicesByNode: [Int: Int],
+                 materials: [GLTFMaterialData],
+                 images: [GLTFImageSource],
                  warnings: [GLTFGeometryWarning]) {
         self.document = document
         self.sceneIndex = sceneIndex
@@ -78,12 +85,27 @@ public final class GLTFAsset: Sendable {
         self.skins = skins
         self.meshes = meshes
         self.meshIndicesByNode = meshIndicesByNode
+        self.materials = materials
+        self.images = images
         self.warnings = warnings
     }
 
     /// The mesh the node at `index` draws.
     public func mesh(drawnByNode index: Int) -> Mesh? {
         meshIndicesByNode[index].map { meshes[$0] }
+    }
+
+    /// The image the texture at `index` reads.
+    ///
+    /// - Throws: when the texture takes its image from an extension this package does not read.
+    public func imageIndex(ofTexture index: Int) throws -> Int {
+        try document.gltf.imageIndex(ofTextureAt: index)
+    }
+
+    /// How the texture at `index` is sampled. Nil for glTF's defaults.
+    public func sampler(ofTexture index: Int) throws -> GLTF.Sampler? {
+        guard let samplerIndex = try document.gltf.load(\.textures, at: index).sampler else { return nil }
+        return try document.gltf.load(\.samplers, at: samplerIndex)
     }
 
     /// Reads a plain glTF's scene, its default one unless told otherwise. The vertex data of

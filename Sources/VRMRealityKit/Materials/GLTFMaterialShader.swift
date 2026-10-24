@@ -138,9 +138,10 @@ public struct GLTFMaterialShaderContext {
     public func renderQueue(alphaMode: GLTF.Material.AlphaMode,
                             transparentWithZWrite: Bool = false,
                             offset: Int = 0) -> Int? {
-        guard alphaMode == .BLEND else { return nil }
-        if let vrm0MaterialProperty { return vrm0MaterialProperty.renderQueue }
-        return alphaMode.vrm0RenderQueue(transparentWithZWrite: transparentWithZWrite) + offset
+        GLTFMaterialData.renderQueue(alphaMode: alphaMode,
+                                     materialProperty: vrm0MaterialProperty,
+                                     transparentWithZWrite: transparentWithZWrite,
+                                     offset: offset)
     }
 
     /// The ``GLTFShadedMaterial/renderQueue`` of ``material`` drawn as authored,

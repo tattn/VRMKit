@@ -2,10 +2,10 @@ import Foundation
 import SIMDCompat
 
 /// `KHR_texture_transform`-style UV transform (glTF top-left origin).
-package struct GLTFUVTransform: Equatable, Sendable {
-    package let scale: SIMD2<Float>
-    package let offset: SIMD2<Float>
-    package let rotation: Float
+public struct GLTFUVTransform: Equatable, Sendable {
+    public let scale: SIMD2<Float>
+    public let offset: SIMD2<Float>
+    public let rotation: Float
 
     package init(scale: SIMD2<Float> = SIMD2<Float>(1, 1),
                  offset: SIMD2<Float> = SIMD2<Float>(0, 0),
@@ -18,13 +18,14 @@ package struct GLTFUVTransform: Equatable, Sendable {
 
 /// How a material samples one texture through mesh UVs: which texture, which UV
 /// set, and the UV transform, with `KHR_texture_transform` decoded.
-package struct GLTFSampledTexture: Equatable, Sendable {
-    package let index: Int
+public struct GLTFSampledTexture: Equatable, Sendable {
+    /// The glTF texture.
+    public let index: Int
     /// UV set this texture samples, honoring a `KHR_texture_transform` override.
-    package let texCoord: Int
+    public let texCoord: Int
     /// UV transform carried by the source format: `KHR_texture_transform` for
     /// glTF / VRM 1.0, the Unity `_MainTex` scale/offset for VRM 0.x.
-    package let transform: GLTFUVTransform?
+    public let transform: GLTFUVTransform?
 
     package init(index: Int, texCoord: Int = 0, transform: GLTFUVTransform? = nil) {
         self.index = index
