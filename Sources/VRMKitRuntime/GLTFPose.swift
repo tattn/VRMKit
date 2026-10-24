@@ -30,6 +30,7 @@ public final class GLTFPose {
     private var movedForSkinning: [Bool]
     private var movedForSkinningList: [Int] = []
     private var takenMovedForSkinningList: [Int] = []
+    private var movedSinceSkinOutput = false
 
     /// Called with every local transform a runtime writes, for a renderer keeping its scene
     /// graph a copy of the pose. Not called for ``adoptLocalTransform(_:ofNode:)``.
@@ -160,6 +161,15 @@ public final class GLTFPose {
 
     package var hasNodesMovedForSkinning: Bool { !movedForSkinningList.isEmpty }
 
+    /// Whether any node was written since the last call, for an instance handing out every
+    /// skin whenever one moved. It is kept apart from ``takeNodesMovedForSkinning()``, so a
+    /// renderer skinning from the pose itself and an instance handing out its skins can both
+    /// follow one pose.
+    package func takeHasMovedSinceSkinOutput() -> Bool {
+        defer { movedSinceSkinOutput = false }
+        return movedSinceSkinOutput
+    }
+
     /// Takes a transform the renderer's scene graph was given from outside, which the scene
     /// graph already holds and so is not handed back to ``didWriteLocalTransform``.
     package func adoptLocalTransform(_ transform: GLTFNodeTransform, ofNode index: Int) {
@@ -170,6 +180,7 @@ public final class GLTFPose {
 
     private func noteMoved(_ index: Int) {
         invalidateModel(below: index)
+        movedSinceSkinOutput = true
         if !movedForSkinning[index] {
             movedForSkinning[index] = true
             movedForSkinningList.append(index)

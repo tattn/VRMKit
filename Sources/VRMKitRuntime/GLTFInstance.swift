@@ -53,7 +53,8 @@ public class GLTFInstance {
     public let asset: GLTFAsset
     public let pose: GLTFPose
     /// Whether an update solves the skins into its output. A renderer skinning from
-    /// ``pose`` itself turns it off and takes the moved nodes from the pose instead.
+    /// ``pose`` itself turns it off, and can turn it on again for another renderer drawing
+    /// the same instance: the two follow the pose's moves apart.
     public var outputsSkins = true
 
     package let animationPlayer: GLTFAnimationPlayer
@@ -161,16 +162,22 @@ public class GLTFInstance {
 
     /// What changed since the last output, which this then forgets.
     public func takeOutput() -> GLTFFrameOutput {
+        takeOutput(solvingSkins: true)
+    }
+
+    /// ``takeOutput()``, leaving the skins to the next output that solves them when not
+    /// `solvingSkins`: for what changes between frame updates, such as an expression set from
+    /// outside, so that a pose moved meanwhile is solved once, with the frame.
+    package func takeOutput(solvingSkins: Bool) -> GLTFFrameOutput {
         var output = GLTFFrameOutput()
         for node in changedMorphNodes {
             output.morphWeights[node] = morphWeights[node]
         }
         changedMorphNodes.removeAll(keepingCapacity: true)
-        if outputsSkins {
+        if outputsSkins, solvingSkins {
             // A moved node moves every joint below it, so any move solves every skin: a
             // model's skins hold a few hundred joints at most.
-            let moved = !pose.takeNodesMovedForSkinning().isEmpty
-            if moved || !hasOutputSkins {
+            if pose.takeHasMovedSinceSkinOutput() || !hasOutputSkins {
                 output.skins = skinPoses()
                 hasOutputSkins = true
             }
@@ -182,17 +189,45 @@ public class GLTFInstance {
     /// Adds what a subclass drives to an output.
     func addOutput(to output: inout GLTFFrameOutput) {}
 
+    /// Everything the instance draws with as it stands, as an output in which all of it
+    /// changed, skins included: for a renderer starting to draw a model that has been moving.
+    /// What the next ``takeOutput()`` hands back stays as it is.
+    public func currentOutput() -> GLTFFrameOutput {
+        var output = GLTFFrameOutput()
+        output.morphWeights = morphWeights
+        output.skins = skinPoses()
+        addCurrentOutput(to: &output)
+        return output
+    }
+
+    /// Adds all of what a subclass drives to an output.
+    func addCurrentOutput(to output: inout GLTFFrameOutput) {}
+
+    /// Every node drawing a skinned mesh, in node order, with its skin.
+    private lazy var skinnedNodes: [(node: Int, skinIndex: Int)] = asset.meshIndicesByNode
+        .sorted { $0.key < $1.key }
+        .compactMap { node, mesh in asset.meshes[mesh].skinIndex.map { (node, $0) } }
+
     /// The skin of every node drawing a skinned mesh, as posed.
     public func skinPoses() -> [GLTFFrameOutput.SkinPose] {
-        asset.meshIndicesByNode.sorted { $0.key < $1.key }.compactMap { node, mesh in
-            guard let skinIndex = asset.meshes[mesh].skinIndex else { return nil }
+        skinnedNodes.map { node, skinIndex in
             let skin = asset.skins[skinIndex]
-            let meshSpace = pose.modelMatrix(ofNode: node).inverse
-            return GLTFFrameOutput.SkinPose(nodeIndex: node,
-                                            skinIndex: skinIndex,
-                                            jointMatrices: zip(skin.joints, skin.inverseBindMatrices).map {
-                                                meshSpace * pose.modelMatrix(ofNode: $0) * $1
-                                            })
+            var matrices: [simd_float4x4] = []
+            matrices.reserveCapacity(skin.joints.count)
+            // Skinned meshes mostly hang off the model's root untransformed, which spares
+            // a product per joint.
+            let meshModel = pose.modelMatrix(ofNode: node)
+            if meshModel == matrix_identity_float4x4 {
+                for (joint, inverseBind) in zip(skin.joints, skin.inverseBindMatrices) {
+                    matrices.append(pose.modelMatrix(ofNode: joint) * inverseBind)
+                }
+            } else {
+                let meshSpace = meshModel.inverse
+                for (joint, inverseBind) in zip(skin.joints, skin.inverseBindMatrices) {
+                    matrices.append(meshSpace * pose.modelMatrix(ofNode: joint) * inverseBind)
+                }
+            }
+            return GLTFFrameOutput.SkinPose(nodeIndex: node, skinIndex: skinIndex, jointMatrices: matrices)
         }
     }
 }

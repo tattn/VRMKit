@@ -769,7 +769,7 @@ struct GLTFEntityLoaderTests {
         }
 
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
-        let clip = try #require(vrmEntity.instance?.expressions.clips.values.first { clip in
+        let clip = try #require(vrmEntity.vrmInstance?.expressions.clips.values.first { clip in
             clip.values.contains { $0.weight > 0 }
         })
         let binding = try #require(clip.values.first { $0.weight > 0 })

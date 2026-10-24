@@ -28,7 +28,7 @@ extension VRMEntity {
                               animationIndex: Int = 0,
                               loops: Bool = false,
                               speed: Float = 1) throws -> GLTFAnimationPlaybackController {
-        guard let instance else {
+        guard let instance = vrmInstance else {
             throw VRMError._notSupported(
                 "this entity is a copy of a loaded VRM scene and carries no animation bindings; load the scene again to animate it"
             )

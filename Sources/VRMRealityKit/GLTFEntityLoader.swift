@@ -119,6 +119,7 @@ public final class GLTFEntityLoader {
         try await queue.run {
             let root = GLTFEntity(document: document, sceneIndex: index, outputColorSpace: outputColorSpace)
             _ = try await resources.build(into: root)
+            try root.setUpInstance(asset: try resources.asset(sceneIndex: index))
             root.invalidateSkinPose()
             root.flushDeformation()
             return root

@@ -235,6 +235,11 @@ public final class VRMInstance: GLTFInstance {
         }
     }
 
+    override func addCurrentOutput(to output: inout GLTFFrameOutput) {
+        output.materialValues = materialValues
+        output.visibility = visibility()
+    }
+
     // MARK: - Animations
 
     /// Starts playing a VRM animation (`.vrma`), retargeted onto this model's humanoid bones

@@ -52,6 +52,11 @@ public struct GLTFMaterialGeometry {
     /// Where a blended material draws among the blended materials, lower first, as
     /// ``GLTFShadedMaterial/renderQueue`` says. Nil unless blended.
     public let renderQueue: Int?
+    /// The node drawing the mesh, by which ``GLTFEntity/instance``'s asset and outputs know it
+    /// (``GLTFAsset/mesh(drawnByNode:)``).
+    public let nodeIndex: Int
+    /// The slot of the mesh's ``GLTFMeshGeometry/slots`` the triangles are.
+    public let slotIndex: Int
     let slot: GLTFMeshGeometry.Slot
 
     /// The triangles drawn now, counted in the mesh's `UInt32` indices: without those a
@@ -179,6 +184,12 @@ public class GLTFEntity: Entity {
         deformedMeshes.append(mesh)
     }
 
+    /// Holds off skinning and morphing the meshes, for an app drawing the model elsewhere from
+    /// ``instance``'s output while this entity stays in the scene: the pose and weights move on,
+    /// but no skeleton is solved and no vertex is written. `false` deforms what moved meanwhile
+    /// on the next update, and ``snapshot()`` deforms before it copies either way.
+    public var isDeformationSuspended = false
+
     /// Leaves skinning and morphing to the caller, which reads what to deform with from
     /// ``meshDeformations``: the pose and weights keep being solved, but no vertex is written,
     /// so RealityKit draws the vertices as they were. `false` writes the meshes that moved
@@ -272,12 +283,74 @@ public class GLTFEntity: Entity {
     var animationMetadata: [GLTFAnimation]?
     /// One decoder for the whole document: samplers routinely share an input accessor.
     lazy var animationDecoder = GLTFAnimationDecoder(document: document)
-    var animationRuntimes: [Int: GLTFAnimationRuntime] = [:]
-    var activeAnimationPlayer: GLTFAnimationPlayer?
 
-    /// Draws what starting an animation set beyond the pose, before the model is skinned
-    /// for it. A plain glTF draws it as the player hands it over.
-    func applyPlaybackOutput() {}
+    // MARK: - Instance
+
+    /// What moves the model, posing ``pose``; this entity draws what it hands back. Nil on a
+    /// `clone(recursive:)` copy, which only renders.
+    ///
+    /// An app drawing the model itself reads the vertex data from its asset, and what moves
+    /// from the outputs this entity draws (``setOutputHandler(_:)``).
+    public private(set) var instance: GLTFInstance?
+    private var outputHandler: (@MainActor (GLTFFrameOutput) -> Void)?
+
+    /// Called once per entity, right after its node hierarchy is built.
+    func setUpInstance(asset: GLTFAsset) throws {
+        guard let pose else {
+            throw VRMError._dataInconsistent("a glTF entity needs its pose before its instance")
+        }
+        adoptInstance(GLTFInstance(asset: asset, pose: pose))
+    }
+
+    /// Has `instance`, which poses ``pose``, move the model, and draws where it stands.
+    func adoptInstance(_ instance: GLTFInstance) {
+        // The entity skins from the pose itself.
+        instance.outputsSkins = false
+        let player = instance.animationPlayer
+        player.didSeek = { [unowned self] in
+            MainActor.assumeIsolated {
+                applyInstanceOutput()
+                flushDeformation()
+            }
+        }
+        player.didFinish = { [unowned self] in
+            MainActor.assumeIsolated { components.remove(GLTFAnimationPlaybackComponent.self) }
+        }
+        self.instance = instance
+        applyInstanceOutput()
+    }
+
+    /// Hands `handler` every output of ``instance`` this entity draws, as it draws it, in place
+    /// of the one set before; nil removes it. It is for an app drawing the model from the same
+    /// instance, which can start from ``GLTFInstance/currentOutput()`` and follow from here.
+    ///
+    /// An output drawn between frame updates, as for an expression set, carries no skins: the
+    /// next update's, or ``updateSkinPose()``'s, does.
+    public func setOutputHandler(_ handler: (@MainActor (GLTFFrameOutput) -> Void)?) {
+        outputHandler = handler
+    }
+
+    /// Draws what the instance changed outside a frame update, with the skins only when
+    /// `solvingSkins`: a value set from outside does not move the pose the frame solves.
+    func applyInstanceOutput(solvingSkins: Bool = true) {
+        guard let instance else { return }
+        present(instance.takeOutput(solvingSkins: solvingSkins))
+    }
+
+    /// Draws `output` and hands it on.
+    func present(_ output: GLTFFrameOutput) {
+        apply(output)
+        outputHandler?(output)
+    }
+
+    /// Writes what an output moved onto the entities drawing it.
+    func apply(_ output: GLTFFrameOutput) {
+        for (nodeIndex, weights) in output.morphWeights {
+            for modelEntity in morphBindings[nodeIndex]?.modelEntities ?? [] {
+                modelEntity.deformedMesh?.setBlendShapeWeights(weights)
+            }
+        }
+    }
 
     /// Registers the components this entity relies on, exactly once per process.
     @MainActor private static let registerRealityKitTypes: Void = {
@@ -412,7 +485,7 @@ public class GLTFEntity: Entity {
         // pose, so what hangs under them is copied where the pose puts it. It draws with
         // RealityKit, so the vertices a caller deforms itself are written for it too.
         for entity in gltfEntitiesInHierarchy {
-            entity.flushDeformation(evenIfDeformedByCaller: true)
+            entity.flushDeformation(evenIfSuspended: true)
         }
         synchronizeNodeEntities(includingUnsynchronized: true)
         let copy = clone(recursive: true)
@@ -539,7 +612,8 @@ public class GLTFEntity: Entity {
         return state.bindings.compactMap { binding in
             let modelEntity = binding.modelEntity
             guard let mesh = modelEntity.deformedMesh,
-                  let slot = mesh.drawnSlots[safe: binding.slot] else { return nil }
+                  let slot = mesh.drawnSlots[safe: binding.slot],
+                  let nodeIndex = nodeIndex(above: modelEntity) else { return nil }
             return GLTFMaterialGeometry(modelEntity: modelEntity,
                                         passName: modelEntity.components[GLTFMaterialPassComponent.self]?.name,
                                         materialSlot: binding.slot,
@@ -547,8 +621,21 @@ public class GLTFEntity: Entity {
                                         deformation: GLTFMeshDeformation(mesh: deformationMesh(of: mesh)),
                                         alphaMode: state.alphaMode,
                                         renderQueue: state.renderQueue,
+                                        nodeIndex: nodeIndex,
+                                        slotIndex: slot,
                                         slot: mesh.geometry.slots[slot])
         }
+    }
+
+    /// The node a model entity of this entity's document hangs under, read off the node
+    /// components, which a `clone(recursive:)` copy keeps.
+    private func nodeIndex(above modelEntity: Entity) -> Int? {
+        var current = modelEntity.parent
+        while let entity = current, entity !== self {
+            if let index = entity.components[GLTFNodeComponent.self]?.nodeIndex { return index }
+            current = entity.parent
+        }
+        return nil
     }
 
     /// Stops RealityKit drawing `materials`, additional render passes included, while their
@@ -750,14 +837,16 @@ public class GLTFEntity: Entity {
         }
     }
 
-    /// Solves the skinned meshes against the joints as they stand, where they have moved
-    /// since the last solve, and submits their deformation.
+    /// Draws what ``instance`` changed since the last update, and solves the skinned meshes
+    /// against the joints as they stand, where they have moved since the last solve, and
+    /// submits their deformation.
     ///
     /// The update loop does this once a frame, so this is for a caller reading or copying
     /// the model between updates: a `clone(recursive: true)` taken while a joint has moved
     /// carries the mesh as the last solve left it, which is a pose the joints no longer
     /// describe. ``snapshot()`` does it for you.
     public func updateSkinPose() {
+        applyInstanceOutput()
         flushDeformation()
     }
 
@@ -771,9 +860,13 @@ public class GLTFEntity: Entity {
     /// hold the same pose and weights, so the first of them deforms the vertices once
     /// into the vertex buffers of them all. Every dispatch shares one compute encoder:
     /// an encoder costs the GPU more than a dispatch does.
-    func flushDeformation(evenIfDeformedByCaller: Bool = false) {
+    ///
+    /// While ``isDeformationSuspended`` nothing is solved, and while ``isDeformedByCaller``
+    /// nothing is submitted, unless `evenIfSuspended`.
+    func flushDeformation(evenIfSuspended: Bool = false) {
+        guard !isDeformationSuspended || evenIfSuspended else { return }
         flushSkinPoseIfNeeded()
-        guard !isDeformedByCaller || evenIfDeformedByCaller,
+        guard !isDeformedByCaller || evenIfSuspended,
               let pending = deformedMeshes.first(where: \.isDeformationPending) else { return }
         let context = pending.source.context
         guard let commandBuffer = context.commandQueue.makeCommandBuffer() else { return }
