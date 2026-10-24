@@ -1,6 +1,7 @@
 #if canImport(RealityKit)
 import Foundation
 import simd
+import VRMKitRuntime
 
 /// What one glTF mesh of a ``GLTFEntity`` is skinned and morphed with, for a caller that
 /// deforms the vertices itself (``GLTFEntity/isDeformedByCaller``). Every material and render

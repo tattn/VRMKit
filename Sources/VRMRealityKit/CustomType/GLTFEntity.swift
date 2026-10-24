@@ -5,6 +5,7 @@ import OSLog
 import RealityKit
 import simd
 import VRMKit
+import VRMKitRuntime
 
 /// Carries the loaded document on the entity, so `clone(recursive:)` copies still
 /// answer ``GLTFEntity/document``.

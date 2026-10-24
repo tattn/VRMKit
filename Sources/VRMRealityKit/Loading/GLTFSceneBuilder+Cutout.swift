@@ -2,6 +2,7 @@
 import CoreGraphics
 import Foundation
 import VRMKit
+import VRMKitRuntime
 import simd
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

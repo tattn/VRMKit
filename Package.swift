@@ -52,7 +52,7 @@ let package = Package(
         ),
         .testTarget(
             name: "VRMKitRuntimeTests",
-            dependencies: ["VRMKit", "VRMKitRuntime", .product(name: "SIMDCompat", package: "swift-simd-compat")]
+            dependencies: ["VRMKit", "VRMKitRuntime", "VRMTestSupport", .product(name: "SIMDCompat", package: "swift-simd-compat")]
         ),
         .testTarget(
             name: "VRMRealityKitTests",

@@ -334,10 +334,9 @@ final class GLTFSceneBuilder {
         // slots of it, so the vertices are skinned once per frame, not once per entity.
         let started = ContinuousClock.now
         let context = try GLTFDeformationContext.shared()
-        let geometry = try GLTFMeshGeometry(primitives: primitives.map(\.prepared),
-                                            isSkinned: skeleton != nil,
-                                            blendShapeTargetCount: try morphTargetCount(ofMeshAt: index),
-                                            context: context)
+        let geometry = GLTFMeshGeometry(primitives: primitives.map(\.prepared),
+                                        isSkinned: skeleton != nil,
+                                        blendShapeTargetCount: try morphTargetCount(ofMeshAt: index))
         let source = try GLTFMeshSource(geometry: geometry, skeleton: skeleton, context: context)
         timings.meshResources += ContinuousClock.now - started
         timings.meshResourceCount += 1

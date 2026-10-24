@@ -3,6 +3,7 @@ import Foundation
 import Metal
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 /// What every instance of one merged mesh deforms from: the rest-pose attributes,
 /// the joint influences and the morph deltas, once on the GPU per document, and
@@ -21,6 +22,8 @@ final class GLTFMeshSource {
     let baseNormals: MTLBuffer?
     let baseTangents: MTLBuffer?
     let baseBitangents: MTLBuffer?
+    /// The morph deltas, read in place from the geometry's buffer.
+    let blendShapeOffsets: MTLBuffer?
     /// Per vertex, x is 1 where the rest tangent, bitangent and normal make a right-handed
     /// frame and -1 where they make a left-handed one (mirrored UVs), drawn as uv1 from
     /// ``tangentHandednessBufferIndex``. RealityKit hands a surface shader the tangent of a
@@ -55,6 +58,18 @@ final class GLTFMeshSource {
         baseNormals = context.makePackedBuffer(geometry.normals)
         baseTangents = context.makePackedBuffer(geometry.tangents)
         baseBitangents = context.makePackedBuffer(geometry.bitangents)
+        if let offsets = geometry.blendShapeOffsetBuffer {
+            // The geometry holds on to the memory as long as this source does.
+            guard let buffer = context.device.makeBuffer(bytesNoCopy: UnsafeMutableRawPointer(mutating: offsets.baseAddress),
+                                                         length: offsets.allocatedByteCount,
+                                                         options: .storageModeShared,
+                                                         deallocator: nil) else {
+                throw VRMError._notSupported("could not hand the blend shape offsets of a mesh to the GPU")
+            }
+            blendShapeOffsets = buffer
+        } else {
+            blendShapeOffsets = nil
+        }
         if let skeleton, geometry.isSkinned,
            let joints = context.device.makeBuffer(geometry.jointIndices),
            let weights = context.device.makeBuffer(geometry.jointWeights) {

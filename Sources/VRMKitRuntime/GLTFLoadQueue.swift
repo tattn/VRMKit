@@ -1,10 +1,9 @@
-#if canImport(RealityKit)
 import Foundation
 
 /// Runs one loader's loads one at a time: they share the resources they decode, so a
 /// second call waits rather than discarding the first one's work.
 @MainActor
-final class GLTFLoadQueue {
+package final class GLTFLoadQueue {
     private struct Wait {
         let id: Int
         let continuation: CheckedContinuation<Void, any Error>
@@ -17,17 +16,19 @@ final class GLTFLoadQueue {
     /// under it, which would otherwise leave the wait in the queue for good.
     private var cancelledWaits: Set<Int> = []
 
+    package init() {}
+
     /// Runs `load` once the loads queued before it have finished.
     ///
     /// - Throws: `CancellationError` when the wait itself is cancelled, having given up
     ///   its place rather than holding the queue back until the running load is done.
-    func run<T>(_ load: () async throws -> T) async throws -> T {
+    package func run<T>(_ load: () async throws -> T) async throws -> T {
         try await begin()
         defer { end() }
         return try await load()
     }
 
-    func begin() async throws {
+    package func begin() async throws {
         try Task.checkCancellation()
         guard isRunning else {
             isRunning = true
@@ -49,7 +50,7 @@ final class GLTFLoadQueue {
     }
 
     /// Handed straight to the next call in line, so nothing slips in between.
-    func end() {
+    package func end() {
         if waits.isEmpty {
             isRunning = false
         } else {
@@ -67,4 +68,3 @@ final class GLTFLoadQueue {
         waits.remove(at: index).continuation.resume(throwing: CancellationError())
     }
 }
-#endif

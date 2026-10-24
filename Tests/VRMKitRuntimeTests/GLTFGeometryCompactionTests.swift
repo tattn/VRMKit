@@ -1,7 +1,6 @@
-#if canImport(RealityKit)
+import SIMDCompat
 import Testing
-import simd
-@testable import VRMRealityKit
+@testable import VRMKitRuntime
 
 /// Orphan vertices cost skinning and morphing on the GPU without drawing anything,
 /// so the decoder drops them and renumbers the triangles.
@@ -40,4 +39,3 @@ struct GLTFGeometryCompactionTests {
         #expect(geometry.indices == [2, 1, 0])
     }
 }
-#endif

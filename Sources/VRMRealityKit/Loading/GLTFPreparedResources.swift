@@ -2,6 +2,7 @@
 import CoreGraphics
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 /// One glTF image read through a scalar factor baked into its pixels.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -9,26 +10,6 @@ struct GLTFBakedImageKey: Hashable {
     let imageIndex: Int
     let factor: Float
     let semantic: TextureResource.Semantic
-}
-
-/// One primitive decoded and conditioned for the build: its geometry, and what the build
-/// would otherwise derive from it on the actor one vertex at a time.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-struct GLTFPreparedPrimitive: @unchecked Sendable {
-    let geometry: GLTFPrimitiveGeometry
-    /// Whether ``firstPersonMask`` was cut for a node with head joints. A template drawn
-    /// with the other cut derives its own mask.
-    let cutsHead: Bool
-    let firstPersonMask: FirstPersonPrimitiveMask
-    /// Nil for an unskinned primitive.
-    let jointInfluences: GLTFJointInfluences?
-}
-
-/// A skinned primitive's influences: four joints per vertex in the skin's joint order,
-/// with the weights renormalized to sum to one.
-struct GLTFJointInfluences: Sendable {
-    let joints: [SIMD4<UInt32>]
-    let weights: [SIMD4<Float>]
 }
 
 /// What the prepare passes decoded off the actor the entity graph is built on, for the

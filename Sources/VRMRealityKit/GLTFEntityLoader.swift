@@ -2,6 +2,7 @@
 import Foundation
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 /// Loads a plain glTF / GLB document into a RealityKit entity graph.
 ///

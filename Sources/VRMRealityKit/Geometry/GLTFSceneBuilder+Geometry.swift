@@ -2,6 +2,7 @@
 import Foundation
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 /// Which primitive of which mesh, drawn with which skin. A mesh drawn by two nodes with
 /// different skins reads the same accessors into different joint influences, so the

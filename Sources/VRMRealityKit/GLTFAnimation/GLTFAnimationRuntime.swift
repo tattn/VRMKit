@@ -3,6 +3,7 @@ import Foundation
 import RealityKit
 import simd
 import VRMKit
+import VRMKitRuntime
 
 /// Decodes animation accessors into typed keyframe values, off a cache: exporters
 /// routinely share one input accessor across many samplers.

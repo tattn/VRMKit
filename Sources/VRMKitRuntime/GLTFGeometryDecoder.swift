@@ -1,12 +1,11 @@
-#if canImport(RealityKit)
 import Foundation
-import simd
+import SIMDCompat
 import VRMKit
 
 /// A limitation a decode ran into, logged once per key by the loader.
-struct GLTFGeometryWarning: Sendable {
-    let key: String
-    let message: String
+package struct GLTFGeometryWarning: Sendable {
+    package let key: String
+    package let message: String
 }
 
 /// One primitive's vertex data, conditioned for the renderer: triangulated,
@@ -14,23 +13,23 @@ struct GLTFGeometryWarning: Sendable {
 /// basis where a normal map samples one.
 ///
 /// Plain values, so a whole model's primitives decode in parallel.
-struct GLTFPrimitiveGeometry: Sendable {
-    var positions: [SIMD3<Float>] = []
-    var normals: [SIMD3<Float>] = []
-    var tangents: [SIMD3<Float>] = []
-    var bitangents: [SIMD3<Float>] = []
-    var texcoords: [SIMD2<Float>] = []
-    var indices: [UInt32] = []
+package struct GLTFPrimitiveGeometry: Sendable {
+    package var positions: [SIMD3<Float>] = []
+    package var normals: [SIMD3<Float>] = []
+    package var tangents: [SIMD3<Float>] = []
+    package var bitangents: [SIMD3<Float>] = []
+    package var texcoords: [SIMD2<Float>] = []
+    package var indices: [UInt32] = []
     /// POSITION deltas per morph target. The deformation kernel morphs positions
     /// only, so nothing else is read.
-    var blendShapeOffsets: [[SIMD3<Float>]] = []
+    package var blendShapeOffsets: [[SIMD3<Float>]] = []
     /// Empty for an unskinned primitive.
-    var joints: [SIMD4<UInt32>] = []
-    var weights: [SIMD4<Float>] = []
-    var jointIndexRemap: [Int] = []
-    var warnings: [GLTFGeometryWarning] = []
+    package var joints: [SIMD4<UInt32>] = []
+    package var weights: [SIMD4<Float>] = []
+    package var jointIndexRemap: [Int] = []
+    package var warnings: [GLTFGeometryWarning] = []
 
-    var isSkinned: Bool { !joints.isEmpty }
+    package var isSkinned: Bool { !joints.isEmpty }
 
     /// Removes the vertices no triangle references and renumbers the indices, keeping
     /// the vertices in first-use order. The deformation kernel skins and morphs every
@@ -39,7 +38,7 @@ struct GLTFPrimitiveGeometry: Sendable {
     /// every vertex of the mesh to draw its own slice. The `AliciaSolid` fixture decodes
     /// 80,169 vertices that way for 21,995 drawn. Merged or baked exports also leave hidden
     /// parts behind as unused vertices. Call it before the tangent frame is built.
-    mutating func dropUnreferencedVertices() {
+    package mutating func dropUnreferencedVertices() {
         var renumbered = [UInt32](repeating: .max, count: positions.count)
         var kept: [Int] = []
         kept.reserveCapacity(positions.count)
@@ -67,19 +66,29 @@ struct GLTFPrimitiveGeometry: Sendable {
 ///
 /// Nothing here touches RealityKit or the scene graph, which is what lets a
 /// load decode every primitive of a model at once.
-struct GLTFGeometryDecoder: Sendable {
-    let accessors: PackedAccessorCache
+package struct GLTFGeometryDecoder: Sendable {
+    package let accessors: PackedAccessorCache
     /// Which UV set each material's textures are read from, resolved before the
     /// decode so that a primitive needs no material state of its own.
-    let texcoordSelections: [Int: TexcoordSelection]
+    package let texcoordSelections: [Int: TexcoordSelection]
     /// The materials that sample a normal map, which is what decides whether a
     /// primitive needs a tangent basis generating.
-    let materialsSamplingNormalTexture: Set<Int>
+    package let materialsSamplingNormalTexture: Set<Int>
     /// Each skin's glTF joint index to skeleton joint index mapping.
-    let jointIndexRemaps: [Int: [Int]]
+    package let jointIndexRemaps: [Int: [Int]]
+
+    package init(accessors: PackedAccessorCache,
+                 texcoordSelections: [Int: TexcoordSelection],
+                 materialsSamplingNormalTexture: Set<Int>,
+                 jointIndexRemaps: [Int: [Int]]) {
+        self.accessors = accessors
+        self.texcoordSelections = texcoordSelections
+        self.materialsSamplingNormalTexture = materialsSamplingNormalTexture
+        self.jointIndexRemaps = jointIndexRemaps
+    }
 
     /// Nil for a primitive this renderer draws nothing of.
-    func decode(_ primitive: GLTF.Mesh.Primitive, skinIndex: Int?) throws -> GLTFPrimitiveGeometry? {
+    package func decode(_ primitive: GLTF.Mesh.Primitive, skinIndex: Int?) throws -> GLTFPrimitiveGeometry? {
         guard Self.drawsTriangles(primitive.mode) else { return nil }
 
         var geometry = GLTFPrimitiveGeometry()
@@ -207,9 +216,14 @@ struct GLTFGeometryDecoder: Sendable {
     }
 
     /// Which UV set a material's textures sample, and whether they agree.
-    struct TexcoordSelection: Sendable {
-        let selected: Int
-        let isMixed: Bool
+    package struct TexcoordSelection: Sendable {
+        package let selected: Int
+        package let isMixed: Bool
+
+        package init(selected: Int, isMixed: Bool) {
+            self.selected = selected
+            self.isMixed = isMixed
+        }
     }
 
     /// RealityKit meshes carry one UV channel, so a material sampling several
@@ -269,15 +283,15 @@ struct GLTFGeometryDecoder: Sendable {
 
     // MARK: - Topology
 
-    static func drawsTriangles(_ mode: GLTF.Mesh.Primitive.Mode) -> Bool {
+    package static func drawsTriangles(_ mode: GLTF.Mesh.Primitive.Mode) -> Bool {
         switch mode {
         case .TRIANGLES, .TRIANGLE_STRIP, .TRIANGLE_FAN: true
         case .POINTS, .LINES, .LINE_LOOP, .LINE_STRIP: false
         }
     }
 
-    static func triangulatedIndices(for mode: GLTF.Mesh.Primitive.Mode,
-                                    indices: [UInt32]) throws -> [UInt32] {
+    package static func triangulatedIndices(for mode: GLTF.Mesh.Primitive.Mode,
+                                            indices: [UInt32]) throws -> [UInt32] {
         switch mode {
         case .TRIANGLES:
             guard !indices.isEmpty, indices.count.isMultiple(of: 3) else {
@@ -329,7 +343,7 @@ struct GLTFGeometryDecoder: Sendable {
     ///
     /// - Precondition: the positions are expanded per triangle corner, so each
     ///   triangle owns the vertices it writes.
-    static func flatNormals(positions: [SIMD3<Float>]) -> [SIMD3<Float>] {
+    package static func flatNormals(positions: [SIMD3<Float>]) -> [SIMD3<Float>] {
         var normals = [SIMD3<Float>](repeating: .zero, count: positions.count)
         for base in stride(from: 0, to: positions.count - positions.count % 3, by: 3) {
             let faceNormal = simd_cross(positions[base + 1] - positions[base],
@@ -454,4 +468,3 @@ struct GLTFGeometryDecoder: Sendable {
         return simd_normalize(simd_cross(normal, axis))
     }
 }
-#endif

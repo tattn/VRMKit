@@ -4,6 +4,7 @@ import Metal
 import RealityKit
 import simd
 import VRMKit
+import VRMKitRuntime
 
 /// One drawn copy of a merged mesh: the `LowLevelMesh` it renders from, and the
 /// pose and morph weights the vertices in it were last deformed with.
@@ -129,7 +130,7 @@ final class GLTFDeformedMesh {
                                            indexCount: range.count,
                                            topology: .triangle,
                                            materialIndex: materialIndex,
-                                           bounds: slot.bounds))
+                                           bounds: BoundingBox(min: slot.bounds.min, max: slot.bounds.max)))
         }
         // A mesh shown again after a hidden stretch has missed the poses written meanwhile.
         if !self.showsAnything, showsAnything { needsDeformation = true }
@@ -221,7 +222,7 @@ final class GLTFDeformedMesh {
         encoder.setBuffer(source.skin?.joints ?? empty, offset: 0, index: 4)
         encoder.setBuffer(source.skin?.weights ?? empty, offset: 0, index: 5)
         encoder.setBuffer(jointMatricesBuffer ?? empty, offset: 0, index: 6)
-        encoder.setBuffer(geometry.blendShapeOffsetStorage ?? empty, offset: 0, index: 7)
+        encoder.setBuffer(source.blendShapeOffsets ?? empty, offset: 0, index: 7)
         encoder.setBuffer(morphWeightsBuffer ?? empty, offset: 0, index: 8)
         encoder.setBuffer(activeTargetsBuffer ?? empty, offset: 0, index: 9)
         encoder.setBytes(&uniforms, length: MemoryLayout<GLTFDeformationUniforms>.stride, index: 10)

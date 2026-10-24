@@ -1,10 +1,9 @@
-#if canImport(RealityKit)
 import Foundation
-import simd
+import SIMDCompat
 import Testing
 import VRMKit
 import VRMTestSupport
-@testable import VRMRealityKit
+@testable import VRMKitRuntime
 
 /// Pure evaluation tests for the animation sampler, one per interpolation
 /// mode, checked against hand-computed values from the glTF spec formulas.
@@ -118,4 +117,3 @@ struct GLTFKeyframeTrackTests {
         #expect(track.value(at: 9) == [7])
     }
 }
-#endif

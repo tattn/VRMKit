@@ -1,8 +1,9 @@
-#if canImport(RealityKit)
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
+import SIMDCompat
 import VRMKit
-import simd
 
 /// Whether a MASK material would ever discard a fragment: the base color alpha at every
 /// texel its triangles sample, against its cutoff.
@@ -14,15 +15,16 @@ import simd
 /// nothing and can draw opaque, keeping the rejection. The triangles are rasterized in
 /// texel space rather than reading the whole image, since an atlas shared with a cut-out
 /// part is transparent outside this material's islands.
-enum GLTFCutoutCoverage {
+package enum GLTFCutoutCoverage {
     /// One image's alpha channel, a byte per texel, rows from the top.
-    struct AlphaPlane: Sendable {
-        let width: Int
-        let height: Int
-        let alpha: [UInt8]
+    package struct AlphaPlane: Sendable {
+        package let width: Int
+        package let height: Int
+        package let alpha: [UInt8]
 
+#if canImport(CoreGraphics)
         /// Nil for an image without an alpha channel, which is opaque everywhere.
-        init?(_ image: CGImage) {
+        package init?(_ image: CGImage) {
             switch image.alphaInfo {
             case .none, .noneSkipFirst, .noneSkipLast:
                 return nil
@@ -58,8 +60,9 @@ enum GLTFCutoutCoverage {
             self.height = height
             self.alpha = alpha
         }
+#endif
 
-        init(width: Int, height: Int, alpha: [UInt8]) {
+        package init(width: Int, height: Int, alpha: [UInt8]) {
             precondition(alpha.count == width * height)
             self.width = width
             self.height = height
@@ -69,10 +72,18 @@ enum GLTFCutoutCoverage {
 
     /// How a material reads its base color: the UV transform it applies and the sampler's
     /// wrapping, which decide which texels a triangle's UVs land on.
-    struct Sampling: Sendable {
-        var transform = GLTFUVTransform()
-        var wrapS = GLTF.Sampler.Wrap.REPEAT
-        var wrapT = GLTF.Sampler.Wrap.REPEAT
+    package struct Sampling: Sendable {
+        package var transform: GLTFUVTransform
+        package var wrapS: GLTF.Sampler.Wrap
+        package var wrapT: GLTF.Sampler.Wrap
+
+        package init(transform: GLTFUVTransform = GLTFUVTransform(),
+                     wrapS: GLTF.Sampler.Wrap = .REPEAT,
+                     wrapT: GLTF.Sampler.Wrap = .REPEAT) {
+            self.transform = transform
+            self.wrapS = wrapS
+            self.wrapT = wrapT
+        }
     }
 
     /// Whether every texel the triangles sample has an alpha of at least `cutoff` once
@@ -81,12 +92,12 @@ enum GLTFCutoutCoverage {
     ///
     /// `nil` when nothing can be told: no triangles, or a factor that cuts everything out
     /// (the material is then authored to vanish, which only the cutout draw honors).
-    static func samplesOnlyOpaqueTexels(of plane: AlphaPlane?,
-                                        texcoords: [SIMD2<Float>],
-                                        indices: [UInt32],
-                                        sampling: Sampling,
-                                        alphaFactor: Float,
-                                        cutoff: Float) -> Bool? {
+    package static func samplesOnlyOpaqueTexels(of plane: AlphaPlane?,
+                                                texcoords: [SIMD2<Float>],
+                                                indices: [UInt32],
+                                                sampling: Sampling,
+                                                alphaFactor: Float,
+                                                cutoff: Float) -> Bool? {
         guard indices.count >= 3, alphaFactor >= cutoff else { return nil }
         guard let plane else { return true }
         // Texel alpha is 8-bit, so compare at that precision rather than in floats.
@@ -116,7 +127,7 @@ enum GLTFCutoutCoverage {
 
     /// Whether every texel of the plane is opaque, for a material whose UVs move over time.
     /// `nil` when the factor cuts everything out.
-    static func isOpaqueEverywhere(_ plane: AlphaPlane?, alphaFactor: Float, cutoff: Float) -> Bool? {
+    package static func isOpaqueEverywhere(_ plane: AlphaPlane?, alphaFactor: Float, cutoff: Float) -> Bool? {
         guard alphaFactor >= cutoff else { return nil }
         guard let plane else { return true }
         let threshold = Self.threshold(cutoff: cutoff, alphaFactor: alphaFactor)
@@ -125,7 +136,7 @@ enum GLTFCutoutCoverage {
 
     /// The texel alpha below which a sample is cut out, in the plane's 8-bit scale:
     /// `alpha * alphaFactor < cutoff` ⇔ `alpha < cutoff / alphaFactor`.
-    static func threshold(cutoff: Float, alphaFactor: Float) -> Int {
+    package static func threshold(cutoff: Float, alphaFactor: Float) -> Int {
         guard alphaFactor > 0 else { return 0 }
         return Int((cutoff / alphaFactor * 255).rounded(.up))
     }
@@ -189,4 +200,3 @@ enum GLTFCutoutCoverage {
         }
     }
 }
-#endif
