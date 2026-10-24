@@ -418,16 +418,6 @@ public final class VRMEntity: GLTFEntity {
     }
 }
 
-/// Where in ``VRMEntity/update(deltaTime:)`` a handler set with
-/// ``VRMEntity/setUpdateHandler(_:at:)`` runs.
-public enum VRMUpdateStage: Sendable {
-    /// After the animations pose the model, before the node constraints, the gaze and the
-    /// spring bones read the pose.
-    case afterAnimation
-    /// After the spring bones, before the pose is skinned.
-    case beforeSkinning
-}
-
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 private struct FirstPersonAnnotation {
     let entity: Entity

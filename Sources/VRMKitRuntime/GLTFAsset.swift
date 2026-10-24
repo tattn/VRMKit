@@ -10,6 +10,8 @@ import VRMKit
 /// shares its vertex data, so nothing here changes once it is loaded.
 public final class GLTFAsset: Sendable {
     public let document: GLTFDocument
+    /// The VRM the document is, read as one. Nil for a plain glTF.
+    public let vrm: VRM?
     public let sceneIndex: Int
     /// The nodes the scene hangs off.
     public let rootNodes: [Int]
@@ -27,6 +29,7 @@ public final class GLTFAsset: Sendable {
     public let images: [GLTFImageSource]
     /// What the read ran into that a renderer may want to report, once each.
     package let warnings: [GLTFGeometryWarning]
+    package let hierarchy: GLTFNodeHierarchy
 
     /// One glTF node at rest.
     public struct Node: Sendable {
@@ -69,6 +72,8 @@ public final class GLTFAsset: Sendable {
     }
 
     package init(document: GLTFDocument,
+                 vrm: VRM?,
+                 hierarchy: GLTFNodeHierarchy,
                  sceneIndex: Int,
                  rootNodes: [Int],
                  nodes: [Node],
@@ -79,6 +84,8 @@ public final class GLTFAsset: Sendable {
                  images: [GLTFImageSource],
                  warnings: [GLTFGeometryWarning]) {
         self.document = document
+        self.vrm = vrm
+        self.hierarchy = hierarchy
         self.sceneIndex = sceneIndex
         self.rootNodes = rootNodes
         self.nodes = nodes

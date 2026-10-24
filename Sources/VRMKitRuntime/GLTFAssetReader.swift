@@ -89,6 +89,8 @@ package struct GLTFAssetReader: Sendable {
         }
         let materials = materials()
         return GLTFAsset(document: document,
+                         vrm: (profile as? VRMAssetProfile)?.vrm,
+                         hierarchy: hierarchy,
                          sceneIndex: sceneIndex,
                          rootNodes: roots,
                          nodes: try nodes(),
