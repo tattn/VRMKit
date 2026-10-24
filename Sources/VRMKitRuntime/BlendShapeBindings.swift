@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 /// Morph target binding shared by VRM 0.x BlendShape and VRM 1.0 Expression runtime clips.

@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 /// The `VRMC_node_constraint` constraints of one model, in the order they have to

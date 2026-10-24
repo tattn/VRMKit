@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// Lenient vector decoding: VRM files in the wild write vectors short, long or
 /// not at all, and a component the file does not state reads as the spec's

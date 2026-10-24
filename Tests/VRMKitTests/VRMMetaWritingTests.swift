@@ -1,6 +1,10 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
+#if canImport(ImageIO)
 import ImageIO
+#endif
 import Testing
 import VRMTestSupport
 @testable import VRMKit
@@ -10,6 +14,7 @@ import VRMTestSupport
 /// what the document now says.
 @Suite
 struct VRMMetaWritingTests {
+#if canImport(CoreGraphics)
     // MARK: - Thumbnail
 
     /// The image written is the image read back, and it is still an image the platform
@@ -105,6 +110,7 @@ struct VRMMetaWritingTests {
 
         #expect(try document.serialize() == before)
     }
+#endif
 
     // MARK: - Name and authors
 
@@ -117,7 +123,9 @@ struct VRMMetaWritingTests {
 
         try document.setVRMName("Composed Avatar")
         try document.setVRMAuthors(["Ada", "Grace"])
+#if canImport(CoreGraphics)
         try document.setVRMThumbnail(try thumbnailBytes(of: asset.replacement))
+#endif
 
         let saved = try VRM(data: try document.serialize())
         #expect(saved.name == "Composed Avatar")
@@ -220,9 +228,11 @@ struct VRMMetaWritingTests {
 
         #expect(throws: VRMError.self) { try document.setVRMName("Not an avatar") }
         #expect(throws: VRMError.self) { try document.setVRMAuthors(["Ada"]) }
+#if canImport(CoreGraphics)
         #expect(throws: VRMError.self) {
             try document.setVRMThumbnail(try thumbnailBytes(of: .seedSan))
         }
+#endif
 
         #expect(try document.serialize() == before)
     }
@@ -261,6 +271,7 @@ private extension VRM {
 
 // MARK: - Fixtures
 
+#if canImport(CoreGraphics)
 /// A real PNG of the given size, for the checks the writer makes on a thumbnail.
 private func pngData(width: Int, height: Int) throws -> Data {
     let context = try #require(CGContext(data: nil,
@@ -279,6 +290,7 @@ private func pngData(width: Int, height: Int) throws -> Data {
     #expect(CGImageDestinationFinalize(destination))
     return encoded as Data
 }
+#endif
 
 private extension VRMSampleAsset {
     /// The model whose thumbnail stands in for a freshly rendered one: a real image, so

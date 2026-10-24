@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 public extension VRM {
@@ -14,11 +16,6 @@ public extension VRM {
             }
         }
     }
-
-    /// The image the model shows itself by.
-    var thumbnail: CGImage {
-        get throws { try document.image(at: try thumbnailImageIndex.rawValue) }
-    }
 }
 
 public extension VRM0 {
@@ -33,10 +30,6 @@ public extension VRM0 {
             return try document.gltf.validThumbnailImageIndex(source)
         }
     }
-
-    var thumbnail: CGImage {
-        get throws { try document.image(at: try thumbnailImageIndex.rawValue) }
-    }
 }
 
 public extension VRM1 {
@@ -48,11 +41,28 @@ public extension VRM1 {
             return try document.gltf.validThumbnailImageIndex(imageIndex)
         }
     }
+}
 
+#if canImport(CoreGraphics)
+public extension VRM {
+    /// The image the model shows itself by.
     var thumbnail: CGImage {
         get throws { try document.image(at: try thumbnailImageIndex.rawValue) }
     }
 }
+
+public extension VRM0 {
+    var thumbnail: CGImage {
+        get throws { try document.image(at: try thumbnailImageIndex.rawValue) }
+    }
+}
+
+public extension VRM1 {
+    var thumbnail: CGImage {
+        get throws { try document.image(at: try thumbnailImageIndex.rawValue) }
+    }
+}
+#endif
 
 private extension GLTF {
     /// An index the document actually holds an image at, so a model naming one it

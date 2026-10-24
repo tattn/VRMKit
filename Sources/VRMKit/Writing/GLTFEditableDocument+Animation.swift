@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// One animated property of one node, as a keyframe track: the times and, for each,
 /// the value the node takes. What glTF writes as a sampler and the channel naming it.

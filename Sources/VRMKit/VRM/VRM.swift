@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 public enum VRM: Sendable {
     case v0(VRM0)

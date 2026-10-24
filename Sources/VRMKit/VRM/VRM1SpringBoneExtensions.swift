@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 // The extensions `VRMC_springBone` colliders and joints carry. Both live in the
 // `extensions` the base types keep as written, so they are read on demand.

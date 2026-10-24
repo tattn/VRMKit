@@ -1,4 +1,5 @@
 import Foundation
+import SIMDCompat
 
 /// The sRGB transfer function, which separates the color spaces VRM 0.x and
 /// MToon 1.0 keep their colors in: VRM 0.x writes the Unity material colors as

@@ -1,5 +1,5 @@
 import Testing
-import simd
+import SIMDCompat
 import VRMKit
 @testable import VRMKitRuntime
 

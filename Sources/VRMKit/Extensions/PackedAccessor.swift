@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// One glTF accessor expanded into tightly packed elements.
 ///

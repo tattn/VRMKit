@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 /// A scene graph node the VRM runtimes pose, and the whole of what a renderer

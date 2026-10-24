@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 /// Where a model looks, read off whichever VRM version states it: the gaze origin, the

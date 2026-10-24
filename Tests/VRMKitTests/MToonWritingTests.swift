@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import simd
+import SIMDCompat
 import VRMTestSupport
 @testable import VRMKit
 

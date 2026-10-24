@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 import Testing
 import VRMKit
 import VRMTestSupport

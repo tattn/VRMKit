@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 
 package extension SIMD3 where Scalar == Float {
     init(_ values: [Double]?, `default` defaultValue: SIMD3<Float>) {

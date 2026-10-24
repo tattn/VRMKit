@@ -1,4 +1,5 @@
 import Foundation
+import SIMDCompat
 
 /// Hand-written `.vrma` (`VRMC_vrm_animation`) fixtures, built as JSON glTF
 /// with a data-URI buffer, for the cases a real file cannot express: malformed

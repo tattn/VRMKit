@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -77,3 +78,4 @@ extension Data {
         return CGImageSourceCreateImageAtIndex(source, 0, options)
     }
 }
+#endif

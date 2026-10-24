@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// The vertex data of one indexed triangle mesh, as
 /// ``GLTFEditableDocument/addMesh(_:under:name:transform:materials:)`` writes it.

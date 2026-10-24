@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 import VRMKit
 
 /// What a model's gaze follows.

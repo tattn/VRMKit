@@ -267,9 +267,9 @@ public extension JSONValue {
     private init(foundation object: Any) {
         switch object {
         case let number as NSNumber:
-            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            if number.isBoolean {
                 self = .bool(number.boolValue)
-            } else if UnicodeScalar(UInt8(number.objCType.pointee)) == "d" {
+            } else if number.objCTypeCode == "d" {
                 self = .double(number.doubleValue)
             } else if let int = Int(exactly: number) {
                 self = .int(int)
@@ -285,5 +285,21 @@ public extension JSONValue {
         default:
             self = .null
         }
+    }
+}
+
+private extension NSNumber {
+    var objCTypeCode: UnicodeScalar {
+        UnicodeScalar(UInt8(objCType.pointee))
+    }
+
+    /// Whether `JSONSerialization` read the number as `true` or `false`. Foundation on
+    /// Darwin gives booleans their own CF type; elsewhere they are numbers of type `char`.
+    var isBoolean: Bool {
+#if canImport(Darwin)
+        CFGetTypeID(self) == CFBooleanGetTypeID()
+#else
+        objCTypeCode == "c"
+#endif
     }
 }

@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// The humanoid skeleton ``GLTFEditableDocument/addRestSkeleton(of:)`` copied into a
 /// document: the node each bone became, and the node they all hang under.

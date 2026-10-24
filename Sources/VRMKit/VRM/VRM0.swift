@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 public struct VRM0: Sendable {
     /// The underlying glTF document, carrying the model's glTF and binary resources.

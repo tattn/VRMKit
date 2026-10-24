@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import Foundation
 import Testing
 import VRMTestSupport
@@ -44,3 +45,4 @@ struct VRMThumbnailTests {
         #expect(try (vrm.thumbnail.width, vrm.thumbnail.height) == (source.thumbnail.width, source.thumbnail.height))
     }
 }
+#endif

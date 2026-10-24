@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 import VRMKit
 
 /// The range a joint's tail may swing in, from `VRMC_springBone_limit`, following the

@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(OSLog)
 import OSLog
+#endif
 
 // https://github.com/vrm-c/vrm-specification/tree/master/specification/VRMC_vrm_animation-1.0
 

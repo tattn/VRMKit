@@ -1,6 +1,6 @@
 import Foundation
 import VRMKit
-import simd
+import SIMDCompat
 
 public extension GLTFEditableDocument {
     /// A line of three fresh nodes hanging off `parent`, parent first, as a

@@ -8,14 +8,22 @@ let package = Package(
         .library(name: "VRMKit", targets: ["VRMKit"]),
         .library(name: "VRMRealityKit", targets: ["VRMRealityKit"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/tattn/swift-simd-compat", from: "0.1.0")
+    ],
     targets: [
+        // VRMKit and VRMKitRuntime also build where Apple's `simd` is unavailable (e.g. Android),
+        // so they import `SIMDCompat`, which is `simd` itself on Apple platforms.
         .target(
             name: "VRMKit",
-            exclude: ["Extensions/MoreCodable/LICENSE"]
+            dependencies: [.product(name: "SIMDCompat", package: "swift-simd-compat")],
+            exclude: ["Extensions/MoreCodable/LICENSE"],
+            // Warnings go to logcat on Android, where there is no OSLog.
+            linkerSettings: [.linkedLibrary("log", .when(platforms: [.android]))]
         ),
         .target(
             name: "VRMKitRuntime",
-            dependencies: ["VRMKit"]
+            dependencies: ["VRMKit", .product(name: "SIMDCompat", package: "swift-simd-compat")]
         ),
         .target(
             name: "VRMRealityKit",
@@ -29,7 +37,7 @@ let package = Package(
         // Test-only helpers shared by the test targets.
         .target(
             name: "VRMTestSupport",
-            dependencies: ["VRMKit"],
+            dependencies: ["VRMKit", .product(name: "SIMDCompat", package: "swift-simd-compat")],
             path: "Tests/VRMTestSupport",
             resources: [
                 .copy("../Assets/GLTF"),
@@ -40,11 +48,11 @@ let package = Package(
 
         .testTarget(
             name: "VRMKitTests",
-            dependencies: ["VRMKit", "VRMTestSupport"]
+            dependencies: ["VRMKit", "VRMTestSupport", .product(name: "SIMDCompat", package: "swift-simd-compat")]
         ),
         .testTarget(
             name: "VRMKitRuntimeTests",
-            dependencies: ["VRMKit", "VRMKitRuntime"]
+            dependencies: ["VRMKit", "VRMKitRuntime", .product(name: "SIMDCompat", package: "swift-simd-compat")]
         ),
         .testTarget(
             name: "VRMRealityKitTests",

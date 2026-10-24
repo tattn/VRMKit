@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 /// Where a node is in world space.

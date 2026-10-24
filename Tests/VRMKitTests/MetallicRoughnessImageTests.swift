@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 import Testing
 @testable import VRMKit
@@ -51,3 +52,4 @@ struct MetallicRoughnessImageTests {
         #expect(try grey(of: images.rough) == 255)
     }
 }
+#endif

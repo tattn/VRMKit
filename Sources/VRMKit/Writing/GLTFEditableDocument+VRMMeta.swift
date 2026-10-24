@@ -1,6 +1,7 @@
 import Foundation
 
 extension GLTFEditableDocument {
+#if canImport(CoreGraphics)
     /// Replaces the image the model shows itself by, with a PNG or a JPEG. VRM 0.x
     /// lists a thumbnail as a texture and 1.0 as an image, and this writes whichever
     /// the document keeps.
@@ -33,6 +34,7 @@ extension GLTFEditableDocument {
             }
         }
     }
+#endif
 
     /// Sets the name the model goes by, which VRM 0.x calls its title and
     /// VRM 1.0 its name.

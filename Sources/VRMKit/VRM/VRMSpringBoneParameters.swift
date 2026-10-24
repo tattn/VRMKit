@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 
 /// The ranges a spring bone parameter is read and written in, so that adding a spring
 /// and swinging one agree about what the simulation can take.

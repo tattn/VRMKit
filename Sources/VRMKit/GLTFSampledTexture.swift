@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// `KHR_texture_transform`-style UV transform (glTF top-left origin).
 package struct GLTFUVTransform: Equatable, Sendable {

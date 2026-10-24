@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 /// Every node transform of one loaded model, held in arrays rather than in a renderer's

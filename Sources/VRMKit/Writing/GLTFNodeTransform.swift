@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// The local transform of a glTF node, as a translation / rotation / scale triple.
 /// A node carrying a 4x4 `matrix` is decomposed, since editing writes TRS back either way.

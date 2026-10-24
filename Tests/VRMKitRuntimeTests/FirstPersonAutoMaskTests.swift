@@ -1,7 +1,7 @@
 import Testing
 import VRMKit
 @testable import VRMKitRuntime
-import simd
+import SIMDCompat
 
 /// VRM draws an `auto` mesh to a first-person camera with the head's triangles
 /// taken out, so a model wearing one mesh from head to foot still has a body to

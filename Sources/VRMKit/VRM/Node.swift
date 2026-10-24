@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#node
 

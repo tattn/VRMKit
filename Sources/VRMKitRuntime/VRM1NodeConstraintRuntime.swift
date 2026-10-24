@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 package enum VRMNodeConstraintDescriptor {

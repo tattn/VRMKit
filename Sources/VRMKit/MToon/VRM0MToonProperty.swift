@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// The VRM 0.x MToon material property and ``MToonMaterialDescriptor``, mapped
 /// onto each other in both directions, following UniVRM's `MToon10Migrator`

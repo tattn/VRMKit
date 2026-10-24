@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// Canonical `VRMC_materials_mtoon` 1.0 material model, which every MToon value in this
 /// package passes through: the extension, the VRM 0.x material property and a converted

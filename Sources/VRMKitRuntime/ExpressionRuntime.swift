@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 import VRMKit
 
 package typealias ExpressionMaterialColorType = VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType

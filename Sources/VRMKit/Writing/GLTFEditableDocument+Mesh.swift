@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 extension GLTFEditableDocument {
     /// Adds a node drawing `mesh`, and returns its index.

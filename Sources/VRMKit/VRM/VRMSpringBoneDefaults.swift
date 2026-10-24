@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// What `VRMC_springBone` reads a joint that states nothing as. Shared so that
 /// reading and writing agree on what an unstated parameter means.

@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// One VRM 0.x bone group, as an edit adds it to a model.
 ///

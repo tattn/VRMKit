@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 /// What a first-person camera draws of one skinned primitive whose mesh VRM

@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 
 /// How a standard Unlit / PBR glTF material converts into MToon, whether it is
 /// a renderer toon-shading a model that carries no MToon data of its own or a

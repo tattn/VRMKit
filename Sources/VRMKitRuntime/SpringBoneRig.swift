@@ -1,5 +1,5 @@
 import Foundation
-import simd
+import SIMDCompat
 import VRMKit
 
 /// The colliders of one group, each a shape in the space of the node it hangs off.

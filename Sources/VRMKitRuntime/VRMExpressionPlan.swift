@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 import VRMKit
 
 /// Every expression a model offers, read off whichever VRM version states them and

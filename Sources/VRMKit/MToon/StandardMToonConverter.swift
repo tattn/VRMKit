@@ -1,4 +1,4 @@
-import simd
+import SIMDCompat
 
 /// Synthesizes an ``MToonMaterialDescriptor`` from a standard Unlit / PBR glTF
 /// material, the way ``VRM0MToonProperty`` does from a VRM 0.x property.
