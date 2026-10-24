@@ -6,8 +6,8 @@ import VRMKitRuntime
 
 /// Loads a VRM model into a ``VRMEntity``.
 ///
-/// The generic glTF rendering is the same one ``GLTFEntityLoader`` runs, read through
-/// ``VRMLoadProfile``; this loader adds the VRM layers on top of the scene it builds:
+/// The generic glTF rendering is the same one ``GLTFEntityLoader`` runs, read as a VRM;
+/// this loader adds the VRM layers on top of the scene it builds:
 /// humanoid, expressions, first person, node constraints, spring bones and look-at.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
@@ -17,7 +17,7 @@ public final class VRMEntityLoader {
     /// The material shaders this loader consults, in order.
     public let shaders: [any GLTFMaterialShader]
 
-    private let profile: VRMLoadProfile
+    private let profile: VRMAssetProfile
     let resources: GLTFResourceCache
     private let queue = GLTFLoadQueue()
     var gltf: GLTF { vrm.document.gltf }
@@ -41,14 +41,24 @@ public final class VRMEntityLoader {
         self.maxTextureDimension = maxTextureDimension
         self.outputColorSpace = outputColorSpace
         self.compensatesToneMapping = compensatesToneMapping
-        let profile = VRMLoadProfile(vrm: vrm)
+        let profile = VRMAssetProfile(vrm: vrm)
         self.profile = profile
         self.resources = GLTFResourceCache(document: vrm.document,
                                            shaders: shaders,
                                            profile: profile,
+                                           materialFallback: Self.fallbackMaterial,
                                            maxTextureDimension: maxTextureDimension,
                                            outputColorSpace: outputColorSpace,
                                            compensatesToneMapping: compensatesToneMapping)
+    }
+
+    /// Unlike a plain glTF, a VRM whose material this renderer cannot shade still renders,
+    /// with the default material in its place. What the document itself gets wrong still
+    /// fails the load: only the shading falls back.
+    private static func fallbackMaterial(for context: GLTFMaterialShaderContext,
+                                         error: any Error) -> GLTFShadedMaterial? {
+        GLTFResourceCache.gltfLogger.error("Failed to build the material \(context.materialIndex, privacy: .public); falling back to the default material: \(String(describing: error), privacy: .public)")
+        return GLTFShadedMaterial(material: GLTFSceneBuilder.defaultMaterial())
     }
 
     /// Loads a VRM from a file URL. External resources resolve relative to its directory.

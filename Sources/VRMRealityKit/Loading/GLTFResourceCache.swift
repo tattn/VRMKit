@@ -3,6 +3,7 @@ import Foundation
 import OSLog
 import RealityKit
 import VRMKit
+import VRMKitRuntime
 
 /// What one document resolves to, for as long as a loader holds it.
 ///
@@ -16,7 +17,10 @@ final class GLTFResourceCache {
     var gltf: GLTF { document.gltf }
     /// The material shaders a load consults, in order.
     let shaders: [any GLTFMaterialShader]
-    let profile: any GLTFLoadProfile
+    let profile: any GLTFAssetProfile
+    /// What to render a material the shader chain could not build as, or nil to fail the
+    /// load with the shader's error.
+    let materialFallback: (@MainActor (GLTFMaterialShaderContext, any Error) -> GLTFShadedMaterial?)?
     /// See ``GLTFEntityLoader/maxTextureDimension``.
     let maxTextureDimension: Int?
     /// See ``GLTFEntityLoader/outputColorSpace``.
@@ -28,31 +32,38 @@ final class GLTFResourceCache {
 
     init(document: GLTFDocument,
          shaders: [any GLTFMaterialShader],
-         profile: any GLTFLoadProfile,
+         profile: any GLTFAssetProfile,
+         materialFallback: (@MainActor (GLTFMaterialShaderContext, any Error) -> GLTFShadedMaterial?)? = nil,
          maxTextureDimension: Int? = nil,
          outputColorSpace: GLTFOutputColorSpace = .displayP3,
          compensatesToneMapping: Bool = true) {
         self.document = document
         self.shaders = shaders
         self.profile = profile
+        self.materialFallback = materialFallback
         self.maxTextureDimension = maxTextureDimension
         self.outputColorSpace = outputColorSpace
         self.compensatesToneMapping = compensatesToneMapping
-        self.skins = Array(repeating: nil, count: document.gltf.skins.count)
+        self.skeletons = Array(repeating: nil, count: document.gltf.skins.count)
         self.materials = Array(repeating: nil, count: document.gltf.materials.count)
     }
 
     // MARK: - Structure
 
-    private var validatedNodeHierarchy: GLTFNodeHierarchy?
+    private var assetReader: GLTFAssetReader?
 
-    /// Who the document's nodes hang off, with the node graph and skins validated as it
-    /// is built. Kept once built: an immutable document does not grow a second answer.
+    /// What reads the document into an asset, with the node graph and skins validated as
+    /// it is made. Kept once made: an immutable document does not grow a second answer.
+    func reader() throws -> GLTFAssetReader {
+        if let assetReader { return assetReader }
+        let reader = try GLTFAssetReader(document: document, profile: profile)
+        assetReader = reader
+        return reader
+    }
+
+    /// Who the document's nodes hang off.
     func nodeHierarchy() throws -> GLTFNodeHierarchy {
-        if let validatedNodeHierarchy { return validatedNodeHierarchy }
-        let hierarchy = try GLTFNodeHierarchy.validatingStructure(of: gltf)
-        validatedNodeHierarchy = hierarchy
-        return hierarchy
+        try reader().hierarchy
     }
 
     /// glTF extensions this renderer implements, to satisfy `extensionsRequired`: the
@@ -74,34 +85,19 @@ final class GLTFResourceCache {
 
     // MARK: - Meshes and skins
 
-    /// One glTF mesh as rendered through one skin, cut for a first-person camera or not.
-    /// A mesh used by both a skinned and an unskinned node, or drawn by two nodes VRM
-    /// annotates differently, needs one template each.
-    struct MeshTemplateKey: Hashable {
-        let meshIndex: Int
-        let skinIndex: Int?
-        let cutsHead: Bool
-    }
+    /// The vertex data of every mesh a load has read, by how a node draws it.
+    var assetMeshes: [GLTFAssetReader.MeshKey: GLTFAssetReader.BuiltMesh] = [:]
 
     /// Meshes built once and cloned per node, by every load of the document.
-    var meshTemplates: [MeshTemplateKey: Entity] = [:]
+    var meshTemplates: [GLTFAssetReader.MeshKey: Entity] = [:]
 
-    /// One glTF skin resolved for RealityKit.
-    struct Skin {
-        let skeleton: MeshResource.Skeleton
-        /// glTF joint index → its index in ``skeleton``, which orders joints parents-first.
-        let jointIndexRemap: [Int]
-    }
-
-    var skins: [Skin?]
-    var morphTargetCounts: [Int: Int] = [:]
+    /// Each glTF skin's joints, parents first, as RealityKit poses them.
+    var skeletons: [MeshResource.Skeleton?]
 
     // MARK: - Materials and textures
 
     /// One glTF material resolved through the shader chain: what it renders as.
     var materials: [GLTFShadedMaterial?]
-    /// The UV set each material is sampled through, and whether its textures disagree.
-    var materialTexCoordCache: [Int: (selected: Int, isMixed: Bool)] = [:]
     var mtoonResolutionCache: [Int: MToonMaterialDescriptor.Resolution] = [:]
     /// Whether each MASK material draws opaque, its cutout discarding nothing
     /// (``GLTFSceneBuilder/drawsCutoutOpaque(materialIndex:)``).

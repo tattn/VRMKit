@@ -96,27 +96,33 @@ struct AsyncLoadingTests {
         await #expect(throws: (any Error).self) { try await loader.loadEntity() }
     }
 
-    /// Preparing decodes each primitive once, and the build takes what is already
-    /// there rather than expanding the accessors again. It takes rather than reads,
-    /// since the vertex data would otherwise be a second copy of the model. A second
-    /// build of the scene clones the mesh templates the first one made, so preparing
-    /// for it reads no vertex at all.
+    /// Preparing reads each mesh once, and the build lays out what is already there
+    /// rather than expanding the accessors again, drawing from the same vertex arrays
+    /// rather than a second copy of the model. A second build of the scene clones the mesh
+    /// templates the first one made, so preparing for it reads no vertex at all.
     @Test
-    func testPreparingDecodesEveryPrimitiveOfTheSceneOnce() async throws {
+    func testPreparingReadsEveryMeshOfTheSceneOnce() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data, shaders: [])
         let sceneIndex = loader.gltf.scene ?? 0
         let builder = loader.builder(sceneIndex: sceneIndex)
 
         try await builder.prepareGeometry()
-        #expect(!builder.prepared.primitives.isEmpty)
+        let read = loader.resources.assetMeshes
+        #expect(!read.isEmpty)
 
         _ = try builder.build()
-        #expect(builder.prepared.primitives.isEmpty)
+        #expect(Set(loader.resources.assetMeshes.keys) == Set(read.keys))
+        for (key, template) in loader.resources.meshTemplates {
+            let drawn = try #require(template.modelEntitiesInHierarchy.first?.gltfMeshGeometry)
+            let asset = try #require(read[key]).mesh.geometry
+            #expect(drawn.positions.withUnsafeBufferPointer(\.baseAddress)
+                == asset.positions.withUnsafeBufferPointer(\.baseAddress))
+        }
 
         let second = loader.builder(sceneIndex: sceneIndex)
         try await second.prepareGeometry()
-        #expect(second.prepared.primitives.isEmpty)
+        #expect(Set(loader.resources.assetMeshes.keys) == Set(read.keys))
         #expect(!loader.resources.meshTemplates.isEmpty)
     }
 }

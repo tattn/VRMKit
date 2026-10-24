@@ -138,7 +138,7 @@ extension GLTFSceneBuilder {
             baseTexture = material.pbrMetallicRoughness?.baseColorTexture.map { GLTFSampledTexture($0) }
             alphaFactor = material.pbrMetallicRoughness?.baseColorFactor.w ?? 1
             cutoff = material.alphaCutoff
-            transform = selectedUVTransform(withMaterialIndex: index, textures: sampledTextures(of: material))
+            transform = selectedUVTransform(withMaterialIndex: index, textures: GLTFAssetReader.sampledTextures(of: material))
             animatesUV = false
         }
         var sampling = GLTFCutoutCoverage.Sampling(transform: transform)
@@ -159,29 +159,25 @@ extension GLTFSceneBuilder {
                                   animatesUV: animatesUV)
     }
 
-    /// The UVs and triangles of every drawn primitive using the material, from the
-    /// prepared geometry or decoded on the spot. One mesh drawn through several skins
-    /// reads the same UVs, so each primitive counts once.
+    /// The UVs and triangles of every drawn slot using the material, from the read meshes
+    /// or read on the spot. One mesh drawn through several skins reads the same UVs, so
+    /// each slot counts once.
     private func primitivesDrawing(materialIndex index: Int) throws -> [CutoutCoverageWork.Primitive] {
         var primitives: [CutoutCoverageWork.Primitive] = []
         var seen: Set<[Int]> = []
+        let reader = try resources.reader()
         for drawn in try drawnMeshes() {
-            for (primitiveIndex, primitive) in resolvedPrimitives(of: drawn.mesh).enumerated()
-            where primitive.material == index {
-                guard seen.insert([drawn.meshIndex, primitiveIndex]).inserted else { continue }
-                let key = PrimitiveGeometryKey(meshIndex: drawn.meshIndex,
-                                               primitiveIndex: primitiveIndex,
-                                               skinIndex: drawn.skinIndex)
-                let geometry: GLTFPrimitiveGeometry?
-                if let prepared = prepared.primitives[key] {
-                    geometry = prepared?.geometry
-                } else {
-                    geometry = try geometryDecoder().decode(primitive, skinIndex: drawn.skinIndex)
-                }
-                guard let geometry, !geometry.texcoords.isEmpty else { continue }
+            let key = reader.meshKey(forNodeAt: drawn.nodeIndex, meshIndex: drawn.meshIndex, skinIndex: drawn.skinIndex)
+            let mesh = try assetMesh(key, nodeIndex: drawn.nodeIndex).mesh
+            let geometry = mesh.geometry
+            guard !geometry.texcoords.isEmpty else { continue }
+            for (slot, materialIndex) in mesh.materialIndices.enumerated() where materialIndex == index {
+                guard seen.insert([drawn.meshIndex, slot]).inserted else { continue }
+                let vertices = geometry.slots[slot].vertexRange
+                let base = UInt32(vertices.lowerBound)
                 // The decoder flips V for RealityKit; the shader flips it back before sampling.
-                primitives.append(.init(texcoords: geometry.texcoords.map { SIMD2($0.x, 1 - $0.y) },
-                                        indices: geometry.indices))
+                primitives.append(.init(texcoords: geometry.texcoords[vertices].map { SIMD2($0.x, 1 - $0.y) },
+                                        indices: geometry.triangleIndices(ofSlot: slot).map { $0 - base }))
             }
         }
         return primitives

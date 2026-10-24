@@ -2,7 +2,6 @@
 import CoreGraphics
 import RealityKit
 import VRMKit
-import VRMKitRuntime
 
 /// One glTF image read through a scalar factor baked into its pixels.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
@@ -20,8 +19,6 @@ struct GLTFBakedImageKey: Hashable {
 /// longer would be a second copy of the model.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct GLTFPreparedResources {
-    /// Nil for a primitive this renderer draws nothing of.
-    var primitives: [PrimitiveGeometryKey: GLTFPreparedPrimitive?] = [:]
     var images: [Int: CGImage] = [:]
     var bakedImages: [GLTFBakedImageKey: CGImage] = [:]
     /// Metal and roughness split out of one image's channels.

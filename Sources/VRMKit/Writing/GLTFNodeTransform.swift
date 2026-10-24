@@ -3,7 +3,7 @@ import SIMDCompat
 
 /// The local transform of a glTF node, as a translation / rotation / scale triple.
 /// A node carrying a 4x4 `matrix` is decomposed, since editing writes TRS back either way.
-public struct GLTFNodeTransform: Equatable {
+public struct GLTFNodeTransform: Equatable, Sendable {
     public var translation: SIMD3<Float>
     public var rotation: simd_quatf
     public var scale: SIMD3<Float>

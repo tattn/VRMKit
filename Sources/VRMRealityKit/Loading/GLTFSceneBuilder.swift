@@ -20,7 +20,6 @@ final class GLTFSceneBuilder {
     let accessors: PackedAccessorCache
     /// Resolved once per load: what it reads off the materials and skins does not change
     /// while one runs.
-    var resolvedGeometryDecoder: GLTFGeometryDecoder?
     var sceneIndex: Int { root.sceneIndex }
     var document: GLTFDocument { resources.document }
     var gltf: GLTF { resources.gltf }
@@ -148,7 +147,7 @@ final class GLTFSceneBuilder {
     /// set and transform, while one that requires it is rejected.
     private func validateTextureTransformsAreRenderable() throws {
         for (index, gltfMaterial) in gltf.materials.enumerated() {
-            let textures = sampledTextures(of: gltfMaterial)
+            let textures = GLTFAssetReader.sampledTextures(of: gltfMaterial)
             if let conflict = textures.textureTransformConflict(selectedTexCoord: selectedTexCoord(withMaterialIndex: index)) {
                 throw VRMError._notSupported(
                     "this glTF requires KHR_texture_transform, and material \(index) \(conflict), which this renderer cannot draw"
@@ -188,10 +187,12 @@ final class GLTFSceneBuilder {
             entity.addChild(meshEntity)
             let modelEntities = meshEntity.modelEntitiesInHierarchy
             let targetCount = try morphTargetCount(ofMeshAt: meshIndex)
-            try applyInitialMorphWeights(of: gltfNode,
-                                         meshIndex: meshIndex,
-                                         targetCount: targetCount,
-                                         to: modelEntities)
+            if let weights = try resources.reader().initialMorphWeights(of: gltfNode, meshIndex: meshIndex),
+               weights.contains(where: { $0 != 0 }) {
+                for modelEntity in modelEntities {
+                    modelEntity.deformedMesh?.setBlendShapeWeights(weights)
+                }
+            }
             root.registerMorphBindings(forNodeAt: index,
                                        modelEntities: modelEntities,
                                        targetCount: targetCount)
@@ -202,47 +203,9 @@ final class GLTFSceneBuilder {
         }
     }
 
-    /// The number of morph targets the mesh at `index` renders with, one per weight in
-    /// any array driving it. A primitive declaring no target of its own does not take part.
+    /// The number of morph targets the mesh at `index` renders with.
     func morphTargetCount(ofMeshAt index: Int) throws -> Int {
-        if let cached = resources.morphTargetCounts[index] { return cached }
-        var targetCount = 0
-        for primitive in resolvedPrimitives(of: try gltf.load(\.meshes, at: index)) {
-            let count = primitive.targets?.count ?? 0
-            guard count > 0 else { continue }
-            guard targetCount == 0 || targetCount == count else {
-                throw VRMError._dataInconsistent(
-                    "the primitives of mesh \(index) declare \(targetCount) and \(count) morph targets, but a mesh's primitives must all declare the same number"
-                )
-            }
-            targetCount = count
-        }
-        resources.morphTargetCounts[index] = targetCount
-        return targetCount
-    }
-
-    /// Applies the spec's starting morph state, `node.weights` falling back to
-    /// `mesh.weights`. Both must be sized by the mesh's morph target count.
-    private func applyInitialMorphWeights(of gltfNode: GLTF.Node,
-                                          meshIndex: Int,
-                                          targetCount: Int,
-                                          to modelEntities: [ModelEntity]) throws {
-        func validated(_ weights: [Float]?, _ source: @autoclosure () -> String) throws -> [Float]? {
-            guard let weights else { return nil }
-            guard weights.count == targetCount else {
-                throw VRMError._dataInconsistent(
-                    "\(source()) holds \(weights.count) weights but mesh \(meshIndex) has \(targetCount) morph targets"
-                )
-            }
-            return weights
-        }
-        let meshWeights = try validated(gltf.load(\.meshes, at: meshIndex).weights, "mesh \(meshIndex)")
-        let nodeWeights = try validated(gltfNode.weights, "a node rendering mesh \(meshIndex)")
-
-        guard let weights = nodeWeights ?? meshWeights, weights.contains(where: { $0 != 0 }) else { return }
-        for modelEntity in modelEntities {
-            modelEntity.deformedMesh?.setBlendShapeWeights(weights)
-        }
+        try resources.reader().morphTargetCount(ofMeshAt: index)
     }
 
     private func applyCamera(withCameraIndex index: Int, to entity: Entity) throws {
@@ -279,12 +242,10 @@ final class GLTFSceneBuilder {
 
     /// The entity one node renders a glTF mesh through, one per call.
     func mesh(withMeshIndex index: Int, skinIndex: Int?, nodeIndex: Int) throws -> Entity {
-        let headJoints = try headJoints(ofNodeAt: nodeIndex, meshIndex: index, skinIndex: skinIndex)
+        let key = try resources.reader().meshKey(forNodeAt: nodeIndex, meshIndex: index, skinIndex: skinIndex)
         // Built once per template and cloned per node: the clones share the vertex data
         // and each deform a mesh of their own with their own pose and weights.
-        let meshEntity = try meshTemplate(withMeshIndex: index,
-                                          skinIndex: skinIndex,
-                                          headJoints: headJoints).clone(recursive: true)
+        let meshEntity = try meshTemplate(key, nodeIndex: nodeIndex).clone(recursive: true)
         try instantiateDeformedMeshes(in: meshEntity)
         try registerSkinBindings(in: meshEntity)
         registerMaterialBindings(in: meshEntity)
@@ -293,53 +254,37 @@ final class GLTFSceneBuilder {
     }
 
     /// The clone source for one mesh as one node draws it, which never joins a scene.
-    private func meshTemplate(withMeshIndex index: Int,
-                              skinIndex: Int?,
-                              headJoints: Set<UInt32>) throws -> Entity {
-        let key = GLTFResourceCache.MeshTemplateKey(meshIndex: index,
-                                                    skinIndex: skinIndex,
-                                                    cutsHead: !headJoints.isEmpty)
+    private func meshTemplate(_ key: GLTFAssetReader.MeshKey, nodeIndex: Int) throws -> Entity {
         if let cache = resources.meshTemplates[key] { return cache }
-        let template = try makeMeshEntity(withMeshIndex: index, skinIndex: skinIndex, headJoints: headJoints)
+        let template = try makeMeshEntity(key, nodeIndex: nodeIndex)
         resources.meshTemplates[key] = template
         return template
     }
 
-    private func makeMeshEntity(withMeshIndex index: Int,
-                                skinIndex: Int?,
-                                headJoints: Set<UInt32>) throws -> Entity {
-        let gltfMesh = try gltf.load(\.meshes, at: index)
-        let meshEntity = Entity()
-        meshEntity.name = gltfMesh.name ?? "mesh_\(index)"
-
-        var primitives: [MergedPrimitive] = []
-        for (primitiveIndex, primitive) in resolvedPrimitives(of: gltfMesh).enumerated() {
-            if let merged = try mergedPrimitive(primitive,
-                                                at: primitiveIndex,
-                                                ofMeshAt: index,
-                                                skinIndex: skinIndex,
-                                                headJoints: headJoints) {
-                primitives.append(merged)
-            }
+    private func makeMeshEntity(_ key: GLTFAssetReader.MeshKey, nodeIndex: Int) throws -> Entity {
+        let built = try assetMesh(key, nodeIndex: nodeIndex)
+        for warning in built.warnings {
+            resources.logOnce(warning.key, warning.message)
         }
-        guard !primitives.isEmpty else { return meshEntity }
+        let mesh = built.mesh
+        let meshEntity = Entity()
+        meshEntity.name = mesh.name
+        guard !mesh.materialIndices.isEmpty else { return meshEntity }
 
-        // A skinned mesh's primitives all bind the one skin the node names, so the
-        // merged slots share its skeleton.
-        let skeleton = primitives.contains(where: \.isSkinned)
-            ? try skinIndex.map { try skin(withSkinIndex: $0).skeleton }
-            : nil
+        let primitives = try mesh.materialIndices.map { materialIndex in
+            SlotMaterial(materialIndex: materialIndex,
+                         shaded: try materialIndex.map { try shadedMaterial(withMaterialIndex: $0) }
+                             ?? GLTFShadedMaterial(material: Self.defaultMaterial()))
+        }
+        let skeleton = try mesh.skinIndex.map { try skeleton(withSkinIndex: $0) }
         // One vertex array for the whole mesh: every entity drawing it, render passes
         // and render-queue groups alike, deforms from the same source and draws its own
         // slots of it, so the vertices are skinned once per frame, not once per entity.
         let started = ContinuousClock.now
-        let context = try GLTFDeformationContext.shared()
-        let geometry = GLTFMeshGeometry(primitives: primitives.map(\.prepared),
-                                        isSkinned: skeleton != nil,
-                                        blendShapeTargetCount: try morphTargetCount(ofMeshAt: index))
-        let source = try GLTFMeshSource(geometry: geometry, skeleton: skeleton, context: context)
+        let source = try GLTFMeshSource(geometry: mesh.geometry, skeleton: skeleton, context: try GLTFDeformationContext.shared())
         timings.meshResources += ContinuousClock.now - started
         timings.meshResourceCount += 1
+        let skinIndex = mesh.skinIndex
 
         // Each distinct pass of the mesh's materials becomes one sibling model entity
         // drawing every slot whose material has the pass, in first-appearance order.
@@ -406,48 +351,10 @@ final class GLTFSceneBuilder {
         resources.profile.resolvedPrimitives(of: mesh)
     }
 
-    /// The joints of `skinIndex` whose triangles a first-person camera drops from the mesh
-    /// the node at `nodeIndex` draws. Empty for a plain glTF.
-    func headJoints(ofNodeAt nodeIndex: Int, meshIndex: Int, skinIndex: Int?) throws -> Set<UInt32> {
-        resources.profile.headJoints(ofNodeAt: nodeIndex,
-                                     meshIndex: meshIndex,
-                                     skinIndex: skinIndex,
-                                     hierarchy: try resources.nodeHierarchy())
-    }
-
-    /// One primitive of a mesh, decoded and shaded, ready to merge into the mesh's
-    /// model entities as one slot each.
-    private struct MergedPrimitive {
+    /// One slot of a mesh and the material it is shaded with.
+    private struct SlotMaterial {
         let materialIndex: Int?
         let shaded: GLTFShadedMaterial
-        let prepared: GLTFPreparedPrimitive
-        /// Whether the node draws the primitive through a skin.
-        let isSkinned: Bool
-    }
-
-    private func mergedPrimitive(_ primitive: GLTF.Mesh.Primitive,
-                                 at primitiveIndex: Int,
-                                 ofMeshAt meshIndex: Int,
-                                 skinIndex: Int?,
-                                 headJoints: Set<UInt32>) throws -> MergedPrimitive? {
-        let key = PrimitiveGeometryKey(meshIndex: meshIndex, primitiveIndex: primitiveIndex, skinIndex: skinIndex)
-        guard let prepared = try preparedPrimitive(forKey: key, primitive: primitive, headJoints: headJoints) else {
-            resources.logOnce("primitiveMode-\(primitive.mode)", """
-                A \(primitive.mode) primitive was skipped; RealityKit meshes render triangles only.
-                """)
-            return nil
-        }
-        for warning in prepared.geometry.warnings {
-            resources.logOnce(warning.key, warning.message)
-        }
-
-        let shaded = try primitive.material.map { try shadedMaterial(withMaterialIndex: $0) }
-            ?? GLTFShadedMaterial(material: Self.defaultMaterial())
-
-        return MergedPrimitive(materialIndex: primitive.material,
-                               shaded: shaded,
-                               prepared: prepared,
-                               isSkinned: skinIndex != nil && prepared.jointInfluences != nil)
     }
 
     /// How one model entity draws one slot of its mesh.
@@ -461,7 +368,7 @@ final class GLTFSceneBuilder {
     /// addressing its material by its position in `drawing`.
     private func makeModelEntity(name: String,
                                  source: GLTFMeshSource,
-                                 primitives: [MergedPrimitive],
+                                 primitives: [SlotMaterial],
                                  drawing: [SlotDrawing],
                                  skinIndex: Int?) throws -> ModelEntity {
         let deformedMesh = try GLTFDeformedMesh(source: source, drawnSlots: drawing.map(\.slot))
@@ -523,33 +430,11 @@ final class GLTFSceneBuilder {
         passEntity.components.set(component)
     }
 
-    /// The UV set the meshes rendering `index` carry, and whether the material's textures
-    /// disagree about it. Custom meshes carry a single UV channel, so the core material's
-    /// first UV-accessed texture decides it.
-    func resolvedTexCoord(withMaterialIndex index: Int) -> (selected: Int, isMixed: Bool) {
-        if let cached = resources.materialTexCoordCache[index] { return cached }
-        guard let gltfMaterial = try? gltf.load(\.materials, at: index) else { return (0, false) }
-        let textures = sampledTextures(of: gltfMaterial)
-        let resolved = (selected: textures.first?.texCoord ?? 0,
-                        isMixed: textures.contains { $0.texCoord != textures.first?.texCoord })
-        resources.materialTexCoordCache[index] = resolved
-        return resolved
-    }
-
-    /// A shader sampling any other set renders through this one.
+    /// The UV set the meshes drawing the material at `index` carry. A shader sampling any
+    /// other set renders through this one.
     func selectedTexCoord(withMaterialIndex index: Int) -> Int {
-        resolvedTexCoord(withMaterialIndex: index).selected
-    }
-
-    /// Whether the material samples a normal map, which decides whether a primitive without
-    /// `TANGENT` needs a tangent basis generating. The MToon descriptor is asked first
-    /// because VRM 0.x carries its normal map in Unity's `_BumpMap`.
-    func materialSamplesNormalTexture(withMaterialIndex index: Int) -> Bool {
-        if let descriptor = try? mtoonDescriptor(withMaterialIndex: index), descriptor.normalTexture != nil {
-            return true
-        }
-        guard let (gltfMaterial, _) = try? materialSource(withMaterialIndex: index) else { return false }
-        return gltfMaterial.normalTexture != nil
+        guard let material = try? gltf.load(\.materials, at: index) else { return 0 }
+        return GLTFAssetReader.resolvedTexCoord(of: material).selected
     }
 
     /// The main material of ``shadedMaterial(withMaterialIndex:)``.
@@ -570,7 +455,7 @@ final class GLTFSceneBuilder {
         do {
             shaded = try shadeMaterial(for: context)
         } catch {
-            guard let fallback = resources.profile.shadedMaterialFallback(for: context, error: error) else { throw error }
+            guard let fallback = resources.materialFallback?(context, error) else { throw error }
             shaded = fallback
         }
         timings.materials += (ContinuousClock.now - started) - (timings.textureResources - texturesBefore)
@@ -694,20 +579,6 @@ final class GLTFSceneBuilder {
         return material
     }
 
-    /// The textures a standard material, MToon aside, samples through mesh UVs, in the
-    /// order the glTF material declares them.
-    func sampledTextures(of gltfMaterial: GLTF.Material) -> [GLTFSampledTexture] {
-        var textures: [GLTFSampledTexture] = []
-        if let pbr = gltfMaterial.pbrMetallicRoughness {
-            if let info = pbr.baseColorTexture { textures.append(GLTFSampledTexture(info)) }
-            if let info = pbr.metallicRoughnessTexture { textures.append(GLTFSampledTexture(info)) }
-        }
-        if let info = gltfMaterial.normalTexture { textures.append(GLTFSampledTexture(info)) }
-        if let info = gltfMaterial.occlusionTexture { textures.append(GLTFSampledTexture(info)) }
-        if let info = gltfMaterial.emissiveTexture { textures.append(GLTFSampledTexture(info)) }
-        return textures
-    }
-
     /// The `KHR_texture_transform` a material renders with. RealityKit gives a material
     /// one UV transform, so the first UV-accessed texture's wins.
     func selectedUVTransform(withMaterialIndex index: Int,
@@ -728,7 +599,7 @@ final class GLTFSceneBuilder {
     private func standardTextureTransform(withMaterialIndex index: Int,
                                           of gltfMaterial: GLTF.Material) -> MaterialParameterTypes.TextureCoordinateTransform {
         let transform = selectedUVTransform(withMaterialIndex: index,
-                                            textures: sampledTextures(of: gltfMaterial))
+                                            textures: GLTFAssetReader.sampledTextures(of: gltfMaterial))
         return MaterialParameterTypes.TextureCoordinateTransform(offset: transform.offset,
                                                                  scale: transform.scale,
                                                                  rotation: -transform.rotation)
@@ -1296,100 +1167,21 @@ final class GLTFSceneBuilder {
         material.opacityThreshold = settings.opacityThreshold
     }
 
-    /// The skin at `index` resolved for RealityKit. Its skeleton and joint remap come
-    /// out of the same ordering pass, so they are cached together.
-    func skin(withSkinIndex index: Int) throws -> GLTFResourceCache.Skin {
-        if let cache = try loadCached(resources.skins, at: index, of: "skin") { return cache }
-        let skin = try gltf.load(\.skins, at: index)
+    /// The joints of the skin at `index`, parents first, as RealityKit poses them.
+    func skeleton(withSkinIndex index: Int) throws -> MeshResource.Skeleton {
+        if let cache = try loadCached(resources.skeletons, at: index, of: "skin") { return cache }
+        let skin = try loadCached(resources.reader().skins, at: index, of: "skin")
         let nodes = gltf.nodes
-        let (parentIndices, order, remap) = try computeSkinJointOrdering(skin: skin)
-
-        // glTF defines an absent inverseBindMatrices as identity per joint, but a present
-        // one has to cover every joint.
-        let inverseBindMatrices: [simd_float4x4]
-        if let accessorIndex = skin.inverseBindMatrices {
-            inverseBindMatrices = try accessors.accessor(at: accessorIndex).float4x4Elements()
-            guard inverseBindMatrices.count >= skin.joints.count else {
-                throw VRMError._dataInconsistent(
-                    "inverseBindMatrices has \(inverseBindMatrices.count) elements for \(skin.joints.count) skin joints"
-                )
-            }
-        } else {
-            inverseBindMatrices = Array(repeating: matrix_identity_float4x4, count: skin.joints.count)
+        let joints = skin.joints.indices.map { joint in
+            let nodeIndex = skin.joints[joint]
+            return MeshResource.Skeleton.Joint(name: nodes[nodeIndex].name ?? "joint_\(nodeIndex)",
+                                               parentIndex: skin.parents[joint],
+                                               inverseBindPoseMatrix: skin.inverseBindMatrices[joint],
+                                               restPoseTransform: nodes[nodeIndex].localTransform)
         }
-
-        var joints: [MeshResource.Skeleton.Joint] = []
-        joints.reserveCapacity(order.count)
-        for newIndex in 0..<order.count {
-            let oldIndex = order[newIndex]
-            let nodeIndex = skin.joints[oldIndex]
-            let node = nodes[nodeIndex]
-            let name = node.name ?? "joint_\(nodeIndex)"
-            let parentOld = parentIndices[oldIndex]
-            let parentNew = parentOld.map { remap[$0] }
-
-            let restTransform = node.localTransform
-            let ibm = inverseBindMatrices[oldIndex]
-            joints.append(.init(name: name,
-                                parentIndex: parentNew,
-                                inverseBindPoseMatrix: ibm,
-                                restPoseTransform: restTransform))
-        }
-
-        let resolved = GLTFResourceCache.Skin(skeleton: MeshResource.Skeleton(id: "skin_\(index)", joints: joints),
-                                              jointIndexRemap: remap)
-        resources.skins[index] = resolved
-        return resolved
-    }
-
-    private func computeSkinJointOrdering(skin: GLTF.Skin) throws -> (parentIndices: [Int?], order: [Int], remap: [Int]) {
-        let jointNodeIndices = skin.joints
-        // A node the skin names twice hangs its children off its first entry; the other
-        // is a leaf under the same parent, so both are posed where the node is.
-        let jointIndexMap = Dictionary(jointNodeIndices.enumerated().map { ($0.element, $0.offset) },
-                                       uniquingKeysWith: { first, _ in first })
-        var parentIndices: [Int?] = Array(repeating: nil, count: jointNodeIndices.count)
-        let hierarchy = try resources.nodeHierarchy()
-        for (i, nodeIndex) in jointNodeIndices.enumerated() {
-            // The validated hierarchy is a forest, so walking up terminates.
-            var current = nodeIndex
-            while let parent = hierarchy.parent(at: current) {
-                if let jointIndex = jointIndexMap[parent] {
-                    parentIndices[i] = jointIndex
-                    break
-                }
-                current = parent
-            }
-        }
-
-        var children: [[Int]] = Array(repeating: [], count: jointNodeIndices.count)
-        for (i, parent) in parentIndices.enumerated() {
-            if let parent = parent {
-                children[parent].append(i)
-            }
-        }
-
-        var order: [Int] = []
-        order.reserveCapacity(jointNodeIndices.count)
-        func visit(_ index: Int) {
-            order.append(index)
-            for child in children[index] {
-                visit(child)
-            }
-        }
-
-        // The validated hierarchy is a forest, so visiting every root reaches every joint.
-        let roots = parentIndices.enumerated().compactMap { $0.element == nil ? $0.offset : nil }
-        for root in roots {
-            visit(root)
-        }
-
-        var remap: [Int] = Array(repeating: 0, count: jointNodeIndices.count)
-        for (newIndex, oldIndex) in order.enumerated() {
-            remap[oldIndex] = newIndex
-        }
-
-        return (parentIndices, order, remap)
+        let skeleton = MeshResource.Skeleton(id: "skin_\(index)", joints: joints)
+        resources.skeletons[index] = skeleton
+        return skeleton
     }
 
     /// Binds the skinned models of a freshly cloned mesh to this scene's joints.
@@ -1398,23 +1190,19 @@ final class GLTFSceneBuilder {
             guard let skinIndex = modelEntity.components[GLTFSkinIndexComponent.self]?.skinIndex else {
                 continue
             }
-            let skin = try skin(withSkinIndex: skinIndex)
+            let skeleton = try skeleton(withSkinIndex: skinIndex)
             let jointEntities: [Entity]
             if let cached = jointEntitiesBySkin[skinIndex] {
                 jointEntities = cached
             } else {
-                let jointNodes = try gltf.load(\.skins, at: skinIndex).joints
-                let jointsInSkinOrder = try jointNodes.map { try node(withNodeIndex: $0) }
-                // The skeleton reorders the joints parents-first, and the pose follows it.
-                var reordered = jointsInSkinOrder
-                for (oldIndex, newIndex) in skin.jointIndexRemap.enumerated() {
-                    reordered[newIndex] = jointsInSkinOrder[oldIndex]
+                // In the skeleton's order, parents first, which the pose follows.
+                jointEntities = try loadCached(resources.reader().skins, at: skinIndex, of: "skin").joints.map {
+                    try node(withNodeIndex: $0)
                 }
-                jointEntitiesBySkin[skinIndex] = reordered
-                jointEntities = reordered
+                jointEntitiesBySkin[skinIndex] = jointEntities
             }
             root.registerSkinBinding(modelEntity: modelEntity,
-                                     skeleton: skin.skeleton,
+                                     skeleton: skeleton,
                                      jointEntities: jointEntities)
         }
     }

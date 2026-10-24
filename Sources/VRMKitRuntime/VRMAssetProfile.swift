@@ -1,28 +1,24 @@
-#if canImport(RealityKit)
-import RealityKit
+import Foundation
 import VRMKit
-import VRMKitRuntime
 
-/// What loading a VRM adds to a generic glTF load: the VRM extensions it implements,
+/// What reading a VRM adds to reading a generic glTF: the VRM extensions it implements,
 /// VRM 0.x material properties, the first-person cut and VRM's morph target sharing.
 ///
-/// What a VRM adds to the entity graph itself, the humanoid, the expressions, the
-/// constraints and the spring bones, is set up by ``VRMEntityLoader`` once the scene is
-/// built, since only it knows the root is a ``VRMEntity``.
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-@MainActor
-final class VRMLoadProfile: GLTFLoadProfile {
-    let vrm: VRM
+/// What a VRM adds on top of the scene, the humanoid, the expressions, the constraints
+/// and the spring bones, is set up by whoever builds the model from the asset.
+package final class VRMAssetProfile: GLTFAssetProfile, @unchecked Sendable {
+    package let vrm: VRM
+    private let lock = NSLock()
     private var firstPersonPlan: VRMFirstPersonPlan?
 
-    init(vrm: VRM) {
+    package init(vrm: VRM) {
         self.vrm = vrm
     }
 
     /// The VRM extensions this implements, which is a question of the model's version:
     /// 0.x states its spring bones inside `VRM` and knows nothing of node constraints,
     /// so nothing here would read the 1.0 extensions off it.
-    var supportedRequiredExtensions: Set<String> {
+    package var supportedRequiredExtensions: Set<String> {
         switch vrm {
         case .v0:
             [GLTFExtension.vrm0.rawValue]
@@ -36,7 +32,7 @@ final class VRMLoadProfile: GLTFLoadProfile {
     /// A required VRM extension has to be one this reads, not merely one it knows the
     /// name of: an unmodeled spec version is read as no spring bones and no constraints
     /// at all, which is the load a document requiring them says must not happen.
-    func validateRequiredExtensionsAreRenderable(of gltf: GLTF) throws {
+    package func validateRequiredExtensionsAreRenderable(of gltf: GLTF) throws {
         // A 0.x model requiring either is refused by name, since it claims neither.
         guard case .v1(let vrm1) = vrm else { return }
         if gltf.extensionsRequired.contains(GLTFExtension.springBone.rawValue) {
@@ -77,7 +73,7 @@ final class VRMLoadProfile: GLTFLoadProfile {
 
     /// A primitive carrying no morph targets of its own morphs with those of whichever
     /// primitive of the mesh carries them for its POSITION accessor.
-    func resolvedPrimitives(of mesh: GLTF.Mesh) -> [GLTF.Mesh.Primitive] {
+    package func resolvedPrimitives(of mesh: GLTF.Mesh) -> [GLTF.Mesh.Primitive] {
         let shared = mesh.morphTargetsByPositionAccessor()
         guard !shared.isEmpty else { return mesh.primitives }
         return mesh.primitives.map { primitive in
@@ -92,40 +88,32 @@ final class VRMLoadProfile: GLTFLoadProfile {
         }
     }
 
-    func headJoints(ofNodeAt nodeIndex: Int,
-                    meshIndex: Int,
-                    skinIndex: Int?,
-                    hierarchy: GLTFNodeHierarchy) -> Set<UInt32> {
+    package func headJoints(ofNodeAt nodeIndex: Int,
+                            meshIndex: Int,
+                            skinIndex: Int?,
+                            hierarchy: GLTFNodeHierarchy) -> Set<UInt32> {
         firstPerson(hierarchy: hierarchy).headJoints(ofNodeAt: nodeIndex,
                                                      meshIndex: meshIndex,
                                                      skinIndex: skinIndex)
     }
 
     /// Which meshes a first-person camera cuts, resolved once per model.
-    func firstPerson(hierarchy: GLTFNodeHierarchy) -> VRMFirstPersonPlan {
+    package func firstPerson(hierarchy: GLTFNodeHierarchy) -> VRMFirstPersonPlan {
+        lock.lock()
+        defer { lock.unlock() }
         if let firstPersonPlan { return firstPersonPlan }
         let plan = VRMFirstPersonPlan(vrm: vrm, gltf: vrm.document.gltf, hierarchy: hierarchy)
         firstPersonPlan = plan
         return plan
     }
 
-    /// Unlike a plain glTF, a VRM whose material this renderer cannot shade still renders,
-    /// with the default material in its place. What the document itself gets wrong still
-    /// fails the load: only the shading falls back.
-    func shadedMaterialFallback(for context: GLTFMaterialShaderContext,
-                                error: any Error) -> GLTFShadedMaterial? {
-        GLTFResourceCache.gltfLogger.error("Failed to build the material \(context.materialIndex, privacy: .public); falling back to the default material: \(String(describing: error), privacy: .public)")
-        return GLTFShadedMaterial(material: GLTFSceneBuilder.defaultMaterial())
-    }
-
-    func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {
+    package func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {
         vrm.vrm0MaterialProperty(at: index)
     }
 
     /// VRM 0.x writes a material's MToon textures in the root extension entry beside it
     /// rather than on the material, so the glTF slots alone would miss them.
-    func extraTextureIndices(ofMaterialAt index: Int) -> Set<Int> {
+    package func extraTextureIndices(ofMaterialAt index: Int) -> Set<Int> {
         Set((vrm0MaterialProperty(atMaterialIndex: index)?.textureProperties ?? [:]).values)
     }
 }
-#endif
