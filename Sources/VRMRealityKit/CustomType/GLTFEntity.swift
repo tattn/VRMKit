@@ -276,6 +276,10 @@ public class GLTFEntity: Entity {
     var animationRuntimes: [Int: GLTFAnimationRuntime] = [:]
     var activeAnimationPlayer: GLTFAnimationPlayer?
 
+    /// Draws what starting an animation set beyond the pose, before the model is skinned
+    /// for it. A plain glTF draws it as the player hands it over.
+    func applyPlaybackOutput() {}
+
     /// Registers the components this entity relies on, exactly once per process.
     @MainActor private static let registerRealityKitTypes: Void = {
         GLTFComponent.registerComponent()

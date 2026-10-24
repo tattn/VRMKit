@@ -79,6 +79,7 @@ extension GLTFEntity {
                                                      loops: loops,
                                                      speed: speed)
         components.set(GLTFAnimationPlaybackComponent())
+        applyPlaybackOutput()
         flushDeformation()
         return controller
     }
@@ -136,14 +137,6 @@ extension GLTFEntity {
             for modelEntity in morphBindings[nodeIndex]?.modelEntities ?? [] {
                 modelEntity.deformedMesh?.setBlendShapeWeights(weights)
             }
-        }
-        guard let vrm = self as? VRMEntity else { return }
-        if !output.expressionWeights.isEmpty {
-            // Sent together so the entity re-accumulates its bindings once.
-            vrm.setExpressions(output.expressionWeights.mapValues { CGFloat($0) })
-        }
-        if let gaze = output.gaze {
-            vrm.lookAtTarget = .rotation(gaze)
         }
     }
 

@@ -68,19 +68,25 @@ package struct GLTFAssetReader: Sendable {
 
     /// The scene at `sceneIndex`, every mesh it draws decoded concurrently.
     package func asset(sceneIndex: Int) async throws -> GLTFAsset {
+        let decoded = try await meshes(for: try drawnMeshes(sceneIndex: sceneIndex), excluding: [])
+        return try asset(sceneIndex: sceneIndex, meshes: decoded)
+    }
+
+    /// The scene at `sceneIndex` from meshes decoded before, decoding on the spot any it
+    /// draws that `decoded` lacks.
+    package func asset(sceneIndex: Int, meshes decoded: [MeshKey: BuiltMesh]) throws -> GLTFAsset {
         let scene = try gltf.load(\.scenes, at: sceneIndex)
         let roots = scene.nodes ?? []
         try hierarchy.validateSceneRoots(roots, sceneIndex: sceneIndex)
-        let drawn = try drawnMeshes(sceneIndex: sceneIndex)
-        let decoded = try await meshes(for: drawn, excluding: [])
 
         var meshes: [GLTFAsset.Mesh] = []
         var indicesByKey: [MeshKey: Int] = [:]
         var meshIndicesByNode: [Int: Int] = [:]
         var warnings: [GLTFGeometryWarning] = []
-        for item in drawn {
+        for item in try drawnMeshes(sceneIndex: sceneIndex) {
             let key = meshKey(forNodeAt: item.nodeIndex, meshIndex: item.meshIndex, skinIndex: item.skinIndex)
-            if indicesByKey[key] == nil, let built = decoded[key] {
+            if indicesByKey[key] == nil {
+                let built = try decoded[key] ?? mesh(key, nodeIndex: item.nodeIndex)
                 indicesByKey[key] = meshes.count
                 meshes.append(built.mesh)
                 warnings += built.warnings

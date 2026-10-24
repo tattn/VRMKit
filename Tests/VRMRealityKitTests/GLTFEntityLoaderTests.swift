@@ -4,6 +4,7 @@ import Foundation
 import RealityKit
 import Testing
 import VRMKit
+@testable import VRMKitRuntime
 import VRMTestSupport
 @testable import VRMRealityKit
 
@@ -768,17 +769,19 @@ struct GLTFEntityLoaderTests {
         }
 
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
-        let clip = try #require(vrmEntity.expressionClips.values.first { clip in
+        let clip = try #require(vrmEntity.instance?.expressions.clips.values.first { clip in
             clip.values.contains { $0.weight > 0 }
         })
         let binding = try #require(clip.values.first { $0.weight > 0 })
-        // The bind resolved to an entity of the scene, not to a clone template.
-        #expect(TestSupport.isDescendant(binding.mesh, of: vrmEntity))
+        let meshes = try #require(vrmEntity.morphBindings[binding.mesh.index]?.modelEntities)
+        // The bind resolved to entities of the scene, not to a clone template.
+        #expect(!meshes.isEmpty)
+        #expect(meshes.allSatisfy { TestSupport.isDescendant($0, of: vrmEntity) })
 
         vrmEntity.setExpression(value: 1, for: clip.key)
-        // The weight lands on the entity the bind resolved to, not on some other
+        // The weight lands on the entities the bind resolved to, not on some other
         // copy of the same mesh.
-        #expect(TestSupport.morphWeight(in: binding.mesh, targetIndex: binding.index) == 1)
+        #expect(meshes.allSatisfy { TestSupport.morphWeight(in: $0, targetIndex: binding.index) == 1 })
     }
 
     @Test

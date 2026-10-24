@@ -14,7 +14,7 @@ struct VRMComponent: Component {
     let vrm: VRM
 }
 
-/// The root entity of a loaded VRM model, and the runtime that animates it.
+/// The root entity of a loaded VRM model, drawing a ``VRMInstance`` that moves it.
 ///
 /// A plain `Entity`, so adding it to a scene is all its lifetime needs: the parent
 /// owns it, and ``VRMUpdateSystem`` animates it while it stays in the scene.
@@ -35,31 +35,11 @@ public final class VRMEntity: GLTFEntity {
 
     public let humanoid = Humanoid()
 
-    /// The expression accumulation and dirty tracking VRM defines; this entity
-    /// only writes the results out.
-    private let expressions = ExpressionRuntime<Entity>()
-    var expressionClips: [ExpressionKey: ExpressionClip] { expressions.clips }
-    private var firstPersonAnnotations: [FirstPersonAnnotation] = []
-    private var springBones = SpringBoneRig<GLTFPoseNode>()
-    private var nodeConstraints = NodeConstraintRig<GLTFPoseNode>()
-    private var lookAt = LookAtRig<GLTFPoseNode>()
-    private var deformedMeshesByMeshEntity: [Entity.ID: [GLTFDeformedMesh]] = [:]
-    private var updateHandlers: [VRMUpdateStage: @MainActor (TimeInterval) -> Void] = [:]
-
-    private lazy var expressionApplier = ExpressionApplier<Entity>(
-        setMorphWeight: { [unowned self] weight, targetIndex, mesh in
-            applyBlendShapeWeight(weight, targetIndex: targetIndex, on: mesh)
-        },
-        setMaterialColor: { [unowned self] color, type, materialIndex in
-            applyMaterialColor(color, type: type, materialIndex: materialIndex)
-        },
-        setTextureTransform: { [unowned self] scale, offset, rotation, materialIndex in
-            applyTextureTransform(scale: scale, offset: offset, rotation: rotation, materialIndex: materialIndex)
-        },
-        didApply: { [unowned self] in
-            flushDirtyMaterialStates()
-        }
-    )
+    /// What moves the model, posing ``GLTFEntity/pose``; this entity draws what it hands
+    /// back. Nil on a `clone(recursive:)` copy, which only renders.
+    private(set) var instance: VRMInstance?
+    /// The entities drawing the mesh of each node, which the instance shows, hides or cuts.
+    private var meshEntitiesByNode: [Int: [Entity]] = [:]
 
     /// Registers the components and system this entity relies on, exactly once per process.
     /// RealityKit instantiates a registered system for every scene, existing ones included,
@@ -99,14 +79,14 @@ public final class VRMEntity: GLTFEntity {
 
     /// How the spring bones swing: the wind pushing them, if any.
     public var springBoneConfiguration: SpringBoneConfiguration {
-        get { springBones.configuration }
-        set { springBones.configuration = newValue }
+        get { instance?.springBoneConfiguration ?? SpringBoneConfiguration() }
+        set { instance?.springBoneConfiguration = newValue }
     }
 
     /// Forgets the motion the spring bones carry between frames, so the next update
     /// starts them at rest. Call it after teleporting the model.
     public func resetSpringBones() {
-        springBones.reset()
+        instance?.resetSpringBones()
     }
 
     /// Has `center` carry `share` of its motion into the tail of the spring-bone joint on
@@ -116,10 +96,10 @@ public final class VRMEntity: GLTFEntity {
     ///
     /// `center` has to be above the joint, and no spring may swing it, as for a spring's center.
     public func setSpringBoneCenter(_ center: Entity, share: Float, forJoint joint: Entity) throws {
-        guard let pose, let centerIndex = nodeIndex(of: center), let jointIndex = nodeIndex(of: joint) else {
+        guard let instance, let centerIndex = nodeIndex(of: center), let jointIndex = nodeIndex(of: joint) else {
             throw VRMError._dataInconsistent("a spring-bone center and its joint have to be nodes of this model")
         }
-        try springBones.setCenter(pose.nodes[centerIndex], share: share, forJoint: pose.nodes[jointIndex])
+        try instance.setSpringBoneCenter(centerIndex, share: share, forJoint: jointIndex)
     }
 
     /// The versions disagree about which way a model faces, and loading converts no
@@ -135,102 +115,60 @@ public final class VRMEntity: GLTFEntity {
     /// frame. A copy does not carry it over, so it reads its own.
     private var frontDirectionCache: SIMD3<Float>?
 
-    func setUpHumanoid(nodes: [Entity?]) {
-        humanoid.setUp(boneNodes: vrm.boneNodes, nodes: nodes)
+    /// Called once per entity, right after its node hierarchy is built: the instance moves
+    /// the pose the node entities copy, and this entity draws the rest of what it hands back.
+    func setUpInstance(asset: GLTFAsset,
+                       built: GLTFSceneBuilder.BuiltScene,
+                       builder: GLTFSceneBuilder) throws {
+        guard let pose else {
+            throw VRMError._dataInconsistent("a VRM entity needs its pose before its instance")
+        }
+        humanoid.setUp(boneNodes: vrm.boneNodes, nodes: built.nodes)
+        for sceneMesh in built.meshes.values.joined() {
+            meshEntitiesByNode[sceneMesh.nodeIndex, default: []].append(sceneMesh.entity)
+        }
+        let instance = try VRMInstance(asset: asset, pose: pose, materialBase: materialBase(builder: builder))
+        // The entity skins from the pose itself.
+        instance.outputsSkins = false
+        let player = instance.animationPlayer
+        player.didSeek = { [unowned self] in
+            MainActor.assumeIsolated {
+                applyInstanceOutput()
+                flushDeformation()
+            }
+        }
+        player.didFinish = { [unowned self] in
+            MainActor.assumeIsolated { components.remove(GLTFAnimationPlaybackComponent.self) }
+        }
+        activeAnimationPlayer = player
+        self.instance = instance
+        applyInstanceOutput()
     }
 
-    /// Called once per entity, right after its node hierarchy is built.
-    func setUpBlendShapes(nodes: [Entity?],
-                          meshes: [Int: [GLTFSceneBuilder.SceneMesh]],
-                          builder: GLTFSceneBuilder) {
-        expressions.setUp(
-            plan: VRMExpressionPlan(vrm: vrm),
-            morphBindings: { bind in
-                switch bind.target {
-                case .mesh(let index):
-                    return (meshes[index] ?? []).map {
-                        BlendShapeBinding(mesh: $0.entity, index: bind.index, weight: bind.weight)
+    /// What an expression's material bind starts from: what the RealityKit material draws
+    /// with, unless a state animating the value keeps it.
+    private func materialBase(builder: GLTFSceneBuilder) -> VRMInstance.MaterialBase {
+        VRMInstance.MaterialBase(
+            color: { [unowned self] index, type in
+                MainActor.assumeIsolated {
+                    // A malformed bind only invalidates itself, never the whole load.
+                    guard let color = try? currentMaterialColor(withMaterialIndex: index, type: type, builder: builder) else {
+                        Self.logger.warning("Skipping invalid MaterialColorBind. materialIndex=\(index)")
+                        return nil
                     }
-                case .node(let index):
-                    guard let node = nodes[safe: index] ?? nil else { return [] }
-                    return [BlendShapeBinding(mesh: node, index: bind.index, weight: bind.weight)]
+                    return color
                 }
             },
-            materialColorBinding: { expression, bind in
-                // A malformed bind only invalidates itself, never the whole load.
-                guard let baseValue = try? currentMaterialColor(withMaterialIndex: bind.material,
-                                                                type: bind.type,
-                                                                builder: builder) else {
-                    Self.logger.warning("""
-                    Skipping invalid MaterialColorBind. \
-                    expression=\(expression, privacy: .public) materialIndex=\(bind.material)
-                    """)
-                    return nil
+            uvTransform: { [unowned self] index in
+                MainActor.assumeIsolated {
+                    guard let base = try? currentTextureTransform(withMaterialIndex: index, builder: builder) else {
+                        Self.logger.warning("Skipping invalid TextureTransformBind. materialIndex=\(index)")
+                        return nil
+                    }
+                    return (base.scale, base.offset, base.rotation)
                 }
-                return ExpressionMaterialColorBinding(material: bind.material,
-                                                      type: bind.type,
-                                                      targetValue: bind.targetValue,
-                                                      baseValue: baseValue)
-            },
-            textureTransformBinding: { expression, bind in
-                guard let base = try? currentTextureTransform(withMaterialIndex: bind.material,
-                                                              builder: builder) else {
-                    Self.logger.warning("""
-                    Skipping invalid TextureTransformBind. \
-                    expression=\(expression, privacy: .public) materialIndex=\(bind.material)
-                    """)
-                    return nil
-                }
-                return ExpressionTextureTransformBinding(material: bind.material,
-                                                         baseScale: base.scale,
-                                                         baseOffset: base.offset,
-                                                         baseRotation: base.rotation,
-                                                         targetScale: bind.scale,
-                                                         targetOffset: bind.offset)
             }
         )
-    }
-
-    /// What each camera draws of each mesh. The `auto` cut is made as the meshes are built,
-    /// so this only pairs it with the entity drawing it.
-    func setUpFirstPerson(plan: VRMFirstPersonPlan,
-                          nodes: [Entity?],
-                          meshes: [Int: [GLTFSceneBuilder.SceneMesh]]) {
-        let head = plan.headNode.flatMap { nodes[safe: $0] ?? nil }
-        firstPersonAnnotations = meshes.sorted { $0.key < $1.key }.flatMap { meshIndex, sceneMeshes in
-            sceneMeshes.map { sceneMesh in
-                FirstPersonAnnotation(entity: sceneMesh.entity,
-                                      type: plan.annotation(ofNodeAt: sceneMesh.nodeIndex, meshIndex: meshIndex),
-                                      // An unskinned mesh cannot be cut, so the head takes it whole.
-                                      hidesAutoInFirstPerson: sceneMesh.entity.isSameOrDescendant(of: head))
-            }
-        }
-        setFirstPersonRenderMode(.thirdPerson)
-    }
-
-    func setUpNodeConstraints(gltfNodes: [GLTF.Node],
-                              hierarchy: GLTFNodeHierarchy,
-                              builder: GLTFSceneBuilder) throws {
-        nodeConstraints = try NodeConstraintRig.make(vrm: vrm, gltfNodes: gltfNodes, hierarchy: hierarchy) {
-            try poseNode(at: $0, builder: builder)
-        }
-    }
-
-    func setUpSpringBones(builder: GLTFSceneBuilder) throws {
-        springBones = try SpringBoneRig.make(vrm: vrm) { try poseNode(at: $0, builder: builder) }
-    }
-
-    func setUpLookAt(builder: GLTFSceneBuilder) throws {
-        lookAt = try LookAtRig.make(vrm: vrm) { try poseNode(at: $0, builder: builder) }
-    }
-
-    /// The pose's node for a glTF node, which the scene has to have built.
-    private func poseNode(at index: Int, builder: GLTFSceneBuilder) throws -> GLTFPoseNode {
-        _ = try builder.node(withNodeIndex: index)
-        guard let pose, pose.nodes.indices.contains(index) else {
-            throw VRMError._dataInconsistent("node \(index) is not part of this model's pose")
-        }
-        return pose.nodes[index]
     }
 
     /// What the eyes follow, nil to leave them at rest.
@@ -239,21 +177,12 @@ public final class VRMEntity: GLTFEntity {
     /// looking at the camera only has to be told where the camera is. A model stating no
     /// look-at keeps its eyes still whatever this is set to.
     public var lookAtTarget: LookAtTarget? {
-        get { lookAt.target }
+        get { instance?.lookAtTarget }
         set {
-            lookAt.target = newValue
+            guard let instance else { return }
             refreshPoseRoot()
-            applyLookAt()
-        }
-    }
-
-    private func applyLookAt() {
-        switch lookAt.apply() {
-        case .unchanged, .posedBones:
-            break
-        case .weights(let weights):
-            guard expressions.storeWeights(weights) else { return }
-            expressions.apply(with: expressionApplier)
+            instance.lookAtTarget = newValue
+            applyInstanceOutput()
         }
     }
 
@@ -287,17 +216,10 @@ public final class VRMEntity: GLTFEntity {
     /// posed through ``GLTFEntity/pose`` needs nothing more; one posed on its entity has to
     /// be followed by ``GLTFEntity/invalidateSkinPose()``.
     public func update(deltaTime: TimeInterval) {
-        let deltaTime = max(0, deltaTime)
+        guard let instance else { return }
         refreshPoseRoot()
         adoptNodeEntitiesPosedFromOutside()
-        advanceAnimations(deltaTime: deltaTime)
-        if let handler = updateHandlers[.afterAnimation] {
-            handler(deltaTime)
-            // The handler may have moved the model, which the runtimes below measure from.
-            refreshPoseRoot()
-        }
-        followPose(deltaTime: deltaTime)
-        updateHandlers[.beforeSkinning]?(deltaTime)
+        apply(instance.update(deltaTime: deltaTime))
         flushDeformation()
     }
 
@@ -305,25 +227,28 @@ public final class VRMEntity: GLTFEntity {
     /// skins the result. No animation advances and no update handler runs, so a pose held still
     /// keeps its shape while its spring bones settle.
     public func updateSecondaryMotion(deltaTime: TimeInterval) {
+        guard let instance else { return }
         refreshPoseRoot()
         adoptNodeEntitiesPosedFromOutside()
-        followPose(deltaTime: max(0, deltaTime))
+        apply(instance.updateSecondaryMotion(deltaTime: deltaTime))
         flushDeformation()
-    }
-
-    private func followPose(deltaTime: TimeInterval) {
-        nodeConstraints.apply()
-        // After the constraints, which may have posed the head the gaze is measured from,
-        // and before the springs, which nothing about the eyes feeds into.
-        applyLookAt()
-        _ = springBones.update(deltaTime: deltaTime)
     }
 
     /// Runs `handler` at `stage` of every ``update(deltaTime:)``, with the frame's time, in
     /// place of the one set there before; nil removes it. This is where code that poses the
     /// model every frame, such as tracking or IK, fits into the frame.
     public func setUpdateHandler(_ handler: (@MainActor (TimeInterval) -> Void)?, at stage: VRMUpdateStage) {
-        updateHandlers[stage] = handler
+        instance?.setUpdateHandler(handler.map { handler in
+            { [unowned self] deltaTime in
+                MainActor.assumeIsolated {
+                    handler(deltaTime)
+                    // The handler may have moved the model, which the runtimes after it measure from.
+                    if stage == .afterAnimation {
+                        refreshPoseRoot()
+                    }
+                }
+            }
+        }, at: stage)
     }
 
     public func setExpression(value: CGFloat, for key: ExpressionKey) {
@@ -334,32 +259,34 @@ public final class VRMEntity: GLTFEntity {
     /// re-accumulates every active clip, so prefer this over repeated
     /// ``setExpression(value:for:)`` calls in one frame.
     public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
-        guard expressions.storeWeights(weights) else { return }
-        expressions.apply(with: expressionApplier)
+        guard let instance else { return }
+        instance.setExpressions(weights.mapValues { Float($0) })
+        applyInstanceOutput()
     }
 
     /// The handle to set `key` with in ``ExpressionWeights``, or nil when the model offers no such
     /// expression. Look it up once: a handle holds for as long as the model.
     public func expressionHandle(for key: ExpressionKey) -> ExpressionHandle? {
-        expressions.handle(for: key)
+        instance?.expressionHandle(for: key)
     }
 
     /// Expression weights for this model, none set yet, to set by handle and hand to
     /// ``setExpressions(_:)-(ExpressionWeights)`` every frame.
     public func makeExpressionWeights() -> ExpressionWeights {
-        ExpressionWeights(count: expressions.expressionCount)
+        instance?.makeExpressionWeights() ?? ExpressionWeights(count: 0)
     }
 
     /// Sets the weights `weights` sets and re-applies the result once, for a caller driving the
     /// face every frame, which then hashes no key. `weights` has to come from this model's
     /// ``makeExpressionWeights()``.
     public func setExpressions(_ weights: ExpressionWeights) {
-        guard expressions.storeWeights(weights) else { return }
-        expressions.apply(with: expressionApplier)
+        guard let instance else { return }
+        instance.setExpressions(weights)
+        applyInstanceOutput()
     }
 
     public func expression(for key: ExpressionKey) -> CGFloat {
-        CGFloat(expressions.weight(for: key))
+        CGFloat(instance?.expression(for: key) ?? 0)
     }
 
     /// The expressions the model offers, each paired with the name it states them
@@ -368,29 +295,59 @@ public final class VRMEntity: GLTFEntity {
     /// A VRM 0.x model's blend shape groups come in its own order; a VRM 1.0
     /// model's presets come first, then its custom expressions by name.
     public var availableExpressions: [ExpressionInfo] {
-        expressions.availableExpressions
+        instance?.availableExpressions ?? []
     }
 
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
-        for annotation in firstPersonAnnotations {
-            // An `auto` mesh is cut rather than hidden, so the body below it stays.
-            if annotation.type == .auto, applyFirstPersonCut(mode, to: annotation.entity) { continue }
-            annotation.entity.isEnabled = !annotation.type.isHidden(in: mode,
-                                                                    hidesAutoInFirstPerson: annotation.hidesAutoInFirstPerson)
+        guard let instance else { return }
+        instance.firstPersonRenderMode = mode
+        applyInstanceOutput()
+    }
+
+    override func applyPlaybackOutput() {
+        applyInstanceOutput()
+    }
+
+    /// Draws what the instance changed outside a frame update.
+    private func applyInstanceOutput() {
+        guard let instance else { return }
+        apply(instance.takeOutput())
+    }
+
+    private func apply(_ output: GLTFFrameOutput) {
+        for (nodeIndex, weights) in output.morphWeights {
+            for modelEntity in morphBindings[nodeIndex]?.modelEntities ?? [] {
+                modelEntity.deformedMesh?.setBlendShapeWeights(weights)
+            }
+        }
+        if !output.materialValues.isEmpty {
+            for (materialIndex, values) in output.materialValues {
+                for (type, color) in values.colors {
+                    applyMaterialColor(color, type: type, materialIndex: materialIndex)
+                }
+                if let uvTransform = values.uvTransform {
+                    applyTextureTransform(scale: uvTransform.scale,
+                                          offset: uvTransform.offset,
+                                          rotation: uvTransform.rotation,
+                                          materialIndex: materialIndex)
+                }
+            }
+            flushDirtyMaterialStates()
+        }
+        for (nodeIndex, visibility) in output.visibility {
+            for entity in meshEntitiesByNode[nodeIndex] ?? [] {
+                show(entity, as: visibility)
+            }
         }
     }
 
-    /// Draws `entity` with the triangles `mode` asks for, and says whether it was cut.
-    /// The cut is baked per part, so a mesh worn head to foot keeps its body while
-    /// the head's parts and triangles go.
-    private func applyFirstPersonCut(_ mode: FirstPersonRenderMode, to entity: Entity) -> Bool {
-        var cut = false
-        for modelEntity in entity.modelEntitiesInHierarchy {
-            guard modelEntity.deformedMesh?.hasFirstPersonCut == true else { continue }
-            cut = true
-            modelEntity.setMergedFirstPerson(mode == .firstPerson)
+    /// The cut is baked per part, so a mesh worn head to foot keeps its body while the
+    /// head's parts and triangles go.
+    private func show(_ entity: Entity, as visibility: GLTFFrameOutput.Visibility) {
+        for modelEntity in entity.modelEntitiesInHierarchy where modelEntity.deformedMesh?.hasFirstPersonCut == true {
+            modelEntity.setMergedFirstPerson(visibility == .firstPersonCut)
         }
-        return cut
+        entity.isEnabled = visibility != .hidden
     }
 
     private func applyTextureTransform(scale: SIMD2<Float>,
@@ -400,43 +357,6 @@ public final class VRMEntity: GLTFEntity {
         applyMaterialValue(ofMaterial: materialIndex,
                            toState: { $0.setTextureTransform(scale: scale, offset: offset, rotation: rotation) },
                            toMaterial: { $0.settingTextureTransform(scale: scale, offset: offset, rotation: rotation) })
-    }
-
-    private func applyBlendShapeWeight(_ weight: Float, targetIndex: Int, on mesh: Entity) {
-        for deformedMesh in deformedMeshes(under: mesh) {
-            deformedMesh.setBlendShapeWeight(weight, forTarget: targetIndex)
-        }
-    }
-
-    /// The deformed meshes a mesh entity draws, found once rather than by walking the
-    /// entity's hierarchy on every write.
-    private func deformedMeshes(under mesh: Entity) -> [GLTFDeformedMesh] {
-        if let cached = deformedMeshesByMeshEntity[mesh.id] { return cached }
-        let meshes = mesh.modelEntitiesInHierarchy.compactMap(\.deformedMesh)
-        deformedMeshesByMeshEntity[mesh.id] = meshes
-        return meshes
-    }
-}
-
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-private struct FirstPersonAnnotation {
-    let entity: Entity
-    let type: FirstPersonAnnotationType
-    let hidesAutoInFirstPerson: Bool
-}
-
-@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-private extension Entity {
-    func isSameOrDescendant(of ancestor: Entity?) -> Bool {
-        guard let ancestor else { return false }
-        var entity: Entity? = self
-        while let current = entity {
-            if current === ancestor {
-                return true
-            }
-            entity = current.parent
-        }
-        return false
     }
 }
 

@@ -32,7 +32,7 @@ public final class VRMInstance: GLTFInstance {
     }
 
     /// A node drawing a mesh, as an expression's morph bind addresses it.
-    private final class MorphNode {
+    final class MorphNode {
         let index: Int
 
         init(index: Int) {
@@ -41,7 +41,7 @@ public final class VRMInstance: GLTFInstance {
     }
 
     private let humanoidNodes: [HumanoidBone: Int]
-    private let expressions = ExpressionRuntime<MorphNode>()
+    let expressions = ExpressionRuntime<MorphNode>()
     private var springBones = SpringBoneRig<GLTFPoseNode>()
     private var nodeConstraints = NodeConstraintRig<GLTFPoseNode>()
     private var lookAt = LookAtRig<GLTFPoseNode>()
@@ -68,18 +68,18 @@ public final class VRMInstance: GLTFInstance {
 
     /// - Throws: when the asset was not read from a VRM, or the model states a spring,
     ///   constraint or gaze its nodes cannot hold.
-    public override convenience init(asset: GLTFAsset) throws {
-        try self.init(asset: asset, materialBase: Self.materialBase(of: asset))
+    public convenience init(asset: GLTFAsset) throws {
+        try self.init(asset: asset, pose: asset.makePose(), materialBase: Self.materialBase(of: asset))
     }
 
-    package init(asset: GLTFAsset, materialBase: MaterialBase) throws {
+    package init(asset: GLTFAsset, pose: GLTFPose, materialBase: MaterialBase) throws {
         guard let vrm = asset.vrm else {
             throw VRMError._dataInconsistent("a VRM instance needs an asset read from a VRM")
         }
         self.vrm = vrm
         humanoidNodes = vrm.boneNodes
         firstPerson = VRMFirstPersonPlan(vrm: vrm, gltf: asset.document.gltf, hierarchy: asset.hierarchy)
-        try super.init(asset: asset)
+        super.init(asset: asset, pose: pose)
 
         let pose = pose
         let node: (Int) throws -> GLTFPoseNode = { index in

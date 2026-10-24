@@ -63,9 +63,15 @@ public class GLTFInstance {
     private var changedMorphNodes: Set<Int> = []
     private var hasOutputSkins = false
 
-    public init(asset: GLTFAsset) throws {
+    public convenience init(asset: GLTFAsset) throws {
+        self.init(asset: asset, pose: asset.makePose())
+    }
+
+    /// - Parameter pose: a pose of the asset's nodes, such as one a renderer keeps its own
+    ///   node objects a copy of.
+    package init(asset: GLTFAsset, pose: GLTFPose) {
         self.asset = asset
-        pose = asset.makePose()
+        self.pose = pose
         animationPlayer = GLTFAnimationPlayer(pose: pose)
         for (node, mesh) in asset.meshIndicesByNode {
             let count = asset.meshes[mesh].geometry.blendShapeTargetCount

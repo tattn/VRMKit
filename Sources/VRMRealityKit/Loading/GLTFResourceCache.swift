@@ -66,6 +66,16 @@ final class GLTFResourceCache {
         try reader().hierarchy
     }
 
+    private var assets: [Int: GLTFAsset] = [:]
+
+    /// The scene at `sceneIndex` read into an asset, from the meshes its build read.
+    func asset(sceneIndex: Int) throws -> GLTFAsset {
+        if let asset = assets[sceneIndex] { return asset }
+        let asset = try reader().asset(sceneIndex: sceneIndex, meshes: assetMeshes)
+        assets[sceneIndex] = asset
+        return asset
+    }
+
     /// glTF extensions this renderer implements, to satisfy `extensionsRequired`: the
     /// built-in ones, plus whatever the shader chain and the profile claim.
     var supportedRequiredExtensions: Set<String> {

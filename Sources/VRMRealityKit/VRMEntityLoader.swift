@@ -17,7 +17,6 @@ public final class VRMEntityLoader {
     /// The material shaders this loader consults, in order.
     public let shaders: [any GLTFMaterialShader]
 
-    private let profile: VRMAssetProfile
     let resources: GLTFResourceCache
     private let queue = GLTFLoadQueue()
     var gltf: GLTF { vrm.document.gltf }
@@ -41,11 +40,9 @@ public final class VRMEntityLoader {
         self.maxTextureDimension = maxTextureDimension
         self.outputColorSpace = outputColorSpace
         self.compensatesToneMapping = compensatesToneMapping
-        let profile = VRMAssetProfile(vrm: vrm)
-        self.profile = profile
         self.resources = GLTFResourceCache(document: vrm.document,
                                            shaders: shaders,
-                                           profile: profile,
+                                           profile: VRMAssetProfile(vrm: vrm),
                                            materialFallback: Self.fallbackMaterial,
                                            maxTextureDimension: maxTextureDimension,
                                            outputColorSpace: outputColorSpace,
@@ -117,28 +114,13 @@ public final class VRMEntityLoader {
                 root.name = name
             }
             let (builder, built) = try await resources.build(into: root)
-            try setUpVRM(root, built: built, builder: builder)
+            try root.setUpInstance(asset: try resources.asset(sceneIndex: index), built: built, builder: builder)
             // Skin bindings are registered mid-build, so the rest pose is only solvable
             // once the graph is complete.
             root.invalidateSkinPose()
             root.flushDeformation()
             return root
         }
-    }
-
-    /// The VRM runtime, hung off the entity graph the glTF build made.
-    private func setUpVRM(_ entity: VRMEntity,
-                          built: GLTFSceneBuilder.BuiltScene,
-                          builder: GLTFSceneBuilder) throws {
-        let hierarchy = try resources.nodeHierarchy()
-        entity.setUpHumanoid(nodes: built.nodes)
-        entity.setUpBlendShapes(nodes: built.nodes, meshes: built.meshes, builder: builder)
-        entity.setUpFirstPerson(plan: profile.firstPerson(hierarchy: hierarchy),
-                                nodes: built.nodes,
-                                meshes: built.meshes)
-        try entity.setUpNodeConstraints(gltfNodes: gltf.nodes, hierarchy: hierarchy, builder: builder)
-        try entity.setUpSpringBones(builder: builder)
-        try entity.setUpLookAt(builder: builder)
     }
 }
 #endif

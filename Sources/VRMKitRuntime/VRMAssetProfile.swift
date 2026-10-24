@@ -98,7 +98,7 @@ package final class VRMAssetProfile: GLTFAssetProfile, @unchecked Sendable {
     }
 
     /// Which meshes a first-person camera cuts, resolved once per model.
-    package func firstPerson(hierarchy: GLTFNodeHierarchy) -> VRMFirstPersonPlan {
+    private func firstPerson(hierarchy: GLTFNodeHierarchy) -> VRMFirstPersonPlan {
         lock.lock()
         defer { lock.unlock() }
         if let firstPersonPlan { return firstPersonPlan }
