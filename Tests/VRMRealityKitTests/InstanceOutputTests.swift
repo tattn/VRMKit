@@ -74,22 +74,22 @@ struct InstanceOutputTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
         let instance = try #require(entity.instance)
-        let deformation = try #require(entity.meshDeformations.first { $0.jointCount > 0 })
+        let mesh = try #require(entity.deformedMeshes.first { $0.source.skin != nil })
         instance.outputsSkins = true
         _ = instance.takeOutput()
         let head = try #require(entity.humanoid.node(for: .head).flatMap(entity.nodeIndex(of:)))
 
         instance.pose.setLocalRotation(simd_quatf(angle: 0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
-        var revision = deformation.revision
+        var solved = mesh.jointTransforms
         entity.flushDeformation()
-        #expect(deformation.revision != revision)
+        #expect(mesh.jointTransforms != solved)
         #expect(!instance.takeOutput().skins.isEmpty)
 
         instance.pose.setLocalRotation(simd_quatf(angle: -0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
         #expect(!instance.takeOutput().skins.isEmpty)
-        revision = deformation.revision
+        solved = mesh.jointTransforms
         entity.flushDeformation()
-        #expect(deformation.revision != revision)
+        #expect(mesh.jointTransforms != solved)
     }
 
     /// While deformation is suspended nothing is solved or written; a snapshot is written either
@@ -98,8 +98,7 @@ struct InstanceOutputTests {
     func testASuspendedEntityDeformsNothingUntilResumed() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let deformation = try #require(entity.meshDeformations.first { $0.jointCount > 0 })
-        let mesh = try #require(entity.deformedMeshes.first { ObjectIdentifier($0.source) == deformation.id })
+        let mesh = try #require(entity.deformedMeshes.first { $0.source.skin != nil })
         try waitForDeformation()
         let rest = positions(of: mesh)
 
@@ -112,7 +111,7 @@ struct InstanceOutputTests {
         let copy = entity.snapshot()
         try waitForDeformation()
         let copied = try #require(copy.modelEntitiesInHierarchy.lazy.compactMap(\.deformedMesh)
-            .first { ObjectIdentifier($0.source) == deformation.id })
+            .first { $0.source === mesh.source })
         #expect(positions(of: copied) != rest)
 
         let hips = try #require(entity.humanoid.node(for: .hips).flatMap(entity.nodeIndex(of:)))

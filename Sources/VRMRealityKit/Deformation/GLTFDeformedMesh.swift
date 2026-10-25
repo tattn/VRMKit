@@ -33,8 +33,6 @@ final class GLTFDeformedMesh {
     let isFrozen: Bool
 
     private var needsDeformation = false
-    /// Moves with every change to the pose or the weights, for a caller deforming the mesh itself.
-    private(set) var inputRevision: UInt64 = 0
     /// Whether the visible slots cover anything, drawn here or by a caller drawing them itself.
     /// A mesh showing nothing, such as a hidden render pass, is not deformed until something
     /// of it shows again.
@@ -158,7 +156,6 @@ final class GLTFDeformedMesh {
         guard blendShapeWeights.indices.contains(target), blendShapeWeights[target] != weight else { return }
         blendShapeWeights[target] = weight
         needsDeformation = true
-        inputRevision &+= 1
     }
 
     /// Takes the solved skeleton pose, each joint in its skeleton parent's space. The
@@ -168,7 +165,6 @@ final class GLTFDeformedMesh {
         guard source.skin != nil else { return }
         jointTransforms = transforms
         needsDeformation = true
-        inputRevision &+= 1
     }
 
     // MARK: - Deformation
