@@ -38,31 +38,35 @@ struct VRMAnimationPlaybackTests {
         return SIMD2(yaw, pitch)
     }
 
+    private enum ToeWrite { case none, entity, pose }
+
+    /// The joint rotations after a few ticks of the looping fixture, turning the left toe
+    /// each tick through `write`.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    private func posedRotations(_ write: ToeWrite) async throws -> [SIMD4<Float>] {
+        let entity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        try entity.playAnimation(fixture(), loops: true)
+        let toe = try #require(entity.humanoid.node(for: .leftToes))
+        let toeIndex = try #require(entity.nodeIndex(of: toe))
+        let pose = try #require(entity.pose)
+        for _ in 0..<4 {
+            let turned = toe.transform.rotation * simd_quatf(angle: 0.2, axis: SIMD3<Float>(1, 0, 0))
+            switch write {
+            case .none: break
+            case .entity: toe.transform.rotation = turned
+            case .pose: pose.setLocalRotation(turned, ofNode: toeIndex)
+            }
+            entity.update(deltaTime: 1.0 / 60.0)
+        }
+        return TestSupport.jointRotations(in: entity)
+    }
+
     /// A joint the animation does not drive keeps what was written to it, whether to its
     /// entity or to the pose, and the skin follows. The fixture drives the hips, spine and
     /// left thumb, never a toe.
     @Test
     func testARunningAnimationKeepsAJointItDoesNotDrive() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        enum Write { case none, entity, pose }
-        func posedRotations(_ write: Write) async throws -> [SIMD4<Float>] {
-            let entity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
-            try entity.playAnimation(fixture(), loops: true)
-            let toe = try #require(entity.humanoid.node(for: .leftToes))
-            let toeIndex = try #require(entity.nodeIndex(of: toe))
-            let pose = try #require(entity.pose)
-            for _ in 0..<4 {
-                let turned = toe.transform.rotation * simd_quatf(angle: 0.2, axis: SIMD3<Float>(1, 0, 0))
-                switch write {
-                case .none: break
-                case .entity: toe.transform.rotation = turned
-                case .pose: pose.setLocalRotation(turned, ofNode: toeIndex)
-                }
-                entity.update(deltaTime: 1.0 / 60.0)
-            }
-            return TestSupport.jointRotations(in: entity)
-        }
-
         let untouched = try await posedRotations(.none)
         #expect(!untouched.isEmpty)
         let posedOnEntity = try await posedRotations(.entity)
