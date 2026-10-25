@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#accessor
 
@@ -127,9 +131,8 @@ private extension GLTF.Accessor {
             values.withUnsafeBytes { rawSrc in
                 guard let src = rawSrc.bindMemory(to: UInt8.self).baseAddress else { return }
                 for (position, index) in indices.enumerated() {
-                    memcpy(dst.advanced(by: index * vectorSize),
-                           src.advanced(by: position * vectorSize),
-                           vectorSize)
+                    dst.advanced(by: index * vectorSize)
+                        .update(from: src.advanced(by: position * vectorSize), count: vectorSize)
                 }
             }
         }

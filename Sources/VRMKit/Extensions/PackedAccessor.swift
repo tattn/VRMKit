@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 /// One glTF accessor expanded into tightly packed elements.

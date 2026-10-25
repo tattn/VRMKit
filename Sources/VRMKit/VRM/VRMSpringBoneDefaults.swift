@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 /// What `VRMC_springBone` reads a joint that states nothing as. Shared so that

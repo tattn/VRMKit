@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 /// One VRM 0.x bone group, as an edit adds it to a model.

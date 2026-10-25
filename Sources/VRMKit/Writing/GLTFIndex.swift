@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Which of a glTF document's arrays an index points into.
 public protocol GLTFIndexKind: Sendable {

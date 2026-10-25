@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// The glTF and VRM extension names this package knows. Reading, merging and
 /// writing each decide what may be done with an extension, and spelling the

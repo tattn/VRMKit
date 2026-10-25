@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#texture
 

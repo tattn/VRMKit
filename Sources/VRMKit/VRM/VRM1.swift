@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 public struct VRM1: Sendable {
     /// The `VRMC_vrm` spec versions this type models.

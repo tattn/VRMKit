@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// A glTF document that can be edited and written back out as a GLB.
 ///
@@ -211,7 +215,7 @@ extension GLTFEditableDocument {
                 return String(body[..<separator])
             }
         }
-        switch (uri as NSString).pathExtension.lowercased() {
+        switch Self.pathExtension(of: uri).lowercased() {
         case "png": return "image/png"
         case "jpg", "jpeg": return "image/jpeg"
         case "webp": return "image/webp"
@@ -220,5 +224,12 @@ extension GLTFEditableDocument {
         }
         return try data.imageMediaType
             ??? ._dataInconsistent("the image at \"\(uri)\" is of no format a GLB can name")
+    }
+
+    /// The extension of the URI's last path component, as `NSString.pathExtension` reads it.
+    private static func pathExtension(of uri: String) -> Substring {
+        let name = uri.split(separator: "/").last ?? ""
+        guard let dot = name.lastIndex(of: "."), dot > name.startIndex else { return "" }
+        return name[name.index(after: dot)...]
     }
 }

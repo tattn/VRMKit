@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 /// The vertex data of one indexed triangle mesh, as

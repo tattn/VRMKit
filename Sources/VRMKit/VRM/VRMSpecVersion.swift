@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Which VRM version a document is, which decides how everything the model says
 /// about itself is spelled.

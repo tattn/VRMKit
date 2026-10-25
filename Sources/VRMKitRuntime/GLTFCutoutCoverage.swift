@@ -1,7 +1,11 @@
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 import VRMKit
 

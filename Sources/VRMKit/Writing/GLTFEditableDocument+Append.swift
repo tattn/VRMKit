@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 extension GLTFEditableDocument {
     /// Appends the default scene of `source` under `parentNode`, wrapped in one

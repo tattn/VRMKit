@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// What a reference wants with the entry it names, which decides whether the
 /// entry outlives what draws it.

@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// One JSON value of a glTF document.
 ///
@@ -254,52 +258,10 @@ public extension JSONValue {
     }
 
     init(parsing data: Data) throws {
-        let object: Any
         do {
-            object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+            self = try JSONParser.parse(data)
         } catch {
-            throw VRMError._dataInconsistent("not valid JSON: \(error.localizedDescription)")
+            throw VRMError._dataInconsistent("not valid JSON: \(error)")
         }
-        self.init(foundation: object)
-    }
-
-    /// Wraps what `JSONSerialization` parsed, keeping how each number was spelled.
-    private init(foundation object: Any) {
-        switch object {
-        case let number as NSNumber:
-            if number.isBoolean {
-                self = .bool(number.boolValue)
-            } else if number.objCTypeCode == "d" {
-                self = .double(number.doubleValue)
-            } else if let int = Int(exactly: number) {
-                self = .int(int)
-            } else {
-                self = .double(number.doubleValue)
-            }
-        case let string as String:
-            self = .string(string)
-        case let elements as [Any]:
-            self = .array(elements.map(JSONValue.init(foundation:)))
-        case let members as [String: Any]:
-            self = .object(members.mapValues(JSONValue.init(foundation:)))
-        default:
-            self = .null
-        }
-    }
-}
-
-private extension NSNumber {
-    var objCTypeCode: UnicodeScalar {
-        UnicodeScalar(UInt8(objCType.pointee))
-    }
-
-    /// Whether `JSONSerialization` read the number as `true` or `false`. Foundation on
-    /// Darwin gives booleans their own CF type; elsewhere they are numbers of type `char`.
-    var isBoolean: Bool {
-#if canImport(Darwin)
-        CFGetTypeID(self) == CFBooleanGetTypeID()
-#else
-        objCTypeCode == "c"
-#endif
     }
 }

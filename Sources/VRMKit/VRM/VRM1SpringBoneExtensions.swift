@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 // The extensions `VRMC_springBone` colliders and joints carry. Both live in the

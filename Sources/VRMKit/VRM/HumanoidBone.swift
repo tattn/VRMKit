@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// A bone of the VRM humanoid rig, named as VRM 1.0 names it.
 ///

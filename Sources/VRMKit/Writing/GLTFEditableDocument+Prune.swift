@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 extension GLTFEditableDocument {
     /// Takes out everything the document has stopped drawing, and says how many

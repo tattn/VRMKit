@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 extension GLTFEditableDocument {
     /// The `VRMC_vrm` and `VRMC_springBone` version an edit writes. Reading also

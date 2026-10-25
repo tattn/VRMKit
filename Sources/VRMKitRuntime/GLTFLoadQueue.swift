@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Runs one loader's loads one at a time: they share the resources they decode, so a
 /// second call waits rather than discarding the first one's work.

@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// The parent of every node of a glTF document, validated as it is built: a child
 /// index in range, no node claimed by two parents, and no loop. Loading, retargeting

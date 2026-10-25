@@ -1,7 +1,8 @@
 #if !canImport(OSLog)
-import Foundation
 #if canImport(Android)
 import Android
+#else
+import Foundation
 #endif
 
 /// `os.Logger`'s shape where there is no OSLog, so that a call site reads the same on

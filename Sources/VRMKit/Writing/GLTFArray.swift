@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// The top-level arrays of a glTF document, which its indices point into. Naming
 /// them as a type makes a rebasing rule wrong at compile time, not at load time.

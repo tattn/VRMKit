@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 /// One `VRMC_springBone` spring, as an edit adds it to a VRM 1.0 model.

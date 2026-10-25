@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import VRMKit
 
 /// One glTF material with what reading it decides: how it shades, how it cuts out or

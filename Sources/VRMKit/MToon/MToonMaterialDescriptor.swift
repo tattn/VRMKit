@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 /// Canonical `VRMC_materials_mtoon` 1.0 material model, which every MToon value in this

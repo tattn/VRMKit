@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// A parsed glTF asset together with the context its binary resources resolve
 /// against: the GLB BIN chunk, external files and data URIs. They stay resolvable
@@ -62,6 +66,7 @@ public final class GLTFDocument: Sendable {
         try self.init(data: try Data(contentsOf: url), rootDirectory: url.deletingLastPathComponent())
     }
 
+#if !canImport(FoundationEssentials)
     /// Loads a bundled glTF resource.
     public convenience init(named name: String, in bundle: Bundle = .main) throws {
         guard let url = bundle.url(forResource: name, withExtension: nil) else {
@@ -69,6 +74,7 @@ public final class GLTFDocument: Sendable {
         }
         try self.init(withURL: url)
     }
+#endif
 }
 
 package extension GLTFDocument {

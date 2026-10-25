@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Writing the resources a picture is made of. A mesh's base color and a VRM's
 /// thumbnail are the same three entries, so they are written the same way.

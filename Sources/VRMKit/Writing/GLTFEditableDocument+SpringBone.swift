@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 extension GLTFEditableDocument {
     /// Adds a VRM 0.x bone group, so everything below its root bones swings, and returns

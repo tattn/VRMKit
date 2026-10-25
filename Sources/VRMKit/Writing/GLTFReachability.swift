@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Which of a glTF document's entries are still there for a reason, which tells
 /// ``GLTFEditableDocument/prune()`` what it may throw away.

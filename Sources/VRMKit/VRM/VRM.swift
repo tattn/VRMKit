@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 public enum VRM: Sendable {
@@ -17,10 +21,12 @@ public enum VRM: Sendable {
         try self.init(document: try GLTFDocument(withURL: url))
     }
 
+#if !canImport(FoundationEssentials)
     /// Loads a bundled `.vrm` resource.
     public init(named name: String, in bundle: Bundle = .main) throws {
         try self.init(document: try GLTFDocument(named: name, in: bundle))
     }
+#endif
 
     /// Reads whichever version an already-loaded document holds. The document
     /// is handed on rather than parsed again.

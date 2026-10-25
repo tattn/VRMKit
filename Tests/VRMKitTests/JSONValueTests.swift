@@ -32,6 +32,53 @@ struct JSONValueTests {
         #expect(text == #"{"byteOffset":256,"scale":0.5}"#)
     }
 
+    /// A fraction or an exponent makes a number a double however whole its value, and an
+    /// integer too large for `Int` still reads, as the double nearest to it.
+    @Test
+    func testParsingKeepsHowEachNumberIsSpelled() throws {
+        let value = try JSONValue(parsing: Data(#"[1, 1.0, 1e2, -0, -3, 0.25E-1, 18446744073709551616]"#.utf8))
+
+        let numbers = try #require(value.arrayValue)
+        #expect(numbers.count == 7)
+        guard case .int(1) = numbers[0] else { Issue.record("1 is \(numbers[0])"); return }
+        guard case .double(1.0) = numbers[1] else { Issue.record("1.0 is \(numbers[1])"); return }
+        guard case .double(100) = numbers[2] else { Issue.record("1e2 is \(numbers[2])"); return }
+        guard case .int(0) = numbers[3] else { Issue.record("-0 is \(numbers[3])"); return }
+        guard case .int(-3) = numbers[4] else { Issue.record("-3 is \(numbers[4])"); return }
+        #expect(numbers[5] == .double(0.025))
+        #expect(numbers[6] == .double(18446744073709551616))
+    }
+
+    /// Escapes, including a character outside the basic plane written as a surrogate pair,
+    /// and text that is not ASCII read as the characters they stand for.
+    @Test
+    func testParsingReadsEscapesAndUnicode() throws {
+        let value = try JSONValue(parsing: Data(#"{"s": "a\"b\\c\/d\b\f\n\r\t\u00e9\ud83d\ude00", "名": "顔"}"#.utf8))
+
+        let object = try #require(value.objectValue)
+        #expect(object["s"] == .string("a\"b\\c/d\u{8}\u{C}\n\r\té😀"))
+        #expect(object["名"] == .string("顔"))
+    }
+
+    /// Any value can stand at the top, around whitespace and after a byte order mark.
+    @Test
+    func testParsingAcceptsAnyValueAtTheTop() throws {
+        #expect(try JSONValue(parsing: Data(" 42 ".utf8)) == .int(42))
+        #expect(try JSONValue(parsing: Data(#""x""#.utf8)) == .string("x"))
+        #expect(try JSONValue(parsing: Data("null".utf8)) == .null)
+        #expect(try JSONValue(parsing: Data([0xEF, 0xBB, 0xBF] + Array("[true]".utf8))) == .array([.bool(true)]))
+    }
+
+    /// Text that is not JSON fails to load rather than reading as something else.
+    @Test(arguments: [
+        "", "[1,]", "{\"a\" 1}", "{\"a\": 1,}", "[01]", "[1.]", "[.5]", "[-]", "[1e]", "\"open", "tru",
+        "[1] 2", "\"\u{1}\"", #""\ud83d""#, #""\ude00""#, #""\x""#, "{1: 2}",
+        String(repeating: "[", count: 1_000) + String(repeating: "]", count: 1_000),
+    ])
+    func testParsingRejectsWhatIsNotJSON(_ text: String) {
+        #expect(throws: VRMError.self) { try JSONValue(parsing: Data(text.utf8)) }
+    }
+
     /// JSON has one number type, so the two spellings this package keeps apart
     /// are still the same number, and a dictionary has to agree.
     @Test

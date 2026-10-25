@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Decodes `Decodable` values straight off a ``JSONValue`` tree.
 ///

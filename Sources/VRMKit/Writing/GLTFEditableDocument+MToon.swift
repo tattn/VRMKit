@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// How ``GLTFEditableDocument/append(_:under:name:transform:materials:)`` and
 /// ``GLTFEditableDocument/addMesh(_:under:name:transform:materials:)`` write the

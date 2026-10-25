@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 extension GLTF.Mesh.Primitive {
     /// The name a primitive stores one of its vertex attributes under.

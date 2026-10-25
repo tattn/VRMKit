@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 #if canImport(OSLog)
 import OSLog
 #endif
@@ -81,10 +85,12 @@ public struct VRMAnimation: Sendable {
         try self.init(document: GLTFDocument(withURL: url))
     }
 
+#if !canImport(FoundationEssentials)
     /// Loads a bundled `.vrma` resource.
     public init(named name: String) throws {
         try self.init(document: GLTFDocument(named: name))
     }
+#endif
 }
 
 public extension VRMAnimation {

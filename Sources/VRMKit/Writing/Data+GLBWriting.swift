@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 package extension Data {
     /// The bytes missing before the boundary every chunk and view starts on.

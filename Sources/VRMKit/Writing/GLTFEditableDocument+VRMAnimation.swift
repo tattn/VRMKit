@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 /// The humanoid skeleton ``GLTFEditableDocument/addRestSkeleton(of:)`` copied into a

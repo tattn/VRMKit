@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 public extension VRM {
     /// The glTF node each humanoid bone is mapped to, whichever version the

@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// One JSON object of a glTF document, held as the fields it carries so that
 /// the ones VRMKit does not model survive a load / edit / save cycle.

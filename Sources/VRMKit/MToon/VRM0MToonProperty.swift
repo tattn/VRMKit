@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import SIMDCompat
 
 /// The VRM 0.x MToon material property and ``MToonMaterialDescriptor``, mapped

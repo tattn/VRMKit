@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 import VRMKit
 
 /// What reading a VRM adds to reading a generic glTF: the VRM extensions it implements,

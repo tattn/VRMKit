@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Encodes `Encodable` values straight into a ``JSONValue`` tree.
 ///

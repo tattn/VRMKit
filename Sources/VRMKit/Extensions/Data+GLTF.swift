@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 package extension Data {
     init(buffer: GLTF.Buffer, relativeTo rootDirectory: URL?, binaryBuffer: Data?) throws {
@@ -135,7 +139,7 @@ package extension Data {
                 for pos in 0..<count {
                     let srcPos = stride * pos + offset
                     let dstPos = size * pos
-                    memcpy(dst.advanced(by: dstPos), src.advanced(by: srcPos), size)
+                    dst.advanced(by: dstPos).update(from: src.advanced(by: srcPos), count: size)
                 }
             }
         }

@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// How the width of MToon's inverted-hull outline is measured, as
 /// `VRMC_materials_mtoon` writes it.

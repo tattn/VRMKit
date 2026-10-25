@@ -1,7 +1,11 @@
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 package extension GLTFDocument {
     /// The bytes the image at `index` is stored as, out of a buffer view, a file or a data URI.
