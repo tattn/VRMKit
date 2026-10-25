@@ -40,12 +40,11 @@ struct MeshDeformationTests {
         }
     }
 
-    /// Waits for the deformation submitted so far, from a queue of the caller's own.
+    /// Waits for the deformation submitted so far.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func waitForDeformation() throws {
-        let fence = try GLTFEntity.deformationFence()
-        let commandBuffer = try #require(fence.device.makeCommandQueue()?.makeCommandBuffer())
-        fence.wait(in: commandBuffer)
+        // The deformation queue runs its command buffers in order.
+        let commandBuffer = try #require(try GLTFDeformationContext.shared().commandQueue.makeCommandBuffer())
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
     }

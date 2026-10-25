@@ -168,7 +168,11 @@ package extension MToonMaterialDescriptor {
          emissiveTexture, rimMultiplyTexture, outlineWidthMultiplyTexture, uvAnimationMaskTexture]
             .compactMap { $0 }
     }
+}
 
+public extension MToonMaterialDescriptor {
+    /// Whether the material draws an inverted-hull outline: a width mode other than none and a
+    /// width above zero.
     var hasOutline: Bool {
         switch outlineWidthMode {
         case .none:

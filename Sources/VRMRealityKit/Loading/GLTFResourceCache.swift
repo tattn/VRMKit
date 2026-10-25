@@ -68,10 +68,12 @@ final class GLTFResourceCache {
 
     private var assets: [Int: GLTFAsset] = [:]
 
-    /// The scene at `sceneIndex` read into an asset, from the meshes its build read.
+    /// The scene at `sceneIndex` read into an asset, from the meshes its build read and with
+    /// the cutouts its materials were found to draw opaque.
     func asset(sceneIndex: Int) throws -> GLTFAsset {
         if let asset = assets[sceneIndex] { return asset }
-        let asset = try reader().asset(sceneIndex: sceneIndex, meshes: assetMeshes)
+        let asset = try reader().asset(sceneIndex: sceneIndex, meshes: assetMeshes,
+                                       cutoutsDrawnOpaque: Set(cutoutsDrawnOpaque.filter(\.value).keys))
         assets[sceneIndex] = asset
         return asset
     }

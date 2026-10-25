@@ -12,7 +12,7 @@ struct GLTFMaterialSlotsComponent: Component {
 }
 
 /// The merged-mesh state one model entity currently draws: which of its material
-/// slots are visible, which a caller draws instead of RealityKit, and whether a
+/// slots are visible, which are hidden whatever their visibility says, and whether a
 /// first-person camera looks at it. Hidden slots and first-person cuts are a choice
 /// of parts over the one mesh rather than entities of their own, which is what keeps
 /// one mesh at one entity.
@@ -21,8 +21,8 @@ struct GLTFMergedMeshComponent: Component {
     /// The visibility each slot was built with, which a release restores.
     let initiallyVisibleSlots: [Bool]
     var visibleSlots: [Bool]
-    /// Visible slots RealityKit leaves to a caller that draws them itself.
-    var callerDrawnSlots: Set<Int> = []
+    /// Slots RealityKit leaves undrawn whether visible or not (``GLTFEntity/setMaterialsHidden(_:forMaterials:)``).
+    var hiddenSlots: Set<Int> = []
     var isFirstPerson = false
 
     init(initiallyVisibleSlots: [Bool]) {
@@ -72,15 +72,12 @@ extension ModelEntity {
         mergedMesh?.initiallyVisibleSlots[safe: slot] ?? true
     }
 
-    /// Leaves the given material slots to a caller that draws them itself, or takes them back.
-    /// Whether a slot is visible stays as it is.
-    func setMergedSlotsDrawnByCaller(_ isDrawnByCaller: Bool, slots slotIndices: some Sequence<Int>) {
+    /// Hides the given material slots whatever their visibility says, or shows them as it says.
+    func setMergedSlotsHidden(_ isHidden: Bool, slots slotIndices: some Sequence<Int>) {
         guard var merged = mergedMesh else { return }
-        let callerDrawnSlots = isDrawnByCaller
-            ? merged.callerDrawnSlots.union(slotIndices)
-            : merged.callerDrawnSlots.subtracting(slotIndices)
-        guard callerDrawnSlots != merged.callerDrawnSlots else { return }
-        merged.callerDrawnSlots = callerDrawnSlots
+        let hiddenSlots = isHidden ? merged.hiddenSlots.union(slotIndices) : merged.hiddenSlots.subtracting(slotIndices)
+        guard hiddenSlots != merged.hiddenSlots else { return }
+        merged.hiddenSlots = hiddenSlots
         applyMergedMesh(merged)
     }
 
@@ -103,7 +100,7 @@ extension ModelEntity {
         // A state with nothing to draw hides the entity instead of drawing an empty
         // mesh; the last parts stay for the state that shows it again.
         isEnabled = deformedMesh.setParts(visibleSlots: merged.visibleSlots,
-                                          callerDrawnSlots: merged.callerDrawnSlots,
+                                          hiddenSlots: merged.hiddenSlots,
                                           isFirstPerson: merged.isFirstPerson)
     }
 }

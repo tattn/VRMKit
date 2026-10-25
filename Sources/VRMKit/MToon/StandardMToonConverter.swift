@@ -5,8 +5,8 @@ import SIMDCompat
 ///
 /// One conversion serves both users of it: the renderer toon-shading a model
 /// that carries no MToon data, and the writer saving one with MToon materials.
-package enum StandardMToonConverter {
-    package static func convert(material: GLTF.Material,
+public enum StandardMToonConverter {
+    public static func convert(material: GLTF.Material,
                                 vrm0Property: VRM0.MaterialProperty? = nil,
                                 style: MToonConversionStyle) -> MToonMaterialDescriptor {
         typealias SpecDefault = MToonMaterialDescriptor.SpecDefault

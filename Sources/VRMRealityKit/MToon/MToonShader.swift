@@ -57,11 +57,6 @@ public final class MToonShader: GLTFMaterialShader {
     /// lighting change rewrites, so ask for the rows the functions read.
     public let userParameterCount: Int
 
-    /// Which revision of the parameter rows' layout (``MToonAnimatableMaterialState/parameterRows``,
-    /// `Shaders/MToonLayout.h`) this build writes. It moves whenever a row moves, so a caller
-    /// reading the rows with a header of its own can tell when its copy no longer matches.
-    nonisolated public static let parameterLayoutVersion = 1
-
     public init(source: Source = .authoredOnly,
                 outlinePass: OutlinePass = .automatic,
                 functions: MToonShaderFunctions = MToonShaderFunctions(),
@@ -441,12 +436,6 @@ public final class MToonAnimatableMaterialState: VRMAnimatableMaterialState {
 
     /// The direction toward the light, normalized, as ``GLTFEntity/setMToonLighting(direction:color:ambient:)`` set it.
     public var lightDirection: SIMD3<Float> { parameters.lightDirection }
-
-    /// Every parameter row the MToon functions read, for a caller drawing the material with Metal
-    /// itself (``GLTFEntity/setDrawnByCaller(_:forMaterials:)``): the rows, the sampler rows and
-    /// then the user rows, as `Shaders/MToonLayout.h` lays them out in
-    /// ``MToonShader/parameterLayoutVersion``.
-    public var parameterRows: [SIMD4<Float>] { parameters.packedRows }
 
     /// Read in Metal as `mtoonUserParameter(textures, index)`.
     public func userParameter(at index: Int) -> SIMD4<Float> {

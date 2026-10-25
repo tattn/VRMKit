@@ -20,6 +20,11 @@ public struct GLTFMaterialData: Sendable {
     /// As authored, VRM 0.x shader metadata taking priority over the glTF alpha mode as
     /// UniVRM reads it.
     public let alphaMode: GLTF.Material.AlphaMode
+    /// How the material draws: ``alphaMode``, except that a MASK material whose base color
+    /// alpha reaches the cutoff at every texel its triangles sample draws OPAQUE, since a draw
+    /// that may discard forgoes the GPU's rejection of hidden fragments. Telling needs the
+    /// decoded image, so a read that decodes none keeps ``alphaMode``.
+    public let resolvedAlphaMode: GLTF.Material.AlphaMode
     /// The queue a blended material draws in: the one VRM 0.x recorded, or the mode's base
     /// queue moved by MToon's offset. Nil unless blended.
     public let renderQueue: Int?
@@ -55,7 +60,9 @@ public struct GLTFMaterialData: Sendable {
         }
     }
 
-    package init(index: Int, material: GLTF.Material, materialProperty: VRM0.MaterialProperty?) {
+    /// `drawsCutoutOpaque` says the MASK material discards nothing (``resolvedAlphaMode``).
+    package init(index: Int, material: GLTF.Material, materialProperty: VRM0.MaterialProperty?,
+                 drawsCutoutOpaque: Bool = false) {
         self.index = index
         self.material = material
         let resolution = MToonMaterialDescriptor.resolve(material: material, materialProperty: materialProperty)
@@ -70,6 +77,7 @@ public struct GLTFMaterialData: Sendable {
             shading = .physicallyBased
         }
         alphaMode = GLTF.Material.AlphaMode(vrm0: materialProperty, fallback: material.alphaMode)
+        resolvedAlphaMode = alphaMode == .MASK && drawsCutoutOpaque ? .OPAQUE : alphaMode
         renderQueue = Self.renderQueue(alphaMode: alphaMode,
                                        materialProperty: materialProperty,
                                        transparentWithZWrite: resolution.descriptor?.transparentWithZWrite ?? false,

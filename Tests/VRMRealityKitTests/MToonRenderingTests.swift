@@ -69,7 +69,6 @@ struct MToonRenderingTests {
         // A shader asks for user rows; the default asks for none.
         #expect(texture.width == MToonMaterialParameters.baseParameterRowCount + MToonMaterialParameters.samplerRowCount)
         #expect(texture.height == 1)
-        #expect(shader.contains("constant int mtoonParameterLayoutVersion = \(MToonShader.parameterLayoutVersion);"))
 
         // Extracted rather than restated, so any reordering or insertion on
         // either side fails here.

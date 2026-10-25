@@ -112,28 +112,27 @@ final class GLTFDeformedMesh {
 
     // MARK: - Parts
 
-    /// Draws the drawn slots `visibleSlots` says, but those in `callerDrawnSlots`, cut for a
+    /// Draws the drawn slots `visibleSlots` says, but those in `hiddenSlots`, cut for a
     /// first-person camera when asked, and returns whether anything is left to draw. A mesh with
     /// nothing to draw keeps its last parts: the entity hides instead.
-    func setParts(visibleSlots: [Bool], callerDrawnSlots: Set<Int>, isFirstPerson: Bool) -> Bool {
+    func setParts(visibleSlots: [Bool], hiddenSlots: Set<Int>, isFirstPerson: Bool) -> Bool {
         var parts: [LowLevelMesh.Part] = []
-        var showsAnything = false
-        for (materialIndex, slot) in drawnSlots.enumerated() where visibleSlots[safe: materialIndex] ?? true {
+        for (materialIndex, slot) in drawnSlots.enumerated()
+        where visibleSlots[safe: materialIndex] ?? true && !hiddenSlots.contains(materialIndex) {
             let slot = geometry.slots[slot]
             let range = slot.indexRange(isFirstPerson: isFirstPerson)
             guard !range.isEmpty else { continue }
-            showsAnything = true
-            guard !callerDrawnSlots.contains(materialIndex) else { continue }
             parts.append(LowLevelMesh.Part(indexOffset: range.lowerBound * MemoryLayout<UInt32>.stride,
                                            indexCount: range.count,
                                            topology: .triangle,
                                            materialIndex: materialIndex,
                                            bounds: BoundingBox(min: slot.bounds.min, max: slot.bounds.max)))
         }
+        let showsAnything = !parts.isEmpty
         // A mesh shown again after a hidden stretch has missed the poses written meanwhile.
         if !self.showsAnything, showsAnything { needsDeformation = true }
         self.showsAnything = showsAnything
-        guard !parts.isEmpty else { return false }
+        guard showsAnything else { return false }
         lowLevelMesh.parts.replaceAll(parts)
         return true
     }
@@ -273,7 +272,7 @@ final class GLTFDeformedMesh {
             let to = copy.lowLevelMesh.replace(bufferIndex: 0, using: commandBuffer)
             blit.copy(from: from, sourceOffset: 0, to: to, destinationOffset: 0, size: min(from.length, to.length))
             blit.endEncoding()
-            source.context.commit(commandBuffer)
+            commandBuffer.commit()
         }
         return copy
     }

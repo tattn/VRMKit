@@ -3,12 +3,9 @@
 
 #include <metal_stdlib>
 
-// The material layout MToonShader binds, free of RealityKit: where each value sits in the
-// parameter rows, which sampler row each texture slot reads, and what the rows say about
-// the alpha. A function drawing an MToon material outside RealityKit reads the same rows.
-
-// The layout revision, MToonShader.parameterLayoutVersion on the Swift side. It moves with any row.
-constant int mtoonParameterLayoutVersion = 1;
+// The material layout MToonShader binds: where each value sits in the parameter rows, which
+// sampler row each texture slot reads, and what the rows say about the alpha. The functions
+// MToonShaderFunctions names read it through MToonRealityKit.h.
 
 // Parameter rows, mirroring MToonParameterRow on the Swift side.
 constant float mtoonRowBaseColor = 0.0;

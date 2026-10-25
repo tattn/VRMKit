@@ -73,8 +73,10 @@ package struct GLTFAssetReader: Sendable {
     }
 
     /// The scene at `sceneIndex` from meshes decoded before, decoding on the spot any it
-    /// draws that `decoded` lacks.
-    package func asset(sceneIndex: Int, meshes decoded: [MeshKey: BuiltMesh]) throws -> GLTFAsset {
+    /// draws that `decoded` lacks. `cutoutsDrawnOpaque` holds the MASK materials a reader of
+    /// the images found to discard nothing (``GLTFMaterialData/resolvedAlphaMode``).
+    package func asset(sceneIndex: Int, meshes decoded: [MeshKey: BuiltMesh],
+                       cutoutsDrawnOpaque: Set<Int> = []) throws -> GLTFAsset {
         let scene = try gltf.load(\.scenes, at: sceneIndex)
         let roots = scene.nodes ?? []
         try hierarchy.validateSceneRoots(roots, sceneIndex: sceneIndex)
@@ -93,7 +95,7 @@ package struct GLTFAssetReader: Sendable {
             }
             meshIndicesByNode[item.nodeIndex] = indicesByKey[key]
         }
-        let materials = materials()
+        let materials = materials(cutoutsDrawnOpaque: cutoutsDrawnOpaque)
         return GLTFAsset(document: document,
                          vrm: (profile as? VRMAssetProfile)?.vrm,
                          hierarchy: hierarchy,
@@ -108,11 +110,12 @@ package struct GLTFAssetReader: Sendable {
                          warnings: warnings)
     }
 
-    package func materials() -> [GLTFMaterialData] {
+    package func materials(cutoutsDrawnOpaque: Set<Int> = []) -> [GLTFMaterialData] {
         gltf.materials.enumerated().map { index, material in
             GLTFMaterialData(index: index,
                              material: material,
-                             materialProperty: profile.vrm0MaterialProperty(atMaterialIndex: index))
+                             materialProperty: profile.vrm0MaterialProperty(atMaterialIndex: index),
+                             drawsCutoutOpaque: cutoutsDrawnOpaque.contains(index))
         }
     }
 

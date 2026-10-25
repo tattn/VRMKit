@@ -33,19 +33,25 @@ struct CutoutCoverageTests {
 
         // The prepared load decides the same, off the actor.
         let prepared = try VRMEntityLoader(withData: try seedSanWithHair(alphaMode: "MASK"), shaders: [])
-        _ = try await prepared.loadEntity()
+        let entity = try await prepared.loadEntity()
         #expect(prepared.resources.cutoutsDrawnOpaque[0] == true)
         #expect(try #require(try prepared.material(withMaterialIndex: 0) as? UnlitMaterial).opacityThreshold == nil)
+        // The asset the entity's instance moves says so too, for an app drawing it itself.
+        let data = try #require(entity.instance?.asset.materials[0])
+        #expect(data.alphaMode == .MASK)
+        #expect(data.resolvedAlphaMode == .OPAQUE)
     }
 
     @Test
-    func testMaskMaterialCuttingSomethingOutKeepsTheCutout() throws {
+    func testMaskMaterialCuttingSomethingOutKeepsTheCutout() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let loader = try VRMEntityLoader(withData: try seedSanWithHair(alphaMode: "MASK", baseColorAlpha: 0.2),
                                          shaders: [])
         let material = try #require(try loader.material(withMaterialIndex: 0) as? UnlitMaterial)
         #expect(material.opacityThreshold == 0.5)
         #expect(!loader.inspector.drawsCutoutOpaque(materialIndex: 0))
+        let entity = try await loader.loadEntity()
+        #expect(entity.instance?.asset.materials[0].resolvedAlphaMode == .MASK)
     }
 
     @Test

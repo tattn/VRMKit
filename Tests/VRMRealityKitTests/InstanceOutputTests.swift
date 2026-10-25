@@ -123,32 +123,6 @@ struct InstanceOutputTests {
         #expect(positions(of: mesh) != rest)
     }
 
-    /// The geometry a material draws names the node and slot of the instance's asset it draws,
-    /// on a snapshot too.
-    @Test
-    func testTheMaterialGeometryNamesTheAssetSlot() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let asset = try #require(entity.instance?.asset)
-        let copy = entity.snapshot()
-        var compared = 0
-        for material in entity.gltf.materials.indices {
-            let geometries = entity.geometry(ofMaterial: material)
-            for geometry in geometries {
-                let mesh = try #require(asset.mesh(drawnByNode: geometry.nodeIndex))
-                #expect(mesh.materialIndices[geometry.slotIndex] == material)
-                #expect(mesh.geometry.slots[geometry.slotIndex].indexRange == geometry.indexRange)
-                compared += 1
-            }
-            // A snapshot lists the places a material draws in an order of its own.
-            func places(_ geometries: [GLTFMaterialGeometry]) -> [SIMD2<Int>] {
-                geometries.map { SIMD2($0.nodeIndex, $0.slotIndex) }.sorted { ($0.x, $0.y) < ($1.x, $1.y) }
-            }
-            #expect(places(copy.geometry(ofMaterial: material)) == places(geometries))
-        }
-        #expect(compared > 0)
-    }
-
     /// A plain glTF entity holds an instance too, which its animations play on.
     @Test
     func testAGLTFEntityAnimatesThroughItsInstance() async throws {
@@ -188,9 +162,8 @@ struct InstanceOutputTests {
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func waitForDeformation() throws {
-        let fence = try GLTFEntity.deformationFence()
-        let commandBuffer = try #require(fence.device.makeCommandQueue()?.makeCommandBuffer())
-        fence.wait(in: commandBuffer)
+        // The deformation queue runs its command buffers in order.
+        let commandBuffer = try #require(try GLTFDeformationContext.shared().commandQueue.makeCommandBuffer())
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
     }
