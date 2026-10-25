@@ -6,6 +6,8 @@ let package = Package(
     platforms: [.iOS(.v15), .macOS(.v12), .watchOS(.v8), .visionOS(.v2)],
     products: [
         .library(name: "VRMKit", targets: ["VRMKit"]),
+        // The asset, the instance and its frame outputs, for an app drawing a model with its own renderer.
+        .library(name: "VRMKitRuntime", targets: ["VRMKitRuntime"]),
         .library(name: "VRMRealityKit", targets: ["VRMRealityKit"])
     ],
     dependencies: [
