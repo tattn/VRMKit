@@ -15,9 +15,8 @@ struct VRMInstanceAgreementTests {
     @Test(arguments: VRMSampleAsset.allCases)
     func testTheInstanceSkinsAsTheEntityDoes(asset: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrm = try VRM(data: asset.data)
-        let entity = try await VRMEntityLoader(vrm: vrm, shaders: []).loadEntity()
-        let instance = try VRMInstance(asset: try await GLTFAsset.load(vrm: vrm))
+        let entity = try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity()
+        let instance = try VRMInstance(asset: try #require(entity.instance?.asset))
 
         // The same pose on both, away from rest.
         let entityPose = try #require(entity.pose)

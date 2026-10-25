@@ -17,7 +17,7 @@ struct MeshDeformationTests {
     @Test
     func testEveryEntityDrawingAMeshDrawsItPosed() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let siblings = try #require(Dictionary(grouping: entity.deformedMeshes) { ObjectIdentifier($0.source) }
             .values
             .first { $0.count > 1 && $0[0].source.skin != nil })

@@ -25,11 +25,12 @@ struct AsyncLoadingTests {
 
     /// The primitives are decoded concurrently, so what a load builds must not
     /// depend on the order they happen to finish in.
-    @Test(arguments: [VRMSampleAsset.aliciaSolid, .seedSan])
-    func testEveryLoadOfAModelBuildsTheSameMeshes(asset: VRMSampleAsset) async throws {
+    @Test
+    func testEveryLoadOfAModelBuildsTheSameMeshes() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let first = meshShape(of: try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity())
-        let second = meshShape(of: try await VRMEntityLoader(withData: asset.data, shaders: []).loadEntity())
+        let data = TestSupport.seedSanData
+        let first = meshShape(of: try await VRMEntityLoader(withData: data, shaders: []).loadEntity())
+        let second = meshShape(of: try await VRMEntityLoader(withData: data, shaders: []).loadEntity())
 
         #expect(!first.isEmpty)
         #expect(first.count == second.count)

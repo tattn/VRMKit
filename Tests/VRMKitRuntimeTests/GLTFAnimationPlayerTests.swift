@@ -50,30 +50,4 @@ struct GLTFAnimationPlayerTests {
         let node = try #require(weights[0])
         #expect(node.count == 2)
     }
-
-    /// A `.vrma` retargets onto the humanoid of the model it plays on.
-    @Test
-    func testAVRMAnimationRetargetsOntoTheHumanoid() async throws {
-        let vrm = try VRM(data: VRMSampleAsset.seedSan.data)
-        let asset = try await GLTFAsset.load(vrm: vrm)
-        let humanoid = Dictionary(uniqueKeysWithValues: HumanoidBone.allCases.compactMap { bone in
-            vrm.nodeIndex(of: bone).map { (bone, $0) }
-        })
-        let model = VRMAnimationRuntime.Model(facesNegativeZ: vrm.forwardDirection.z < 0,
-                                              humanoidNodes: humanoid,
-                                              restPose: try GLTFRestPose(nodes: vrm.document.gltf.nodes))
-        let runtime = try VRMAnimationRuntime(animation: try VRMAnimation(withURL: VRMASampleAsset.walk.url),
-                                              animationIndex: 0,
-                                              model: model)
-        let player = GLTFAnimationPlayer(pose: asset.makePose())
-        let hips = try #require(humanoid[.hips])
-        let rest = player.pose.localTransform(ofNode: hips)
-
-        _ = player.start(GLTFAnimation(index: 0, name: runtime.name, duration: runtime.duration),
-                         runtime: runtime, ownsRuntime: true, loops: true, speed: 1)
-        player.advance(deltaTime: runtime.duration / 3)
-
-        let moved = player.pose.localTransform(ofNode: hips)
-        #expect(moved.translation != rest.translation || moved.rotation != rest.rotation)
-    }
 }

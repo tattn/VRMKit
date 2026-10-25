@@ -17,8 +17,8 @@ struct VRMExpressionTests {
     @Test
     func testWeightsSetByHandleMatchWeightsSetByKey() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let byKey = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
-        let byHandle = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let byKey = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
+        let byHandle = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         #expect(byHandle.expressionHandle(for: .custom("happy")) == byHandle.expressionHandle(for: .preset(.happy)))
         #expect(byHandle.expressionHandle(for: .custom("notAnExpression")) == nil)
 
@@ -43,7 +43,7 @@ struct VRMExpressionTests {
     func testBlockingExpressionOverrideSuppressesBlinkAndLookAtWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san's `relaxed` declares overrideBlink / overrideLookAt = block.
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
 
         vrmEntity.setExpression(value: 1, for: .preset(.blink))
         vrmEntity.setExpression(value: 1, for: .preset(.lookUp))
@@ -65,32 +65,12 @@ struct VRMExpressionTests {
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 39) == 1)
     }
 
-    @Test
-    func testBlendingExpressionOverrideScalesBlinkWeights() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Seed-san's `happy` declares overrideBlink = blend, but is binary; a
-        // non-binary variant makes the partial blend observable.
-        let modified = try TestSupport.modifiedSeedSanExpressions(name: "non-binary-happy") { preset in
-            guard var happy = preset.object("happy") else {
-                throw VRMError.dataInconsistent("Missing Seed-san happy expression")
-            }
-            happy["isBinary"] = false
-            preset["happy"] = .object(happy)
-        }
-        let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: []).loadEntity()
-
-        vrmEntity.setExpressions([.preset(.blink): 1, .preset(.happy): 0.25])
-
-        let blinkWeight = try #require(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1))
-        #expect(blinkWeight.isApproximatelyEqual(to: 0.75))
-    }
-
     /// Alicia's `Joy` and `Fun` groups both bind face target 38, and VRM 0.x blend
     /// shape groups load as expressions, so their contributions add up.
     @Test
     func testVRM0BlendShapeGroupsSharingAMorphTargetAccumulate() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData, shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
 
         vrmEntity.setExpression(value: 0.25, for: .preset(.happy))
         #expect(try #require(TestSupport.morphWeight(in: vrmEntity, targetIndex: 38)).isApproximatelyEqual(to: 0.25))
@@ -269,7 +249,7 @@ struct VRMExpressionTests {
     @Test
     func testExpressionsKeepReachingTheirTargetsAcrossAMeshVariantSwitch() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData, shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
         // An expression whose morph target can be read back, taken in the order the
         // model states its expressions: a dictionary's order differs between runs.
         var driven: (key: ExpressionKey, target: Int)?

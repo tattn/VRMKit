@@ -44,6 +44,37 @@ enum TestSupport {
 
     static var seedSanData: Data { VRMSampleAsset.seedSan.data }
 
+    /// A fixture loaded through one loader the whole run shares.
+    enum SharedLoader: Hashable {
+        case seedSan
+        /// Seed-san with the standard materials (no shader chain)
+        case seedSanStandard
+        case aliciaSolidStandard
+        /// ``staticSeedSanData()`` with the standard materials
+        case staticSeedSanStandard
+    }
+
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    @MainActor
+    private static var sharedLoaders: [SharedLoader: VRMEntityLoader] = [:]
+
+    /// The loader of `fixture` every test shares. Loading from it again reuses the meshes, materials and
+    /// textures it built, as an app loading one model twice does, which takes a third of a fresh loader's
+    /// time; each load is still its own entity. A test of what loading itself does makes its own loader.
+    @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+    @MainActor
+    static func sharedLoader(_ fixture: SharedLoader) throws -> VRMEntityLoader {
+        if let loader = sharedLoaders[fixture] { return loader }
+        let loader = switch fixture {
+        case .seedSan: try VRMEntityLoader(withData: seedSanData)
+        case .seedSanStandard: try VRMEntityLoader(withData: seedSanData, shaders: [])
+        case .aliciaSolidStandard: try VRMEntityLoader(withData: aliciaSolidData, shaders: [])
+        case .staticSeedSanStandard: try VRMEntityLoader(withData: staticSeedSanData(), shaders: [])
+        }
+        sharedLoaders[fixture] = loader
+        return loader
+    }
+
     static var aliciaSolidData: Data { VRMSampleAsset.aliciaSolid.data }
 
     /// Rewrites the fixture's glTF JSON in memory. Loaders accept the returned

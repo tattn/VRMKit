@@ -19,7 +19,7 @@ struct InstanceOutputTests {
     @Test
     func testTheOutputHandlerSeesWhatTheEntityDraws() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         var outputs: [GLTFFrameOutput] = []
         entity.setOutputHandler { outputs.append($0) }
         entity.instance?.outputsSkins = true
@@ -46,7 +46,7 @@ struct InstanceOutputTests {
     @Test
     func testTheCurrentOutputHoldsEverything() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let instance = try #require(entity.instance)
         let asset = instance.asset
         entity.setExpressions([.preset(.happy): 1])
@@ -72,7 +72,7 @@ struct InstanceOutputTests {
     @Test
     func testTheSkinOutputAndTheEntitySkinningFollowThePoseApart() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let instance = try #require(entity.instance)
         let mesh = try #require(entity.deformedMeshes.first { $0.source.skin != nil })
         instance.outputsSkins = true
@@ -97,7 +97,7 @@ struct InstanceOutputTests {
     @Test
     func testASuspendedEntityDeformsNothingUntilResumed() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let mesh = try #require(entity.deformedMeshes.first { $0.source.skin != nil })
         try waitForDeformation()
         let rest = positions(of: mesh)

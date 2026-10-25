@@ -284,7 +284,7 @@ struct MToonRenderingTests {
     @Test
     func testSetMToonLightUpdatesParameterRowsWritingEachMaterialOnceThroughOneCommandBuffer() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let writesBefore = mtoonParameterWriteCounts(in: vrmEntity)
 
         vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))

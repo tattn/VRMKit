@@ -44,7 +44,7 @@ struct VRMAnimationPlaybackTests {
     /// each tick through `write`.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func posedRotations(_ write: ToeWrite) async throws -> [SIMD4<Float>] {
-        let entity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         try entity.playAnimation(fixture(), loops: true)
         let toe = try #require(entity.humanoid.node(for: .leftToes))
         let toeIndex = try #require(entity.nodeIndex(of: toe))
@@ -77,7 +77,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testTheFixtureRetargetsOntoAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
         // The fixture's hips rest 1 m up, so the retarget scale is the target's
@@ -134,7 +134,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testHipsTranslationTravelsThroughTheParentRestTransform() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let restHeight = worldPosition(of: hips, in: entity).y
 
@@ -161,7 +161,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testTheFixtureRetargetsOntoAVRM0ModelTurnedAround() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
         let scale = worldPosition(of: hips, in: entity).y
@@ -209,7 +209,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testOneNodeDrivesEveryExpressionNamingIt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
 
         try entity.playAnimation(try VRMAnimation(data: VRMASampleFixture.contestedExpressions()))
         entity.updateAnimations(deltaTime: 0.5)
@@ -228,7 +228,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testAStatedGazeOutranksTheLookExpressionsBesideIt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
 
         // The gaze goes left; the expression track it comes with says right.
         let animation = try VRMAnimation(data: VRMASampleFixture.gazeAndLookExpression(yawDegrees: 45))
@@ -245,7 +245,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testAnAnimationWithoutAGazeLeavesTheTargetAlone() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         entity.lookAtTarget = .angles(yaw: 90, pitch: 0)
 
         try entity.playAnimation(try VRMAnimation(data: VRMASampleFixture.holdingPose(expressionWeight: 0.25)))
@@ -262,7 +262,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testTheThreeVRMSamplePlaysOnAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         let arm = try #require(entity.humanoid.node(for: .rightUpperArm))
         let rest = worldRotation(of: arm, in: entity)
 
@@ -292,7 +292,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testTheThreeVRMSamplePlaysOnAVRM0Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.aliciaSolidData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
         let arm = try #require(entity.humanoid.node(for: .rightUpperArm))
         let rest = worldRotation(of: arm, in: entity)
 
@@ -352,7 +352,7 @@ struct VRMAnimationPlaybackTests {
         weak var loaded: VRMEntity?
         var controller: GLTFAnimationPlaybackController?
         do {
-            let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+            let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
             loaded = entity
             controller = try entity.playAnimation(fixture())
         }
@@ -366,7 +366,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testTheLastStartedAnimationKeepsOwningASharedExpression() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
 
         // The standard fixture ramps `aa` 0 → 1 over its second...
         try entity.playAnimation(fixture(), loops: true)
@@ -391,7 +391,7 @@ struct VRMAnimationPlaybackTests {
     @Test
     func testAPausedAnimationKeepsHoldingItsTargets() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         let hips = try #require(entity.humanoid.node(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
 

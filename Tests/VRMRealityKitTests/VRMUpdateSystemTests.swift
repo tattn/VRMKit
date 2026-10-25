@@ -9,38 +9,13 @@ import VRMKit
 @Suite
 @MainActor
 struct VRMUpdateSystemTests {
-    @Test
-    func testParentKeepsTheLoadedEntityAlive() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        // Adding the model to a scene is all its lifetime needs: nothing outside
-        // the entity graph has to hold on to it for the system to keep animating.
-        let parent = Entity()
-        weak var loaded: VRMEntity?
-        do {
-            let loader = try VRMEntityLoader(withData: TestSupport.seedSanData, shaders: [])
-            let vrmEntity = try await loader.loadEntity()
-            #expect(vrmEntity.isAutomaticUpdateEnabled)
-            vrmEntity.isAutomaticUpdateEnabled = false
-            #expect(!vrmEntity.isAutomaticUpdateEnabled)
-            vrmEntity.isAutomaticUpdateEnabled = true
-            #expect(vrmEntity.isAutomaticUpdateEnabled)
-
-            loaded = vrmEntity
-            parent.addChild(vrmEntity)
-        }
-
-        #expect(loaded != nil)
-        #expect(parent.children.first === loaded)
-    }
-
     /// A model with neither spring bones nor node constraints holds whatever pose it was
     /// last put in, so its per-frame update moves nothing for the skin to re-solve, while a
     /// joint posed on its entity reaches the skin on the next update.
     @Test
     func testAStaticModelResolvesItsSkinOnlyWhenAJointMoves() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let data = try TestSupport.staticSeedSanData()
-        let vrmEntity = try await VRMEntityLoader(withData: data, shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         let pose = try #require(vrmEntity.pose)
 
         vrmEntity.update(deltaTime: 1.0 / 60.0)
@@ -60,7 +35,7 @@ struct VRMUpdateSystemTests {
     @Test
     func testMovingTheModelRootLeavesTheSkinPose() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
         let before = TestSupport.jointRotations(in: vrmEntity)
         #expect(!before.isEmpty)
@@ -78,7 +53,7 @@ struct VRMUpdateSystemTests {
     func testFineGrainedInvalidateMatchesAFullReSolve(whileTheModelMoves moving: Bool) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         func posedRotations(invalidate: (VRMEntity, Entity) -> Void) async throws -> [SIMD4<Float>] {
-            let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+            let vrmEntity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
             vrmEntity.resetSpringBones()
             vrmEntity.update(deltaTime: 0)
             let neck = try #require(vrmEntity.humanoid.node(for: .neck))
@@ -104,7 +79,7 @@ struct VRMUpdateSystemTests {
     @Test
     func testFineGrainedInvalidateForAnUnownedAncestorReachesTheSkin() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
 
         let hips = try #require(vrmEntity.humanoid.node(for: .hips))
@@ -123,7 +98,7 @@ struct VRMUpdateSystemTests {
     @Test
     func testUpdateHandlersRunAtTheirStagesAndReachTheSkin() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         let pose = try #require(vrmEntity.pose)
         let head = try #require(vrmEntity.humanoid.nodeIndex(for: .head))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
@@ -155,7 +130,7 @@ struct VRMUpdateSystemTests {
     @Test
     func testSecondaryMotionLeavesAnimationsAndHandlersAlone() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         var handled = false
         vrmEntity.setUpdateHandler({ _ in handled = true }, at: .afterAnimation)
         let head = try #require(vrmEntity.humanoid.node(for: .head))

@@ -19,7 +19,7 @@ struct MaterialIndicesTests {
     @Test
     func testMaterialIndicesFollowTheModelEntitiesOfTheirDocumentUnderTheRoot() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let avatar = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let avatar = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let allRendered = Set(TestSupport.materialIndexes(in: avatar))
         #expect(!allRendered.isEmpty)
         #expect(avatar.materialIndices(under: avatar) == allRendered)

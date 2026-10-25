@@ -33,7 +33,7 @@ struct EntityCloneTests {
     @Test
     func testACloneOfAVRMEntityIsInertButKeepsItsVRM() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let clone = vrmEntity.clone(recursive: true)
 
         guard case .v1 = clone.vrm else {
@@ -137,7 +137,7 @@ struct EntityCloneTests {
     @Test
     func testACloneWithOwnMaterialParametersCarriesThePoseItsJointsDescribe() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData, shaders: []).loadEntity()
+        let vrmEntity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
         let solved = TestSupport.jointRotations(in: vrmEntity)
 

@@ -14,7 +14,7 @@ struct NodeEntitySynchronizationTests {
     @Test
     func testNarrowedSynchronizationKeepsOnlyTheNamedNodesAndTheirAncestors() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         let pose = try #require(entity.pose)
         func index(_ bone: HumanoidBone) throws -> Int {
             try #require(entity.humanoid.nodeIndex(for: bone))
@@ -39,7 +39,7 @@ struct NodeEntitySynchronizationTests {
     @Test
     func testWideningSynchronizationCatchesTheEntitiesUp() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         let pose = try #require(entity.pose)
         let toe = try #require(entity.humanoid.nodeIndex(for: .leftToes))
         entity.nodeEntitySynchronization = .nodes([])
@@ -56,7 +56,7 @@ struct NodeEntitySynchronizationTests {
     @Test
     func testACopyCarriesThePoseInItsNodeEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.staticSeedSanData(), shaders: []).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         let pose = try #require(entity.pose)
         let toe = try #require(entity.humanoid.nodeIndex(for: .leftToes))
         entity.nodeEntitySynchronization = .nodes([])

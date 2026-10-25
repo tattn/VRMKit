@@ -46,7 +46,7 @@ struct VRMEntityTests {
     @Test
     func testDeformedMeshesOptOutOfOcclusionCulling() async throws {
         guard #available(iOS 27.0, macOS 27.0, visionOS 27.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
 
         let modelEntities = entity.modelEntitiesInHierarchy
         let deformed = modelEntities.filter { $0.deformedMesh?.source.isDeformable == true }

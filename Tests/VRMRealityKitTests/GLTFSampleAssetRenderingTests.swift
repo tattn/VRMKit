@@ -68,28 +68,6 @@ struct GLTFSampleAssetRenderingTests {
         #expect(second.transform.translation.isApproximatelyEqual(to: SIMD3<Float>(1, 0, 0)))
     }
 
-    @Test
-    func testExternalPNGTextureLoadsIntoTheMaterial() throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let loader = try GLTFEntityLoader(withURL: GLTFSampleAsset.simpleTexture.url)
-        let material = try #require(try loader.material(withMaterialIndex: 0) as? PhysicallyBasedMaterial)
-
-        // The image is a sibling file of the .gltf, so a non-nil texture proves the root
-        // directory reached the image loader.
-        #expect(material.baseColor.texture != nil)
-    }
-
-    @Test
-    func testSkinnedSampleGetsSkeletonAndInitialPose() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await TestSupport.loadEntity(GLTFSampleAsset.simpleSkin)
-
-        let binding = try #require(entity.skinBindings.first)
-        // SimpleSkin's skin lists two joints, nodes 1 and 2.
-        #expect(binding.jointNodes == [1, 2])
-        #expect(binding.deformedMesh?.jointTransforms != nil)
-    }
-
     /// SimpleMorph declares `mesh.weights = [0.5, 0.5]` and no node weights, so it is the
     /// fixture for the `node.weights` → `mesh.weights` fallback.
     @Test

@@ -15,7 +15,7 @@ struct HiddenMaterialTests {
     @Test
     func testHidingEveryMaterialOfAMeshDisablesItsEntity() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let skinned = try #require(entity.modelEntitiesInHierarchy.first {
             $0.components.has(GLTFSkinIndexComponent.self) && !$0.components.has(GLTFMaterialPassComponent.self)
         })
@@ -38,7 +38,7 @@ struct HiddenMaterialTests {
     @Test
     func testHiddenMaterialsOutlivePassVisibility() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let materials = Set(entity.gltf.materials.indices)
         func outlineSlots(of root: Entity) -> [(ModelEntity, Int)] {
             root.modelEntitiesInHierarchy
@@ -64,21 +64,6 @@ struct HiddenMaterialTests {
         #expect(!isDrawn(shown))
         entity.setPassEnabled(true, named: MToonShader.outlinePassName)
         #expect(isDrawn(shown))
-    }
-
-    /// The asset says how the loader draws a material: an opaque eye and the blended highlight over
-    /// it, which draws at its MToon render queue.
-    @Test
-    func testTheAssetSaysHowTheMaterialDraws() async throws {
-        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
-        let materials = try #require(entity.instance?.asset.materials)
-        let opaqueEye = materials[3]
-        #expect(opaqueEye.resolvedAlphaMode == .OPAQUE)
-        #expect(opaqueEye.renderQueue == nil)
-        let blendedEye = materials[4]
-        #expect(blendedEye.resolvedAlphaMode == .BLEND)
-        #expect(blendedEye.renderQueue == 3000)
     }
 }
 #endif

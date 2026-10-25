@@ -62,7 +62,7 @@ struct RenderQueueTests {
     @Test
     func testOneQueueKeepsTheMeshOnOneModelEntity() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let head = Self.headModelEntities(in: entity)
         #expect(head.count == 1)
         #expect(head.first?.components[GLTFMaterialSlotsComponent.self]?.materialIndices == [2, Self.opaqueEye, Self.blendedEye])

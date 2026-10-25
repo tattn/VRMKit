@@ -124,7 +124,7 @@ struct MToonOutlineTests {
     @Test
     func testHiddenOutlinePassesKeepTrackingTheSkeleton() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         entity.setPassEnabled(false, named: MToonShader.outlinePassName)
         let hidden = try #require(outlineEntities(in: entity).first {
             $0.components.has(GLTFSkinIndexComponent.self)
@@ -146,7 +146,7 @@ struct MToonOutlineTests {
     @Test
     func testRuntimeOutlineVisibilityLeavesMainPassesAloneAndResetsToWhatTheShaderBuilt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let outlines = outlineEntities(in: entity)
         #expect(!outlines.isEmpty, "the fixture must have authored outlines for this to measure anything")
 
@@ -195,7 +195,7 @@ struct MToonOutlineTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san materials 0 and 1 both have authored outlines, so hiding one
         // shows as a change and the other holds.
-        let entity = try await VRMEntityLoader(withData: TestSupport.seedSanData).loadEntity()
+        let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         #expect(!outlineSlotVisibility(in: entity, materialIndex: 0).isEmpty)
         #expect(!outlineSlotVisibility(in: entity, materialIndex: 1).isEmpty)
 

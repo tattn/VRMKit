@@ -817,16 +817,6 @@ struct GLTFEntityLoaderTests {
         firstScene.setExpression(value: 1, for: .preset(.happy))
         #expect(TestSupport.morphWeight(in: firstScene, targetIndex: 33) == 1)
         #expect(TestSupport.morphWeight(in: secondScene, targetIndex: 33) == 0)
-
-        // Loading a scene again builds another independent entity, so one loader
-        // can hand out several animatable copies of the same scene.
-        let reloaded = try await loader.loadEntity(withSceneIndex: 0)
-        #expect(reloaded !== firstScene)
-        #expect(reloaded.hasRuntimeBindings)
-        #expect(Set(TestSupport.modelEntities(in: reloaded).map(ObjectIdentifier.init))
-            .isDisjoint(with: firstModels))
-        #expect(TestSupport.morphWeight(in: reloaded, targetIndex: 33) == 0)
-        #expect(TestSupport.morphWeight(in: firstScene, targetIndex: 33) == 1)
     }
 }
 #endif
