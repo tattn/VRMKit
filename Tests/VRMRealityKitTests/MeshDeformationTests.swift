@@ -21,9 +21,12 @@ struct MeshDeformationTests {
         let siblings = try #require(Dictionary(grouping: entity.deformedMeshes) { ObjectIdentifier($0.source) }
             .values
             .first { $0.count > 1 && $0[0].source.skin != nil })
+        // A mesh drawn from a pooled LowLevelMesh can have room past its own vertices.
         func vertices(of mesh: GLTFDeformedMesh) -> [UInt8] {
             var bytes: [UInt8] = []
-            mesh.lowLevelMesh.withUnsafeBytes(bufferIndex: 0) { bytes = Array($0) }
+            mesh.lowLevelMesh.withUnsafeBytes(bufferIndex: 0) {
+                bytes = Array($0.prefix(mesh.geometry.vertexCount * GLTFDeformedVertex.stride))
+            }
             return bytes
         }
         let rest = vertices(of: siblings[0])

@@ -19,8 +19,11 @@ final class GLTFDeformedMesh {
     /// The slots of the source this mesh draws, in the order of the entity's materials.
     /// Every entity drawing one mesh shares its vertex array and draws its own slots.
     let drawnSlots: [Int]
-    let lowLevelMesh: LowLevelMesh
-    let meshResource: MeshResource
+    /// The mesh drawn, borrowed from the context's pool, which lends it to another mesh once
+    /// this one is gone.
+    private let lease: GLTFLowLevelMeshPool.Lease
+    var lowLevelMesh: LowLevelMesh { lease.mesh }
+    var meshResource: MeshResource { lease.resource }
 
     /// One weight per morph target, positionally as glTF defines them.
     private(set) var blendShapeWeights: [Float]
@@ -58,7 +61,8 @@ final class GLTFDeformedMesh {
         self.isFrozen = frozen
         let geometry = source.geometry
         let device = source.context.device
-        lowLevelMesh = try LowLevelMesh(descriptor: source.descriptor)
+        lease = try source.context.meshes.lease(source.descriptor)
+        let lowLevelMesh = lease.mesh
         lowLevelMesh.withUnsafeMutableIndices { raw in
             geometry.indices.withUnsafeBytes { raw.copyMemory(from: $0) }
         }
@@ -89,7 +93,6 @@ final class GLTFDeformedMesh {
             morphWeightsBuffer = nil
             activeTargetsBuffer = nil
         }
-        meshResource = try MeshResource(from: lowLevelMesh)
     }
 
     private static func writeRestPose(of geometry: GLTFMeshGeometry, into mesh: LowLevelMesh) {
@@ -270,7 +273,8 @@ final class GLTFDeformedMesh {
             }
             let from = lowLevelMesh.read(bufferIndex: 0, using: commandBuffer)
             let to = copy.lowLevelMesh.replace(bufferIndex: 0, using: commandBuffer)
-            blit.copy(from: from, sourceOffset: 0, to: to, destinationOffset: 0, size: min(from.length, to.length))
+            blit.copy(from: from, sourceOffset: 0, to: to, destinationOffset: 0,
+                      size: source.geometry.vertexCount * GLTFDeformedVertex.stride)
             blit.endEncoding()
             commandBuffer.commit()
         }

@@ -24,7 +24,7 @@ struct GLTFDeformationUniforms {
 }
 
 /// What every deformed mesh in the process shares: the device, the queue the
-/// deformation is submitted on, and the compiled kernel.
+/// deformation is submitted on, the compiled kernel, and the meshes drawn.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 @MainActor
 final class GLTFDeformationContext {
@@ -33,6 +33,7 @@ final class GLTFDeformationContext {
     let pipeline: MTLComputePipelineState
     /// Bound where a mesh has no data for an input or output, so every buffer slot is filled.
     let emptyBuffer: MTLBuffer
+    let meshes = GLTFLowLevelMeshPool()
 
     /// Metal's API validation rejects a buffer shorter than one element of the argument it
     /// is bound to, even one the kernel never reads, so the empty buffer holds the largest:
