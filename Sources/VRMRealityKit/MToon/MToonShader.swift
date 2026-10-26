@@ -232,14 +232,10 @@ public final class MToonShader: GLTFMaterialShader {
                                       geometry: MToonShaderFunctions.Function? = nil,
                                       context: GLTFMaterialShaderContext) throws -> CustomMaterial {
         let mtoon = state.descriptor
-        let surfaceShader = CustomMaterial.SurfaceShader(named: surface.name, in: surface.library)
-        var material = if let geometry {
-            try CustomMaterial(surfaceShader: surfaceShader,
-                               geometryModifier: .init(named: geometry.name, in: geometry.library),
-                               lightingModel: .unlit)
-        } else {
-            try CustomMaterial(surfaceShader: surfaceShader, lightingModel: .unlit)
-        }
+        var material = try GLTFCustomMaterials.material(
+            surfaceShader: .init(named: surface.name, in: surface.library),
+            geometryModifier: geometry.map { .init(named: $0.name, in: $0.library) },
+            lightingModel: .unlit)
         material.baseColor = .init(tint: .white, texture: try mtoonTexture(mtoon, slot: .base, context: context))
         let masks = try context.builder.mtoonMaskTexture(shadingShift: mtoon.texture(for: .shadingShift)?.index,
                                                          outlineWidth: mtoon.texture(for: .outlineWidth)?.index,
