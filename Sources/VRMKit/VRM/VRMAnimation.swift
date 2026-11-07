@@ -38,9 +38,14 @@ public struct VRMAnimation: Sendable {
     public let lookAt: LookAt?
     public let extensions: JSONValue?
     public let extras: JSONValue?
+    /// The length in seconds of the file's first animation, the one a player takes unless
+    /// told otherwise. A pose keyed only at time zero lasts 0, as does a file with no
+    /// animation or no readable keyframes.
+    public let duration: TimeInterval
 
     public init(document: GLTFDocument) throws {
         self.document = document
+        duration = document.gltf.animations.first.map(PackedAccessorCache(document: document).duration(of:)) ?? 0
 
         let extensions = try document.gltf.rootExtensions()
         let vrma = try extensions["VRMC_vrm_animation"] ??? .keyNotFound("VRMC_vrm_animation")

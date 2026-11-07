@@ -18,20 +18,10 @@ package final class GLTFAnimationDecoder {
         nodes = document.gltf.nodes
     }
 
-    /// A sampler input. The spec fixes it to FLOAT scalars that start at or after zero
-    /// and increase strictly, and ``GLTFKeyframeTrack`` reads that ordering as given.
+    /// ``GLTFKeyframeTrack`` reads the ordering the spec fixes for these times as given.
     package func times(at accessorIndex: Int) throws -> [Float] {
         if let cached = inputTimes[accessorIndex] { return cached }
-        let accessor = try accessors.accessor(at: accessorIndex)
-        guard accessor.componentType == .float else {
-            throw VRMError._dataInconsistent(
-                "an animation sampler input must be a FLOAT accessor, got \(accessor.componentType)"
-            )
-        }
-        let times = try accessor.floatComponents(.SCALAR)
-        guard times.first.map({ $0 >= 0 }) != false else {
-            throw VRMError._dataInconsistent("animation sampler input times must start at or after 0")
-        }
+        let times = try accessors.animationTimes(at: accessorIndex)
         inputTimes[accessorIndex] = times
         return times
     }
@@ -132,17 +122,8 @@ package final class GLTFAnimationDecoder {
         }
     }
 
-    /// The animation's length: the last keyframe time any of its samplers holds. Read
-    /// from the times themselves rather than the accessor's `max`, which a file may
-    /// disagree with.
     package func duration(of animation: GLTF.Animation) -> TimeInterval {
-        var duration: Float = 0
-        for sampler in animation.samplers {
-            if let last = try? times(at: sampler.input).last {
-                duration = Swift.max(duration, last)
-            }
-        }
-        return TimeInterval(duration)
+        accessors.duration(of: animation)
     }
 
     /// Groups a weights output into one `[Float]` per keyframe element, sized by the

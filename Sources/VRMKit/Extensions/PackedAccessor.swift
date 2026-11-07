@@ -197,6 +197,35 @@ package final class PackedAccessorCache: Sendable {
                                         make: (_ component: (Int) -> Float) -> Element) throws -> [Element] {
         try accessor(at: index).floatElements(type, make: make)
     }
+
+    /// A sampler input. The spec fixes it to FLOAT scalars that start at or after zero
+    /// and increase strictly.
+    package func animationTimes(at index: Int) throws -> [Float] {
+        let accessor = try accessor(at: index)
+        guard accessor.componentType == .float else {
+            throw VRMError._dataInconsistent(
+                "an animation sampler input must be a FLOAT accessor, got \(accessor.componentType)"
+            )
+        }
+        let times = try accessor.floatComponents(.SCALAR)
+        guard times.first.map({ $0 >= 0 }) != false else {
+            throw VRMError._dataInconsistent("animation sampler input times must start at or after 0")
+        }
+        return times
+    }
+
+    /// The animation's length: the last keyframe time any of its samplers holds. Read
+    /// from the times themselves rather than the accessor's `max`, which a file may
+    /// leave out or disagree with. A sampler whose times cannot be read counts for nothing.
+    package func duration(of animation: GLTF.Animation) -> TimeInterval {
+        var duration: Float = 0
+        for input in Set(animation.samplers.map(\.input)) {
+            if let last = try? animationTimes(at: input).last {
+                duration = max(duration, last)
+            }
+        }
+        return TimeInterval(duration)
+    }
 }
 
 /// The component types glTF allows where a value is an unsigned integer.
