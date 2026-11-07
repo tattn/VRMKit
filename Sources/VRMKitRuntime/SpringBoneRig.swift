@@ -546,12 +546,12 @@ package extension SpringBoneRig {
             let jointNodes = try joints.map { try node($0.node) }
             // A chain of one joint is only a tail, so it swings nothing.
             guard jointNodes.count > 1 else { continue }
-            try addVRM1Spring(center: try spring.center.map { try node($0) },
-                              chain: zip(jointNodes, joints).map {
-                                  (node: $0, setting: try SpringBoneJointSetting(vrm1Joint: $1))
-                              },
-                              colliderGroups: try Self.colliderGroups(allColliderGroups,
-                                                                      at: spring.colliderGroups ?? []))
+            addVRM1Spring(center: try spring.center.map { try node($0) },
+                          chain: try zip(jointNodes, joints).map {
+                              (node: $0, setting: try SpringBoneJointSetting(vrm1Joint: $1))
+                          },
+                          colliderGroups: try Self.colliderGroups(allColliderGroups,
+                                                                  at: spring.colliderGroups ?? []))
         }
     }
 
@@ -646,39 +646,62 @@ package extension SpringBoneRig {
     /// A VRM 1.0 spring: each consecutive pair of the chain is one joint that swings, so
     /// `a-b-c-d` is `a-b`, `b-c` and `c-d`, and the last is only a tail.
     ///
-    /// `VRMC_springBone` has each joint be a descendant of the one before it, so a chain
-    /// that is not one descent of the hierarchy is refused.
+    /// `VRMC_springBone` has each joint be a descendant of the one before it, but a model
+    /// can state a joint outside that descent. Refusing it would lose the whole model over
+    /// one spring, so that joint starts a spring of its own.
     func addVRM1Spring(center: Node?,
                        chain: [(node: Node, setting: SpringBoneJointSetting)],
-                       colliderGroups: [SpringBoneRigColliderGroup<Node>]) throws {
+                       colliderGroups: [SpringBoneRigColliderGroup<Node>]) {
+        for descent in Self.descents(of: chain) {
+            addVRM1Descent(descent, center: center, colliderGroups: colliderGroups)
+        }
+    }
+
+    /// `chain` cut before each joint that is not below the first joint of its run.
+    private static func descents(
+        of chain: [(node: Node, setting: SpringBoneJointSetting)]
+    ) -> [[(node: Node, setting: SpringBoneJointSetting)]] {
+        var descents: [[(node: Node, setting: SpringBoneJointSetting)]] = []
+        for joint in chain {
+            if let first = descents.last?.first?.node,
+               sequence(first: joint.node, next: { $0.runtimeParent }).contains(where: { $0 === first }) {
+                descents[descents.count - 1].append(joint)
+            } else {
+                descents.append([joint])
+            }
+        }
+        return descents
+    }
+
+    /// One spring of `chain`, whose joints are all below its first.
+    private func addVRM1Descent(_ chain: [(node: Node, setting: SpringBoneJointSetting)],
+                                center: Node?,
+                                colliderGroups: [SpringBoneRigColliderGroup<Node>]) {
         guard let first = chain.first?.node else { return }
         let centerTransform = center.map { SpringBoneCenter(localToWorld: $0.worldMatrix) }
         var links: [Link] = []
         var indexOfNode: [ObjectIdentifier: Int] = [:]
 
-        /// The nodes from the spring's first joint down to `node`, both ends included, or
-        /// nil for a node that is not below it. Nodes the spec allows between two joints
-        /// are composed through even though they do not swing.
-        func descent(to node: Node) -> [Node]? {
+        /// The nodes from the spring's first joint down to `node`, both ends included.
+        /// Nodes the spec allows between two joints are composed through even though they
+        /// do not swing.
+        func descent(to node: Node) -> [Node] {
             var reversed: [Node] = []
             var step: Node? = node
             while let current = step {
                 reversed.append(current)
-                if current === first { return reversed.reversed() }
+                if current === first { break }
                 step = current.runtimeParent
             }
-            return nil
+            return reversed.reversed()
         }
 
-        func link(_ node: Node, setting: SpringBoneJointSetting, joint: SpringBoneJoint?) throws {
+        func link(_ node: Node, setting: SpringBoneJointSetting, joint: SpringBoneJoint?) {
             if let existing = indexOfNode[ObjectIdentifier(node)] {
                 if let joint { links[existing].joint = joint }
                 return
             }
-            let descent = try descent(to: node)
-                ??? ._dataInconsistent("a spring states a joint that is not below its first one, "
-                                       + "so its joints are not one chain")
-            for step in descent where indexOfNode[ObjectIdentifier(step)] == nil {
+            for step in descent(to: node) where indexOfNode[ObjectIdentifier(step)] == nil {
                 links.append(Link(node: step,
                                   parent: step.runtimeParent.flatMap { indexOfNode[ObjectIdentifier($0)] },
                                   joint: step === node ? joint : nil,
@@ -688,11 +711,11 @@ package extension SpringBoneRig {
         }
 
         for (head, tail) in zip(chain, chain.dropFirst()) {
-            try link(head.node,
-                     setting: head.setting,
-                     joint: Self.joint(node: head.node,
-                                       tail: tail.node.worldPosition,
-                                       center: centerTransform))
+            link(head.node,
+                 setting: head.setting,
+                 joint: Self.joint(node: head.node,
+                                   tail: tail.node.worldPosition,
+                                   center: centerTransform))
         }
         append(Spring(center: center, colliderIndices: colliderIndices(for: colliderGroups), links: links))
     }

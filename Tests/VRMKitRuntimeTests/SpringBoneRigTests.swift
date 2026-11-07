@@ -30,7 +30,7 @@ struct SpringBoneRigTests {
 
     private static func vrm1Rig(_ nodes: [TestRuntimeNode]) throws -> SpringBoneRig<TestRuntimeNode> {
         let rig = SpringBoneRig<TestRuntimeNode>()
-        try rig.addVRM1Spring(center: nil,
+        rig.addVRM1Spring(center: nil,
                           chain: nodes.map { (node: $0, setting: setting) },
                           colliderGroups: [])
         return rig
@@ -125,22 +125,26 @@ struct SpringBoneRigTests {
         #expect(abs(simd_distance(nodes[2].worldPosition, nodes[3].worldPosition) - 1) < 1e-3)
     }
 
-    /// `VRMC_springBone` has each joint of a chain below the one before it. A chain stated
-    /// any other way says nothing about what it swings, so it is refused.
+    /// A joint outside the descent of the joints before it starts a spring of its own, and
+    /// the joint before it ends up only a tail, so the model loads with both runs swinging.
     @Test
-    func testAChainWhoseJointsAreNotOneDescentIsRefused() {
+    func testAJointOutsideTheChainsDescentStartsASpringOfItsOwn() {
         let root = TestRuntimeNode()
         let first = root.addChild(TestRuntimeNode())
-        let sibling = root.addChild(TestRuntimeNode(translation: SIMD3(0, 0, 1)))
+        let belowFirst = first.addChild(TestRuntimeNode(translation: SIMD3(0, 0, 1)))
+        let sibling = root.addChild(TestRuntimeNode(translation: SIMD3(1, 0, 0)))
         let belowSibling = sibling.addChild(TestRuntimeNode(translation: SIMD3(0, 0, 1)))
+        let rig = SpringBoneRig<TestRuntimeNode>()
+        rig.addVRM1Spring(center: nil,
+                          chain: [first, belowFirst, sibling, belowSibling].map { (node: $0, setting: Self.setting) },
+                          colliderGroups: [])
 
-        #expect(throws: VRMError.self) {
-            try SpringBoneRig<TestRuntimeNode>().addVRM1Spring(
-                center: nil,
-                chain: [first, sibling, belowSibling].map { (node: $0, setting: Self.setting) },
-                colliderGroups: []
-            )
-        }
+        for _ in 0..<60 { rig.update(deltaTime: 1.0 / 60.0) }
+
+        #expect(belowFirst.worldPosition.y < -0.2)
+        #expect(belowSibling.worldPosition.y < -0.2)
+        #expect(abs(simd_distance(first.worldPosition, belowFirst.worldPosition) - 1) < 1e-3)
+        #expect(abs(simd_distance(sibling.worldPosition, belowSibling.worldPosition) - 1) < 1e-3)
     }
 
     /// Not out of the collider outright: `VRMC_springBone` puts the tail back on the bone
@@ -189,7 +193,7 @@ struct SpringBoneRigTests {
                                   setting: Self.setting,
                                   colliderGroups: [])
             } else {
-                try rig.addVRM1Spring(center: nil,
+                rig.addVRM1Spring(center: nil,
                                       chain: nodes.map { (node: $0, setting: Self.setting) },
                                       colliderGroups: [])
             }
@@ -248,7 +252,7 @@ struct SpringBoneRigTests {
         func swung(frameRate: Int) throws -> SIMD3<Float> {
             let (root, nodes) = Self.chain(length: 4)
             let rig = SpringBoneRig<TestRuntimeNode>()
-            try rig.addVRM1Spring(center: measuredInTheRoot ? root : nil,
+            rig.addVRM1Spring(center: measuredInTheRoot ? root : nil,
                                   chain: nodes.map { (node: $0, setting: Self.lightlyDamped) },
                                   colliderGroups: [])
             Self.drive(rig, moving: root, frameRate: frameRate)
@@ -267,10 +271,10 @@ struct SpringBoneRigTests {
             let branch = nodes[1].addChild(TestRuntimeNode(translation: SIMD3(1, 0, 0)))
             let branchTail = branch.addChild(TestRuntimeNode(translation: SIMD3(0, 0, 1)))
             let rig = SpringBoneRig<TestRuntimeNode>()
-            try rig.addVRM1Spring(center: nil,
+            rig.addVRM1Spring(center: nil,
                                   chain: nodes.map { (node: $0, setting: Self.lightlyDamped) },
                                   colliderGroups: [])
-            try rig.addVRM1Spring(center: nil,
+            rig.addVRM1Spring(center: nil,
                                   chain: [branch, branchTail].map { (node: $0, setting: Self.lightlyDamped) },
                                   colliderGroups: [])
             Self.drive(rig, moving: root, frameRate: frameRate)
@@ -287,7 +291,7 @@ struct SpringBoneRigTests {
         func swung(center: Bool, partialShare: Float?) throws -> SIMD3<Float> {
             let (root, nodes) = Self.chain(length: 4)
             let rig = SpringBoneRig<TestRuntimeNode>()
-            try rig.addVRM1Spring(center: center ? root : nil,
+            rig.addVRM1Spring(center: center ? root : nil,
                                   chain: nodes.map { (node: $0, setting: Self.lightlyDamped) },
                                   colliderGroups: [])
             if let partialShare {
@@ -314,7 +318,7 @@ struct SpringBoneRigTests {
             func tip(moving: Bool) throws -> SIMD3<Float> {
                 let (root, nodes) = Self.chain(length: 4)
                 let rig = SpringBoneRig<TestRuntimeNode>()
-                try rig.addVRM1Spring(center: nil,
+                rig.addVRM1Spring(center: nil,
                                       chain: nodes.map { (node: $0, setting: Self.setting) },
                                       colliderGroups: [])
                 if let share {
@@ -347,7 +351,7 @@ struct SpringBoneRigTests {
     func testAPartialCenterThatCannotBeOneIsRefused() throws {
         let (root, nodes) = Self.chain(length: 4)
         let rig = SpringBoneRig<TestRuntimeNode>()
-        try rig.addVRM1Spring(center: nil,
+        rig.addVRM1Spring(center: nil,
                               chain: nodes.map { (node: $0, setting: Self.lightlyDamped) },
                               colliderGroups: [])
 
