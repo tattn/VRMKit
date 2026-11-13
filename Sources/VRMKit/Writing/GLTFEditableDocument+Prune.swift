@@ -37,11 +37,51 @@ extension GLTFEditableDocument {
             extensions = GLTFReferences.rewritingRootExtensions(extensions, with: compaction.map)
         }
 
+        Self.undeclareUnusedMeshQuantization(in: &pruned)
+
         // Everything that could fail is behind us, so the document changes in one go.
         let reclaimed = binary.count - compacted.count
         binary = compacted
         json = pruned
         return GLTFPruneResult(reclaimedByteCount: reclaimed, moved: compaction.moved)
+    }
+
+    /// Stops declaring `KHR_mesh_quantization` once no vertex attribute is stored the way only it
+    /// allows: a renderer without the extension can then load what is left, as after the
+    /// quantized morph targets of a mesh have been dropped.
+    private static func undeclareUnusedMeshQuantization(in json: inout JSONObject) {
+        let name = GLTFExtension.meshQuantization.rawValue
+        guard json.carriedExtensions().contains(name) else { return }
+        let accessors = json.objects(.accessors)
+        // Core glTF stores positions, normals, tangents and morph targets as floats, and texture
+        // coordinates as floats or normalized unsigned integers.
+        func needsExtension(_ attribute: String, _ index: Int) -> Bool {
+            guard let accessor = accessors[safe: index], let componentType = accessor.int("componentType") else {
+                return false
+            }
+            let isFloat = componentType == GLTF.Accessor.ComponentType.float.rawValue
+            guard attribute.hasPrefix("TEXCOORD_") else { return !isFloat }
+            let isUnsigned = componentType == GLTF.Accessor.ComponentType.unsignedByte.rawValue
+                || componentType == GLTF.Accessor.ComponentType.unsignedShort.rawValue
+            return !isFloat && !(isUnsigned && accessor["normalized"]?.boolValue == true)
+        }
+        let quantized: Set<String> = ["POSITION", "NORMAL", "TANGENT"]
+        let isUsed = json.objects(.meshes).contains { mesh in
+            mesh.objects("primitives").contains { primitive in
+                let attributes = [primitive.object("attributes") ?? [:]] + primitive.objects("targets")
+                return attributes.contains { attribute in
+                    attribute.contains { key, value in
+                        (quantized.contains(key) || key.hasPrefix("TEXCOORD_"))
+                            && value.indexValue.map { needsExtension(key, $0) } == true
+                    }
+                }
+            }
+        }
+        guard !isUsed else { return }
+        for key in ["extensionsUsed", "extensionsRequired"] {
+            let remaining = json.strings(key).filter { $0 != name }
+            json[key] = remaining.isEmpty ? nil : .strings(remaining)
+        }
     }
 
     /// glTF gives its top-level arrays a minimum of one entry.

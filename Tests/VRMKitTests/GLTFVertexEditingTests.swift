@@ -73,6 +73,35 @@ struct GLTFVertexEditingTests {
         #expect(try saved.positions(ofPrimitive: 0, meshAt: mesh) == Self.triangle.positions)
     }
 
+    /// Pruning stops declaring mesh quantization once the quantized data is gone, and keeps
+    /// declaring it while a vertex attribute still needs it.
+    @Test
+    func testPruningUndeclaresMeshQuantizationNothingUses() throws {
+        var document = GLTFEditableDocument()
+        try document.addMesh(Self.triangle)
+        let quantized = document.appendAccessors([
+            .init(data: Data(count: 24), type: .VEC3, componentType: .short, count: 3, target: nil)
+        ])[0]
+        document.json.updateObject(at: quantized, in: .accessors) { $0["normalized"] = .bool(true) }
+        document.json.updateObject(at: 0, in: .meshes) { mesh in
+            mesh.mapObjects("primitives") { primitive in
+                var primitive = primitive
+                primitive["targets"] = .objects([["POSITION": .int(quantized)]])
+                return primitive
+            }
+        }
+        document.declareExtensions(used: [], required: ["KHR_mesh_quantization"])
+
+        try document.prune()
+        #expect(try document.typed().extensionsRequired == ["KHR_mesh_quantization"])
+
+        try document.removeMorphTargets(meshAt: GLTFMeshIndex(0))
+        try document.prune()
+        let model = try GLTFEditableDocument(data: document.serialize()).typed()
+        #expect(model.extensionsRequired.isEmpty)
+        #expect(model.extensionsUsed.isEmpty)
+    }
+
     /// The triangle with three morph targets: one moving POSITION, one carrying no POSITION at all,
     /// and one through a sparse accessor naming only the vertex it moves.
     private static func morphedTriangle() throws -> Data {
