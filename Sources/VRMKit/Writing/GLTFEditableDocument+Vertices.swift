@@ -77,16 +77,14 @@ extension GLTFEditableDocument {
         guard let accessor = try self.primitive(primitive, meshAt: mesh).index("indices") else {
             return try (0..<UInt32(positions(ofPrimitive: primitive, meshAt: mesh).count)).map { $0 }
         }
-        let model = try typed()
-        guard let layout = model.accessors[safe: accessor], layout.type == .SCALAR, layout.sparse == nil,
-              let view = layout.bufferView else {
+        guard let layout = try element(accessor, of: .accessors, as: GLTF.Accessor.self),
+              layout.type == .SCALAR, layout.sparse == nil, let view = layout.bufferView else {
             throw VRMError._dataInconsistent("accessor \(accessor) does not hold indices")
         }
         return try integers(count: layout.count,
                             componentType: layout.componentType,
                             bufferView: view,
-                            byteOffset: layout.byteOffset,
-                            in: model)
+                            byteOffset: layout.byteOffset)
     }
 
     // MARK: - Morph targets
@@ -148,13 +146,12 @@ extension GLTFEditableDocument {
     /// A sparse accessor reads as the values of its buffer view, or zeros without one,
     /// with the elements it lists replaced.
     private func vectors(ofAccessor index: Int) throws -> [SIMD3<Float>] {
-        let model = try typed()
-        guard let accessor = model.accessors[safe: index], accessor.type == .VEC3 else {
+        guard let accessor = try element(index, of: .accessors, as: GLTF.Accessor.self), accessor.type == .VEC3 else {
             throw VRMError._dataInconsistent("accessor \(index) does not hold three-component vectors")
         }
         let layout = accessor.components()
         func read(_ count: Int, bufferView: Int, byteOffset: Int) throws -> [SIMD3<Float>] {
-            guard let view = model.bufferViews[safe: bufferView] else {
+            guard let view = try element(bufferView, of: .bufferViews, as: GLTF.BufferView.self) else {
                 throw VRMError._dataInconsistent("accessor \(index) names no buffer view \(bufferView)")
             }
             let stride = view.byteStride ?? layout.vectorSize
@@ -181,8 +178,7 @@ extension GLTFEditableDocument {
         let elements = try integers(count: sparse.count,
                                     componentType: sparse.indices.componentType,
                                     bufferView: sparse.indices.bufferView,
-                                    byteOffset: sparse.indices.byteOffset,
-                                    in: model)
+                                    byteOffset: sparse.indices.byteOffset)
         for (element, replacement) in zip(elements, replacements) {
             guard values.indices.contains(Int(element)) else {
                 throw VRMError._dataInconsistent("accessor \(index) replaces an element it does not have")
@@ -196,9 +192,8 @@ extension GLTFEditableDocument {
     private func integers(count: Int,
                           componentType: GLTF.Accessor.ComponentType,
                           bufferView: Int,
-                          byteOffset: Int,
-                          in model: GLTF) throws -> [UInt32] {
-        guard let view = model.bufferViews[safe: bufferView] else {
+                          byteOffset: Int) throws -> [UInt32] {
+        guard let view = try element(bufferView, of: .bufferViews, as: GLTF.BufferView.self) else {
             throw VRMError._dataInconsistent("the document has no buffer view \(bufferView)")
         }
         let size = bytes(of: componentType)
@@ -220,5 +215,12 @@ extension GLTFEditableDocument {
                 }
             }
         }
+    }
+
+    /// One element of a top-level array as the typed model, nil where the array has none.
+    /// Decoded on its own, since ``typed()`` decodes every accessor and buffer view the
+    /// document holds, and a mesh is read one accessor at a time.
+    private func element<T: Decodable>(_ index: Int, of array: GLTFArray, as type: T.Type) throws -> T? {
+        try json[array]?.arrayValue?[safe: index]?.objectValue.map { try JSONValue.object($0).decode(type) }
     }
 }
