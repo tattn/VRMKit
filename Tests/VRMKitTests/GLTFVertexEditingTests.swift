@@ -49,4 +49,59 @@ struct GLTFVertexEditingTests {
         }
         #expect(try document.positions(ofPrimitive: 0, meshAt: mesh)[0] == SIMD3(1, 1, 1))
     }
+
+    /// A model's morph targets read as displacements and names, and applying them by hand
+    /// leaves a plain mesh behind.
+    @Test
+    func testMorphTargetsAreReadAndDropped() throws {
+        let glb = try Self.morphedTriangle()
+        var document = try GLTFEditableDocument(data: glb)
+        let mesh = GLTFMeshIndex(0)
+
+        #expect(try document.morphTargetNames(meshAt: mesh) == ["up", "still", "sparse"])
+        let displacements = try document.morphTargetDisplacements(ofPrimitive: 0, meshAt: mesh)
+        #expect(displacements == [[SIMD3(0, 0, 1), SIMD3(0, 0, 2), SIMD3(0, 0, 3)],
+                                  [.zero, .zero, .zero],
+                                  [.zero, .zero, SIMD3(4, 5, 6)]])
+        #expect(try document.indices(ofPrimitive: 0, meshAt: mesh) == [0, 1, 2])
+
+        try document.removeMorphTargets(meshAt: mesh)
+        let saved = try GLTFEditableDocument(data: document.serialize())
+        #expect(try saved.morphTargetNames(meshAt: mesh).isEmpty)
+        #expect(try saved.morphTargetDisplacements(ofPrimitive: 0, meshAt: mesh).isEmpty)
+        #expect(try saved.typed().meshes[0].primitives[0].targets == nil)
+        #expect(try saved.positions(ofPrimitive: 0, meshAt: mesh) == Self.triangle.positions)
+    }
+
+    /// The triangle with three morph targets: one moving POSITION, one carrying no POSITION at all,
+    /// and one through a sparse accessor naming only the vertex it moves.
+    private static func morphedTriangle() throws -> Data {
+        var document = GLTFEditableDocument()
+        try document.addMesh(triangle)
+        let deltas = document.appendAccessors([
+            .init(data: GLTFEditableDocument.packed([SIMD3<Float>(0, 0, 1), SIMD3(0, 0, 2), SIMD3(0, 0, 3)]),
+                  type: .VEC3, componentType: .float, count: 3, target: nil, bounds: ([0, 0, 1], [0, 0, 3]))
+        ])[0]
+        let sparseParts = document.appendAccessors([
+            .init(data: Data([2, 0]), type: .SCALAR, componentType: .unsignedShort, count: 1, target: nil),
+            .init(data: GLTFEditableDocument.packed([SIMD3<Float>(4, 5, 6)]),
+                  type: .VEC3, componentType: .float, count: 1, target: nil)
+        ])
+        let views = sparseParts.map { document.json.objects(.accessors)[$0].int("bufferView") ?? 0 }
+        let sparse = document.json.appendObject(
+            ["componentType": 5126, "count": 3, "type": "VEC3",
+             "sparse": ["count": 1,
+                        "indices": ["bufferView": .int(views[0]), "componentType": 5123],
+                        "values": ["bufferView": .int(views[1])]]],
+            to: .accessors)
+        document.json.updateObject(at: 0, in: .meshes) { mesh in
+            mesh["extras"] = .object(["targetNames": .array([.string("up"), .string("still"), .string("sparse")])])
+            mesh.mapObjects("primitives") { primitive in
+                var primitive = primitive
+                primitive["targets"] = .objects([["POSITION": .int(deltas)], [:], ["POSITION": .int(sparse)]])
+                return primitive
+            }
+        }
+        return try document.serialize()
+    }
 }

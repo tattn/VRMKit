@@ -71,38 +71,153 @@ extension GLTFEditableDocument {
         }
     }
 
-    private func attributes(ofPrimitive primitive: Int, meshAt mesh: GLTFMeshIndex) throws -> JSONObject {
-        guard let attributes = json.objects(.meshes)[safe: mesh.rawValue]?
-            .objects("primitives")[safe: primitive]?.object("attributes") else {
+    /// The triangles one primitive draws, three indices into its vertices each. A primitive
+    /// with no index accessor draws its vertices in order.
+    public func indices(ofPrimitive primitive: Int, meshAt mesh: GLTFMeshIndex) throws -> [UInt32] {
+        guard let accessor = try self.primitive(primitive, meshAt: mesh).index("indices") else {
+            return try (0..<UInt32(positions(ofPrimitive: primitive, meshAt: mesh).count)).map { $0 }
+        }
+        let model = try typed()
+        guard let layout = model.accessors[safe: accessor], layout.type == .SCALAR, layout.sparse == nil,
+              let view = layout.bufferView else {
+            throw VRMError._dataInconsistent("accessor \(accessor) does not hold indices")
+        }
+        return try integers(count: layout.count,
+                            componentType: layout.componentType,
+                            bufferView: view,
+                            byteOffset: layout.byteOffset,
+                            in: model)
+    }
+
+    // MARK: - Morph targets
+
+    /// The names a mesh's morph targets go by, in target order: its `extras.targetNames`,
+    /// the convention exporters write them in. Empty for a mesh that names none.
+    public func morphTargetNames(meshAt mesh: GLTFMeshIndex) throws -> [String] {
+        guard let object = json.objects(.meshes)[safe: mesh.rawValue] else {
+            throw VRMError._invalidArgument("the document has no mesh \(mesh.rawValue)")
+        }
+        return object.object("extras")?.strings("targetNames") ?? []
+    }
+
+    /// How far each morph target moves the vertices of one primitive at full weight: one
+    /// displacement per vertex per target, zero where a target leaves POSITION alone.
+    public func morphTargetDisplacements(ofPrimitive primitive: Int,
+                                         meshAt mesh: GLTFMeshIndex) throws -> [[SIMD3<Float>]] {
+        let object = try self.primitive(primitive, meshAt: mesh)
+        let count = try positions(ofPrimitive: primitive, meshAt: mesh).count
+        return try object.objects("targets").map { target in
+            try target.index("POSITION").map(vectors(ofAccessor:)) ?? [SIMD3<Float>](repeating: .zero, count: count)
+        }
+    }
+
+    /// Drops the morph targets of a mesh, leaving its vertices where they rest: what is left
+    /// once the weights wanted have been applied through ``setPositions(_:normals:ofPrimitive:meshAt:)``.
+    public mutating func removeMorphTargets(meshAt mesh: GLTFMeshIndex) throws {
+        guard json.objects(.meshes)[safe: mesh.rawValue] != nil else {
+            throw VRMError._invalidArgument("the document has no mesh \(mesh.rawValue)")
+        }
+        json.updateObject(at: mesh.rawValue, in: .meshes) { meshObject in
+            meshObject["weights"] = nil
+            meshObject.mapObjects("primitives") { primitive in
+                var primitive = primitive
+                primitive["targets"] = nil
+                return primitive
+            }
+            guard var extras = meshObject.object("extras") else { return }
+            extras["targetNames"] = nil
+            meshObject["extras"] = extras.isEmpty ? nil : .object(extras)
+        }
+    }
+
+    private func primitive(_ primitive: Int, meshAt mesh: GLTFMeshIndex) throws -> JSONObject {
+        guard let object = json.objects(.meshes)[safe: mesh.rawValue]?.objects("primitives")[safe: primitive] else {
             throw VRMError._invalidArgument("the document has no primitive \(primitive) of mesh \(mesh.rawValue)")
+        }
+        return object
+    }
+
+    private func attributes(ofPrimitive primitive: Int, meshAt mesh: GLTFMeshIndex) throws -> JSONObject {
+        guard let attributes = try self.primitive(primitive, meshAt: mesh).object("attributes") else {
+            throw VRMError._dataInconsistent("primitive \(primitive) of mesh \(mesh.rawValue) has no attributes")
         }
         return attributes
     }
 
     /// The values of a three-component accessor, whatever its component type and stride.
-    /// A sparse accessor is refused: its values are not all in the buffer view it names.
+    /// A sparse accessor reads as the values of its buffer view, or zeros without one,
+    /// with the elements it lists replaced.
     private func vectors(ofAccessor index: Int) throws -> [SIMD3<Float>] {
         let model = try typed()
         guard let accessor = model.accessors[safe: index], accessor.type == .VEC3 else {
             throw VRMError._dataInconsistent("accessor \(index) does not hold three-component vectors")
         }
-        guard accessor.sparse == nil, let viewIndex = accessor.bufferView,
-              let view = model.bufferViews[safe: viewIndex] else {
-            throw VRMError._notSupported("accessor \(index) is sparse or names no buffer view")
-        }
         let layout = accessor.components()
-        let stride = view.byteStride ?? layout.vectorSize
-        let start = view.byteOffset + accessor.byteOffset
-        guard accessor.count == 0 || start + (accessor.count - 1) * stride + layout.vectorSize <= binary.count else {
-            throw VRMError._dataInconsistent("accessor \(index) reads past the end of the buffer")
+        func read(_ count: Int, bufferView: Int, byteOffset: Int) throws -> [SIMD3<Float>] {
+            guard let view = model.bufferViews[safe: bufferView] else {
+                throw VRMError._dataInconsistent("accessor \(index) names no buffer view \(bufferView)")
+            }
+            let stride = view.byteStride ?? layout.vectorSize
+            let start = view.byteOffset + byteOffset
+            guard count == 0 || start + (count - 1) * stride + layout.vectorSize <= binary.count else {
+                throw VRMError._dataInconsistent("accessor \(index) reads past the end of the buffer")
+            }
+            return binary.withUnsafeBytes { buffer in
+                guard let base = buffer.baseAddress else { return [] }
+                return (0..<count).map { element in
+                    let offset = start + element * stride
+                    return SIMD3(accessor.floatComponent(base: base, offset: offset),
+                                 accessor.floatComponent(base: base, offset: offset + layout.bytesPerComponent),
+                                 accessor.floatComponent(base: base, offset: offset + 2 * layout.bytesPerComponent))
+                }
+            }
         }
-        return binary.withUnsafeBytes { buffer in
+
+        var values = try accessor.bufferView.map {
+            try read(accessor.count, bufferView: $0, byteOffset: accessor.byteOffset)
+        } ?? [SIMD3<Float>](repeating: .zero, count: accessor.count)
+        guard let sparse = accessor.sparse else { return values }
+        let replacements = try read(sparse.count, bufferView: sparse.values.bufferView, byteOffset: sparse.values.byteOffset)
+        let elements = try integers(count: sparse.count,
+                                    componentType: sparse.indices.componentType,
+                                    bufferView: sparse.indices.bufferView,
+                                    byteOffset: sparse.indices.byteOffset,
+                                    in: model)
+        for (element, replacement) in zip(elements, replacements) {
+            guard values.indices.contains(Int(element)) else {
+                throw VRMError._dataInconsistent("accessor \(index) replaces an element it does not have")
+            }
+            values[Int(element)] = replacement
+        }
+        return values
+    }
+
+    /// Unsigned integers packed in a buffer view: indices, or the elements a sparse accessor replaces.
+    private func integers(count: Int,
+                          componentType: GLTF.Accessor.ComponentType,
+                          bufferView: Int,
+                          byteOffset: Int,
+                          in model: GLTF) throws -> [UInt32] {
+        guard let view = model.bufferViews[safe: bufferView] else {
+            throw VRMError._dataInconsistent("the document has no buffer view \(bufferView)")
+        }
+        let size = bytes(of: componentType)
+        let stride = view.byteStride ?? size
+        let start = view.byteOffset + byteOffset
+        guard count == 0 || start + (count - 1) * stride + size <= binary.count else {
+            throw VRMError._dataInconsistent("buffer view \(bufferView) ends before its integers do")
+        }
+        return try binary.withUnsafeBytes { buffer in
             guard let base = buffer.baseAddress else { return [] }
-            return (0..<accessor.count).map { element in
+            return try (0..<count).map { element in
                 let offset = start + element * stride
-                return SIMD3(accessor.floatComponent(base: base, offset: offset),
-                             accessor.floatComponent(base: base, offset: offset + layout.bytesPerComponent),
-                             accessor.floatComponent(base: base, offset: offset + 2 * layout.bytesPerComponent))
+                switch componentType {
+                case .unsignedByte: return UInt32(base.load(fromByteOffset: offset, as: UInt8.self))
+                case .unsignedShort: return UInt32(base.loadUnaligned(fromByteOffset: offset, as: UInt16.self))
+                case .unsignedInt: return base.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
+                case .byte, .short, .float:
+                    throw VRMError._dataInconsistent("buffer view \(bufferView) does not hold unsigned integers")
+                }
             }
         }
     }
