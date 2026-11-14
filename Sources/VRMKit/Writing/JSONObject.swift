@@ -14,6 +14,13 @@ package extension JSONObject {
     func object(_ key: String) -> JSONObject? { self[key]?.objectValue }
     func objects(_ key: String) -> [JSONObject] { self[key]?.arrayValue?.compactMap(\.objectValue) ?? [] }
 
+    /// The object at `index` of the array at `key`, nil where that element is missing or
+    /// not an object. Indexed as the array stands, where ``objects(_:)`` skips the elements
+    /// that are not objects and so shifts the ones after them.
+    func object(at index: Int, in key: String) -> JSONObject? {
+        self[key]?.arrayValue?[safe: index]?.objectValue
+    }
+
     /// The object at `key`, nil where the document holds none. One that is not an
     /// object is refused rather than read as absent. `subject` names what holds the
     /// key, for the message.
@@ -202,7 +209,7 @@ package extension JSONObject {
     mutating func updateObject(at index: Int,
                                in key: String,
                                _ body: (inout JSONObject) -> Void) {
-        guard self[key]?.arrayValue?[safe: index]?.objectValue != nil else { return }
+        guard object(at: index, in: key) != nil else { return }
         editArray(key) { elements in
             guard var object = elements[index].objectValue else { return }
             // Released while edited, so the arrays inside the object are not copied either.

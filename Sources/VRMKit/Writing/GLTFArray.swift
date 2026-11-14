@@ -34,6 +34,8 @@ package extension JSONObject {
 
     func objects(_ array: GLTFArray) -> [JSONObject] { objects(array.rawValue) }
 
+    func object(at index: Int, in array: GLTFArray) -> JSONObject? { object(at: index, in: array.rawValue) }
+
     func count(_ array: GLTFArray) -> Int { count(array.rawValue) }
 
     mutating func mapObjects(_ array: GLTFArray, _ transform: (JSONObject) throws -> JSONObject) rethrows {

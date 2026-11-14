@@ -118,7 +118,7 @@ extension GLTFEditableDocument {
 
     func node(at index: Int) throws -> JSONObject {
         try requireNode(at: index)
-        return try json[.nodes]?.arrayValue?[safe: index]?.objectValue
+        return try json.object(at: index, in: .nodes)
             ??? ._dataInconsistent("node \(index) is not a JSON object")
     }
 

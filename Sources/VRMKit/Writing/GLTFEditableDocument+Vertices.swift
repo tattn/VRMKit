@@ -31,11 +31,7 @@ extension GLTFEditableDocument {
                              normals: [SIMD3<Float>]? = nil,
                              ofPrimitive primitive: Int,
                              meshAt mesh: GLTFMeshIndex) throws {
-        let attributes = try attributes(ofPrimitive: primitive, meshAt: mesh)
-        guard let positionAccessor = attributes.index("POSITION"),
-              let count = json.objects(.accessors)[safe: positionAccessor]?.int("count") else {
-            throw VRMError._dataInconsistent("primitive \(primitive) of mesh \(mesh.rawValue) has no POSITION")
-        }
+        let count = try vertexCount(ofPrimitive: primitive, meshAt: mesh)
         guard positions.count == count, normals.map({ $0.count == count }) ?? true else {
             throw VRMError._invalidArgument("primitive \(primitive) of mesh \(mesh.rawValue) draws \(count) vertices")
         }
@@ -75,10 +71,10 @@ extension GLTFEditableDocument {
     /// with no index accessor draws its vertices in order.
     public func indices(ofPrimitive primitive: Int, meshAt mesh: GLTFMeshIndex) throws -> [UInt32] {
         guard let accessor = try self.primitive(primitive, meshAt: mesh).index("indices") else {
-            return try (0..<UInt32(positions(ofPrimitive: primitive, meshAt: mesh).count)).map { $0 }
+            return try Array(0..<UInt32(vertexCount(ofPrimitive: primitive, meshAt: mesh)))
         }
-        guard let layout = try element(accessor, of: .accessors, as: GLTF.Accessor.self),
-              layout.type == .SCALAR, layout.sparse == nil, let view = layout.bufferView else {
+        let layout = try self.accessor(accessor)
+        guard layout.type == .SCALAR, layout.sparse == nil, let view = layout.bufferView else {
             throw VRMError._dataInconsistent("accessor \(accessor) does not hold indices")
         }
         return try integers(count: layout.count,
@@ -92,7 +88,7 @@ extension GLTFEditableDocument {
     /// The names a mesh's morph targets go by, in target order: its `extras.targetNames`,
     /// the convention exporters write them in. Empty for a mesh that names none.
     public func morphTargetNames(meshAt mesh: GLTFMeshIndex) throws -> [String] {
-        guard let object = json.objects(.meshes)[safe: mesh.rawValue] else {
+        guard let object = json.object(at: mesh.rawValue, in: .meshes) else {
             throw VRMError._invalidArgument("the document has no mesh \(mesh.rawValue)")
         }
         return object.object("extras")?.strings("targetNames") ?? []
@@ -103,7 +99,7 @@ extension GLTFEditableDocument {
     public func morphTargetDisplacements(ofPrimitive primitive: Int,
                                          meshAt mesh: GLTFMeshIndex) throws -> [[SIMD3<Float>]] {
         let object = try self.primitive(primitive, meshAt: mesh)
-        let count = try positions(ofPrimitive: primitive, meshAt: mesh).count
+        let count = try vertexCount(ofPrimitive: primitive, meshAt: mesh)
         return try object.objects("targets").map { target in
             try target.index("POSITION").map(vectors(ofAccessor:)) ?? [SIMD3<Float>](repeating: .zero, count: count)
         }
@@ -112,7 +108,7 @@ extension GLTFEditableDocument {
     /// Drops the morph targets of a mesh, leaving its vertices where they rest: what is left
     /// once the weights wanted have been applied through ``setPositions(_:normals:ofPrimitive:meshAt:)``.
     public mutating func removeMorphTargets(meshAt mesh: GLTFMeshIndex) throws {
-        guard json.objects(.meshes)[safe: mesh.rawValue] != nil else {
+        guard json.object(at: mesh.rawValue, in: .meshes) != nil else {
             throw VRMError._invalidArgument("the document has no mesh \(mesh.rawValue)")
         }
         json.updateObject(at: mesh.rawValue, in: .meshes) { meshObject in
@@ -129,7 +125,7 @@ extension GLTFEditableDocument {
     }
 
     private func primitive(_ primitive: Int, meshAt mesh: GLTFMeshIndex) throws -> JSONObject {
-        guard let object = json.objects(.meshes)[safe: mesh.rawValue]?.objects("primitives")[safe: primitive] else {
+        guard let object = json.object(at: mesh.rawValue, in: .meshes)?.object(at: primitive, in: "primitives") else {
             throw VRMError._invalidArgument("the document has no primitive \(primitive) of mesh \(mesh.rawValue)")
         }
         return object
@@ -142,18 +138,27 @@ extension GLTFEditableDocument {
         return attributes
     }
 
+    /// The count its POSITION accessor declares, so that sizing a result does not
+    /// decode every position.
+    private func vertexCount(ofPrimitive primitive: Int, meshAt mesh: GLTFMeshIndex) throws -> Int {
+        guard let accessor = try attributes(ofPrimitive: primitive, meshAt: mesh).index("POSITION"),
+              let count = json.object(at: accessor, in: .accessors)?.int("count"), count >= 0 else {
+            throw VRMError._dataInconsistent("primitive \(primitive) of mesh \(mesh.rawValue) has no POSITION")
+        }
+        return count
+    }
+
     /// The values of a three-component accessor, whatever its component type and stride.
     /// A sparse accessor reads as the values of its buffer view, or zeros without one,
     /// with the elements it lists replaced.
     private func vectors(ofAccessor index: Int) throws -> [SIMD3<Float>] {
-        guard let accessor = try element(index, of: .accessors, as: GLTF.Accessor.self), accessor.type == .VEC3 else {
+        let accessor = try self.accessor(index)
+        guard accessor.type == .VEC3 else {
             throw VRMError._dataInconsistent("accessor \(index) does not hold three-component vectors")
         }
         let layout = accessor.components()
         func read(_ count: Int, bufferView: Int, byteOffset: Int) throws -> [SIMD3<Float>] {
-            guard let view = try element(bufferView, of: .bufferViews, as: GLTF.BufferView.self) else {
-                throw VRMError._dataInconsistent("accessor \(index) names no buffer view \(bufferView)")
-            }
+            let view = try self.bufferView(bufferView)
             let stride = view.byteStride ?? layout.vectorSize
             let start = view.byteOffset + byteOffset
             guard count == 0 || start + (count - 1) * stride + layout.vectorSize <= binary.count else {
@@ -193,9 +198,7 @@ extension GLTFEditableDocument {
                           componentType: GLTF.Accessor.ComponentType,
                           bufferView: Int,
                           byteOffset: Int) throws -> [UInt32] {
-        guard let view = try element(bufferView, of: .bufferViews, as: GLTF.BufferView.self) else {
-            throw VRMError._dataInconsistent("the document has no buffer view \(bufferView)")
-        }
+        let view = try self.bufferView(bufferView)
         let size = bytes(of: componentType)
         let stride = view.byteStride ?? size
         let start = view.byteOffset + byteOffset
@@ -217,10 +220,16 @@ extension GLTFEditableDocument {
         }
     }
 
-    /// One element of a top-level array as the typed model, nil where the array has none.
-    /// Decoded on its own, since ``typed()`` decodes every accessor and buffer view the
-    /// document holds, and a mesh is read one accessor at a time.
-    private func element<T: Decodable>(_ index: Int, of array: GLTFArray, as type: T.Type) throws -> T? {
-        try json[array]?.arrayValue?[safe: index]?.objectValue.map { try JSONValue.object($0).decode(type) }
+    // Decoded one at a time, since ``typed()`` decodes every accessor and buffer view
+    // the document holds, and a mesh is read one accessor at a time.
+
+    private func accessor(_ index: Int) throws -> GLTF.Accessor {
+        try json.object(at: index, in: .accessors)?.decode(GLTF.Accessor.self)
+            ??? ._dataInconsistent("the document has no accessor \(index)")
+    }
+
+    private func bufferView(_ index: Int) throws -> GLTF.BufferView {
+        try json.object(at: index, in: .bufferViews)?.decode(GLTF.BufferView.self)
+            ??? ._dataInconsistent("the document has no buffer view \(index)")
     }
 }
