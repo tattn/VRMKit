@@ -83,6 +83,26 @@ struct VRM0Tests {
         #expect(vrm.firstPerson?.meshAnnotations[0].mesh == 0)
     }
 
+    /// An annotation without its mesh annotates nothing, and the rest still load.
+    @Test
+    func testFirstPersonSkipsAnAnnotationWithoutAMesh() throws {
+        let data = try GLBRewriter.rewritingJSON(of: VRMSampleAsset.aliciaSolid.data) { json in
+            guard var extensions = json.object("extensions"),
+                  var vrm = extensions.object("VRM"),
+                  var firstPerson = vrm.object("firstPerson") else {
+                throw GLBRewriter.Error.invalidJSON
+            }
+            firstPerson["meshAnnotations"] = .objects(
+                firstPerson.objects("meshAnnotations") + [["firstPersonFlag": .string("Both")]]
+            )
+            vrm["firstPerson"] = .object(firstPerson)
+            extensions["VRM"] = .object(vrm)
+            json["extensions"] = .object(extensions)
+        }
+        let loaded = try VRM0(data: data)
+        #expect(loaded.firstPerson?.meshAnnotations.count == vrm.firstPerson?.meshAnnotations.count)
+    }
+
     /// The four curves the gaze passes through, which VRM 1.0 states as range maps.
     @Test
     func testFirstPersonLookAtCurves() throws {

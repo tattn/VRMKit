@@ -221,7 +221,11 @@ public extension VRM0 {
             let bone = try container.decodeIfPresent(Int.self, forKey: .firstPersonBone)
             firstPersonBone = bone.flatMap { $0 >= 0 ? $0 : nil }
             firstPersonBoneOffset = try container.simd3Object(forKey: .firstPersonBoneOffset, default: .zero)
-            meshAnnotations = try container.decodeIfPresent([MeshAnnotation].self, forKey: .meshAnnotations) ?? []
+            // Some exporters leave an annotation without its mesh, which annotates nothing.
+            meshAnnotations = try container.decodeIfPresent([PartialMeshAnnotation].self, forKey: .meshAnnotations)?
+                .compactMap { annotation in
+                    annotation.mesh.map { MeshAnnotation(firstPersonFlag: annotation.firstPersonFlag, mesh: $0) }
+                } ?? []
             // An unknown look-at type moves nothing, the way the spec's own "None" does.
             let lookAt = try container.decodeIfPresent(String.self, forKey: .lookAtTypeName)
             lookAtTypeName = lookAt.flatMap(LookAtType.init(rawValue:)) ?? .none
@@ -246,6 +250,11 @@ public extension VRM0 {
         public struct MeshAnnotation: Codable, Sendable {
             public let firstPersonFlag: String
             public let mesh: Int
+        }
+
+        private struct PartialMeshAnnotation: Decodable {
+            let firstPersonFlag: String
+            let mesh: Int?
         }
         public enum LookAtType: String, Codable, Sendable {
             case none = "None"
