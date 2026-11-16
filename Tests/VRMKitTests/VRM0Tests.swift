@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import VRMKit
 import VRMTestSupport
@@ -101,6 +102,16 @@ struct VRM0Tests {
         }
         let loaded = try VRM0(data: data)
         #expect(loaded.firstPerson?.meshAnnotations.count == vrm.firstPerson?.meshAnnotations.count)
+    }
+
+    /// An offset written as an array, as VRM 1.0 does, is read the same as one written as an object.
+    @Test
+    func testFirstPersonOffsetWrittenAsAnArray() throws {
+        let firstPerson = try JSONDecoder().decode(
+            VRM0.FirstPerson.self,
+            from: Data(#"{"firstPersonBone": 36, "firstPersonBoneOffset": [0, 0.06, 0]}"#.utf8)
+        )
+        #expect(firstPerson.firstPersonBoneOffset == SIMD3<Float>(0, 0.06, 0))
     }
 
     /// The four curves the gaze passes through, which VRM 1.0 states as range maps.

@@ -37,6 +37,23 @@ extension GLTF {
             case extensions
             case extras
         }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            bufferView = try container.decodeIfPresent(Int.self, forKey: .bufferView)
+            _byteOffset = try container.decodeIfPresent(Int.self, forKey: ._byteOffset)
+            componentType = try container.decode(ComponentType.self, forKey: .componentType)
+            _normalized = try container.decodeIfPresent(Bool.self, forKey: ._normalized)
+            count = try container.decode(Int.self, forKey: .count)
+            type = try container.decode(`Type`.self, forKey: .type)
+            // The bounds are only hints, so ones written in the wrong shape (a bare number) read as absent.
+            max = try? container.decodeIfPresent([Float].self, forKey: .max)
+            min = try? container.decodeIfPresent([Float].self, forKey: .min)
+            sparse = try container.decodeIfPresent(Sparse.self, forKey: .sparse)
+            name = try container.decodeIfPresent(String.self, forKey: .name)
+            extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+            extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+        }
     }
 }
 

@@ -400,8 +400,12 @@ private struct VRM0Vector3: Codable {
 }
 
 private extension KeyedDecodingContainer {
+    /// Some exporters write the vector as an array, as VRM 1.0 does, and UniVRM's VRM 0.x loader reads it.
     func simd3Object(forKey key: Key, default defaultValue: SIMD3<Float>) throws -> SIMD3<Float> {
-        try decodeIfPresent(VRM0Vector3.self, forKey: key)?.simd(default: defaultValue) ?? defaultValue
+        if let values = try? decodeIfPresent([Double].self, forKey: key) {
+            return SIMD3<Float>(values, default: defaultValue)
+        }
+        return try decodeIfPresent(VRM0Vector3.self, forKey: key)?.simd(default: defaultValue) ?? defaultValue
     }
 }
 
