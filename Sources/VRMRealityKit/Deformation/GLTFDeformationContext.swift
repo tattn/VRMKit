@@ -68,29 +68,5 @@ final class GLTFDeformationContext {
         self.pipeline = try device.makeComputePipelineState(function: function)
         self.emptyBuffer = emptyBuffer
     }
-
-    /// A shared-storage buffer of `vectors` packed as the kernel's `packed_float3`.
-    func makePackedBuffer(_ vectors: [SIMD3<Float>]) -> MTLBuffer? {
-        guard !vectors.isEmpty else { return nil }
-        guard let buffer = device.makeBuffer(length: vectors.count * 12, options: .storageModeShared) else {
-            return nil
-        }
-        Self.pack(vectors, into: buffer.contents())
-        return buffer
-    }
-
-    /// Writes `vectors` at `destination` as consecutive `packed_float3`.
-    static func pack(_ vectors: [SIMD3<Float>], into destination: UnsafeMutableRawPointer) {
-        for (index, vector) in vectors.enumerated() {
-            pack(vector, into: destination.advanced(by: index * 12))
-        }
-    }
-
-    static func pack(_ vector: SIMD3<Float>, into destination: UnsafeMutableRawPointer) {
-        let floats = destination.assumingMemoryBound(to: Float.self)
-        floats[0] = vector.x
-        floats[1] = vector.y
-        floats[2] = vector.z
-    }
 }
 #endif

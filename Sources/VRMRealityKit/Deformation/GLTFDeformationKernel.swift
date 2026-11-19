@@ -29,38 +29,36 @@ enum GLTFDeformationKernel {
         uint outputCount;
     };
 
-    kernel void gltfDeformVertices(device const packed_float3 *basePositions [[buffer(0)]],
-                                   device const packed_float3 *baseNormals [[buffer(1)]],
-                                   device const packed_float3 *baseTangents [[buffer(2)]],
-                                   device const packed_float3 *baseBitangents [[buffer(3)]],
-                                   device const uint4 *joints [[buffer(4)]],
-                                   device const float4 *jointWeights [[buffer(5)]],
-                                   device const float4x4 *jointMatrices [[buffer(6)]],
-                                   device const packed_float3 *morphDeltas [[buffer(7)]],
-                                   device const float *morphWeights [[buffer(8)]],
-                                   device const uint *activeTargets [[buffer(9)]],
-                                   constant Uniforms &uniforms [[buffer(10)]],
-                                   device DeformedVertex *out0 [[buffer(11)]],
-                                   device DeformedVertex *out1 [[buffer(12)]],
-                                   device DeformedVertex *out2 [[buffer(13)]],
-                                   device DeformedVertex *out3 [[buffer(14)]],
-                                   device DeformedVertex *out4 [[buffer(15)]],
-                                   device DeformedVertex *out5 [[buffer(16)]],
-                                   device DeformedVertex *out6 [[buffer(17)]],
-                                   device DeformedVertex *out7 [[buffer(18)]],
+    kernel void gltfDeformVertices(device const DeformedVertex *rest [[buffer(0)]],
+                                   device const uint4 *joints [[buffer(1)]],
+                                   device const float4 *jointWeights [[buffer(2)]],
+                                   device const float4x4 *jointMatrices [[buffer(3)]],
+                                   device const packed_float3 *morphDeltas [[buffer(4)]],
+                                   device const float *morphWeights [[buffer(5)]],
+                                   device const uint *activeTargets [[buffer(6)]],
+                                   constant Uniforms &uniforms [[buffer(7)]],
+                                   device DeformedVertex *out0 [[buffer(8)]],
+                                   device DeformedVertex *out1 [[buffer(9)]],
+                                   device DeformedVertex *out2 [[buffer(10)]],
+                                   device DeformedVertex *out3 [[buffer(11)]],
+                                   device DeformedVertex *out4 [[buffer(12)]],
+                                   device DeformedVertex *out5 [[buffer(13)]],
+                                   device DeformedVertex *out6 [[buffer(14)]],
+                                   device DeformedVertex *out7 [[buffer(15)]],
                                    uint id [[thread_position_in_grid]])
     {
         if (id >= uniforms.vertexCount) return;
-        float3 position = float3(basePositions[id]);
+        DeformedVertex base = rest[id];
+        float3 position = float3(base.position);
         // Only the targets with a weight are summed: a face carries dozens and an
         // expression moves a few.
         for (uint i = 0; i < uniforms.activeTargetCount; i++) {
             uint target = activeTargets[i];
             position += morphWeights[target] * float3(morphDeltas[target * uniforms.vertexCount + id]);
         }
-        float3 normal = uniforms.hasNormals ? float3(baseNormals[id]) : float3(0.0);
-        float3 tangent = uniforms.hasTangents ? float3(baseTangents[id]) : float3(0.0);
-        float3 bitangent = uniforms.hasTangents ? float3(baseBitangents[id]) : float3(0.0);
+        float3 normal = uniforms.hasNormals ? float3(base.normal) : float3(0.0);
+        float3 tangent = uniforms.hasTangents ? float3(base.tangent) : float3(0.0);
+        float3 bitangent = uniforms.hasTangents ? float3(base.bitangent) : float3(0.0);
 
         if (uniforms.isSkinned) {
             uint4 joint = joints[id];

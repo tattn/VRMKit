@@ -18,17 +18,11 @@ final class GLTFMeshSource {
     let context: GLTFDeformationContext
     let descriptor: LowLevelMesh.Descriptor
 
-    let basePositions: MTLBuffer
-    let baseNormals: MTLBuffer?
-    let baseTangents: MTLBuffer?
-    let baseBitangents: MTLBuffer?
+    /// ``GLTFMeshVertices/rest``, which every instance copies before its first solve.
+    let restVertices: MTLBuffer
     /// The morph deltas, read in place from the geometry's buffer.
     let blendShapeOffsets: MTLBuffer?
-    /// Per vertex, x is 1 where the rest tangent, bitangent and normal make a right-handed
-    /// frame and -1 where they make a left-handed one (mirrored UVs), drawn as uv1 from
-    /// ``tangentHandednessBufferIndex``. RealityKit hands a surface shader the tangent of a
-    /// right-handed frame, turning it over where the frame is left-handed, so MToon turns it
-    /// back by this sign as glTF's tangent `w` would. Empty for a mesh without tangents.
+    /// ``GLTFMeshVertices/tangentHandedness``, drawn as uv1 from ``tangentHandednessBufferIndex``.
     let tangentHandedness: [SIMD2<Float>]
     let tangentHandednessBufferIndex: Int?
 
@@ -48,16 +42,16 @@ final class GLTFMeshSource {
     /// The layout index of the buffer holding the texture coordinates, when the mesh has any.
     static let texcoordBufferIndex = 1
 
-    init(geometry: GLTFMeshGeometry, skeleton: MeshResource.Skeleton?, context: GLTFDeformationContext) throws {
+    /// - Parameter vertices: `geometry` laid out, when the loader did so ahead; laid out here otherwise.
+    init(geometry: GLTFMeshGeometry, vertices: GLTFMeshVertices? = nil, skeleton: MeshResource.Skeleton?,
+         context: GLTFDeformationContext) throws {
         self.geometry = geometry
         self.context = context
-        guard let basePositions = context.makePackedBuffer(geometry.positions) else {
+        let vertices = vertices ?? GLTFMeshVertices(geometry)
+        guard geometry.vertexCount > 0, let restVertices = context.device.makeBuffer(vertices.rest) else {
             throw VRMError._dataInconsistent("a mesh with no vertices cannot be drawn")
         }
-        self.basePositions = basePositions
-        baseNormals = context.makePackedBuffer(geometry.normals)
-        baseTangents = context.makePackedBuffer(geometry.tangents)
-        baseBitangents = context.makePackedBuffer(geometry.bitangents)
+        self.restVertices = restVertices
         if let offsets = geometry.blendShapeOffsetBuffer {
             // The geometry holds on to the memory as long as this source does.
             guard let buffer = context.device.makeBuffer(bytesNoCopy: UnsafeMutableRawPointer(mutating: offsets.baseAddress),
@@ -94,7 +88,7 @@ final class GLTFMeshSource {
             layouts.append(LowLevelMesh.Layout(bufferIndex: Self.texcoordBufferIndex,
                                                bufferStride: MemoryLayout<SIMD2<Float>>.stride))
         }
-        tangentHandedness = Self.tangentHandedness(of: geometry)
+        tangentHandedness = vertices.tangentHandedness
         if tangentHandedness.isEmpty {
             tangentHandednessBufferIndex = nil
         } else {
@@ -107,15 +101,6 @@ final class GLTFMeshSource {
                                              vertexLayouts: layouts,
                                              indexCapacity: geometry.indices.count,
                                              indexType: .uint32)
-    }
-
-    /// Skinning and morphing turn the frame without mirroring it, so the rest pose decides the hand for good.
-    private static func tangentHandedness(of geometry: GLTFMeshGeometry) -> [SIMD2<Float>] {
-        guard !geometry.tangents.isEmpty, geometry.normals.count == geometry.vertexCount else { return [] }
-        return (0..<geometry.vertexCount).map { index in
-            let hand = simd_dot(simd_cross(geometry.normals[index], geometry.tangents[index]), geometry.bitangents[index])
-            return SIMD2(hand < 0 ? -1 : 1, 0)
-        }
     }
 }
 #endif

@@ -78,7 +78,13 @@ final class GLTFDeformedMesh {
         }
         // The rest pose is what the mesh draws until a solve arrives; a static mesh
         // keeps it for good.
-        Self.writeRestPose(of: geometry, into: lowLevelMesh)
+        lowLevelMesh.withUnsafeMutableBytes(bufferIndex: 0) { raw in
+            guard let base = raw.baseAddress else { return }
+            // A pooled mesh can outsize this one, and the rest of it is never drawn.
+            let length = min(source.restVertices.length, raw.count)
+            base.copyMemory(from: source.restVertices.contents(), byteCount: length)
+            memset(base.advanced(by: length), 0, raw.count - length)
+        }
         blendShapeWeights = Array(repeating: 0, count: geometry.blendShapeTargetCount)
         if let skin = source.skin {
             let identity = Array(repeating: matrix_identity_float4x4, count: max(skin.skeleton.joints.count, 1))
@@ -92,24 +98,6 @@ final class GLTFDeformedMesh {
         } else {
             morphWeightsBuffer = nil
             activeTargetsBuffer = nil
-        }
-    }
-
-    private static func writeRestPose(of geometry: GLTFMeshGeometry, into mesh: LowLevelMesh) {
-        mesh.withUnsafeMutableBytes(bufferIndex: 0) { raw in
-            guard let base = raw.baseAddress else { return }
-            memset(base, 0, raw.count)
-            for index in 0..<geometry.vertexCount {
-                let vertex = base.advanced(by: index * GLTFDeformedVertex.stride)
-                GLTFDeformationContext.pack(geometry.positions[index], into: vertex.advanced(by: GLTFDeformedVertex.positionOffset))
-                if !geometry.normals.isEmpty {
-                    GLTFDeformationContext.pack(geometry.normals[index], into: vertex.advanced(by: GLTFDeformedVertex.normalOffset))
-                }
-                if !geometry.tangents.isEmpty {
-                    GLTFDeformationContext.pack(geometry.tangents[index], into: vertex.advanced(by: GLTFDeformedVertex.tangentOffset))
-                    GLTFDeformationContext.pack(geometry.bitangents[index], into: vertex.advanced(by: GLTFDeformedVertex.bitangentOffset))
-                }
-            }
         }
     }
 
@@ -213,19 +201,16 @@ final class GLTFDeformedMesh {
                                                isSkinned: source.skin == nil ? 0 : 1,
                                                outputCount: UInt32(outputs.count))
         let empty = context.emptyBuffer
-        encoder.setBuffer(source.basePositions, offset: 0, index: 0)
-        encoder.setBuffer(source.baseNormals ?? empty, offset: 0, index: 1)
-        encoder.setBuffer(source.baseTangents ?? empty, offset: 0, index: 2)
-        encoder.setBuffer(source.baseBitangents ?? empty, offset: 0, index: 3)
-        encoder.setBuffer(source.skin?.joints ?? empty, offset: 0, index: 4)
-        encoder.setBuffer(source.skin?.weights ?? empty, offset: 0, index: 5)
-        encoder.setBuffer(jointMatricesBuffer ?? empty, offset: 0, index: 6)
-        encoder.setBuffer(source.blendShapeOffsets ?? empty, offset: 0, index: 7)
-        encoder.setBuffer(morphWeightsBuffer ?? empty, offset: 0, index: 8)
-        encoder.setBuffer(activeTargetsBuffer ?? empty, offset: 0, index: 9)
-        encoder.setBytes(&uniforms, length: MemoryLayout<GLTFDeformationUniforms>.stride, index: 10)
+        encoder.setBuffer(source.restVertices, offset: 0, index: 0)
+        encoder.setBuffer(source.skin?.joints ?? empty, offset: 0, index: 1)
+        encoder.setBuffer(source.skin?.weights ?? empty, offset: 0, index: 2)
+        encoder.setBuffer(jointMatricesBuffer ?? empty, offset: 0, index: 3)
+        encoder.setBuffer(source.blendShapeOffsets ?? empty, offset: 0, index: 4)
+        encoder.setBuffer(morphWeightsBuffer ?? empty, offset: 0, index: 5)
+        encoder.setBuffer(activeTargetsBuffer ?? empty, offset: 0, index: 6)
+        encoder.setBytes(&uniforms, length: MemoryLayout<GLTFDeformationUniforms>.stride, index: 7)
         for slot in 0..<Self.maxOutputCount {
-            encoder.setBuffer(outputs[safe: slot] ?? empty, offset: 0, index: 11 + slot)
+            encoder.setBuffer(outputs[safe: slot] ?? empty, offset: 0, index: 8 + slot)
         }
         let width = min(context.pipeline.maxTotalThreadsPerThreadgroup, 64)
         // Whole threadgroups rather than `dispatchThreads`: the simulator's Metal device rejects

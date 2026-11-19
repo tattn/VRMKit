@@ -281,7 +281,8 @@ final class GLTFSceneBuilder {
         // and render-queue groups alike, deforms from the same source and draws its own
         // slots of it, so the vertices are skinned once per frame, not once per entity.
         let started = ContinuousClock.now
-        let source = try GLTFMeshSource(geometry: mesh.geometry, skeleton: skeleton, context: try GLTFDeformationContext.shared())
+        let source = try GLTFMeshSource(geometry: mesh.geometry, vertices: resources.meshVertices.removeValue(forKey: key),
+                                        skeleton: skeleton, context: try GLTFDeformationContext.shared())
         timings.meshResources += ContinuousClock.now - started
         timings.meshResourceCount += 1
         let skinIndex = mesh.skinIndex

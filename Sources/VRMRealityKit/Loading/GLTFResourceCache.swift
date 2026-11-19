@@ -100,6 +100,10 @@ final class GLTFResourceCache {
     /// The vertex data of every mesh a load has read, by how a node draws it.
     var assetMeshes: [GLTFAssetReader.MeshKey: GLTFAssetReader.BuiltMesh] = [:]
 
+    /// ``assetMeshes`` laid out for the GPU by the prepare pass, until the template made
+    /// from each takes it.
+    var meshVertices: [GLTFAssetReader.MeshKey: GLTFMeshVertices] = [:]
+
     /// Meshes built once and cloned per node, by every load of the document.
     var meshTemplates: [GLTFAssetReader.MeshKey: Entity] = [:]
 
