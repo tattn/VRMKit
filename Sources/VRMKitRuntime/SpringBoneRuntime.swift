@@ -196,12 +196,15 @@ package struct SpringBoneJointSetting {
         self.limit = limit
     }
 
+    /// UniVRM adds a VRM 0.x hit radius to the collider's without checking it, so models
+    /// with a negative one swing there; it is read as no radius instead of refusing them.
     package init(vrm0BoneGroup group: VRM0.SecondaryAnimation.BoneGroup) throws {
+        let hitRadius = Float(group.hitRadius)
         self.init(stiffnessForce: Float(group.stiffness),
                   gravityPower: Float(group.gravityPower),
                   gravityDir: VRM0.nodeSpace(group.gravityDir),
                   dragForce: Float(group.dragForce),
-                  hitRadius: Float(group.hitRadius))
+                  hitRadius: hitRadius < 0 ? 0 : hitRadius)
         try validate()
     }
 

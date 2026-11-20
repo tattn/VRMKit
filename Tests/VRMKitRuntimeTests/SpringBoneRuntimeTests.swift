@@ -89,6 +89,19 @@ struct SpringBoneRuntimeTests {
         #expect(setting.gravityDir == SIMD3<Float>(0.1, -1, -0.5))
     }
 
+    /// UniVRM swings a VRM 0.x bone group whose hit radius is negative.
+    @Test
+    func testAVRM0NegativeHitRadiusIsReadAsNone() throws {
+        let group = try JSONDecoder().decode(
+            VRM0.SecondaryAnimation.BoneGroup.self,
+            from: Data(#"{"bones": [0], "hitRadius": -0.01}"#.utf8)
+        )
+
+        let setting = try SpringBoneJointSetting(vrm0BoneGroup: group)
+
+        #expect(setting.hitRadius == 0)
+    }
+
     /// The length a joint holds its tail at is the world distance to it, so a
     /// scaled joint swings the bone the length it is drawn at.
     @Test
