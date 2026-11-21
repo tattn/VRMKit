@@ -38,32 +38,6 @@ public struct GLTFMaterialData: Sendable {
     /// The UV transform the textures read through: the first UV-accessed texture's.
     public let uvTransform: GLTFUVTransform
 
-    /// The textures the material samples, each with how it is read.
-    public var sampledTextures: [(texture: GLTFSampledTexture, usage: GLTFImageSource.Usage)] {
-        switch shading {
-        case .mtoon(let mtoon):
-            return [(mtoon.baseColorTexture, .color),
-                    (mtoon.shadeMultiplyTexture, .color),
-                    (mtoon.shadingShiftTexture, .raw),
-                    (mtoon.normalTexture, .normal),
-                    (mtoon.matcapTexture, .color),
-                    (mtoon.emissiveTexture, .color),
-                    (mtoon.rimMultiplyTexture, .color),
-                    (mtoon.outlineWidthMultiplyTexture, .raw),
-                    (mtoon.uvAnimationMaskTexture, .raw)].compactMap { texture, usage in texture.map { ($0, usage) } }
-        case .unlit:
-            return [material.pbrMetallicRoughness?.baseColorTexture.map { (GLTFSampledTexture($0), .color) }]
-                .compactMap { $0 }
-        case .physicallyBased:
-            let pbr = material.pbrMetallicRoughness
-            return [pbr?.baseColorTexture.map { (GLTFSampledTexture($0), .color) },
-                    pbr?.metallicRoughnessTexture.map { (GLTFSampledTexture($0), .raw) },
-                    material.normalTexture.map { (GLTFSampledTexture($0), .normal) },
-                    material.occlusionTexture.map { (GLTFSampledTexture($0), .raw) },
-                    material.emissiveTexture.map { (GLTFSampledTexture($0), .color) }].compactMap { $0 }
-        }
-    }
-
     /// `drawsCutoutOpaque` says the MASK material discards nothing (``resolvedAlphaMode``).
     package init(index: Int, material: GLTF.Material, materialProperty: VRM0.MaterialProperty?,
                  drawsCutoutOpaque: Bool = false) {
@@ -108,30 +82,12 @@ public struct GLTFMaterialData: Sendable {
 /// One glTF image as the document stores it. Decoding it and putting it on the GPU is
 /// the renderer's.
 public struct GLTFImageSource: Sendable {
-    /// How a material reads an image, which decides how its texels are decoded.
-    public enum Usage: Hashable, Sendable {
-        /// sRGB color.
-        case color
-        /// A tangent-space normal map.
-        case normal
-        /// Linear data, such as metalness, occlusion or a mask.
-        case raw
-    }
-
     public let index: Int
-    /// How the materials read the image. Empty for one no material samples.
-    public let usages: Set<Usage>
     private let document: GLTFDocument
 
-    package init(index: Int, document: GLTFDocument, usages: Set<Usage>) {
+    package init(index: Int, document: GLTFDocument) {
         self.index = index
         self.document = document
-        self.usages = usages
-    }
-
-    /// The MIME type the document gives, or else the one the bytes name themselves.
-    public var mimeType: String? {
-        document.gltf.images[safe: index]?.mimeType ?? (try? data())?.imageMediaType
     }
 
     /// The bytes the document stores the image as: a PNG, a JPEG or whatever its MIME type names.
