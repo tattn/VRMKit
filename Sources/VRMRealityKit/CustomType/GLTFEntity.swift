@@ -184,7 +184,6 @@ public class GLTFEntity: Entity {
 
     struct MorphBinding {
         var modelEntities: [ModelEntity]
-        let targetCount: Int
     }
 
     /// glTF node index → the blend shapes a `weights` channel writes to.
@@ -381,11 +380,10 @@ public class GLTFEntity: Entity {
         pose.rootRotation = orientation(relativeTo: nil)
     }
 
-    func registerMorphBindings(forNodeAt nodeIndex: Int, modelEntities: [ModelEntity], targetCount: Int) {
+    func registerMorphBindings(forNodeAt nodeIndex: Int, modelEntities: [ModelEntity]) {
         let morphable = modelEntities.filter { $0.deformedMesh?.geometry.hasBlendShapes == true }
         guard !morphable.isEmpty else { return }
-        morphBindings[nodeIndex, default: MorphBinding(modelEntities: [], targetCount: targetCount)]
-            .modelEntities.append(contentsOf: morphable)
+        morphBindings[nodeIndex, default: MorphBinding(modelEntities: [])].modelEntities.append(contentsOf: morphable)
     }
 
     /// The animatable shader parameters are resolved once per material, so every entity

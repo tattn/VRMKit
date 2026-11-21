@@ -76,7 +76,6 @@ struct GLTFSampleAssetRenderingTests {
         let entity = try await TestSupport.loadEntity(GLTFSampleAsset.simpleMorph)
 
         let binding = try #require(entity.morphBindings[0])
-        #expect(binding.targetCount == 2)
         let weights = try #require(binding.modelEntities.first?.deformedMesh?.blendShapeWeights)
         #expect(weights.count == 2)
         #expect(weights.allSatisfy { $0.isApproximatelyEqual(to: 0.5) })

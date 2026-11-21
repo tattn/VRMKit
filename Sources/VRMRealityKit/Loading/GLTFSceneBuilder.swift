@@ -16,8 +16,6 @@ final class GLTFSceneBuilder {
     let resources: GLTFResourceCache
     /// Made by the loader, so a VRM load builds into a ``VRMEntity``.
     let root: GLTFEntity
-    /// Accessors expanded for this load, shared by the primitives reading the same one.
-    let accessors: PackedAccessorCache
     /// Resolved once per load: what it reads off the materials and skins does not change
     /// while one runs.
     var sceneIndex: Int { root.sceneIndex }
@@ -73,7 +71,6 @@ final class GLTFSceneBuilder {
     init(resources: GLTFResourceCache, root: GLTFEntity) {
         self.resources = resources
         self.root = root
-        self.accessors = PackedAccessorCache(document: resources.document)
         self.nodes = Array(repeating: nil, count: resources.gltf.nodes.count)
     }
 
@@ -185,27 +182,12 @@ final class GLTFSceneBuilder {
         if let meshIndex = gltfNode.mesh {
             let meshEntity = try mesh(withMeshIndex: meshIndex, skinIndex: gltfNode.skin, nodeIndex: index)
             entity.addChild(meshEntity)
-            let modelEntities = meshEntity.modelEntitiesInHierarchy
-            let targetCount = try morphTargetCount(ofMeshAt: meshIndex)
-            if let weights = try resources.reader().initialMorphWeights(of: gltfNode, meshIndex: meshIndex),
-               weights.contains(where: { $0 != 0 }) {
-                for modelEntity in modelEntities {
-                    modelEntity.deformedMesh?.setBlendShapeWeights(weights)
-                }
-            }
-            root.registerMorphBindings(forNodeAt: index,
-                                       modelEntities: modelEntities,
-                                       targetCount: targetCount)
+            root.registerMorphBindings(forNodeAt: index, modelEntities: meshEntity.modelEntitiesInHierarchy)
         }
 
         for child in gltfNode.children ?? [] {
             entity.addChild(try node(withNodeIndex: child))
         }
-    }
-
-    /// The number of morph targets the mesh at `index` renders with.
-    func morphTargetCount(ofMeshAt index: Int) throws -> Int {
-        try resources.reader().morphTargetCount(ofMeshAt: index)
     }
 
     private func applyCamera(withCameraIndex index: Int, to entity: Entity) throws {
@@ -643,13 +625,6 @@ final class GLTFSceneBuilder {
     /// so it always describes what is actually drawn.
     func makeAnimatableMaterialState(forMaterialIndex index: Int) -> (any VRMAnimatableMaterialState)? {
         (try? shadedMaterial(withMaterialIndex: index))?.makeAnimatableState?()
-    }
-
-    /// How the material at `index` draws: the alpha mode its shader was handed and the render
-    /// queue it asked for.
-    func materialDrawing(forMaterialIndex index: Int) -> (alphaMode: GLTF.Material.AlphaMode, renderQueue: Int?) {
-        ((try? makeMaterialShaderContext(withMaterialIndex: index))?.resolvedAlphaMode ?? .OPAQUE,
-         (try? shadedMaterial(withMaterialIndex: index))?.renderQueue)
     }
 
     /// How many render queues the materials this builder's scene draws with ask for.

@@ -108,7 +108,7 @@ struct GLTFEntityLoaderTests {
         // The same rewrite with the right length loads, and poses the mesh with the node's weights.
         let exact = try weighted(targetCount, key: "weights", of: "nodes", at: nodeIndex)
         let binding = try #require(try await GLTFEntityLoader(withData: exact, shaders: []).loadEntity().morphBindings[nodeIndex])
-        #expect(binding.targetCount == targetCount)
+        #expect(binding.modelEntities.allSatisfy { $0.deformedMesh?.blendShapeWeights.count == targetCount })
         #expect(binding.modelEntities.contains { modelEntity in
             modelEntity.deformedMesh?.blendShapeWeights.first.map { abs($0 - 0.5) < 0.0001 } ?? false
         })
