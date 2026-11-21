@@ -154,6 +154,44 @@ struct GLTFAuthoringTests {
         #expect(try saved.bufferViewData(at: view).data == GLTFSimpleMaterial.pngBytes)
     }
 
+    /// A surface that glows shows its picture whatever lights it, so the picture is
+    /// written as the emissive texture and the factor it is multiplied by.
+    @Test
+    func testEmissionIsWrittenAsTheMaterialDescribedIt() throws {
+        var document = GLTFEditableDocument()
+        let glow = GLTFSimpleMaterial.pngBytes + Data([1])
+        let material = GLTFSimpleMaterial(baseColorFactor: SIMD4(0, 0, 0, 1),
+                                          emissiveFactor: SIMD3(1, 0.5, 0.25),
+                                          emissiveImage: glow,
+                                          emissiveSampler: GLTFTextureSampler(wrapS: .CLAMP_TO_EDGE))
+
+        let nodeIndex = try document.addMesh(.plate(material: material))
+
+        let saved = try GLTFDocument(data: try document.serialize())
+        let materialIndex = try #require(saved.primitive(onNodeAt: nodeIndex.rawValue).material)
+        let written = try #require(saved.gltf.materials[safe: materialIndex])
+        #expect(written.emissiveFactor == SIMD3(1, 0.5, 0.25))
+        #expect(written.pbrMetallicRoughness?.baseColorTexture == nil)
+        let textureIndex = try #require(written.emissiveTexture?.index)
+        let texture = try #require(saved.gltf.textures[safe: textureIndex])
+        let source = try #require(texture.source)
+        let view = try #require(saved.gltf.images[safe: source]?.bufferView)
+        #expect(try saved.bufferViewData(at: view).data == glow)
+        let samplerIndex = try #require(texture.sampler)
+        #expect(saved.gltf.samplers[safe: samplerIndex]?.wrapS == .CLAMP_TO_EDGE)
+    }
+
+    /// A material giving off nothing leaves the emission to glTF's default.
+    @Test
+    func testAMaterialGivingOffNothingWritesNoEmission() throws {
+        var document = GLTFEditableDocument()
+
+        try document.addMesh(.plate(material: .picture))
+
+        let json = try #require(String(data: try document.serialize(), encoding: .isoLatin1))
+        #expect(!json.contains("emissive"))
+    }
+
     @Test
     func testAMeshWithoutAMaterialAddsNone() throws {
         var document = GLTFEditableDocument()

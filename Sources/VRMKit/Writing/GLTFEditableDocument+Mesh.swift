@@ -28,7 +28,7 @@ extension GLTFEditableDocument {
         let placement = try resolveNodePlacement(under: parentNode?.rawValue)
 
         return try atomically { document in
-            let material = try mesh.material.map { try document.appendMaterial($0, mediaType: validated.imageMediaType) }
+            let material = try mesh.material.map { try document.appendMaterial($0, mediaTypes: validated.imageMediaTypes) }
             let primitive = document.appendPrimitive(of: mesh, validated: validated, material: material)
 
             var meshObject = JSONObject()
@@ -205,7 +205,8 @@ extension GLTFEditableDocument {
 
     /// Writes the material and whatever it needs: an image, a texture, an
     /// extension declaration, a VRM 0.x property.
-    private mutating func appendMaterial(_ material: GLTFSimpleMaterial, mediaType: String?) throws -> Int {
+    private mutating func appendMaterial(_ material: GLTFSimpleMaterial,
+                                         mediaTypes: GLTFSimpleMaterial.ImageMediaTypes) throws -> Int {
         // glTF defaults a material to fully metallic, which is a mirror rather
         // than the plate this builds.
         var pbr: JSONObject = ["metallicFactor": 0]
@@ -213,13 +214,20 @@ extension GLTFEditableDocument {
         if color != SIMD4(1, 1, 1, 1) {
             pbr["baseColorFactor"] = .simd(color)
         }
-        if let image = material.baseColorImage, let mediaType {
+        if let image = material.baseColorImage, let mediaType = mediaTypes.baseColor {
             let texture = appendTexture(image, mediaType: mediaType, sampler: material.baseColorSampler)
             pbr["baseColorTexture"] = ["index": .int(texture)]
         }
 
         var object: JSONObject = ["pbrMetallicRoughness": .object(pbr)]
         object.set("name", material.name)
+        if material.emissiveFactor != .zero {
+            object["emissiveFactor"] = .simd(material.emissiveFactor)
+        }
+        if let image = material.emissiveImage, let mediaType = mediaTypes.emissive {
+            let texture = appendTexture(image, mediaType: mediaType, sampler: material.emissiveSampler)
+            object["emissiveTexture"] = ["index": .int(texture)]
+        }
         switch material.alphaMode {
         case .opaque:
             break  // OPAQUE is what glTF reads a material naming no mode as.

@@ -86,6 +86,15 @@ public struct GLTFSimpleMaterial: Equatable, Sendable {
     /// A plate showing one picture wants `CLAMP_TO_EDGE` rather than glTF's default tiling.
     public var baseColorSampler: GLTFTextureSampler
 
+    /// The linear color the surface gives off whatever lights it, multiplied by the
+    /// emissive texture, if any. Black, glTF's default, gives off nothing.
+    public var emissiveFactor: SIMD3<Float>
+
+    /// A PNG or a JPEG, as `baseColorImage` is. It shows only through a factor above black.
+    public var emissiveImage: Data?
+
+    public var emissiveSampler: GLTFTextureSampler
+
     /// Shades the surface with its base color alone, through `KHR_materials_unlit`.
     public var isUnlit: Bool
 
@@ -98,6 +107,9 @@ public struct GLTFSimpleMaterial: Equatable, Sendable {
                 baseColorFactor: SIMD4<Float> = SIMD4(1, 1, 1, 1),
                 baseColorImage: Data? = nil,
                 baseColorSampler: GLTFTextureSampler = .init(),
+                emissiveFactor: SIMD3<Float> = .zero,
+                emissiveImage: Data? = nil,
+                emissiveSampler: GLTFTextureSampler = .init(),
                 isUnlit: Bool = false,
                 alphaMode: AlphaMode = .opaque,
                 isDoubleSided: Bool = false) {
@@ -105,6 +117,9 @@ public struct GLTFSimpleMaterial: Equatable, Sendable {
         self.baseColorFactor = baseColorFactor
         self.baseColorImage = baseColorImage
         self.baseColorSampler = baseColorSampler
+        self.emissiveFactor = emissiveFactor
+        self.emissiveImage = emissiveImage
+        self.emissiveSampler = emissiveSampler
         self.isUnlit = isUnlit
         self.alphaMode = alphaMode
         self.isDoubleSided = isDoubleSided
@@ -114,7 +129,7 @@ public struct GLTFSimpleMaterial: Equatable, Sendable {
 struct ValidatedTriangleMesh {
     let positionBounds: (min: [Float], max: [Float])
     let maximumIndex: UInt32
-    let imageMediaType: String?
+    let imageMediaTypes: GLTFSimpleMaterial.ImageMediaTypes
 }
 
 extension GLTFTriangleMesh {
@@ -152,22 +167,17 @@ extension GLTFTriangleMesh {
             )
         }
 
-        let imageMediaType: String?
-        if let material {
-            imageMediaType = try material.validate()
-        } else {
-            imageMediaType = nil
-        }
+        let imageMediaTypes = try material?.validate() ?? .init()
         // A texture naming no `texCoord` is read at `TEXCOORD_0`.
-        guard imageMediaType == nil || textureCoordinates != nil else {
+        guard imageMediaTypes.isEmpty || textureCoordinates != nil else {
             throw VRMError._invalidArgument(
-                "a material with a base color image needs the texture coordinates to read it at"
+                "a material with an image needs the texture coordinates to read it at"
             )
         }
         return ValidatedTriangleMesh(
             positionBounds: ([minimum.x, minimum.y, minimum.z], [maximum.x, maximum.y, maximum.z]),
             maximumIndex: maximumIndex,
-            imageMediaType: imageMediaType
+            imageMediaTypes: imageMediaTypes
         )
     }
 
@@ -203,8 +213,16 @@ extension GLTFTriangleMesh {
 }
 
 extension GLTFSimpleMaterial {
-    /// Validates the values glTF writes into JSON and returns the image type.
-    func validate() throws -> String? {
+    /// The media type of each image the material shows, nil where it shows none.
+    struct ImageMediaTypes {
+        var baseColor: String?
+        var emissive: String?
+
+        var isEmpty: Bool { baseColor == nil && emissive == nil }
+    }
+
+    /// Validates the values glTF writes into JSON and returns the image types.
+    func validate() throws -> ImageMediaTypes {
         for component in 0..<SIMD4<Float>.scalarCount {
             let value = baseColorFactor[component]
             guard value.isFinite, (0...1).contains(value) else {
@@ -218,8 +236,21 @@ extension GLTFSimpleMaterial {
                 throw VRMError._invalidArgument("an alpha cutoff must be a finite, nonnegative number")
             }
         }
-        guard let baseColorImage else { return nil }
-        return try baseColorImage.imageMediaType
-            ??? ._notSupported("a base color image has to be a PNG or a JPEG, which these bytes are neither of")
+        for component in 0..<SIMD3<Float>.scalarCount {
+            let value = emissiveFactor[component]
+            guard value.isFinite, (0...1).contains(value) else {
+                throw VRMError._invalidArgument(
+                    "emissiveFactor components must be finite and in 0...1, got \(value)"
+                )
+            }
+        }
+        return ImageMediaTypes(baseColor: try Self.mediaType(of: baseColorImage, named: "a base color image"),
+                               emissive: try Self.mediaType(of: emissiveImage, named: "an emissive image"))
+    }
+
+    private static func mediaType(of image: Data?, named name: String) throws -> String? {
+        guard let image else { return nil }
+        return try image.imageMediaType
+            ??? ._notSupported("\(name) has to be a PNG or a JPEG, which these bytes are neither of")
     }
 }
