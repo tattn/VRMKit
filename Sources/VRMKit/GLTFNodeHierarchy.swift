@@ -11,10 +11,6 @@ package struct GLTFNodeHierarchy {
     /// Node index → parent node index, nil for roots.
     private let parents: [Int?]
 
-    private init(parents: [Int?]) {
-        self.parents = parents
-    }
-
     package init(nodes: [GLTF.Node]) throws {
         try self.init(childIndices: nodes.map { $0.children ?? [] })
     }
