@@ -2,6 +2,7 @@
 import Metal
 import RealityKit
 import Testing
+import VRMTestSupport
 @testable import VRMRealityKit
 
 /// The pool every deformed mesh borrows its `LowLevelMesh` from, so meshes made per load and
@@ -62,6 +63,29 @@ struct GLTFLowLevelMeshPoolTests {
 
         let textured = try pool.lease(Self.descriptor(vertices: 100, indices: 300, hasTexcoords: true))
         #expect(textured.mesh !== plainMesh)
+    }
+
+    /// A loader's mesh templates are only cloned from, so a load borrows the meshes its
+    /// entity draws and no more: one per model entity, its own for every entity loaded.
+    @Test
+    func testALoadBorrowsOnlyTheMeshesItsEntityDraws() async throws {
+        guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
+        let loader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data, shaders: [])
+        let first = try await loader.loadEntity()
+        let second = try await loader.loadEntity()
+
+        #expect(!loader.resources.meshTemplates.isEmpty)
+        for template in loader.resources.meshTemplates.values {
+            #expect(template.modelEntitiesInHierarchy.allSatisfy { $0.model == nil && $0.deformedMesh == nil })
+        }
+        let borrowed = [first, second].map { entity in
+            entity.modelEntitiesInHierarchy.compactMap { $0.deformedMesh.map { ObjectIdentifier($0.lowLevelMesh) } }
+        }
+        #expect(!borrowed[0].isEmpty)
+        #expect(borrowed[0].count == first.modelEntitiesInHierarchy.count)
+        #expect(Set(borrowed[0]).count == borrowed[0].count)
+        #expect(borrowed[1].count == borrowed[0].count)
+        #expect(Set(borrowed[0]).isDisjoint(with: borrowed[1]))
     }
 }
 #endif

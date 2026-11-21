@@ -275,6 +275,19 @@ struct GLTFDeformedMeshComponent: Component {
     let mesh: GLTFDeformedMesh
 }
 
+/// What a model entity of a mesh template draws once it is cloned into a scene. A template
+/// never joins one, so it borrows no mesh from the pool, which would hold on to it for
+/// nothing once the template is gone.
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+struct GLTFMeshTemplateComponent: Component {
+    let source: GLTFMeshSource
+    /// See ``GLTFDeformedMesh/drawnSlots``.
+    let drawnSlots: [Int]
+    /// The material of each drawn slot, in the order of ``drawnSlots``.
+    var materials: [any Material]
+    var boundsMargin: Float = 0
+}
+
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension ModelEntity {
     var deformedMesh: GLTFDeformedMesh? {
@@ -291,6 +304,11 @@ extension ModelEntity {
     func setDeformedMesh(_ mesh: GLTFDeformedMesh) {
         guard var model = components[ModelComponent.self] else { return }
         model.mesh = mesh.meshResource
+        setModel(model, drawing: mesh)
+    }
+
+    /// Draws `mesh` through `model`, which already names its mesh resource.
+    func setModel(_ model: ModelComponent, drawing mesh: GLTFDeformedMesh) {
         components.set(model)
         components.set(GLTFDeformedMeshComponent(mesh: mesh))
         applyMergedMesh()

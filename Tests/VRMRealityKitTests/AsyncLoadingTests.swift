@@ -115,7 +115,8 @@ struct AsyncLoadingTests {
         _ = try builder.build()
         #expect(Set(loader.resources.assetMeshes.keys) == Set(read.keys))
         for (key, template) in loader.resources.meshTemplates {
-            let drawn = try #require(template.modelEntitiesInHierarchy.first?.gltfMeshGeometry)
+            let drawn = try #require(template.modelEntitiesInHierarchy.first?
+                .components[GLTFMeshTemplateComponent.self]?.source.geometry)
             let asset = try #require(read[key]).mesh.geometry
             #expect(drawn.positions.withUnsafeBufferPointer(\.baseAddress)
                 == asset.positions.withUnsafeBufferPointer(\.baseAddress))

@@ -303,11 +303,11 @@ final class GLTFSceneBuilder {
                 drawing.append(SlotDrawing(slot: slot, material: pass.material, isInitiallyVisible: pass.isInitiallyEnabled))
                 passes.append(pass)
             }
-            let passEntity = try makeModelEntity(name: "\(meshEntity.name)_\(name)",
-                                                 source: source,
-                                                 primitives: primitives,
-                                                 drawing: drawing,
-                                                 skinIndex: skinIndex)
+            let passEntity = makeModelEntity(name: "\(meshEntity.name)_\(name)",
+                                             source: source,
+                                             primitives: primitives,
+                                             drawing: drawing,
+                                             skinIndex: skinIndex)
             passEntity.components.set(GLTFMaterialPassComponent(name: name))
             grantBoundsBudget(to: passEntity, passes: passes)
             // The passes go on before the main model entity, keeping their draw order.
@@ -331,7 +331,7 @@ final class GLTFSceneBuilder {
             sortGroup = renderQueueSortGroup
         }
         for (queue, slots) in groups where !slots.isEmpty {
-            let modelEntity = try makeModelEntity(
+            let modelEntity = makeModelEntity(
                 name: "\(meshEntity.name)_model\(queue.map { "_\($0)" } ?? "")",
                 source: source,
                 primitives: primitives,
@@ -365,26 +365,25 @@ final class GLTFSceneBuilder {
         let isInitiallyVisible: Bool
     }
 
-    /// One model entity drawing the slots of `source` that `drawing` names, each
-    /// addressing its material by its position in `drawing`.
+    /// One model entity of a template, for its clones to draw the slots of `source` that
+    /// `drawing` names, each addressing its material by its position in `drawing`.
     private func makeModelEntity(name: String,
                                  source: GLTFMeshSource,
                                  primitives: [SlotMaterial],
                                  drawing: [SlotDrawing],
-                                 skinIndex: Int?) throws -> ModelEntity {
-        let deformedMesh = try GLTFDeformedMesh(source: source, drawnSlots: drawing.map(\.slot))
-        let entity = ModelEntity(mesh: deformedMesh.meshResource, materials: drawing.map(\.material))
+                                 skinIndex: Int?) -> ModelEntity {
+        let entity = ModelEntity()
         entity.name = name
+        var template = GLTFMeshTemplateComponent(source: source,
+                                                 drawnSlots: drawing.map(\.slot),
+                                                 materials: drawing.map(\.material))
         entity.components.set(GLTFMaterialSlotsComponent(materialIndices: drawing.map { primitives[$0.slot].materialIndex }))
         if let skinIndex, source.skin != nil {
             // The binding is registered per clone, once its joints exist.
             entity.components.set(GLTFSkinIndexComponent(skinIndex: skinIndex))
             // The parts carry the rest bounds, and a posed joint can carry its vertices
             // outside them; the mesh's own radius covers a pose of the body.
-            if var component = entity.components[ModelComponent.self] {
-                component.boundsMargin = source.geometry.bounds.boundingRadius
-                entity.components.set(component)
-            }
+            template.boundsMargin = source.geometry.bounds.boundingRadius
         }
         // The component ships with the OS 27 SDKs, which bring Swift 6.4; older SDKs have no occlusion culling.
         #if compiler(>=6.4)
@@ -396,7 +395,7 @@ final class GLTFSceneBuilder {
         }
         #endif
         entity.components.set(GLTFMergedMeshComponent(initiallyVisibleSlots: drawing.map(\.isInitiallyVisible)))
-        entity.setDeformedMesh(deformedMesh)
+        entity.components.set(template)
         return entity
     }
 
@@ -404,9 +403,12 @@ final class GLTFSceneBuilder {
     /// from the template's vertex data, so each node and each load poses its own.
     private func instantiateDeformedMeshes(in meshRoot: Entity) throws {
         for modelEntity in meshRoot.modelEntitiesInHierarchy {
-            guard let template = modelEntity.deformedMesh else { continue }
+            guard let template = modelEntity.components[GLTFMeshTemplateComponent.self] else { continue }
+            modelEntity.components.remove(GLTFMeshTemplateComponent.self)
             let own = try GLTFDeformedMesh(source: template.source, drawnSlots: template.drawnSlots)
-            modelEntity.setDeformedMesh(own)
+            var model = ModelComponent(mesh: own.meshResource, materials: template.materials)
+            model.boundsMargin = template.boundsMargin
+            modelEntity.setModel(model, drawing: own)
             root.registerDeformedMesh(own)
         }
     }
@@ -417,18 +419,17 @@ final class GLTFSceneBuilder {
     private func grantBoundsBudget(to passEntity: ModelEntity,
                                    passes: [GLTFShadedMaterial.Pass]) {
         guard passes.contains(where: { $0.applyBoundsBudget != nil }),
-              let geometry = passEntity.gltfMeshGeometry,
-              var component = passEntity.components[ModelComponent.self] else { return }
+              var template = passEntity.components[GLTFMeshTemplateComponent.self] else { return }
         // The budget covers the whole merged mesh, hidden slots included, so a slot
         // shown later still fits it.
-        let budget = geometry.bounds.boundingRadius
-        component.boundsMargin = max(component.boundsMargin, budget)
+        let budget = template.source.geometry.bounds.boundingRadius
+        template.boundsMargin = max(template.boundsMargin, budget)
         for (slot, pass) in passes.enumerated() {
             guard let applyBudget = pass.applyBoundsBudget,
-                  component.materials.indices.contains(slot) else { continue }
-            component.materials[slot] = applyBudget(component.materials[slot], budget)
+                  template.materials.indices.contains(slot) else { continue }
+            template.materials[slot] = applyBudget(template.materials[slot], budget)
         }
-        passEntity.components.set(component)
+        passEntity.components.set(template)
     }
 
     /// The UV set the meshes drawing the material at `index` carry. A shader sampling any

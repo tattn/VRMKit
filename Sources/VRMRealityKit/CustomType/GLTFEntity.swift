@@ -288,6 +288,7 @@ public class GLTFEntity: Entity {
         GLTFMaterialSlotsComponent.registerComponent()
         GLTFMergedMeshComponent.registerComponent()
         GLTFDeformedMeshComponent.registerComponent()
+        GLTFMeshTemplateComponent.registerComponent()
         GLTFMaterialPassComponent.registerComponent()
         GLTFSkinIndexComponent.registerComponent()
         GLTFAnimationPlaybackComponent.registerComponent()
