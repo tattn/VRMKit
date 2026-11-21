@@ -16,7 +16,7 @@ struct VRMInstanceTests {
 
     private func instance(_ asset: VRMSampleAsset) async throws -> VRMInstance {
         let read = try await (asset == .aliciaSolid ? Self.aliciaSolid : Self.seedSan).value
-        return try #require(try read.instantiate() as? VRMInstance)
+        return try VRMInstance(asset: read)
     }
 
     /// The first output carries everything, and a frame where nothing moves carries nothing.
@@ -105,10 +105,9 @@ struct VRMInstanceTests {
     }
 
     @Test
-    func testAPlainGLTFInstantiatesWithoutTheVRMLayers() async throws {
+    func testAPlainGLTFMovesWithoutTheVRMLayers() async throws {
         let asset = try await GLTFAsset.load(document: try GLTFDocument(withURL: GLTFSampleAsset.simpleSkin.url))
-        let model = try asset.instantiate()
-        #expect(!(model is VRMInstance))
-        #expect(!model.takeOutput().skins.isEmpty)
+        #expect(throws: VRMError.self) { try VRMInstance(asset: asset) }
+        #expect(!(try GLTFInstance(asset: asset)).takeOutput().skins.isEmpty)
     }
 }

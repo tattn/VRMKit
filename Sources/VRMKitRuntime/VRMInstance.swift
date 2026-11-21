@@ -371,10 +371,3 @@ public final class VRMInstance: GLTFInstance {
         return copy
     }
 }
-
-extension GLTFAsset {
-    /// A model of the asset to move: a ``VRMInstance`` for a VRM, a ``GLTFInstance`` otherwise.
-    public func instantiate() throws -> GLTFInstance {
-        vrm == nil ? try GLTFInstance(asset: self) : try VRMInstance(asset: self)
-    }
-}
