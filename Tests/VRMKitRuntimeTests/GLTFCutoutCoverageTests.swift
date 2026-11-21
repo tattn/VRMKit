@@ -1,8 +1,10 @@
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
+import Foundation
 import Testing
 import VRMKit
+import VRMTestSupport
 @testable import VRMKitRuntime
 
 /// Whether a MASK material's triangles sample only texels its cutoff keeps.
@@ -115,6 +117,70 @@ struct GLTFCutoutCoverageTests {
         let opaque = try #require(CGContext(data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0,
                                             space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
         #expect(Coverage.AlphaPlane(try #require(opaque.makeImage())) == nil)
+    }
+
+    /// The plane is read a few rows at a time, which has to read what one draw of the
+    /// whole image does, however the image lays its alpha out.
+    @Test
+    func testAlphaPlaneReadsWhatOneDrawOfTheWholeImageReads() throws {
+        let width = 37
+        let height = 150
+        var straight: [UInt8] = []
+        var premultipliedBGRA: [UInt8] = []
+        var deep: [UInt8] = []
+        for y in 0..<height {
+            for x in 0..<width {
+                let alpha = UInt8((x * 7 + y * 13) % 256)
+                straight += [UInt8((x * 31) % 256), UInt8((y * 17) % 256), 200, alpha]
+                premultipliedBGRA += [alpha / 2, alpha / 3, alpha, alpha]
+                let deepAlpha = UInt16((x * 997 + y * 4099) % 65536)
+                deep += [0x34, 0x12, 0xCD, 0xAB, 0xFF, 0xFF, UInt8(deepAlpha & 0xFF), UInt8(deepAlpha >> 8)]
+            }
+        }
+        let textures = try GLTFDocument(data: VRMSampleAsset.aliciaSolid.data)
+        let images = [
+            try image(width: width, height: height, bitsPerComponent: 8, bytes: straight,
+                      bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue)),
+            try image(width: width, height: height, bitsPerComponent: 8, bytes: premultipliedBGRA,
+                      bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue).union(.byteOrder32Little)),
+            try image(width: width, height: height, bitsPerComponent: 16, bytes: deep,
+                      bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue).union(.byteOrder16Little)),
+            // A cut-out texture as a load decodes it.
+            try textures.image(at: 3),
+        ]
+        for image in images {
+            let plane = try #require(Coverage.AlphaPlane(image))
+            let whole = try alphaOfOneDraw(image)
+            #expect(whole.contains { $0 != whole[0] })
+            #expect(plane.alpha == whole)
+        }
+    }
+
+    private func image(width: Int, height: Int, bitsPerComponent: Int, bytes: [UInt8],
+                       bitmapInfo: CGBitmapInfo) throws -> CGImage {
+        let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let provider = try #require(CGDataProvider(data: Data(bytes) as CFData))
+        return try #require(CGImage(width: width, height: height, bitsPerComponent: bitsPerComponent,
+                                    bitsPerPixel: bitsPerComponent * 4, bytesPerRow: bytes.count / height,
+                                    space: space, bitmapInfo: bitmapInfo, provider: provider, decode: nil,
+                                    shouldInterpolate: false, intent: .defaultIntent))
+    }
+
+    /// The alpha of every texel as one draw of the whole image leaves it, rows from the top.
+    private func alphaOfOneDraw(_ image: CGImage) throws -> [UInt8] {
+        let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try #require(CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                                             bytesPerRow: 0, space: space,
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let bytes = try #require(context.data).assumingMemoryBound(to: UInt8.self)
+        var alpha = [UInt8](repeating: 0, count: image.width * image.height)
+        for y in 0..<image.height {
+            for x in 0..<image.width {
+                alpha[y * image.width + x] = bytes[y * context.bytesPerRow + x * 4 + 3]
+            }
+        }
+        return alpha
     }
 #endif
 }

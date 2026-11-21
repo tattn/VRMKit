@@ -27,6 +27,11 @@ package enum GLTFCutoutCoverage {
         package let alpha: [UInt8]
 
 #if canImport(CoreGraphics)
+        /// How many rows of an image are drawn at a time. The alpha is a quarter of what is
+        /// drawn, and a load reads several images at once, so drawing each whole would hold
+        /// every one of them a second time.
+        private static let rowsPerDraw = 64
+
         /// Nil for an image without an alpha channel, which is opaque everywhere.
         package init?(_ image: CGImage) {
             switch image.alphaInfo {
@@ -39,25 +44,31 @@ package enum GLTFCutoutCoverage {
             }
             let width = image.width
             let height = image.height
+            let rowsPerDraw = min(height, Self.rowsPerDraw)
             // Drawn as RGBA rather than alpha-only, which Core Graphics gives no color
             // space for; premultiplying leaves the alpha itself as written.
             guard let space = CGColorSpace(name: CGColorSpace.sRGB),
                   let context = CGContext(data: nil,
                                           width: width,
-                                          height: height,
+                                          height: rowsPerDraw,
                                           bitsPerComponent: 8,
                                           bytesPerRow: 0,
                                           space: space,
                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
                   let pixels = context.data else { return nil }
-            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
             let bytesPerRow = context.bytesPerRow
             var alpha = [UInt8](repeating: 0, count: width * height)
             let bytes = pixels.assumingMemoryBound(to: UInt8.self)
-            for y in 0..<height {
-                let row = bytes + y * bytesPerRow
-                for x in 0..<width {
-                    alpha[y * width + x] = row[x * 4 + 3]
+            for top in stride(from: 0, to: height, by: rowsPerDraw) {
+                context.clear(CGRect(x: 0, y: 0, width: width, height: rowsPerDraw))
+                // Core Graphics draws from the bottom, so this puts row `top` of the image
+                // on the context's first row.
+                context.draw(image, in: CGRect(x: 0, y: rowsPerDraw - height + top, width: width, height: height))
+                for y in 0..<min(rowsPerDraw, height - top) {
+                    let row = bytes + y * bytesPerRow
+                    for x in 0..<width {
+                        alpha[(top + y) * width + x] = row[x * 4 + 3]
+                    }
                 }
             }
             self.width = width

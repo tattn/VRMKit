@@ -84,10 +84,23 @@ extension GLTFSceneBuilder {
     /// What deciding one MASK material reads, gathered on the actor so the decision can
     /// run off it.
     private struct CutoutCoverageWork: Sendable {
+        /// One slot of a mesh the material draws. What the decision reads of it is gathered
+        /// where the decision runs, since it walks every vertex and triangle of the slot.
         struct Primitive: Sendable {
-            /// In glTF UV space, the top of the image at v = 0.
-            let texcoords: [SIMD2<Float>]
-            let indices: [UInt32]
+            let geometry: GLTFMeshGeometry
+            let slot: Int
+
+            /// In glTF UV space, the top of the image at v = 0: the decoder flips V for
+            /// RealityKit, and the shader flips it back before sampling.
+            var texcoords: [SIMD2<Float>] {
+                geometry.texcoords[geometry.slots[slot].vertexRange].map { SIMD2($0.x, 1 - $0.y) }
+            }
+
+            /// The slot's triangles, as indices into ``texcoords``.
+            var indices: [UInt32] {
+                let base = UInt32(geometry.slots[slot].vertexRange.lowerBound)
+                return geometry.triangleIndices(ofSlot: slot).map { $0 - base }
+            }
         }
 
         let materialIndex: Int
@@ -159,9 +172,8 @@ extension GLTFSceneBuilder {
                                   animatesUV: animatesUV)
     }
 
-    /// The UVs and triangles of every drawn slot using the material, from the read meshes
-    /// or read on the spot. One mesh drawn through several skins reads the same UVs, so
-    /// each slot counts once.
+    /// Every drawn slot using the material, from the read meshes or read on the spot. One
+    /// mesh drawn through several skins reads the same UVs, so each slot counts once.
     private func primitivesDrawing(materialIndex index: Int) throws -> [CutoutCoverageWork.Primitive] {
         var primitives: [CutoutCoverageWork.Primitive] = []
         var seen: Set<[Int]> = []
@@ -173,11 +185,7 @@ extension GLTFSceneBuilder {
             guard !geometry.texcoords.isEmpty else { continue }
             for (slot, materialIndex) in mesh.materialIndices.enumerated() where materialIndex == index {
                 guard seen.insert([drawn.meshIndex, slot]).inserted else { continue }
-                let vertices = geometry.slots[slot].vertexRange
-                let base = UInt32(vertices.lowerBound)
-                // The decoder flips V for RealityKit; the shader flips it back before sampling.
-                primitives.append(.init(texcoords: geometry.texcoords[vertices].map { SIMD2($0.x, 1 - $0.y) },
-                                        indices: geometry.triangleIndices(ofSlot: slot).map { $0 - base }))
+                primitives.append(.init(geometry: geometry, slot: slot))
             }
         }
         return primitives
