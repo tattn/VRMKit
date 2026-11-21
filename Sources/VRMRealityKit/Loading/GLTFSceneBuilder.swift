@@ -16,8 +16,6 @@ final class GLTFSceneBuilder {
     let resources: GLTFResourceCache
     /// Made by the loader, so a VRM load builds into a ``VRMEntity``.
     let root: GLTFEntity
-    /// Resolved once per load: what it reads off the materials and skins does not change
-    /// while one runs.
     var sceneIndex: Int { root.sceneIndex }
     var document: GLTFDocument { resources.document }
     var gltf: GLTF { resources.gltf }
