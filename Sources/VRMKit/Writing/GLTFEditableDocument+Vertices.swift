@@ -74,13 +74,10 @@ extension GLTFEditableDocument {
             return try Array(0..<UInt32(vertexCount(ofPrimitive: primitive, meshAt: mesh)))
         }
         let layout = try self.accessor(accessor)
-        guard layout.type == .SCALAR, layout.sparse == nil, let view = layout.bufferView else {
+        guard layout.type == .SCALAR, layout.sparse == nil, layout.bufferView != nil else {
             throw VRMError._dataInconsistent("accessor \(accessor) does not hold indices")
         }
-        return try integers(count: layout.count,
-                            componentType: layout.componentType,
-                            bufferView: view,
-                            byteOffset: layout.byteOffset)
+        return try packed(layout).unsignedElements(.SCALAR) { $0(0) }
     }
 
     // MARK: - Morph targets
@@ -149,74 +146,15 @@ extension GLTFEditableDocument {
     }
 
     /// The values of a three-component accessor, whatever its component type and stride.
-    /// A sparse accessor reads as the values of its buffer view, or zeros without one,
-    /// with the elements it lists replaced.
     private func vectors(ofAccessor index: Int) throws -> [SIMD3<Float>] {
-        let accessor = try self.accessor(index)
-        guard accessor.type == .VEC3 else {
-            throw VRMError._dataInconsistent("accessor \(index) does not hold three-component vectors")
-        }
-        let layout = accessor.components()
-        func read(_ count: Int, bufferView: Int, byteOffset: Int) throws -> [SIMD3<Float>] {
-            let view = try self.bufferView(bufferView)
-            let stride = view.byteStride ?? layout.vectorSize
-            let start = view.byteOffset + byteOffset
-            guard count == 0 || start + (count - 1) * stride + layout.vectorSize <= binary.count else {
-                throw VRMError._dataInconsistent("accessor \(index) reads past the end of the buffer")
-            }
-            return binary.withUnsafeBytes { buffer in
-                guard let base = buffer.baseAddress else { return [] }
-                return (0..<count).map { element in
-                    let offset = start + element * stride
-                    return SIMD3(accessor.floatComponent(base: base, offset: offset),
-                                 accessor.floatComponent(base: base, offset: offset + layout.bytesPerComponent),
-                                 accessor.floatComponent(base: base, offset: offset + 2 * layout.bytesPerComponent))
-                }
-            }
-        }
-
-        var values = try accessor.bufferView.map {
-            try read(accessor.count, bufferView: $0, byteOffset: accessor.byteOffset)
-        } ?? [SIMD3<Float>](repeating: .zero, count: accessor.count)
-        guard let sparse = accessor.sparse else { return values }
-        let replacements = try read(sparse.count, bufferView: sparse.values.bufferView, byteOffset: sparse.values.byteOffset)
-        let elements = try integers(count: sparse.count,
-                                    componentType: sparse.indices.componentType,
-                                    bufferView: sparse.indices.bufferView,
-                                    byteOffset: sparse.indices.byteOffset)
-        for (element, replacement) in zip(elements, replacements) {
-            guard values.indices.contains(Int(element)) else {
-                throw VRMError._dataInconsistent("accessor \(index) replaces an element it does not have")
-            }
-            values[Int(element)] = replacement
-        }
-        return values
+        try packed(accessor(index)).floatElements(.VEC3) { SIMD3($0(0), $0(1), $0(2)) }
     }
 
-    /// Unsigned integers packed in a buffer view: indices, or the elements a sparse accessor replaces.
-    private func integers(count: Int,
-                          componentType: GLTF.Accessor.ComponentType,
-                          bufferView: Int,
-                          byteOffset: Int) throws -> [UInt32] {
-        let view = try self.bufferView(bufferView)
-        let size = bytes(of: componentType)
-        let stride = view.byteStride ?? size
-        let start = view.byteOffset + byteOffset
-        guard count == 0 || start + (count - 1) * stride + size <= binary.count else {
-            throw VRMError._dataInconsistent("buffer view \(bufferView) ends before its integers do")
-        }
-        return try binary.withUnsafeBytes { buffer in
-            guard let base = buffer.baseAddress else { return [] }
-            return try (0..<count).map { element in
-                let offset = start + element * stride
-                switch componentType {
-                case .unsignedByte: return UInt32(base.load(fromByteOffset: offset, as: UInt8.self))
-                case .unsignedShort: return UInt32(base.loadUnaligned(fromByteOffset: offset, as: UInt16.self))
-                case .unsignedInt: return base.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
-                case .byte, .short, .float:
-                    throw VRMError._dataInconsistent("buffer view \(bufferView) does not hold unsigned integers")
-                }
-            }
+    /// The accessor's elements read out of the single buffer, as loading reads them.
+    private func packed(_ accessor: GLTF.Accessor) throws -> PackedAccessor {
+        try PackedAccessor(accessor: accessor) { index in
+            let view = try bufferView(index)
+            return (try view.data(in: binary), view.byteStride)
         }
     }
 

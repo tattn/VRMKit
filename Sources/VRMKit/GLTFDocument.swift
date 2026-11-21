@@ -94,19 +94,24 @@ package extension GLTFDocument {
 
     func bufferViewData(at index: Int) throws -> (data: Data, stride: Int?) {
         let bufferView = try gltf.load(\.bufferViews, at: index)
-        let buffer = try bufferData(at: bufferView.buffer)
+        return (try bufferView.data(in: bufferData(at: bufferView.buffer)), bufferView.byteStride)
+    }
+}
+
+package extension GLTF.BufferView {
+    /// The bytes the view covers of the buffer it names, given that buffer's bytes.
+    func data(in bufferData: Data) throws -> Data {
         // The resource bounds a view, not the buffer's `byteLength`: UniVRM 0.x
         // appends a model's thumbnail past it without updating it.
-        let end = bufferView.byteOffset.addingReportingOverflow(bufferView.byteLength)
-        guard bufferView.byteOffset >= 0, bufferView.byteLength >= 0,
-              !end.overflow, end.partialValue <= buffer.count else {
+        let end = byteOffset.addingReportingOverflow(byteLength)
+        guard byteOffset >= 0, byteLength >= 0, !end.overflow, end.partialValue <= bufferData.count else {
             throw VRMError._dataInconsistent(
-                "buffer view (offset: \(bufferView.byteOffset), length: \(bufferView.byteLength)) "
-                + "overruns its \(buffer.count) byte buffer"
+                "buffer view (offset: \(byteOffset), length: \(byteLength)) "
+                + "overruns its \(bufferData.count) byte buffer"
             )
         }
         // A slice, not a copy: the attributes of an interleaved view each read their own elements.
-        let startIndex = buffer.startIndex + bufferView.byteOffset
-        return (buffer[startIndex..<startIndex + bufferView.byteLength], bufferView.byteStride)
+        let startIndex = bufferData.startIndex + byteOffset
+        return bufferData[startIndex..<startIndex + byteLength]
     }
 }
