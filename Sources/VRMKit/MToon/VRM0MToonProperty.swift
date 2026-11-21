@@ -51,7 +51,7 @@ package enum VRM0MToonProperty {
         let rangeMin = shadeShift0
         let rangeMax = simd_mix(Float(1), shadeShift0, shadeToony0)
 
-        let outlineWidthMode = MToonMaterialDescriptor.OutlineWidthMode(vrm0: floats["_OutlineWidthMode"] ?? 0)
+        let outlineWidthMode = MToonOutlineWidthMode(vrm0: floats["_OutlineWidthMode"] ?? 0)
         let outlineWidthFactor = (floats["_OutlineWidth"] ?? 0) * outlineWidthMode.vrm0WidthScale
         let outlineLightingMixFactor: Float
         switch floats["_OutlineColorMode"] ?? 0 {
@@ -116,7 +116,7 @@ package enum VRM0MToonProperty {
     /// Converts Unity `_MainTex` scale/offset (bottom-left UV origin) into
     /// KHR_texture_transform semantics (top-left origin). Returns nil for the
     /// identity transform.
-    static func mainTextureTransform(vectors: [String: [Float]]) -> MToonMaterialDescriptor.UVTransform? {
+    static func mainTextureTransform(vectors: [String: [Float]]) -> GLTFUVTransform? {
         guard let values = vectors["_MainTex"], values.count >= 4 else {
             return nil
         }
@@ -165,7 +165,7 @@ private extension Array where Element == Float {
     }
 }
 
-private extension MToonMaterialDescriptor.OutlineWidthMode {
+private extension MToonOutlineWidthMode {
     /// The `_OutlineWidthMode` Unity writes, which reading and writing share so
     /// that the two cannot disagree about what a 1 or a 2 means.
     var vrm0Code: Int {
@@ -420,7 +420,7 @@ package extension VRM0MToonProperty {
     }
 
     /// The Unity `_MainTex` offset and scale for a UV transform.
-    private static func mainTextureVector(of transform: MToonMaterialDescriptor.UVTransform?) -> [Float] {
+    private static func mainTextureVector(of transform: GLTFUVTransform?) -> [Float] {
         guard let transform else { return [0, 0, 1, 1] }
         return [transform.offset.x, 1 - transform.offset.y - transform.scale.y,
                 transform.scale.x, transform.scale.y]

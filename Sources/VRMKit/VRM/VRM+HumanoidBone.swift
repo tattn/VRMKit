@@ -18,11 +18,13 @@ public extension VRM {
     /// not rig it.
     func nodeIndex(of bone: HumanoidBone) -> Int? {
         switch self {
-        case .v0(let vrm0): vrm0.nodeIndex(of: bone)
-        case .v1(let vrm1): vrm1.nodeIndex(of: bone)
+        case .v0(let vrm0): vrm0.humanoid.humanBones.first { $0.humanoidBone == bone }?.node
+        case .v1(let vrm1): vrm1.humanoid.humanBones[bone]?.node
         }
     }
+}
 
+package extension VRM {
     /// The node a first-person camera and the gaze hang off. VRM 0.x names the
     /// bone itself, falling back to the humanoid head where it names none, which
     /// is all VRM 1.0 states.
@@ -33,14 +35,6 @@ public extension VRM {
         case .v1: bone = nil
         }
         return bone.flatMap { gltf.nodes.indices.contains($0) ? $0 : nil } ?? nodeIndex(of: .head)
-    }
-}
-
-public extension VRM0 {
-    var boneNodes: [HumanoidBone: Int] { humanoid.boneNodes }
-
-    func nodeIndex(of bone: HumanoidBone) -> Int? {
-        humanoid.humanBones.first { $0.humanoidBone == bone }?.node
     }
 }
 
@@ -58,12 +52,6 @@ public extension VRM0.Humanoid {
 public extension VRM0.Humanoid.HumanBone {
     /// The bone this entry names, or nil for a name VRM does not define.
     var humanoidBone: HumanoidBone? { HumanoidBone(vrm0Name: bone) }
-}
-
-public extension VRM1 {
-    var boneNodes: [HumanoidBone: Int] { humanoid.boneNodes }
-
-    func nodeIndex(of bone: HumanoidBone) -> Int? { humanoid.humanBones[bone]?.node }
 }
 
 public extension VRM1.Humanoid {
@@ -84,17 +72,6 @@ public extension HumanoidBone {
                   // A 1.0 thumb name is not one VRM 0.x has.
                   bone != .leftThumbMetacarpal, bone != .rightThumbMetacarpal else { return nil }
             self = bone
-        }
-    }
-
-    /// What VRM 0.x calls this bone, the inverse of ``init(vrm0Name:)``.
-    var vrm0Name: String {
-        switch self {
-        case .leftThumbMetacarpal: "leftThumbProximal"
-        case .leftThumbProximal: "leftThumbIntermediate"
-        case .rightThumbMetacarpal: "rightThumbProximal"
-        case .rightThumbProximal: "rightThumbIntermediate"
-        default: rawValue
         }
     }
 }

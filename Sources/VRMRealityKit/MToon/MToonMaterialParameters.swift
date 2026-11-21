@@ -453,7 +453,7 @@ extension MToonMaterialDescriptor.CullMode {
 }
 #endif
 
-private extension MToonMaterialDescriptor.OutlineWidthMode {
+private extension MToonOutlineWidthMode {
     /// Encoding MToon.metal reads back as `outlineParams.y`, where above 1.5 means screen space.
     var mtoonRawValue: Float {
         switch self {

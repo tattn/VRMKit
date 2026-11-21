@@ -13,7 +13,7 @@ extension VRM1.SpringBone.Collider {
     /// one it replaces ``shape``, which is then only the fallback for readers without
     /// the extension. Nil when the collider carries none, or one in a version this type
     /// does not model.
-    public func extendedShape() throws -> ExtendedShape? {
+    package func extendedShape() throws -> ExtendedShape? {
         guard let value = extensions?.dictionaryValue[GLTFExtension.springBoneExtendedCollider.rawValue] else {
             return nil
         }
@@ -29,7 +29,7 @@ extension VRM1.SpringBone.Collider {
 
     /// A shape of `VRMC_springBone_extended_collider`: the sphere and capsule of
     /// `VRMC_springBone`, either of which may keep joints inside it instead, and a plane.
-    public enum ExtendedShape: Decodable, Sendable, Equatable {
+    package enum ExtendedShape: Decodable, Sendable, Equatable {
         case sphere(offset: SIMD3<Float>, radius: Float, inside: Bool)
         case capsule(offset: SIMD3<Float>, tail: SIMD3<Float>, radius: Float, inside: Bool)
         /// An infinite plane joints are kept on the side `normal` points to.
@@ -43,7 +43,7 @@ extension VRM1.SpringBone.Collider {
             case offset, radius, tail, inside, normal
         }
 
-        public init(from decoder: Decoder) throws {
+        package init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             var shapes: [Self] = []
             if container.contains(.sphere) {
@@ -88,7 +88,7 @@ extension VRM1.SpringBone.Spring.Joint {
     /// The range `VRMC_springBone_limit` keeps the joint's swing in, or nil when the
     /// joint carries none, or one in a version this type does not model. The spec has
     /// a spring's last joint ignore it, since that joint is only a tail.
-    public func limit() throws -> Limit? {
+    package func limit() throws -> Limit? {
         guard let value = extensions?.dictionaryValue[GLTFExtension.springBoneLimit.rawValue] else {
             return nil
         }
@@ -105,7 +105,7 @@ extension VRM1.SpringBone.Spring.Joint {
 
     /// A limit of `VRMC_springBone_limit`. Angles are in radians, and `rotation` turns
     /// the limit from the orientation the joint's rest direction gives it.
-    public enum Limit: Decodable, Sendable, Equatable {
+    package enum Limit: Decodable, Sendable, Equatable {
         /// Keeps the tail within `angle` of the cone's axis.
         case cone(angle: Float, rotation: simd_quatf)
         /// Keeps the tail on the hinge's plane, within `angle` of its axis.
@@ -121,7 +121,7 @@ extension VRM1.SpringBone.Spring.Joint {
             case angle, pitch, yaw, rotation
         }
 
-        public init(from decoder: Decoder) throws {
+        package init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             var limits: [Limit] = []
             if container.contains(.cone) {

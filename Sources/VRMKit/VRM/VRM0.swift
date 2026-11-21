@@ -43,7 +43,7 @@ public struct VRM0: Sendable {
     }
 }
 
-public extension VRM0 {
+package extension VRM0 {
     /// The Unity material settings describing the material at `index`. VRM 0.x writes
     /// `materialProperties` parallel to the glTF `materials`, so the index pairs the two.
     func materialProperty(at index: Int) -> MaterialProperty? {
@@ -51,7 +51,7 @@ public extension VRM0 {
     }
 }
 
-public extension VRM {
+package extension VRM {
     /// The VRM 0.x material settings for the material at `index`, or nil for a VRM 1.0
     /// model, which describes its materials on the materials themselves.
     func vrm0MaterialProperty(at index: Int) -> VRM0.MaterialProperty? {

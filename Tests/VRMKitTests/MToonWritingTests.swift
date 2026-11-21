@@ -429,7 +429,7 @@ private extension MToonMaterialDescriptor {
 
     /// The same model with every texture reading through one shared transform, which is
     /// what a VRM 0.x material can express.
-    func sharingTextureTransform(_ transform: UVTransform) -> MToonMaterialDescriptor {
+    func sharingTextureTransform(_ transform: GLTFUVTransform) -> MToonMaterialDescriptor {
         let textureKeyPaths: [WritableKeyPath<MToonMaterialDescriptor, Texture?>] = [
             \.baseColorTexture, \.emissiveTexture, \.shadeMultiplyTexture, \.shadingShiftTexture, \.normalTexture,
             \.matcapTexture, \.rimMultiplyTexture, \.outlineWidthMultiplyTexture, \.uvAnimationMaskTexture,

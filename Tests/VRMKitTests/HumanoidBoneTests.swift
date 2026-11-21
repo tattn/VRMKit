@@ -20,13 +20,6 @@ struct HumanoidBoneTests {
         #expect(HumanoidBone(vrm0Name: "notABone") == nil)
     }
 
-    @Test
-    func testEveryBoneRoundTripsThroughItsVRM0Name() {
-        for bone in HumanoidBone.allCases {
-            #expect(HumanoidBone(vrm0Name: bone.vrm0Name) == bone)
-        }
-    }
-
     /// The thumb chain of a VRM 0.x model resolves in order, and to the bones
     /// VRM 1.0 would have named, not to the ones 0.x spelled.
     @Test

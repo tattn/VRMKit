@@ -22,7 +22,7 @@ public extension VRM {
     }
 }
 
-public extension VRM0 {
+private extension VRM0 {
     var thumbnailImageIndex: GLTFImageIndex {
         get throws {
             guard let textureIndex = meta.texture, textureIndex >= 0 else {
@@ -36,7 +36,7 @@ public extension VRM0 {
     }
 }
 
-public extension VRM1 {
+private extension VRM1 {
     var thumbnailImageIndex: GLTFImageIndex {
         get throws {
             guard let imageIndex = meta.thumbnailImage, imageIndex >= 0 else {
@@ -50,18 +50,6 @@ public extension VRM1 {
 #if canImport(CoreGraphics)
 public extension VRM {
     /// The image the model shows itself by.
-    var thumbnail: CGImage {
-        get throws { try document.image(at: try thumbnailImageIndex.rawValue) }
-    }
-}
-
-public extension VRM0 {
-    var thumbnail: CGImage {
-        get throws { try document.image(at: try thumbnailImageIndex.rawValue) }
-    }
-}
-
-public extension VRM1 {
     var thumbnail: CGImage {
         get throws { try document.image(at: try thumbnailImageIndex.rawValue) }
     }

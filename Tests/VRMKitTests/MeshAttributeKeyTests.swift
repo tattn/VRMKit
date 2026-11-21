@@ -21,7 +21,7 @@ struct MeshAttributeKeyTests {
             """)
 
         #expect(primitive.attributes[.POSITION] == 0)
-        #expect(primitive.attributes[.texcoord(2)] == 1)
+        #expect(primitive.attributes[AttributeKey(rawValue: "TEXCOORD_2")] == 1)
         #expect(primitive.attributes[.joints(1)] == 2)
         #expect(primitive.attributes[.weights(1)] == 3)
         #expect(primitive.attributes[AttributeKey(rawValue: "_BATCHID")] == 4)

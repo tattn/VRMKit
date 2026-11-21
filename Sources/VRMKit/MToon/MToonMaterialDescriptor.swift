@@ -18,10 +18,7 @@ public struct MToonMaterialDescriptor: Equatable, Sendable {
         case back
     }
 
-    public typealias OutlineWidthMode = MToonOutlineWidthMode
-
-    /// Shared with the standard material paths; the aliases keep the vocabulary local.
-    public typealias UVTransform = GLTFUVTransform
+    /// Shared with the standard material paths; the alias keeps the vocabulary local.
     public typealias Texture = GLTFSampledTexture
 
     public package(set) var baseColorFactor: SIMD4<Float>
@@ -36,7 +33,7 @@ public struct MToonMaterialDescriptor: Equatable, Sendable {
     public package(set) var rimLightingMixFactor: Float
     public package(set) var parametricRimFresnelPowerFactor: Float
     public package(set) var parametricRimLiftFactor: Float
-    public package(set) var outlineWidthMode: OutlineWidthMode
+    public package(set) var outlineWidthMode: MToonOutlineWidthMode
     public package(set) var outlineWidthFactor: Float
     public package(set) var outlineColorFactor: SIMD4<Float>
     public package(set) var outlineLightingMixFactor: Float

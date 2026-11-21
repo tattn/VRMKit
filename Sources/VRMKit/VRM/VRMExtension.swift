@@ -4,7 +4,7 @@ import FoundationEssentials
 import Foundation
 #endif
 
-public extension VRM0.MaterialProperty {
+package extension VRM0.MaterialProperty {
     var vrmShader: Shader? {
         return Shader(rawValue: shader)
     }

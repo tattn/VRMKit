@@ -27,11 +27,6 @@ extension GLTF.Mesh.Primitive {
         public static let JOINTS_0 = AttributeKey(rawValue: "JOINTS_0")
         public static let WEIGHTS_0 = AttributeKey(rawValue: "WEIGHTS_0")
 
-        /// The `n`-th UV set, `TEXCOORD_0` being the first.
-        public static func texcoord(_ set: Int) -> AttributeKey {
-            AttributeKey(rawValue: "TEXCOORD_\(set)")
-        }
-
         /// The `n`-th set of joint indices, four influences to a set.
         public static func joints(_ set: Int) -> AttributeKey {
             AttributeKey(rawValue: "JOINTS_\(set)")
@@ -40,11 +35,6 @@ extension GLTF.Mesh.Primitive {
         /// The `n`-th set of joint weights, four influences to a set.
         public static func weights(_ set: Int) -> AttributeKey {
             AttributeKey(rawValue: "WEIGHTS_\(set)")
-        }
-
-        /// The `n`-th vertex color set.
-        public static func color(_ set: Int) -> AttributeKey {
-            AttributeKey(rawValue: "COLOR_\(set)")
         }
     }
 }
