@@ -207,11 +207,6 @@ public class GLTFEntity: Entity {
 
     var materialStates: [Int: MaterialRuntimeState] = [:]
 
-    // Backing store for the animation API in GLTFEntity+Animation.swift.
-    var animationMetadata: [GLTFAnimation]?
-    /// One decoder for the whole document: samplers routinely share an input accessor.
-    lazy var animationDecoder = GLTFAnimationDecoder(document: document)
-
     // MARK: - Instance
 
     /// What moves the model, posing ``pose``; this entity draws what it hands back. Nil on a

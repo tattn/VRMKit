@@ -13,8 +13,7 @@ import VRMTestSupport
 @Suite
 @MainActor
 struct EntityCloneTests {
-    /// A clone reads its metadata off the document it carries, and refuses the
-    /// playback that metadata describes.
+    /// A clone lists no animation, and refuses the playback of the ones its document carries.
     @Test
     func testACloneOfAGLTFEntityCannotBeAnimated() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
@@ -23,7 +22,8 @@ struct EntityCloneTests {
 
         #expect(entity.hasRuntimeBindings)
         #expect(!clone.hasRuntimeBindings)
-        #expect(clone.animations.count == entity.animations.count)
+        #expect(!entity.animations.isEmpty)
+        #expect(clone.animations.isEmpty)
         #expect(throws: VRMError.self) { try clone.playAnimation(at: 0) }
     }
 

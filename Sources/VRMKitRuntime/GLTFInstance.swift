@@ -91,22 +91,20 @@ public class GLTFInstance {
 
     // MARK: - Animations
 
-    /// Metadata of the document's animations.
-    public var animations: [GLTFAnimation] {
-        asset.document.gltf.animations.enumerated().map { index, animation in
-            GLTFAnimation(index: index, name: animation.name, duration: animationDecoder.duration(of: animation))
-        }
+    /// Metadata of the document's animations. Keyframe data stays untouched until
+    /// ``playAnimation(at:loops:speed:)``.
+    public private(set) lazy var animations: [GLTFAnimation] = asset.document.gltf.animations.enumerated().map { index, animation in
+        GLTFAnimation(index: index, name: animation.name, duration: animationDecoder.duration(of: animation))
     }
 
     /// Starts playing the glTF animation at `index` and returns its controller. Several
     /// can run at once; what they share applies in the order they started.
     @discardableResult
     public func playAnimation(at index: Int, loops: Bool = false, speed: Float = 1) throws -> GLTFAnimationPlaybackController {
-        let metadata = animations
-        guard metadata.indices.contains(index) else {
-            throw VRMError._dataInconsistent("animation index \(index) is out of range for \(metadata.count) animations")
+        guard animations.indices.contains(index) else {
+            throw VRMError._dataInconsistent("animation index \(index) is out of range for \(animations.count) animations")
         }
-        return animationPlayer.start(metadata[index],
+        return animationPlayer.start(animations[index],
                                      runtime: try animationRuntime(at: index),
                                      ownsRuntime: false,
                                      loops: loops,

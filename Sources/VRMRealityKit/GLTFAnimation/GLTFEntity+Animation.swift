@@ -27,15 +27,10 @@ struct GLTFAnimationSystem: System {
 
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 extension GLTFEntity {
-    /// Metadata of the document's animations. Keyframe data stays untouched until
-    /// ``playAnimation(at:loops:speed:)``.
+    /// Metadata of the animations this entity can play. Keyframe data stays untouched until
+    /// ``playAnimation(at:loops:speed:)``. Empty on a `clone(recursive:)` copy, which plays none.
     public var animations: [GLTFAnimation] {
-        if let cached = animationMetadata { return cached }
-        let metadata = gltf.animations.enumerated().map { index, animation in
-            GLTFAnimation(index: index, name: animation.name, duration: animationDecoder.duration(of: animation))
-        }
-        animationMetadata = metadata
-        return metadata
+        instance?.animations ?? []
     }
 
     /// Starts playing the animation at `index` and returns its controller.
