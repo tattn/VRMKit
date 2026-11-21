@@ -57,7 +57,6 @@ public final class GLTFEntityLoader {
         self.compensatesToneMapping = compensatesToneMapping
         self.resources = GLTFResourceCache(document: document,
                                            shaders: shaders,
-                                           profile: GLTFDefaultAssetProfile(),
                                            maxTextureDimension: maxTextureDimension,
                                            outputColorSpace: outputColorSpace,
                                            compensatesToneMapping: compensatesToneMapping)

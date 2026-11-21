@@ -17,7 +17,8 @@ final class GLTFResourceCache {
     var gltf: GLTF { document.gltf }
     /// The material shaders a load consults, in order.
     let shaders: [any GLTFMaterialShader]
-    let profile: any GLTFAssetProfile
+    /// What reading the document as a VRM adds. Nil for a plain glTF.
+    let profile: VRMAssetProfile?
     /// What to render a material the shader chain could not build as, or nil to fail the
     /// load with the shader's error.
     let materialFallback: (@MainActor (GLTFMaterialShaderContext, any Error) -> GLTFShadedMaterial?)?
@@ -32,7 +33,7 @@ final class GLTFResourceCache {
 
     init(document: GLTFDocument,
          shaders: [any GLTFMaterialShader],
-         profile: any GLTFAssetProfile,
+         profile: VRMAssetProfile? = nil,
          materialFallback: (@MainActor (GLTFMaterialShaderContext, any Error) -> GLTFShadedMaterial?)? = nil,
          maxTextureDimension: Int? = nil,
          outputColorSpace: GLTFOutputColorSpace = .displayP3,
@@ -86,7 +87,7 @@ final class GLTFResourceCache {
         for shader in shaders {
             extensions.formUnion(shader.supportedRequiredExtensions)
         }
-        return extensions.union(profile.supportedRequiredExtensions)
+        return extensions.union(profile?.supportedRequiredExtensions ?? [])
     }
 
     /// Whether the document declares itself undrawable without `name`, which tells a

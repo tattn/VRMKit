@@ -129,7 +129,7 @@ public final class GLTFAsset: Sendable {
     ///
     /// - Throws: when the glTF holds several scenes, names no default one and none is given.
     public static func load(document: GLTFDocument, sceneIndex: Int? = nil) async throws -> GLTFAsset {
-        let reader = try GLTFAssetReader(document: document, profile: GLTFDefaultAssetProfile())
+        let reader = try GLTFAssetReader(document: document)
         return try await reader.asset(sceneIndex: sceneIndex ?? document.gltf.defaultSceneIndex())
     }
 

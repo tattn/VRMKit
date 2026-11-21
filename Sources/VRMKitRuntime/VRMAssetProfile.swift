@@ -6,11 +6,12 @@ import Foundation
 import VRMKit
 
 /// What reading a VRM adds to reading a generic glTF: the VRM extensions it implements,
-/// VRM 0.x material properties, the first-person cut and VRM's morph target sharing.
+/// VRM 0.x material properties, the first-person cut and VRM's morph target sharing. It
+/// describes the document rather than any one load, so one is made per document.
 ///
 /// What a VRM adds on top of the scene, the humanoid, the expressions, the constraints
 /// and the spring bones, is ``VRMInstance``'s.
-package final class VRMAssetProfile: GLTFAssetProfile, Sendable {
+package final class VRMAssetProfile: Sendable {
     package let vrm: VRM
     private let firstPersonPlan = Locked<VRMFirstPersonPlan?>(nil)
 
@@ -91,6 +92,8 @@ package final class VRMAssetProfile: GLTFAssetProfile, Sendable {
         }
     }
 
+    /// The joints of `skinIndex` whose triangles a first-person camera drops from the
+    /// mesh the node at `nodeIndex` draws.
     package func headJoints(ofNodeAt nodeIndex: Int,
                             meshIndex: Int,
                             skinIndex: Int?,
@@ -110,6 +113,7 @@ package final class VRMAssetProfile: GLTFAssetProfile, Sendable {
         }
     }
 
+    /// The VRM 0.x Unity material property describing the material at `index`.
     package func vrm0MaterialProperty(atMaterialIndex index: Int) -> VRM0.MaterialProperty? {
         vrm.vrm0MaterialProperty(at: index)
     }

@@ -13,7 +13,8 @@ import VRMKit
 /// a model at once, off whichever actor asked for them.
 package struct GLTFAssetReader: Sendable {
     package let document: GLTFDocument
-    package let profile: any GLTFAssetProfile
+    /// What reading the document as a VRM adds. Nil for a plain glTF.
+    package let profile: VRMAssetProfile?
     package let hierarchy: GLTFNodeHierarchy
     package let skins: [GLTFAsset.Skin]
     package let decoder: GLTFGeometryDecoder
@@ -42,7 +43,7 @@ package struct GLTFAssetReader: Sendable {
         }
     }
 
-    package init(document: GLTFDocument, profile: any GLTFAssetProfile) throws {
+    package init(document: GLTFDocument, profile: VRMAssetProfile? = nil) throws {
         self.document = document
         self.profile = profile
         let gltf = document.gltf
@@ -57,7 +58,7 @@ package struct GLTFAssetReader: Sendable {
             let resolved = Self.resolvedTexCoord(of: material)
             texcoordSelections[index] = .init(selected: resolved.selected, isMixed: resolved.isMixed)
             if Self.samplesNormalTexture(material,
-                                         materialProperty: profile.vrm0MaterialProperty(atMaterialIndex: index)) {
+                                         materialProperty: profile?.vrm0MaterialProperty(atMaterialIndex: index)) {
                 samplingNormalTexture.insert(index)
             }
         }
@@ -101,7 +102,7 @@ package struct GLTFAssetReader: Sendable {
         }
         let materials = materials(cutoutsDrawnOpaque: cutoutsDrawnOpaque)
         return GLTFAsset(document: document,
-                         vrm: (profile as? VRMAssetProfile)?.vrm,
+                         vrm: profile?.vrm,
                          hierarchy: hierarchy,
                          sceneIndex: sceneIndex,
                          rootNodes: roots,
@@ -118,7 +119,7 @@ package struct GLTFAssetReader: Sendable {
         gltf.materials.enumerated().map { index, material in
             GLTFMaterialData(index: index,
                              material: material,
-                             materialProperty: profile.vrm0MaterialProperty(atMaterialIndex: index),
+                             materialProperty: profile?.vrm0MaterialProperty(atMaterialIndex: index),
                              drawsCutoutOpaque: cutoutsDrawnOpaque.contains(index))
         }
     }
@@ -195,10 +196,15 @@ package struct GLTFAssetReader: Sendable {
         return meshes
     }
 
+    /// The primitives a mesh is built from, which a VRM reads differently from a plain glTF.
+    package func resolvedPrimitives(of mesh: GLTF.Mesh) -> [GLTF.Mesh.Primitive] {
+        profile?.resolvedPrimitives(of: mesh) ?? mesh.primitives
+    }
+
     /// The joints of `skinIndex` whose triangles a first-person camera drops from the mesh
     /// the node at `nodeIndex` draws. Empty for a plain glTF.
     package func headJoints(ofNodeAt nodeIndex: Int, meshIndex: Int, skinIndex: Int?) -> Set<UInt32> {
-        profile.headJoints(ofNodeAt: nodeIndex, meshIndex: meshIndex, skinIndex: skinIndex, hierarchy: hierarchy)
+        profile?.headJoints(ofNodeAt: nodeIndex, meshIndex: meshIndex, skinIndex: skinIndex, hierarchy: hierarchy) ?? []
     }
 
     package func meshKey(forNodeAt nodeIndex: Int, meshIndex: Int, skinIndex: Int?) -> MeshKey {
@@ -235,7 +241,7 @@ package struct GLTFAssetReader: Sendable {
         let decoder = decoder
         let decoded = try await withThrowingTaskGroup(of: (PrimitiveKey, GLTFPreparedPrimitive?).self) { group in
             for (meshOffset, item) in work.enumerated() {
-                for (primitiveIndex, primitive) in profile.resolvedPrimitives(of: item.drawn.mesh).enumerated() {
+                for (primitiveIndex, primitive) in resolvedPrimitives(of: item.drawn.mesh).enumerated() {
                     let headJoints = item.headJoints
                     let skinIndex = item.key.skinIndex
                     group.addTask {
@@ -255,7 +261,7 @@ package struct GLTFAssetReader: Sendable {
 
         var meshes: [MeshKey: BuiltMesh] = [:]
         for (meshOffset, item) in work.enumerated() {
-            let primitives = profile.resolvedPrimitives(of: item.drawn.mesh)
+            let primitives = resolvedPrimitives(of: item.drawn.mesh)
             meshes[item.key] = try mesh(item.key,
                                         gltfMesh: item.drawn.mesh,
                                         primitives: primitives.indices.map {
@@ -269,7 +275,7 @@ package struct GLTFAssetReader: Sendable {
     package func mesh(_ key: MeshKey, nodeIndex: Int) throws -> BuiltMesh {
         let gltfMesh = try gltf.load(\.meshes, at: key.meshIndex)
         let headJoints = headJoints(ofNodeAt: nodeIndex, meshIndex: key.meshIndex, skinIndex: key.skinIndex)
-        return try mesh(key, gltfMesh: gltfMesh, primitives: profile.resolvedPrimitives(of: gltfMesh).map { primitive in
+        return try mesh(key, gltfMesh: gltfMesh, primitives: resolvedPrimitives(of: gltfMesh).map { primitive in
             let geometry = try decoder.decode(primitive, skinIndex: key.skinIndex)
             return (primitive, try geometry.map { try Self.conditioned($0, headJoints: headJoints) })
         })
@@ -312,7 +318,7 @@ package struct GLTFAssetReader: Sendable {
     /// any array driving it. A primitive declaring no target of its own does not take part.
     package func morphTargetCount(ofMeshAt index: Int) throws -> Int {
         var targetCount = 0
-        for primitive in profile.resolvedPrimitives(of: try gltf.load(\.meshes, at: index)) {
+        for primitive in resolvedPrimitives(of: try gltf.load(\.meshes, at: index)) {
             let count = primitive.targets?.count ?? 0
             guard count > 0 else { continue }
             guard targetCount == 0 || targetCount == count else {

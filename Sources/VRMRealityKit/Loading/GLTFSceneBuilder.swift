@@ -136,7 +136,7 @@ final class GLTFSceneBuilder {
         if resources.enforcesRequiredExtension(GLTFExtension.textureTransform.rawValue) {
             try validateTextureTransformsAreRenderable()
         }
-        try resources.profile.validateRequiredExtensionsAreRenderable(of: gltf)
+        try resources.profile?.validateRequiredExtensionsAreRenderable(of: gltf)
     }
 
     /// RealityKit gives a material one UV transform and its mesh one UV set, so an asset
@@ -331,7 +331,7 @@ final class GLTFSceneBuilder {
 
     /// The primitives a mesh is built from, as the profile reads them off the document.
     func resolvedPrimitives(of mesh: GLTF.Mesh) -> [GLTF.Mesh.Primitive] {
-        resources.profile.resolvedPrimitives(of: mesh)
+        resources.profile?.resolvedPrimitives(of: mesh) ?? mesh.primitives
     }
 
     /// One slot of a mesh and the material it is shaded with.
@@ -618,7 +618,7 @@ final class GLTFSceneBuilder {
     /// The glTF material and, for VRM 0.x, the Unity material property describing it.
     /// Both are array lookups, so neither is cached.
     private func materialSource(withMaterialIndex index: Int) throws -> (GLTF.Material, VRM0.MaterialProperty?) {
-        (try gltf.load(\.materials, at: index), resources.profile.vrm0MaterialProperty(atMaterialIndex: index))
+        (try gltf.load(\.materials, at: index), resources.profile?.vrm0MaterialProperty(atMaterialIndex: index))
     }
 
     /// A fresh mutable runtime state for the material, made by the material on screen,
@@ -662,7 +662,7 @@ final class GLTFSceneBuilder {
                 if let texture = slot.dictionaryValue["index"]?.indexValue { indices.insert(texture) }
             }
         }
-        return indices.union(resources.profile.extraTextureIndices(ofMaterialAt: index))
+        return indices.union(resources.profile?.extraTextureIndices(ofMaterialAt: index) ?? [])
     }
 
     /// One image's share of the texture prepare pass: the decode, and whatever per-pixel
