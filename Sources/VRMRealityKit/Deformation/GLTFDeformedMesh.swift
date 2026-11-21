@@ -87,7 +87,7 @@ final class GLTFDeformedMesh {
         }
         blendShapeWeights = Array(repeating: 0, count: geometry.blendShapeTargetCount)
         if let skin = source.skin {
-            let identity = Array(repeating: matrix_identity_float4x4, count: max(skin.skeleton.joints.count, 1))
+            let identity = Array(repeating: matrix_identity_float4x4, count: max(skin.parentIndices.count, 1))
             jointMatricesBuffer = device.makeBuffer(identity)
         } else {
             jointMatricesBuffer = nil
@@ -223,24 +223,24 @@ final class GLTFDeformedMesh {
     /// Writes the matrices the kernel skins with, each joint's model-space pose times its
     /// inverse bind matrix, one per joint of the skeleton. Identity before the first solve.
     func writeJointMatrices(into matrices: UnsafeMutablePointer<simd_float4x4>) {
-        guard let skeleton = source.skin?.skeleton else { return }
-        let joints = skeleton.joints
+        guard let skin = source.skin else { return }
+        let parents = skin.parentIndices
         guard let transforms = jointTransforms else {
-            for index in joints.indices { matrices[index] = matrix_identity_float4x4 }
+            for index in parents.indices { matrices[index] = matrix_identity_float4x4 }
             return
         }
         // The skeleton lists parents first, so a parent's model-space pose is settled
         // by the time its child reads it.
-        for index in joints.indices {
+        for index in parents.indices {
             let local = index < transforms.count ? transforms[index].matrix : matrix_identity_float4x4
-            if let parent = joints[index].parentIndex, parent < index {
+            if let parent = parents[index], parent < index {
                 matrices[index] = matrices[parent] * local
             } else {
                 matrices[index] = local
             }
         }
-        for index in joints.indices {
-            matrices[index] = matrices[index] * joints[index].inverseBindPoseMatrix
+        for (index, inverseBind) in skin.inverseBindMatrices.enumerated() {
+            matrices[index] = matrices[index] * inverseBind
         }
     }
 

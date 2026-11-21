@@ -26,11 +26,14 @@ final class GLTFMeshSource {
     let tangentHandedness: [SIMD2<Float>]
     let tangentHandednessBufferIndex: Int?
 
+    /// The joints are in the order the influences index them, parents first.
     struct Skin {
         let joints: MTLBuffer
         let weights: MTLBuffer
-        /// The joints in the order the influences index them, parents first.
-        let skeleton: MeshResource.Skeleton
+        /// Each joint's parent and inverse bind matrix, read off the skeleton once: a solve
+        /// reads both per joint per frame, and the skeleton hands its joints out by copy.
+        let parentIndices: [Int?]
+        let inverseBindMatrices: [simd_float4x4]
     }
 
     let skin: Skin?
@@ -67,7 +70,10 @@ final class GLTFMeshSource {
         if let skeleton, geometry.isSkinned,
            let joints = context.device.makeBuffer(geometry.jointIndices),
            let weights = context.device.makeBuffer(geometry.jointWeights) {
-            skin = Skin(joints: joints, weights: weights, skeleton: skeleton)
+            skin = Skin(joints: joints,
+                        weights: weights,
+                        parentIndices: skeleton.joints.map(\.parentIndex),
+                        inverseBindMatrices: skeleton.joints.map(\.inverseBindPoseMatrix))
         } else {
             skin = nil
         }

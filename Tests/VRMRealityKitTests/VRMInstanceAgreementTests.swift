@@ -29,10 +29,10 @@ struct VRMInstanceAgreementTests {
         let instanceSkins = Dictionary(uniqueKeysWithValues: instance.takeOutput().skins.map { ($0.nodeIndex, $0) })
         var compared = 0
         for modelEntity in entity.modelEntitiesInHierarchy {
-            guard let mesh = modelEntity.deformedMesh, let skeleton = mesh.source.skin?.skeleton,
+            guard let mesh = modelEntity.deformedMesh, let jointCount = mesh.source.skin?.parentIndices.count,
                   let node = nodeIndex(above: modelEntity) else { continue }
             let skin = try #require(instanceSkins[node])
-            var matrices = [simd_float4x4](repeating: matrix_identity_float4x4, count: skeleton.joints.count)
+            var matrices = [simd_float4x4](repeating: matrix_identity_float4x4, count: jointCount)
             matrices.withUnsafeMutableBufferPointer { mesh.writeJointMatrices(into: $0.baseAddress!) }
             #expect(matrices.count == skin.jointMatrices.count)
             for (expected, actual) in zip(matrices, skin.jointMatrices) {
