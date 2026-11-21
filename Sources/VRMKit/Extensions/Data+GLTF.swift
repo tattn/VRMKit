@@ -25,8 +25,22 @@ package extension Data {
         if let data = try Data(dataURI: gltfUrlString) {
             self = data
         } else {
-            self = try Data(contentsOf: URL(gltfUri: gltfUrlString, relativeTo: rootDirectory))
+            self = try Data(mappingFileAt: URL(gltfUri: gltfUrlString, relativeTo: rootDirectory))
         }
+    }
+
+    /// A file's bytes mapped rather than copied: only the pages a read touches come in, as
+    /// clean memory the system can drop again, however long a document keeps them.
+    ///
+    /// While the bytes live the file must be replaced, never rewritten in place: the bytes
+    /// would change under a reader, and a page a truncation removed crashes the one reaching it.
+    init(mappingFileAt url: URL) throws {
+#if os(Android)
+        // FoundationEssentials there reads the file into memory for `.mappedIfSafe`.
+        try self.init(contentsOf: url, options: .alwaysMapped)
+#else
+        try self.init(contentsOf: url, options: .mappedIfSafe)
+#endif
     }
 
     /// The bytes an RFC 2397 `data:` URI carries, or nil when the string is not

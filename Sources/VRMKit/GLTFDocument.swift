@@ -56,8 +56,16 @@ public final class GLTFDocument: Sendable {
     }
 
     /// Loads a `.glb` / `.gltf` file. External resources resolve relative to its directory.
+    ///
+    /// The file and the external buffers it names are mapped rather than read into memory, and
+    /// stay mapped as long as the document lives, so a model costs only the pages its load
+    /// touches. While a document is loaded from it, replace such a file by writing a new one and
+    /// renaming it over the old (`Data.write(to:options: .atomic)`), never by rewriting it in
+    /// place: the document would read the new bytes, or crash on a page a truncation removed.
+    /// Read the file into a `Data` and pass it to ``init(data:rootDirectory:)`` to hold a copy
+    /// instead.
     public convenience init(withURL url: URL) throws {
-        try self.init(data: try Data(contentsOf: url), rootDirectory: url.deletingLastPathComponent())
+        try self.init(data: try Data(mappingFileAt: url), rootDirectory: url.deletingLastPathComponent())
     }
 
 #if !canImport(FoundationEssentials)

@@ -63,6 +63,8 @@ public final class GLTFEntityLoader {
     }
 
     /// Loads a `.glb` / `.gltf` file. External resources resolve relative to its directory.
+    /// The file stays mapped as `GLTFDocument(withURL:)` maps it, so replace it rather than
+    /// rewrite it in place while what this loader builds is alive.
     public convenience init(withURL url: URL,
                             shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                             maxTextureDimension: Int? = nil,

@@ -16,7 +16,8 @@ public enum VRM: Sendable {
     }
 
     /// Loads a `.vrm` file. External resources resolve relative to the file's
-    /// directory.
+    /// directory. The file stays mapped as ``GLTFDocument/init(withURL:)`` maps it, so
+    /// replace it rather than rewrite it in place while the model is loaded.
     public init(withURL url: URL) throws {
         try self.init(document: try GLTFDocument(withURL: url))
     }
