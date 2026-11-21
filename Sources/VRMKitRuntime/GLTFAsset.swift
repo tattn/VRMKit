@@ -31,8 +31,6 @@ public final class GLTFAsset: Sendable {
     public let materials: [GLTFMaterialData]
     /// Every image of the document, by glTF image index.
     public let images: [GLTFImageSource]
-    /// What the read ran into that a renderer may want to report, once each.
-    package let warnings: [GLTFGeometryWarning]
     package let hierarchy: GLTFNodeHierarchy
 
     /// One glTF node at rest.
@@ -85,8 +83,7 @@ public final class GLTFAsset: Sendable {
                  meshes: [Mesh],
                  meshIndicesByNode: [Int: Int],
                  materials: [GLTFMaterialData],
-                 images: [GLTFImageSource],
-                 warnings: [GLTFGeometryWarning]) {
+                 images: [GLTFImageSource]) {
         self.document = document
         self.vrm = vrm
         self.hierarchy = hierarchy
@@ -98,7 +95,6 @@ public final class GLTFAsset: Sendable {
         self.meshIndicesByNode = meshIndicesByNode
         self.materials = materials
         self.images = images
-        self.warnings = warnings
     }
 
     /// The mesh the node at `index` draws.

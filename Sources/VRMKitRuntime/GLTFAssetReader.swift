@@ -50,7 +50,7 @@ package struct GLTFAssetReader: Sendable {
         let hierarchy = try GLTFNodeHierarchy.validatingStructure(of: gltf)
         self.hierarchy = hierarchy
         let accessors = PackedAccessorCache(document: document)
-        skins = try gltf.skins.map { try Self.skin($0, gltf: gltf, accessors: accessors, hierarchy: hierarchy) }
+        skins = try gltf.skins.map { try Self.skin($0, accessors: accessors, hierarchy: hierarchy) }
 
         var texcoordSelections: [Int: GLTFGeometryDecoder.TexcoordSelection] = [:]
         var samplingNormalTexture: Set<Int> = []
@@ -89,14 +89,12 @@ package struct GLTFAssetReader: Sendable {
         var meshes: [GLTFAsset.Mesh] = []
         var indicesByKey: [MeshKey: Int] = [:]
         var meshIndicesByNode: [Int: Int] = [:]
-        var warnings: [GLTFGeometryWarning] = []
         for item in try drawnMeshes(sceneIndex: sceneIndex) {
             let key = meshKey(forNodeAt: item.nodeIndex, meshIndex: item.meshIndex, skinIndex: item.skinIndex)
             if indicesByKey[key] == nil {
                 let built = try decoded[key] ?? mesh(key, nodeIndex: item.nodeIndex)
                 indicesByKey[key] = meshes.count
                 meshes.append(built.mesh)
-                warnings += built.warnings
             }
             meshIndicesByNode[item.nodeIndex] = indicesByKey[key]
         }
@@ -110,8 +108,7 @@ package struct GLTFAssetReader: Sendable {
                          meshes: meshes,
                          meshIndicesByNode: meshIndicesByNode,
                          materials: materials(cutoutsDrawnOpaque: cutoutsDrawnOpaque),
-                         images: gltf.images.indices.map { GLTFImageSource(index: $0, document: document) },
-                         warnings: warnings)
+                         images: gltf.images.indices.map { GLTFImageSource(index: $0, document: document) })
     }
 
     package func materials(cutoutsDrawnOpaque: Set<Int> = []) -> [GLTFMaterialData] {
@@ -377,7 +374,6 @@ package struct GLTFAssetReader: Sendable {
     // MARK: - Skins
 
     private static func skin(_ skin: GLTF.Skin,
-                             gltf: GLTF,
                              accessors: PackedAccessorCache,
                              hierarchy: GLTFNodeHierarchy) throws -> GLTFAsset.Skin {
         let (parentIndices, order, remap) = jointOrdering(of: skin, hierarchy: hierarchy)
