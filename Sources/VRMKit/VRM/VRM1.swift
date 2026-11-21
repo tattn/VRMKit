@@ -54,7 +54,7 @@ public struct VRM1: Sendable {
 }
 
 public extension VRM1 {
-    struct Meta: Codable, Sendable {
+    struct Meta: Decodable, Sendable {
         public let name: String
         public let version: String?
         public let authors: [String]
@@ -77,31 +77,31 @@ public extension VRM1 {
         public let extensions: JSONValue?
         public let extras: JSONValue?
 
-        public enum AvatarPermissionType: String, Codable, Sendable {
+        public enum AvatarPermissionType: String, Decodable, Sendable {
             case onlyAuthor
             case onlySeparatelyLicensedPerson
             case everyone
         }
 
-        public enum CommercialUsageType: String, Codable, Sendable {
+        public enum CommercialUsageType: String, Decodable, Sendable {
             case personalNonProfit
             case personalProfit
             case corporation
         }
 
-        public enum CreditNotationType: String, Codable, Sendable {
+        public enum CreditNotationType: String, Decodable, Sendable {
             case required
             case unnecessary
         }
 
-        public enum ModificationType: String, Codable, Sendable {
+        public enum ModificationType: String, Decodable, Sendable {
             case prohibited
             case allowModification
             case allowModificationRedistribution
         }
     }
 
-    struct Humanoid: Codable, Sendable {
+    struct Humanoid: Decodable, Sendable {
         public let humanBones: HumanBones
         public let extensions: JSONValue?
         public let extras: JSONValue?
@@ -110,7 +110,7 @@ public extension VRM1 {
         ///
         /// VRM 1.0 gives every bone its own JSON property, decoded into one dictionary so
         /// both versions read as the same shape. An undefined property is ignored.
-        public struct HumanBones: Codable, Sendable {
+        public struct HumanBones: Decodable, Sendable {
             public let bones: [HumanoidBone: HumanBone]
 
             /// The node the rig maps `bone` to, or nil when it does not rig it.
@@ -141,16 +141,7 @@ public extension VRM1 {
                 }
             }
 
-            public func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: AnyCodingKey.self)
-                for bone in HumanoidBone.allCases {
-                    guard let humanBone = bones[bone],
-                          let key = AnyCodingKey(stringValue: bone.rawValue) else { continue }
-                    try container.encode(humanBone, forKey: key)
-                }
-            }
-
-            public struct HumanBone: Codable, Sendable {
+            public struct HumanBone: Decodable, Sendable {
                 public let node: Int
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
@@ -158,10 +149,14 @@ public extension VRM1 {
         }
     }
 
-    struct FirstPerson: Codable, Sendable {
+    struct FirstPerson: Decodable, Sendable {
         public let meshAnnotations: [MeshAnnotation]
         public let extensions: JSONValue?
         public let extras: JSONValue?
+
+        private enum CodingKeys: String, CodingKey {
+            case meshAnnotations, extensions, extras
+        }
 
         // meshAnnotations is optional in practice, so decode it leniently.
         public init(from decoder: Decoder) throws {
@@ -171,14 +166,14 @@ public extension VRM1 {
             extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
         }
         
-        public struct MeshAnnotation: Codable, Sendable {
+        public struct MeshAnnotation: Decodable, Sendable {
             public let type: FirstPersonType
             public let node: Int
             public let extensions: JSONValue?
             public let extras: JSONValue?
         }
 
-        public enum FirstPersonType: String, Codable, Sendable {
+        public enum FirstPersonType: String, Decodable, Sendable {
             case auto
             case both
             case thirdPersonOnly
@@ -186,7 +181,7 @@ public extension VRM1 {
         }
     }
 
-    struct LookAt: Codable, Sendable {
+    struct LookAt: Decodable, Sendable {
         public let offsetFromHeadBone: SIMD3<Float>
         public let type: LookAtType?
         public let rangeMapHorizontalInner: LookAtRangeMap?
@@ -195,6 +190,11 @@ public extension VRM1 {
         public let rangeMapVerticalUp: LookAtRangeMap?
         public let extensions: JSONValue?
         public let extras: JSONValue?
+
+        private enum CodingKeys: String, CodingKey {
+            case offsetFromHeadBone, type, rangeMapHorizontalInner, rangeMapHorizontalOuter
+            case rangeMapVerticalDown, rangeMapVerticalUp, extensions, extras
+        }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -208,12 +208,12 @@ public extension VRM1 {
             extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
         }
 
-        public enum LookAtType: String, Codable, Sendable {
+        public enum LookAtType: String, Decodable, Sendable {
             case bone
             case expression
         }
 
-        public struct LookAtRangeMap: Codable, Sendable {
+        public struct LookAtRangeMap: Decodable, Sendable {
             public let inputMaxValue: Double
             public let outputScale: Double
             public let extensions: JSONValue?
@@ -221,14 +221,14 @@ public extension VRM1 {
         }
     }
     
-    struct Expressions: Codable, Sendable {
+    struct Expressions: Decodable, Sendable {
         public let preset: Preset?
         /// The expressions the model names itself.
         public let custom: [String: Expression]?
         public let extensions: JSONValue?
         public let extras: JSONValue?
 
-        public struct Preset: Codable, Sendable {
+        public struct Preset: Decodable, Sendable {
             public let happy: Expression?
             public let angry: Expression?
             public let sad: Expression?
@@ -249,7 +249,7 @@ public extension VRM1 {
             public let neutral: Expression?
         }
 
-        public struct Expression: Codable, Sendable {
+        public struct Expression: Decodable, Sendable {
             public let morphTargetBinds: [MorphTargetBind]?
             public let materialColorBinds: [MaterialColorBind]?
             public let textureTransformBinds: [TextureTransformBind]?
@@ -260,7 +260,7 @@ public extension VRM1 {
             public let extensions: JSONValue?
             public let extras: JSONValue?
 
-            public struct MorphTargetBind: Codable, Sendable {
+            public struct MorphTargetBind: Decodable, Sendable {
                 public let node: Int
                 public let index: Int
                 public let weight: Double
@@ -268,12 +268,16 @@ public extension VRM1 {
                 public let extras: JSONValue?
             }
 
-            public struct MaterialColorBind: Codable, Sendable {
+            public struct MaterialColorBind: Decodable, Sendable {
                 public let material: Int
                 public let type: MaterialColorType
                 public let targetValue: SIMD4<Float>
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
+
+                private enum CodingKeys: String, CodingKey {
+                    case material, type, targetValue, extensions, extras
+                }
 
                 public init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -284,7 +288,7 @@ public extension VRM1 {
                     extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
                 }
 
-                public enum MaterialColorType: String, Codable, Sendable {
+                public enum MaterialColorType: String, Decodable, Sendable {
                     case color
                     case emissionColor
                     case shadeColor
@@ -294,12 +298,16 @@ public extension VRM1 {
                 }
             }
 
-            public struct TextureTransformBind: Codable, Sendable {
+            public struct TextureTransformBind: Decodable, Sendable {
                 public let material: Int
                 public let scale: SIMD2<Float>
                 public let offset: SIMD2<Float>
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
+
+                private enum CodingKeys: String, CodingKey {
+                    case material, scale, offset, extensions, extras
+                }
 
                 public init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -311,7 +319,7 @@ public extension VRM1 {
                 }
             }
 
-            public enum ExpressionOverrideType: String, Codable, Sendable {
+            public enum ExpressionOverrideType: String, Decodable, Sendable {
                 case none
                 case block
                 case blend
@@ -321,7 +329,7 @@ public extension VRM1 {
 }
 
 extension VRM1 {
-    public struct SpringBone: Codable, Sendable {
+    public struct SpringBone: Decodable, Sendable {
         /// The `VRMC_springBone` spec versions this type models, which the extension
         /// carries rather than the model.
         public static func supports(specVersion: String?) -> Bool {
@@ -335,7 +343,7 @@ extension VRM1 {
         public let extensions: JSONValue?
         public let extras: JSONValue?
 
-        public struct Collider: Codable, Sendable {
+        public struct Collider: Decodable, Sendable {
             public let node: Int
             public let shape: Shape
             public let extensions: JSONValue?
@@ -343,7 +351,7 @@ extension VRM1 {
 
             /// What a collider collides as. One stating neither shape would still collide,
             /// at whatever hit radius a joint brings.
-            public enum Shape: Codable, Sendable {
+            public enum Shape: Decodable, Sendable {
                 case sphere(ColliderShapeSphere)
                 case capsule(ColliderShapeCapsule)
 
@@ -366,17 +374,13 @@ extension VRM1 {
                     self = shape
                 }
 
-                public func encode(to encoder: Encoder) throws {
-                    var container = encoder.container(keyedBy: CodingKeys.self)
-                    switch self {
-                    case .sphere(let sphere): try container.encode(sphere, forKey: .sphere)
-                    case .capsule(let capsule): try container.encode(capsule, forKey: .capsule)
-                    }
-                }
-
-                public struct ColliderShapeSphere: Codable, Sendable {
+                public struct ColliderShapeSphere: Decodable, Sendable {
                     public let offset: SIMD3<Float>
                     public let radius: Double
+
+                    private enum CodingKeys: String, CodingKey {
+                        case offset, radius
+                    }
 
                     public init(from decoder: Decoder) throws {
                         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -385,10 +389,14 @@ extension VRM1 {
                     }
                 }
 
-                public struct ColliderShapeCapsule: Codable, Sendable {
+                public struct ColliderShapeCapsule: Decodable, Sendable {
                     public let offset: SIMD3<Float>
                     public let radius: Double
                     public let tail: SIMD3<Float>
+
+                    private enum CodingKeys: String, CodingKey {
+                        case offset, radius, tail
+                    }
 
                     public init(from decoder: Decoder) throws {
                         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -400,13 +408,13 @@ extension VRM1 {
             }
         }
 
-        public struct ColliderGroup: Codable, Sendable {
+        public struct ColliderGroup: Decodable, Sendable {
             public let colliders: [Int]
             public let extensions: JSONValue?
             public let extras: JSONValue?
         }
 
-        public struct Spring: Codable, Sendable {
+        public struct Spring: Decodable, Sendable {
             public let name: String?
             public let joints: [Joint]
             public let colliderGroups: [Int]?
@@ -414,7 +422,7 @@ extension VRM1 {
             public let extensions: JSONValue?
             public let extras: JSONValue?
 
-            public struct Joint: Codable, Sendable {
+            public struct Joint: Decodable, Sendable {
                 public let node: Int
                 public let hitRadius: Double?
                 public let stiffness: Double?
@@ -423,6 +431,11 @@ extension VRM1 {
                 public let dragForce: Double?
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
+
+                private enum CodingKeys: String, CodingKey {
+                    case node, hitRadius, stiffness, gravityPower, gravityDir, dragForce
+                    case extensions, extras
+                }
 
                 public init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)

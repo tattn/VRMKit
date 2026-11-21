@@ -10,7 +10,7 @@ import Foundation
 /// One enum serves the whole path a value takes: the material it is decoded
 /// from, the model it is read into, the conversion that synthesizes it, and the
 /// renderer that draws it.
-public enum MToonOutlineWidthMode: String, Codable, Sendable {
+public enum MToonOutlineWidthMode: String, Decodable, Sendable {
     /// No outline, whatever width the material carries.
     case none
     /// Meters of world space, so the outline thickens on screen as the camera

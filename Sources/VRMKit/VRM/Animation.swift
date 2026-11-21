@@ -7,20 +7,20 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#animation
 
 extension GLTF {
-    public struct Animation: Codable, Sendable {
+    public struct Animation: Decodable, Sendable {
         public let channels: [Channel]
         public let samplers: [Sampler]
         public let name: String?
         public let extensions: JSONValue?
         public let extras: JSONValue?
 
-        public struct Channel: Codable, Sendable {
+        public struct Channel: Decodable, Sendable {
             package let sampler: Int
             package let target: Target
             package let extensions: JSONValue?
             let extras: JSONValue?
 
-            public struct Target: Codable, Sendable {
+            public struct Target: Decodable, Sendable {
                 package let node: Int?
                 package let path: String
                 package let extensions: JSONValue?
@@ -41,7 +41,7 @@ extension GLTF {
             }
         }
 
-        public struct Sampler: Codable, Sendable {
+        public struct Sampler: Decodable, Sendable {
             package let input: Int
             let _interpolation: Interpolation?
             package var interpolation: Interpolation { return _interpolation ?? .LINEAR }
@@ -56,7 +56,7 @@ extension GLTF {
                 case extras
             }
 
-            public enum Interpolation: String, Codable, Sendable {
+            public enum Interpolation: String, Decodable, Sendable {
                 case LINEAR
                 case STEP
                 case CUBICSPLINE

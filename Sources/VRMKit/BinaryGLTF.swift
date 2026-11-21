@@ -11,7 +11,7 @@ public struct BinaryGLTF: Sendable {
     public let gltf: GLTF
     /// Chunk 0 as it was parsed, kept whole so that what ``GLTF`` does not model survives
     /// a rewrite.
-    let jsonTree: JSONValue
+    let jsonRoot: JSONObject
     /// The BIN chunk, chunk 1, nil when the container carries none.
     public let binaryBuffer: Data?
 
@@ -63,7 +63,7 @@ extension BinaryGLTF {
         // A chunk length is read as written even when it is not the multiple of 4 the spec
         // asks for: files in the wild state the BIN chunk's unpadded length, and UniVRM
         // loads them.
-        var json: (gltf: GLTF, tree: JSONValue)?
+        var json: (gltf: GLTF, root: JSONObject)?
         var binaryBuffer: Data?
         var chunkIndex = 0
         while length - reader.bytesRead >= Self.chunkHeaderLength {
@@ -82,8 +82,8 @@ extension BinaryGLTF {
                     throw VRMError._dataInconsistent("the JSON chunk must be the first GLB chunk")
                 }
                 // Parsed once: the typed model decodes off the same tree editing reads.
-                let tree = try JSONValue(parsing: chunkData)
-                json = (try tree.decode(GLTF.self), tree)
+                let root = try JSONObject(parsingGLTF: chunkData)
+                json = (try root.decode(GLTF.self), root)
             case .bin:
                 guard chunkIndex == 1 else {
                     throw VRMError._dataInconsistent("the BIN chunk must be the second GLB chunk")
@@ -109,7 +109,7 @@ extension BinaryGLTF {
         // The container version and the asset version are independent.
         try chunk.gltf.validateSupportedAssetVersion()
         self.gltf = chunk.gltf
-        self.jsonTree = chunk.tree
+        self.jsonRoot = chunk.root
         self.binaryBuffer = binaryBuffer
     }
 }

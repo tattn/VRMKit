@@ -82,8 +82,8 @@ struct GLTFMergeTests {
         let output = try document.serialize()
         let merged = try VRM1(data: output)
         #expect(merged.humanoid.humanBones[.head]?.node == head)
-        let originalExtensions = try GLTFDocument(data: VRMSampleAsset.seedSan.data).rawJSON()["extensions"]
-        let mergedExtensions = try GLTFDocument(data: output).rawJSON()["extensions"]
+        let originalExtensions = try GLTFDocument(data: VRMSampleAsset.seedSan.data).jsonRoot["extensions"]
+        let mergedExtensions = try GLTFDocument(data: output).jsonRoot["extensions"]
         #expect(jsonDifference(try #require(originalExtensions), try #require(mergedExtensions)) == nil)
     }
 
@@ -173,8 +173,8 @@ struct GLTFMergeTests {
 
         let twice = try GLTFDocument(data: try document.serialize())
         #expect(twice.gltf.animations.count > animations.count)
-        let before = try once.rawJSON().objects("animations")
-        let after = try twice.rawJSON().objects("animations")
+        let before = once.jsonRoot.objects("animations")
+        let after = twice.jsonRoot.objects("animations")
         #expect(jsonDifference(before, Array(after.prefix(before.count))) == nil)
         try expectSameAccessors(once, twice,
                                 indices: animations.flatMap { $0.samplers.flatMap { [$0.input, $0.output] } })
@@ -235,7 +235,7 @@ struct GLTFMergeTests {
 
         try document.append(source, under: 0)
 
-        let material = try #require(try GLTFDocument(data: try document.serialize()).rawJSON().objects(.materials).last)
+        let material = try #require(try GLTFDocument(data: try document.serialize()).jsonRoot.objects(.materials).last)
         #expect(material.object("extras")?.object("previewTexture")?.index("index") == 0)
         // The material's own texture reference did move, so the merge is rebasing where it
         // should and nowhere else.
@@ -255,7 +255,7 @@ struct GLTFMergeTests {
 
         try document.append(source, under: 0)
 
-        let merged = try GLTFDocument(data: try document.serialize()).rawJSON()
+        let merged = try GLTFDocument(data: try document.serialize()).jsonRoot
         #expect(merged.strings("extensionsUsed").contains("KHR_materials_unlit"))
         #expect(merged.strings("extensionsRequired").contains("KHR_materials_unlit"))
     }

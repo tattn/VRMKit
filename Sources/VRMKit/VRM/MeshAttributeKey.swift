@@ -49,20 +49,15 @@ extension GLTF.Mesh.Primitive {
     }
 }
 
-extension GLTF.Mesh.Primitive.AttributeKey: Codable {
+extension GLTF.Mesh.Primitive.AttributeKey: Decodable {
     public init(from decoder: Decoder) throws {
         rawValue = try decoder.singleValueContainer().decode(String.self)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
     }
 }
 
 extension GLTF.Mesh.Primitive.AttributeKey: CodingKeyRepresentable {
-    /// Without this a `[AttributeKey: Int]` encodes as an array of alternating
-    /// keys and values rather than as the JSON object glTF asks for.
+    /// Without this a `[AttributeKey: Int]` decodes from an array of alternating
+    /// keys and values rather than from the JSON object glTF writes.
     public var codingKey: any CodingKey {
         Key(stringValue: rawValue)
     }

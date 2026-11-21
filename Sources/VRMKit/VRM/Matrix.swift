@@ -5,7 +5,7 @@ import Foundation
 #endif
 
 extension GLTF {
-    public struct Matrix: Codable, Sendable {
+    public struct Matrix: Decodable, Sendable {
         /// The 16 values of a 4x4 matrix, in glTF's column-major order.
         public let values: [Float]
 
@@ -28,12 +28,5 @@ extension GLTF.Matrix {
             throw VRMError._dataInconsistent("a glTF matrix has 16 values, got \(values.count)")
         }
         self.values = values
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.unkeyedContainer()
-        for value in values {
-            try container.encode(value)
-        }
     }
 }

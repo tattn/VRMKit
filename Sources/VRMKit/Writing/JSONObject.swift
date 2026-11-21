@@ -11,6 +11,11 @@ package typealias JSONObject = [String: JSONValue]
 // MARK: - Reading
 
 package extension JSONObject {
+    /// The object a glTF's JSON text holds at its top.
+    init(parsingGLTF data: Data) throws {
+        self = try JSONValue(parsing: data).objectValue ??? ._dataInconsistent("the glTF JSON is not an object")
+    }
+
     func object(_ key: String) -> JSONObject? { self[key]?.objectValue }
     func objects(_ key: String) -> [JSONObject] { self[key]?.arrayValue?.compactMap(\.objectValue) ?? [] }
 

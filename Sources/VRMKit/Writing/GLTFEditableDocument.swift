@@ -31,7 +31,7 @@ public struct GLTFEditableDocument {
     }
 
     public init(document: GLTFDocument) throws {
-        var json = try document.rawJSON()
+        var json = document.jsonRoot
         binary = try Self.embedResources(of: document, into: &json)
         self.json = json
     }

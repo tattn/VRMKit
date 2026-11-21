@@ -8,7 +8,7 @@ import Foundation
 ///
 /// glTF spells an empty top-level array by leaving it out, so each reads as empty
 /// when absent.
-public struct GLTF: Codable, Sendable {
+public struct GLTF: Decodable, Sendable {
     public let extensionsUsed: [String]
     public let extensionsRequired: [String]
     public let accessors: [Accessor]
@@ -58,37 +58,6 @@ public struct GLTF: Codable, Sendable {
         textures = try container.decodeIfPresent([Texture].self, forKey: .textures) ?? []
         extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
         extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfNotEmpty(extensionsUsed, forKey: .extensionsUsed)
-        try container.encodeIfNotEmpty(extensionsRequired, forKey: .extensionsRequired)
-        try container.encodeIfNotEmpty(accessors, forKey: .accessors)
-        try container.encodeIfNotEmpty(animations, forKey: .animations)
-        try container.encode(asset, forKey: .asset)
-        try container.encodeIfNotEmpty(buffers, forKey: .buffers)
-        try container.encodeIfNotEmpty(bufferViews, forKey: .bufferViews)
-        try container.encodeIfNotEmpty(cameras, forKey: .cameras)
-        try container.encodeIfNotEmpty(images, forKey: .images)
-        try container.encodeIfNotEmpty(materials, forKey: .materials)
-        try container.encodeIfNotEmpty(meshes, forKey: .meshes)
-        try container.encodeIfNotEmpty(nodes, forKey: .nodes)
-        try container.encodeIfNotEmpty(samplers, forKey: .samplers)
-        try container.encodeIfPresent(scene, forKey: .scene)
-        try container.encodeIfNotEmpty(scenes, forKey: .scenes)
-        try container.encodeIfNotEmpty(skins, forKey: .skins)
-        try container.encodeIfNotEmpty(textures, forKey: .textures)
-        try container.encodeIfPresent(extensions, forKey: .extensions)
-        try container.encodeIfPresent(extras, forKey: .extras)
-    }
-}
-
-private extension KeyedEncodingContainer {
-    /// glTF forbids an empty top-level array, so one writes as no array at all.
-    mutating func encodeIfNotEmpty<T: Encodable>(_ values: [T], forKey key: Key) throws {
-        guard !values.isEmpty else { return }
-        try encode(values, forKey: key)
     }
 }
 

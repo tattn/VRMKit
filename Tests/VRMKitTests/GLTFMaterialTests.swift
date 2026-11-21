@@ -17,16 +17,13 @@ struct GLTFMaterialTests {
         #expect(material.pbrMetallicRoughness?.baseColorFactor == SIMD4<Float>(0.25, 0.5, 1, 1))
     }
 
-    /// A factor the file does not state is not written back as if it had been.
+    /// A factor the file does not state reads as the spec's default.
     @Test
-    func testAbsentFactorsStayAbsentWhenWritten() throws {
+    func testAbsentFactorsReadAsTheSpecDefaults() throws {
         let material = try decode(#"{"pbrMetallicRoughness": {}}"#)
 
         #expect(material.emissiveFactor == .zero)
         #expect(material.pbrMetallicRoughness?.baseColorFactor == SIMD4<Float>(repeating: 1))
-        let written = String(decoding: try JSONEncoder().encode(material), as: UTF8.self)
-        #expect(!written.contains("emissiveFactor"))
-        #expect(!written.contains("baseColorFactor"))
     }
 
     private func decode(_ json: String) throws -> GLTF.Material {

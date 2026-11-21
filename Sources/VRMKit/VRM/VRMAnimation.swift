@@ -99,7 +99,7 @@ public struct VRMAnimation: Sendable {
 }
 
 public extension VRMAnimation {
-    struct Humanoid: Codable, Sendable {
+    struct Humanoid: Decodable, Sendable {
         /// VRM humanoid bone name → the node its animation channels target.
         /// Keyed by the raw name, so bones this library does not know pass
         /// through instead of failing the parse.
@@ -107,14 +107,14 @@ public extension VRMAnimation {
         public let extensions: JSONValue?
         public let extras: JSONValue?
 
-        public struct HumanBone: Codable, Sendable {
+        public struct HumanBone: Decodable, Sendable {
             public let node: Int
             public let extensions: JSONValue?
             public let extras: JSONValue?
         }
     }
 
-    struct Expressions: Codable, Sendable {
+    struct Expressions: Decodable, Sendable {
         /// Preset expression name → its expression, keyed like `humanBones`.
         public let preset: [String: Expression]?
         public let custom: [String: Expression]?
@@ -122,7 +122,7 @@ public extension VRMAnimation {
         public let extras: JSONValue?
     }
 
-    struct Expression: Codable, Sendable {
+    struct Expression: Decodable, Sendable {
         /// The node whose translation X component carries the expression
         /// weight, clamped to 0...1.
         public let node: Int
@@ -130,7 +130,7 @@ public extension VRMAnimation {
         public let extras: JSONValue?
     }
 
-    struct LookAt: Codable, Sendable {
+    struct LookAt: Decodable, Sendable {
         /// The node whose rotation carries the gaze direction.
         public let node: Int?
         public let offsetFromHeadBone: [Double]?

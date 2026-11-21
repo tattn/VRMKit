@@ -16,7 +16,7 @@ struct GLTFMToonTests {
 
         try document.append(source, under: 0, materials: .mtoon)
 
-        let json = try GLTFDocument(data: try document.serialize()).rawJSON()
+        let json = try GLTFDocument(data: try document.serialize()).jsonRoot
         let properties = try #require(json.object("extensions")?.object("VRM")).objects("materialProperties")
         #expect(properties.count == json.objects("materials").count)
 
@@ -63,7 +63,7 @@ struct GLTFMToonTests {
         #expect(used.contains("VRMC_materials_mtoon"))
         #expect(used.contains("KHR_materials_unlit"))
         // The VRM 1.0 model has no parallel array to keep in step.
-        #expect(try reloaded.rawJSON().object("extensions")?.object("VRM") == nil)
+        #expect(reloaded.jsonRoot.object("extensions")?.object("VRM") == nil)
     }
 
     @Test
@@ -125,7 +125,7 @@ struct GLTFMToonTests {
                             under: 0,
                             materials: .mtoon)
 
-        let property = try #require(try GLTFDocument(data: try document.serialize()).rawJSON()
+        let property = try #require(try GLTFDocument(data: try document.serialize()).jsonRoot
             .object("extensions")?.object("VRM")?.objects("materialProperties").last)
         let mainTex = try #require(property.object("vectorProperties")?.floats("_MainTex"))
         // Unity keeps offset, scale in a bottom-left UV origin.

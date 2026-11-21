@@ -7,7 +7,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#skin
 
 extension GLTF {
-    public struct Skin: Codable, Sendable {
+    public struct Skin: Decodable, Sendable {
         public let inverseBindMatrices: Int?
         public let skeleton: Int?
         public let joints: [Int]

@@ -8,7 +8,7 @@ import SIMDCompat
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#material
 
 extension GLTF {
-    public struct Material: Codable, Sendable {
+    public struct Material: Decodable, Sendable {
         public let name: String?
         public let extensions: MaterialExtensions?
         public let extras: JSONValue?
@@ -57,7 +57,7 @@ extension GLTF {
             _doubleSided = try container.decodeIfPresent(Bool.self, forKey: ._doubleSided)
         }
 
-        public struct PbrMetallicRoughness: Codable, Sendable {
+        public struct PbrMetallicRoughness: Decodable, Sendable {
             let _baseColorFactor: SIMD4<Float>?
             public var baseColorFactor: SIMD4<Float> { _baseColorFactor ?? SIMD4<Float>(repeating: 1) }
             public let baseColorTexture: TextureInfo?
@@ -92,7 +92,7 @@ extension GLTF {
             }
         }
 
-        public struct NormalTextureInfo: Codable, Sendable {
+        public struct NormalTextureInfo: Decodable, Sendable {
             public let index: Int
             let _texCoord: Int?
             public var texCoord: Int { return _texCoord ?? 0 }
@@ -109,7 +109,7 @@ extension GLTF {
             }
         }
 
-        public struct OcclusionTextureInfo: Codable, Sendable {
+        public struct OcclusionTextureInfo: Decodable, Sendable {
             public let index: Int
             let _texCoord: Int?
             public var texCoord: Int { return _texCoord ?? 0 }
@@ -126,13 +126,13 @@ extension GLTF {
             }
         }
 
-        public enum AlphaMode: String, Codable, Sendable {
+        public enum AlphaMode: String, Decodable, Sendable {
             case OPAQUE
             case MASK
             case BLEND
         }
         
-        public struct MaterialExtensions: Codable, Sendable {
+        public struct MaterialExtensions: Decodable, Sendable {
             /// Every extension on the material as the document wrote it, the modeled
             /// ones included, so an unmodeled one is still readable.
             public let raw: [String: JSONValue]
@@ -148,14 +148,10 @@ extension GLTF {
                 materialsUnlit = raw[GLTFExtension.materialsUnlit.rawValue].map { _ in MaterialsUnlit() }
             }
 
-            public func encode(to encoder: Encoder) throws {
-                try JSONValue.object(raw).encode(to: encoder)
-            }
-
             /// The `KHR_materials_unlit` marker, an empty object in glTF.
-            public struct MaterialsUnlit: Codable, Sendable {}
+            public struct MaterialsUnlit: Decodable, Sendable {}
 
-            public struct MaterialsMToon: Codable, Sendable {
+            public struct MaterialsMToon: Decodable, Sendable {
                 /// Nil where the document leaves it out, treated as an unsupported
                 /// version rather than failing the load.
                 public let specVersion: String?
@@ -186,14 +182,14 @@ extension GLTF {
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
                 
-                public struct MaterialsMToonTextureInfo: Codable, Sendable {
+                public struct MaterialsMToonTextureInfo: Decodable, Sendable {
                     public let index: Int
                     public let texCoord: Int?
                     public let extensions: JSONValue?
                     public let extras: JSONValue?
                 }
                 
-                public struct MaterialsMToonShadingShiftTexture: Codable, Sendable {
+                public struct MaterialsMToonShadingShiftTexture: Decodable, Sendable {
                     public let index: Int
                     public let texCoord: Int?
                     public let scale: Double?

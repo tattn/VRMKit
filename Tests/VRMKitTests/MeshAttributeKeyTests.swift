@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VRMKit
 
-/// How a primitive's vertex attributes survive a decode and a rewrite.
+/// How a primitive's vertex attributes survive a decode.
 @Suite
 struct MeshAttributeKeyTests {
     private typealias AttributeKey = GLTF.Mesh.Primitive.AttributeKey
@@ -25,22 +25,5 @@ struct MeshAttributeKeyTests {
         #expect(primitive.attributes[.joints(1)] == 2)
         #expect(primitive.attributes[.weights(1)] == 3)
         #expect(primitive.attributes[AttributeKey(rawValue: "_BATCHID")] == 4)
-    }
-
-    /// A dictionary of attributes has to encode as the JSON object glTF reads,
-    /// not as the array of alternating keys and values a plain `Hashable` key
-    /// would leave behind.
-    @Test
-    func testAttributesAndMorphTargetsEncodeAsJSONObjects() throws {
-        let primitive = try Self.decodePrimitive("""
-            {"attributes": {"POSITION": 0, "NORMAL": 1}, "targets": [{"POSITION": 2}]}
-            """)
-
-        let encoded = try JSONEncoder().encode(primitive)
-        let json = try #require(try JSONValue(parsing: encoded).objectValue)
-
-        #expect(json.object("attributes") == ["POSITION": 0, "NORMAL": 1])
-        let targets = try #require(json["targets"]?.arrayValue)
-        #expect(targets == [["POSITION": 2]])
     }
 }

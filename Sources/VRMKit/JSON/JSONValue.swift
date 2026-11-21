@@ -241,11 +241,6 @@ extension JSONValue: Codable {
 // MARK: - Bridging typed values
 
 public extension JSONValue {
-    /// The JSON an `Encodable` value writes itself as.
-    init<T: Encodable>(encoding value: T) throws {
-        self = try JSONValueEncoding.encode(value)
-    }
-
     func decode<T: Decodable>(_ type: T.Type) throws -> T {
         try JSONValueDecoding.decode(type, from: self)
     }

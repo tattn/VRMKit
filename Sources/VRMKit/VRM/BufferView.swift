@@ -7,7 +7,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#bufferview
 
 extension GLTF {
-    public struct BufferView: Codable, Sendable {
+    public struct BufferView: Decodable, Sendable {
         public let buffer: Int
         let _byteOffset: Int?
         public var byteOffset: Int { return _byteOffset ?? 0 }

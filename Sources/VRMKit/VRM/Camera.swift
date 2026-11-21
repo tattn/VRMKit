@@ -7,7 +7,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#camera
 
 extension GLTF {
-    public struct Camera: Codable, Sendable {
+    public struct Camera: Decodable, Sendable {
         public let orthographic: Orthographic?
         public let perspective: Perspective?
         public let type: Type
@@ -15,7 +15,7 @@ extension GLTF {
         public let extensions: JSONValue?
         public let extras: JSONValue?
 
-        public struct Orthographic: Codable, Sendable {
+        public struct Orthographic: Decodable, Sendable {
             public let xmag: Float
             public let ymag: Float
             public let zfar: Float
@@ -24,7 +24,7 @@ extension GLTF {
             public let extras: JSONValue?
         }
 
-        public struct Perspective: Codable, Sendable {
+        public struct Perspective: Decodable, Sendable {
             public let aspectRatio: Float?
             public let yfov: Float
             public let zfar: Float?
@@ -33,7 +33,7 @@ extension GLTF {
             public let extras: JSONValue?
         }
 
-        public enum `Type`: String, Codable, Sendable {
+        public enum `Type`: String, Decodable, Sendable {
             case perspective
             case orthographic
         }

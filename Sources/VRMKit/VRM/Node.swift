@@ -8,7 +8,7 @@ import SIMDCompat
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#node
 
 extension GLTF {
-    public struct Node: Codable, Sendable {
+    public struct Node: Decodable, Sendable {
         public let camera: Int?
         public let children: [Int]?
         public let skin: Int?
@@ -46,7 +46,7 @@ extension GLTF {
             case extras
         }
 
-        public struct NodeExtensions: Codable, Sendable {
+        public struct NodeExtensions: Decodable, Sendable {
             /// Every extension on the node as the document wrote it, the modeled ones
             /// included, so an unmodeled one is still readable.
             public let raw: [String: JSONValue]
@@ -60,11 +60,7 @@ extension GLTF {
                 nodeConstraint = try raw[GLTFExtension.nodeConstraint.rawValue]?.decode(NodeConstraint.self)
             }
 
-            public func encode(to encoder: Encoder) throws {
-                try JSONValue.object(raw).encode(to: encoder)
-            }
-
-            public struct NodeConstraint: Codable, Sendable {
+            public struct NodeConstraint: Decodable, Sendable {
                 /// The `VRMC_node_constraint` spec versions this type models.
                 public static func supports(specVersion: String?) -> Bool {
                     specVersion == "1.0" || specVersion == "1.0-beta"
@@ -78,6 +74,10 @@ extension GLTF {
                 public let extensions: JSONValue?
                 public let extras: JSONValue?
 
+                private enum CodingKeys: String, CodingKey {
+                    case specVersion, constraint, extensions, extras
+                }
+
                 public init(from decoder: Decoder) throws {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
                     specVersion = try container.decodeIfPresent(String.self, forKey: .specVersion)
@@ -90,7 +90,7 @@ extension GLTF {
 
                 /// How a node is driven by another's transform. The extension defines exactly
                 /// one per constraint, so naming none or several is refused.
-                public enum Constraint: Codable, Sendable {
+                public enum Constraint: Decodable, Sendable {
                     case roll(RollConstraint)
                     case aim(AimConstraint)
                     case rotation(RotationConstraint)
@@ -115,15 +115,6 @@ extension GLTF {
                         self = constraint
                     }
 
-                    public func encode(to encoder: Encoder) throws {
-                        var container = encoder.container(keyedBy: CodingKeys.self)
-                        switch self {
-                        case .roll(let constraint): try container.encode(constraint, forKey: .roll)
-                        case .aim(let constraint): try container.encode(constraint, forKey: .aim)
-                        case .rotation(let constraint): try container.encode(constraint, forKey: .rotation)
-                        }
-                    }
-
                     /// The node this one is driven by.
                     public var source: Int {
                         switch self {
@@ -142,28 +133,28 @@ extension GLTF {
                         }
                     }
 
-                    public struct RollConstraint: Codable, Sendable {
+                    public struct RollConstraint: Decodable, Sendable {
                         public let source: Int
                         public let rollAxis: RollAxis
                         public let weight: Double?
                         public let extensions: JSONValue?
                         public let extras: JSONValue?
 
-                        public enum RollAxis: String, Codable, Sendable {
+                        public enum RollAxis: String, Decodable, Sendable {
                             case x = "X"
                             case y = "Y"
                             case z = "Z"
                         }
                     }
 
-                    public struct AimConstraint: Codable, Sendable {
+                    public struct AimConstraint: Decodable, Sendable {
                         public let source: Int
                         public let aimAxis: AimAxis
                         public let weight: Double?
                         public let extensions: JSONValue?
                         public let extras: JSONValue?
 
-                        public enum AimAxis: String, Codable, Sendable {
+                        public enum AimAxis: String, Decodable, Sendable {
                             case positiveX = "PositiveX"
                             case negativeX = "NegativeX"
                             case positiveY = "PositiveY"
@@ -173,7 +164,7 @@ extension GLTF {
                         }
                     }
 
-                    public struct RotationConstraint: Codable, Sendable {
+                    public struct RotationConstraint: Decodable, Sendable {
                         public let source: Int
                         public let weight: Double?
                         public let extensions: JSONValue?

@@ -171,7 +171,7 @@ struct GLTFPruneTests {
         #expect(saved.gltf.meshes.map(\.name) == ["kept"])
         #expect(saved.gltf.nodes[2].mesh == 0)
         #expect(saved.gltf.cameras.isEmpty)
-        let extensions = try #require(try saved.rawJSON().object("extensions"))
+        let extensions = try #require(saved.jsonRoot.object("extensions"))
         // The spring bone still swings the node it named, and the expression has lost
         // the bind to a node that has stopped drawing.
         #expect(extensions.object(GLTFExtension.springBone.rawValue)?
@@ -217,7 +217,7 @@ struct GLTFPruneTests {
         #expect(node.mesh == nil)
         #expect(node.skin == nil)
         #expect(node.camera == nil)
-        let raw = try #require(try GLTFDocument(data: try document.serialize()).rawJSON().objects(.nodes).first)
+        let raw = try #require(try GLTFDocument(data: try document.serialize()).jsonRoot.objects(.nodes).first)
         #expect(raw["weights"] == nil)
         #expect(try document.typed().skins.isEmpty)
         #expect(try document.typed().cameras.isEmpty)
@@ -390,7 +390,7 @@ struct GLTFPruneTests {
     /// so the rule and the check cannot drift apart.
     private func expectAWellFormedDocument(_ document: GLTFDocument,
                                            sourceLocation: SourceLocation = #_sourceLocation) throws {
-        let json = try document.rawJSON()
+        let json = document.jsonRoot
         let resolve: GLTFIndexMap = { array, index, _ in
             #expect(index < json.count(array),
                     "index \(index) into \(array.rawValue)", sourceLocation: sourceLocation)
@@ -459,7 +459,7 @@ struct GLTFPruneTests {
 
     /// The node each humanoid bone names, by name rather than by index.
     private func humanoidBoneNames(of document: GLTFDocument) throws -> [String: String] {
-        let extensions = try document.rawJSON().object("extensions") ?? [:]
+        let extensions = document.jsonRoot.object("extensions") ?? [:]
         let names = { (node: Int?) in node.flatMap { document.gltf.nodes[safe: $0]?.name } ?? "-" }
         if let bones = extensions.object(GLTFExtension.vrm0.rawValue)?.object("humanoid")?.objects("humanBones") {
             return Dictionary(bones.compactMap { bone in
@@ -473,7 +473,7 @@ struct GLTFPruneTests {
     /// What the VRM extensions bind to, named by the mesh VRM 0.x binds through and the
     /// node VRM 1.0 binds through.
     private func renderedSubjectNames(of document: GLTFDocument) throws -> Set<String> {
-        let extensions = try document.rawJSON().object("extensions") ?? [:]
+        let extensions = document.jsonRoot.object("extensions") ?? [:]
         let mesh = { (index: Int?) in index.flatMap { document.gltf.meshes[safe: $0]?.name } ?? "-" }
         let node = { (index: Int?) in index.flatMap { document.gltf.nodes[safe: $0]?.name } ?? "-" }
         let vrm0 = extensions.object(GLTFExtension.vrm0.rawValue) ?? [:]
@@ -495,7 +495,7 @@ struct GLTFPruneTests {
 
     /// The nodes the spring bones swing, by name, in order.
     private func springBoneJointNames(of document: GLTFDocument) throws -> [String] {
-        let extensions = try document.rawJSON().object("extensions") ?? [:]
+        let extensions = document.jsonRoot.object("extensions") ?? [:]
         let names = { (node: Int?) in node.flatMap { document.gltf.nodes[safe: $0]?.name } ?? "-" }
         let springs = (extensions.object(GLTFExtension.springBone.rawValue) ?? [:]).objects("springs")
         let groups = (extensions.object(GLTFExtension.vrm0.rawValue)?.object("secondaryAnimation") ?? [:])
@@ -511,7 +511,7 @@ struct GLTFPruneTests {
     }
 
     private func thumbnailBytes(of document: GLTFDocument) throws -> Data? {
-        let extensions = try document.rawJSON().object("extensions") ?? [:]
+        let extensions = document.jsonRoot.object("extensions") ?? [:]
         let image = extensions.object(GLTFExtension.vrm1.rawValue)?.object("meta")?.index("thumbnailImage")
             // VRM 0.x names the thumbnail's texture rather than its image.
             ?? extensions.object(GLTFExtension.vrm0.rawValue)?.object("meta")?.index("texture")
@@ -522,7 +522,7 @@ struct GLTFPruneTests {
 
     /// The bytes `EXT_meshopt_compression` adds to a buffer view.
     private func compressedSlice(of document: GLTFDocument, at view: Int) throws -> Data {
-        let meshopt = try #require(try document.rawJSON().objects(.bufferViews)[view]
+        let meshopt = try #require(document.jsonRoot.objects(.bufferViews)[view]
             .object("extensions")?.object(GLTFExtension.meshoptCompression.rawValue))
         let buffer = try document.bufferData(at: 0)
         let start = buffer.startIndex + (meshopt.int("byteOffset") ?? 0)

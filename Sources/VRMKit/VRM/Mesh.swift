@@ -7,14 +7,14 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#mesh
 
 extension GLTF {
-    public struct Mesh: Codable, Sendable {
+    public struct Mesh: Decodable, Sendable {
         public let primitives: [Primitive]
         public let weights: [Float]?
         public let name: String?
         public let extensions: JSONValue?
         public let extras: JSONValue?
 
-        public struct Primitive: Codable, Sendable {
+        public struct Primitive: Decodable, Sendable {
             public let attributes: [AttributeKey: Int]
             public let indices: Int?
             public let material: Int?
@@ -23,7 +23,7 @@ extension GLTF {
             public let extensions: JSONValue?
             public let extras: JSONValue?
 
-            public enum Mode: Int, Codable, Sendable {
+            public enum Mode: Int, Decodable, Sendable {
                 case POINTS
                 case LINES
                 case LINE_LOOP
@@ -31,6 +31,10 @@ extension GLTF {
                 case TRIANGLES
                 case TRIANGLE_STRIP
                 case TRIANGLE_FAN
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case attributes, indices, material, mode, targets, extensions, extras
             }
 
             public init(from decoder: Decoder) throws {
@@ -54,24 +58,13 @@ extension GLTF {
                 extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
             }
 
-            private enum IntOrDictionary: Codable {
+            private enum IntOrDictionary: Decodable {
                 case dictionary([String: String])
                 case int(Int)
                 var intValue: Int? {
                     switch self {
                     case .dictionary: return nil
                     case .int(let value): return value
-                    }
-                }
-
-                public func encode(to encoder: Encoder) throws {
-                    switch self {
-                    case .int(let value):
-                        var container = encoder.singleValueContainer()
-                        try container.encode(value)
-                    case .dictionary(let value):
-                        var container = encoder.singleValueContainer()
-                        try container.encode(value)
                     }
                 }
 

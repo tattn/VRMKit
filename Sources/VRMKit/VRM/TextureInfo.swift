@@ -7,7 +7,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#textureinfo
 
 extension GLTF {
-    public struct TextureInfo: Codable, Sendable {
+    public struct TextureInfo: Decodable, Sendable {
         public let index: Int
         let _texCoord: Int?
         public var texCoord: Int { return _texCoord ?? 0 }

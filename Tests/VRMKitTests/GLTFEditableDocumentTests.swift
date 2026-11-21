@@ -17,8 +17,8 @@ struct GLTFEditableDocumentTests {
 
         // `buffers` is the one array a round trip rewrites: the resources are
         // consolidated into the single buffer a GLB carries.
-        #expect(jsonDifference(try original.rawJSON().removing("buffers"),
-                               try reloaded.rawJSON().removing("buffers")) == nil)
+        #expect(jsonDifference(original.jsonRoot.removing("buffers"),
+                               reloaded.jsonRoot.removing("buffers")) == nil)
         try expectSameBufferViews(original, reloaded)
     }
 
@@ -30,8 +30,8 @@ struct GLTFEditableDocumentTests {
         let document = try GLTFEditableDocument(data: asset.data, rootDirectory: asset.rootDirectory)
         let reloaded = try GLTFDocument(data: try document.serialize())
 
-        let left = try original.rawJSON().removing("buffers", "bufferViews", "images")
-        let right = try reloaded.rawJSON().removing("buffers", "bufferViews", "images")
+        let left = original.jsonRoot.removing("buffers", "bufferViews", "images")
+        let right = reloaded.jsonRoot.removing("buffers", "bufferViews", "images")
         #expect(jsonDifference(left, right) == nil)
         // One view per image read in, appended after the ones the file had.
         let embedded = (original.gltf.images).filter { $0.uri != nil }.count

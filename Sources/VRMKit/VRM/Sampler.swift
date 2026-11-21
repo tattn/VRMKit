@@ -7,7 +7,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#sampler
 
 extension GLTF {
-    public struct Sampler: Codable, Sendable {
+    public struct Sampler: Decodable, Sendable {
         public let magFilter: MagFilter?
         public let minFilter: MinFilter?
         let _wrapS: Wrap?
@@ -43,7 +43,7 @@ extension GLTF {
             extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
         }
 
-        public enum MagFilter: Int, Codable, Sendable {
+        public enum MagFilter: Int, Decodable, Sendable {
             case NEAREST = 9728
             case LINEAR = 9729
 
@@ -63,7 +63,7 @@ extension GLTF {
             }
         }
 
-        public enum MinFilter: Int, Codable, Sendable {
+        public enum MinFilter: Int, Decodable, Sendable {
             case NEAREST = 9728
             case LINEAR = 9729
             case NEAREST_MIPMAP_NEAREST = 9984
@@ -72,7 +72,7 @@ extension GLTF {
             case LINEAR_MIPMAP_LINEAR = 9987
         }
 
-        public enum Wrap: Int, Codable, Sendable {
+        public enum Wrap: Int, Decodable, Sendable {
             case CLAMP_TO_EDGE = 33071
             case MIRRORED_REPEAT = 33648
             case REPEAT = 10497

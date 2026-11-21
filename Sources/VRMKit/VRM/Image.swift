@@ -7,7 +7,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#image
 
 extension GLTF {
-    public struct Image: Codable, Sendable {
+    public struct Image: Decodable, Sendable {
         public let uri: String?
         public let mimeType: String?
         public let bufferView: Int?

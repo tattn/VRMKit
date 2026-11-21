@@ -61,7 +61,7 @@ public extension VRM {
 }
 
 public extension VRM0 {
-    struct Meta: Codable, Sendable {
+    struct Meta: Decodable, Sendable {
         public let title: String?
         public let author: String?
         public let contactInformation: String?
@@ -90,7 +90,7 @@ public extension VRM0 {
         }
     }
 
-    struct MaterialProperty: Codable, Sendable {
+    struct MaterialProperty: Decodable, Sendable {
         public let name: String
         public let shader: String
         /// Unity's render queue, 2000 (opaque geometry) where the file states none.
@@ -102,6 +102,11 @@ public extension VRM0 {
         public let textureProperties: [String: Int]
         /// Unity's `vector` shader properties: a colour, or the `_MainTex` offset and scale pair.
         public let vectorProperties: [String: [Float]]
+
+        private enum CodingKeys: String, CodingKey {
+            case name, shader, renderQueue, floatProperties, keywordMap, tagMap
+            case textureProperties, vectorProperties
+        }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -119,7 +124,7 @@ public extension VRM0 {
         }
     }
 
-    struct Humanoid: Codable, Sendable {
+    struct Humanoid: Decodable, Sendable {
         public let armStretch: Double
         public let feetSpacing: Double
         public let hasTranslationDoF: Bool
@@ -129,6 +134,11 @@ public extension VRM0 {
         public let upperArmTwist: Double
         public let upperLegTwist: Double
         public let humanBones: [HumanBone]
+
+        private enum CodingKeys: String, CodingKey {
+            case armStretch, feetSpacing, hasTranslationDoF, legStretch
+            case lowerArmTwist, lowerLegTwist, upperArmTwist, upperLegTwist, humanBones
+        }
 
         // What a file leaves out reads as the UniVRM defaults.
         public init(from decoder: Decoder) throws {
@@ -144,10 +154,14 @@ public extension VRM0 {
             humanBones = try container.decodeIfPresent([HumanBone].self, forKey: .humanBones) ?? []
         }
 
-        public struct HumanBone: Codable, Sendable {
+        public struct HumanBone: Decodable, Sendable {
             public let bone: String
             public let node: Int
             public let useDefaultValues: Bool
+
+            private enum CodingKeys: String, CodingKey {
+                case bone, node, useDefaultValues
+            }
 
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -158,20 +172,28 @@ public extension VRM0 {
         }
     }
 
-    struct BlendShapeMaster: Codable, Sendable {
+    struct BlendShapeMaster: Decodable, Sendable {
         public let blendShapeGroups: [BlendShapeGroup]
+
+        private enum CodingKeys: String, CodingKey {
+            case blendShapeGroups
+        }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             blendShapeGroups = try container.decodeIfPresent([BlendShapeGroup].self, forKey: .blendShapeGroups) ?? []
         }
 
-        public struct BlendShapeGroup: Codable, Sendable {
+        public struct BlendShapeGroup: Decodable, Sendable {
             public let binds: [Bind]
             public let materialValues: [MaterialValueBind]
             public let name: String
             public let presetName: String
             public let isBinary: Bool
+
+            private enum CodingKeys: String, CodingKey {
+                case binds, materialValues, name, presetName, isBinary
+            }
 
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -182,12 +204,12 @@ public extension VRM0 {
                 isBinary = try container.decodeIfPresent(Bool.self, forKey: .isBinary) ?? false
             }
 
-            public struct Bind: Codable, Sendable {
+            public struct Bind: Decodable, Sendable {
                 public let index: Int
                 public let mesh: Int
                 public let weight: Double
             }
-            public struct MaterialValueBind: Codable, Sendable {
+            public struct MaterialValueBind: Decodable, Sendable {
                 public let materialName: String
                 public let propertyName: String
                 public let targetValue: [Double]
@@ -195,7 +217,7 @@ public extension VRM0 {
         }
     }
 
-    struct FirstPerson: Codable, Sendable {
+    struct FirstPerson: Decodable, Sendable {
         /// The node the first-person camera hangs off, or nil where the file
         /// states none, which VRM 0.x also spells as -1: the head bone stands in.
         public let firstPersonBone: Int?
@@ -235,19 +257,7 @@ public extension VRM0 {
             lookAtVerticalUp = try container.decodeIfPresent(DegreeMap.self, forKey: .lookAtVerticalUp)
         }
 
-        public func encode(to encoder: any Encoder) throws {
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(firstPersonBone ?? -1, forKey: .firstPersonBone)
-            try container.encodeSimd3Object(firstPersonBoneOffset, forKey: .firstPersonBoneOffset)
-            try container.encode(meshAnnotations, forKey: .meshAnnotations)
-            try container.encode(lookAtTypeName, forKey: .lookAtTypeName)
-            try container.encodeIfPresent(lookAtHorizontalInner, forKey: .lookAtHorizontalInner)
-            try container.encodeIfPresent(lookAtHorizontalOuter, forKey: .lookAtHorizontalOuter)
-            try container.encodeIfPresent(lookAtVerticalDown, forKey: .lookAtVerticalDown)
-            try container.encodeIfPresent(lookAtVerticalUp, forKey: .lookAtVerticalUp)
-        }
-
-        public struct MeshAnnotation: Codable, Sendable {
+        public struct MeshAnnotation: Decodable, Sendable {
             public let firstPersonFlag: String
             public let mesh: Int
         }
@@ -256,7 +266,7 @@ public extension VRM0 {
             let firstPersonFlag: String
             let mesh: Int?
         }
-        public enum LookAtType: String, Codable, Sendable {
+        public enum LookAtType: String, Decodable, Sendable {
             case none = "None"
             case bone = "Bone"
             case blendShape = "BlendShape"
@@ -264,7 +274,7 @@ public extension VRM0 {
 
         /// One of the four curves a gaze angle passes through, which is how VRM 0.x
         /// states what VRM 1.0 states as a range map.
-        public struct DegreeMap: Codable, Sendable {
+        public struct DegreeMap: Decodable, Sendable {
             /// The Unity animation curve, as keyframes flattened into
             /// `time, value, inTangent, outTangent` quadruples.
             public let curve: [Float]?
@@ -275,7 +285,7 @@ public extension VRM0 {
         }
     }
 
-    struct SecondaryAnimation: Codable, Sendable {
+    struct SecondaryAnimation: Decodable, Sendable {
         /// Either array is absent in a model that states nothing for it.
         public let boneGroups: [BoneGroup]
         public let colliderGroups: [ColliderGroup]
@@ -285,13 +295,17 @@ public extension VRM0 {
             self.colliderGroups = colliderGroups
         }
 
+        private enum CodingKeys: String, CodingKey {
+            case boneGroups, colliderGroups
+        }
+
         public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             boneGroups = try container.decodeIfPresent([BoneGroup].self, forKey: .boneGroups) ?? []
             colliderGroups = try container.decodeIfPresent([ColliderGroup].self, forKey: .colliderGroups) ?? []
         }
 
-        public struct BoneGroup: Codable, Sendable {
+        public struct BoneGroup: Decodable, Sendable {
             public let bones: [Int]
             /// The node swings settle relative to, or -1 for world space, in a field
             /// VRM 0.x always writes.
@@ -324,24 +338,15 @@ public extension VRM0 {
                 hitRadius = try container.decodeIfPresent(Double.self, forKey: .hitRadius) ?? 0.02
                 stiffness = try container.decodeIfPresent(Double.self, forKey: .stiffness) ?? 1
             }
-
-            public func encode(to encoder: any Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                try container.encode(bones, forKey: .bones)
-                try container.encode(center, forKey: .center)
-                try container.encode(colliderGroups, forKey: .colliderGroups)
-                try container.encodeIfPresent(comment, forKey: .comment)
-                try container.encode(dragForce, forKey: .dragForce)
-                try container.encodeSimd3Object(gravityDir, forKey: .gravityDir)
-                try container.encode(gravityPower, forKey: .gravityPower)
-                try container.encode(hitRadius, forKey: .hitRadius)
-                try container.encode(stiffness, forKey: .stiffness)
-            }
         }
 
-        public struct ColliderGroup: Codable, Sendable {
+        public struct ColliderGroup: Decodable, Sendable {
             public let node: Int
             public let colliders: [Collider]
+
+            private enum CodingKeys: String, CodingKey {
+                case node, colliders
+            }
 
             public init(from decoder: any Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -349,7 +354,7 @@ public extension VRM0 {
                 colliders = try container.decodeIfPresent([Collider].self, forKey: .colliders) ?? []
             }
 
-            public struct Collider: Codable, Sendable {
+            public struct Collider: Decodable, Sendable {
                 public let offset: SIMD3<Float>
                 public let radius: Double
 
@@ -361,12 +366,6 @@ public extension VRM0 {
                     let container = try decoder.container(keyedBy: CodingKeys.self)
                     offset = try container.simd3Object(forKey: .offset, default: .zero)
                     radius = try container.decodeIfPresent(Double.self, forKey: .radius) ?? 0
-                }
-
-                public func encode(to encoder: any Encoder) throws {
-                    var container = encoder.container(keyedBy: CodingKeys.self)
-                    try container.encodeSimd3Object(offset, forKey: .offset)
-                    try container.encode(radius, forKey: .radius)
                 }
             }
         }
@@ -383,14 +382,8 @@ package extension VRM0 {
 }
 
 // VRM 0.x spells a vector as an `{"x":, "y":, "z":}` object rather than an array.
-private struct VRM0Vector3: Codable {
+private struct VRM0Vector3: Decodable {
     let x, y, z: Double?
-
-    init(_ value: SIMD3<Float>) {
-        x = Double(value.x)
-        y = Double(value.y)
-        z = Double(value.z)
-    }
 
     func simd(default defaultValue: SIMD3<Float>) -> SIMD3<Float> {
         SIMD3<Float>(x.map(Float.init) ?? defaultValue.x,
@@ -406,11 +399,5 @@ private extension KeyedDecodingContainer {
             return SIMD3<Float>(values, default: defaultValue)
         }
         return try decodeIfPresent(VRM0Vector3.self, forKey: key)?.simd(default: defaultValue) ?? defaultValue
-    }
-}
-
-private extension KeyedEncodingContainer {
-    mutating func encodeSimd3Object(_ value: SIMD3<Float>, forKey key: Key) throws {
-        try encode(VRM0Vector3(value), forKey: key)
     }
 }

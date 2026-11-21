@@ -13,16 +13,16 @@ public final class GLTFDocument: Sendable {
     let binaryBuffer: Data?
     /// Base directory for external buffer / image URIs.
     package let rootDirectory: URL?
-    /// The glTF JSON as it was parsed, nil for a document built from an already-decoded
-    /// ``GLTF``. Editing reads it so that what ``GLTF`` does not model survives a rewrite.
-    let jsonRoot: JSONObject?
+    /// The glTF JSON as it was parsed. Editing reads it so that what ``GLTF`` does not
+    /// model survives a rewrite.
+    package let jsonRoot: JSONObject
 
     /// Decoded buffers, keyed by buffer index: resolving one re-reads an external file or
     /// base64-decodes a whole data URI. Buffer views are not cached, since that would hold
     /// the file's bytes a second time.
     private let buffers = Locked<[Int: Data]>([:])
 
-    package init(gltf: GLTF, binaryBuffer: Data?, rootDirectory: URL?, jsonRoot: JSONObject? = nil) {
+    package init(gltf: GLTF, binaryBuffer: Data?, rootDirectory: URL?, jsonRoot: JSONObject) {
         self.gltf = gltf
         self.binaryBuffer = binaryBuffer
         self.rootDirectory = rootDirectory.map(Self.directoryURL)
@@ -40,13 +40,7 @@ public final class GLTFDocument: Sendable {
         self.init(gltf: binary.gltf,
                   binaryBuffer: binary.binaryBuffer,
                   rootDirectory: rootDirectory,
-                  jsonRoot: binary.jsonTree.objectValue)
-    }
-
-    /// Wraps an already-decoded JSON glTF whose resources are external files or
-    /// data URIs resolved against `rootDirectory`.
-    public convenience init(gltf: GLTF, rootDirectory: URL? = nil) {
-        self.init(gltf: gltf, binaryBuffer: nil, rootDirectory: rootDirectory)
+                  jsonRoot: binary.jsonRoot)
     }
 
     /// Parses in-memory glTF data, sniffing the GLB magic to pick the container format.
@@ -55,10 +49,10 @@ public final class GLTFDocument: Sendable {
             self.init(binary: try BinaryGLTF(data: data), rootDirectory: rootDirectory)
             return
         }
-        let tree = try JSONValue(parsing: data)
-        let gltf = try tree.decode(GLTF.self)
+        let root = try JSONObject(parsingGLTF: data)
+        let gltf = try root.decode(GLTF.self)
         try gltf.validateSupportedAssetVersion()
-        self.init(gltf: gltf, binaryBuffer: nil, rootDirectory: rootDirectory, jsonRoot: tree.objectValue)
+        self.init(gltf: gltf, binaryBuffer: nil, rootDirectory: rootDirectory, jsonRoot: root)
     }
 
     /// Loads a `.glb` / `.gltf` file. External resources resolve relative to its directory.
@@ -78,14 +72,6 @@ public final class GLTFDocument: Sendable {
 }
 
 package extension GLTFDocument {
-    /// The glTF JSON as an editable object tree. A loaded document keeps its JSON whole;
-    /// one built from a ``GLTF`` is re-encoded from it, carrying only what VRMKit models.
-    func rawJSON() throws -> JSONObject {
-        if let jsonRoot { return jsonRoot }
-        return try JSONValue(encoding: gltf).objectValue
-            ??? ._dataInconsistent("the glTF JSON is not an object")
-    }
-
     func bufferData(at index: Int) throws -> Data {
         if let cached = buffers.withLock({ $0[index] }) { return cached }
         let gltfBuffer = try gltf.load(\.buffers, at: index)

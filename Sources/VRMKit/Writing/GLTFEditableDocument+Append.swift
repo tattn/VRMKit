@@ -42,7 +42,7 @@ extension GLTFEditableDocument {
                         transform: GLTFNodeTransform,
                         materials: GLTFMaterialConversion) throws -> Int {
         try transform.validate()
-        let sourceJSON = try source.rawJSON()
+        let sourceJSON = source.jsonRoot
         try Self.validateAppendable(sourceJSON)
         // Both resolved up front, so a bad index cannot leave an orphaned copy of
         // the whole source behind.

@@ -7,7 +7,7 @@ import Foundation
 // https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#accessor
 
 extension GLTF {
-    public struct Accessor: Codable, Sendable {
+    public struct Accessor: Decodable, Sendable {
         public let bufferView: Int?
         let _byteOffset: Int?
         public var byteOffset: Int { return _byteOffset ?? 0 }
@@ -58,7 +58,7 @@ extension GLTF {
 }
 
 extension GLTF.Accessor {
-    public enum ComponentType: Int, Codable, Sendable {
+    public enum ComponentType: Int, Decodable, Sendable {
         case byte = 5120
         case unsignedByte = 5121
         case short = 5122
@@ -67,7 +67,7 @@ extension GLTF.Accessor {
         case float = 5126
     }
 
-    public enum `Type`: String, Codable, Sendable {
+    public enum `Type`: String, Decodable, Sendable {
         case SCALAR
         case VEC2
         case VEC3
@@ -77,14 +77,14 @@ extension GLTF.Accessor {
         case MAT4
     }
 
-    public struct Sparse: Codable, Sendable {
+    public struct Sparse: Decodable, Sendable {
         public let count: Int
         public let indices: Indices
         public let values: Values
         public let extensions: JSONValue?
         public let extras: JSONValue?
 
-        public struct Indices: Codable, Sendable {
+        public struct Indices: Decodable, Sendable {
             public let bufferView: Int
             let _byteOffset: Int?
             public var byteOffset: Int { return _byteOffset ?? 0 }
@@ -100,7 +100,7 @@ extension GLTF.Accessor {
             }
         }
 
-        public struct Values: Codable, Sendable {
+        public struct Values: Decodable, Sendable {
             public let bufferView: Int
             let _byteOffset: Int?
             public var byteOffset: Int { return _byteOffset ?? 0 }
