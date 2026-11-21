@@ -1,4 +1,3 @@
-import CoreGraphics
 import UIKit
 internal import VRMRealityKit
 
@@ -13,7 +12,7 @@ final class ExampleExpressionControl {
 
     private var expressions: [ExpressionInfo] = []
     private var selected: ExpressionKey?
-    private weak var target: VRMEntity?
+    private weak var target: VRMInstance?
 
     init() {
         segmentedControl.addTarget(self, action: #selector(selectionChanged), for: .valueChanged)
@@ -21,7 +20,7 @@ final class ExampleExpressionControl {
 
     /// Re-titles the segments for a newly loaded model and puts the selected
     /// expression on it, keeping the selection the previous model left.
-    func attach(to target: VRMEntity) {
+    func attach(to target: VRMInstance) {
         self.target = target
         let selectedIndex = max(segmentedControl.selectedSegmentIndex, 0)
         let available = target.availableExpressions
@@ -43,7 +42,7 @@ final class ExampleExpressionControl {
     @objc private func selectionChanged() {
         guard expressions.indices.contains(segmentedControl.selectedSegmentIndex) else { return }
         let key = expressions[segmentedControl.selectedSegmentIndex].key
-        var weights: [ExpressionKey: CGFloat] = [key: 1.0]
+        var weights: [ExpressionKey: Float] = [key: 1.0]
         if let selected, selected != key {
             weights[selected] = 0.0
         }

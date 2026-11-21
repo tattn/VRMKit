@@ -1,5 +1,4 @@
 #if canImport(RealityKit)
-import CoreGraphics
 import Foundation
 import OSLog
 import RealityKit
@@ -14,7 +13,8 @@ struct VRMComponent: Component {
     let vrm: VRM
 }
 
-/// The root entity of a loaded VRM model, drawing a ``VRMInstance`` that moves it.
+/// The root entity of a loaded VRM model, drawing the ``VRMInstance`` that moves it: its
+/// expressions, gaze, spring bones, first-person view and humanoid bones are the instance's.
 ///
 /// A plain `Entity`, so adding it to a scene is all its lifetime needs: the parent
 /// owns it, and ``VRMUpdateSystem`` animates it while it stays in the scene.
@@ -33,10 +33,10 @@ public final class VRMEntity: GLTFEntity {
         return vrm
     }
 
-    public let humanoid = Humanoid()
-
-    /// ``GLTFEntity/instance``, as the VRM instance it is.
-    private(set) var vrmInstance: VRMInstance?
+    /// What moves the model, as the VRM instance it is. Nil on a `clone(recursive:)` copy, which
+    /// only renders.
+    public override var instance: VRMInstance? { vrmInstance }
+    private var vrmInstance: VRMInstance?
     /// The entities drawing the mesh of each node, which the instance shows, hides or cuts.
     private var meshEntitiesByNode: [Int: [Entity]] = [:]
 
@@ -76,29 +76,9 @@ public final class VRMEntity: GLTFEntity {
         }
     }
 
-    /// How the spring bones swing: the wind pushing them, if any.
-    public var springBoneConfiguration: SpringBoneConfiguration {
-        get { vrmInstance?.springBoneConfiguration ?? SpringBoneConfiguration() }
-        set { vrmInstance?.springBoneConfiguration = newValue }
-    }
-
-    /// Forgets the motion the spring bones carry between frames, so the next update
-    /// starts them at rest. Call it after teleporting the model.
-    public func resetSpringBones() {
-        vrmInstance?.resetSpringBones()
-    }
-
-    /// Has `center` carry `share` of its motion into the tail of the spring-bone joint on
-    /// `joint`, where a spring's center carries all of it: 0 swings the joint as if it had
-    /// no center and 1 as if `center` were its spring's center. It takes the place of the
-    /// spring's center for that joint, and the spring bones start again at rest.
-    ///
-    /// `center` has to be above the joint, and no spring may swing it, as for a spring's center.
-    public func setSpringBoneCenter(_ center: Entity, share: Float, forJoint joint: Entity) throws {
-        guard let instance = vrmInstance, let centerIndex = nodeIndex(of: center), let jointIndex = nodeIndex(of: joint) else {
-            throw VRMError._dataInconsistent("a spring-bone center and its joint have to be nodes of this model")
-        }
-        try instance.setSpringBoneCenter(centerIndex, share: share, forJoint: jointIndex)
+    /// The entity built for the node of a humanoid bone, nil for a bone the model does not have.
+    public func entity(for bone: HumanoidBone) -> Entity? {
+        vrmInstance?.node(for: bone).flatMap(entity(forNodeAt:))
     }
 
     /// The versions disagree about which way a model faces, and loading converts no
@@ -122,7 +102,6 @@ public final class VRMEntity: GLTFEntity {
         guard let pose else {
             throw VRMError._dataInconsistent("a VRM entity needs its pose before its instance")
         }
-        humanoid.setUp(boneNodes: vrm.boneNodes, nodes: built.nodes)
         for sceneMesh in built.meshes.values.joined() {
             meshEntitiesByNode[sceneMesh.nodeIndex, default: []].append(sceneMesh.entity)
         }
@@ -155,20 +134,6 @@ public final class VRMEntity: GLTFEntity {
                 }
             }
         )
-    }
-
-    /// What the eyes follow, nil to leave them at rest.
-    ///
-    /// A world-space position is kept on as either it or the model moves, so a model
-    /// looking at the camera only has to be told where the camera is. A model stating no
-    /// look-at keeps its eyes still whatever this is set to.
-    public var lookAtTarget: LookAtTarget? {
-        get { vrmInstance?.lookAtTarget }
-        set {
-            guard let instance = vrmInstance else { return }
-            refreshPoseRoot()
-            instance.lookAtTarget = newValue
-        }
     }
 
     /// The color a `materialColorBind` starts from. A state animating that color keeps
@@ -222,68 +187,20 @@ public final class VRMEntity: GLTFEntity {
     /// Runs `handler` at `stage` of every ``update(deltaTime:)``, with the frame's time, in
     /// place of the one set there before; nil removes it. This is where code that poses the
     /// model every frame, such as tracking or IK, fits into the frame.
+    ///
+    /// Unlike ``VRMInstance/setUpdateHandler(_:at:)``, the handler runs on the main actor, and the
+    /// entity may move in it: the runtimes after it read where the entity then stands.
     public func setUpdateHandler(_ handler: (@MainActor (TimeInterval) -> Void)?, at stage: VRMUpdateStage) {
         vrmInstance?.setUpdateHandler(handler.map { handler in
-            { [unowned self] deltaTime in
+            { [weak self] deltaTime in
                 MainActor.assumeIsolated {
                     handler(deltaTime)
-                    // The handler may have moved the model, which the runtimes after it measure from.
                     if stage == .afterAnimation {
-                        refreshPoseRoot()
+                        self?.refreshPoseRoot()
                     }
                 }
             }
         }, at: stage)
-    }
-
-    public func setExpression(value: CGFloat, for key: ExpressionKey) {
-        setExpressions([key: value])
-    }
-
-    /// Sets several expression weights and re-applies the result once. Applying
-    /// re-accumulates every active clip, so prefer this over repeated
-    /// ``setExpression(value:for:)`` calls in one frame.
-    public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
-        guard let instance = vrmInstance else { return }
-        instance.setExpressions(weights.mapValues { Float($0) })
-    }
-
-    /// The handle to set `key` with in ``ExpressionWeights``, or nil when the model offers no such
-    /// expression. Look it up once: a handle holds for as long as the model.
-    public func expressionHandle(for key: ExpressionKey) -> ExpressionHandle? {
-        vrmInstance?.expressionHandle(for: key)
-    }
-
-    /// Expression weights for this model, none set yet, to set by handle and hand to
-    /// ``setExpressions(_:)-(ExpressionWeights)`` every frame.
-    public func makeExpressionWeights() -> ExpressionWeights {
-        vrmInstance?.makeExpressionWeights() ?? ExpressionWeights(count: 0)
-    }
-
-    /// Sets the weights `weights` sets and re-applies the result once, for a caller driving the
-    /// face every frame, which then hashes no key. `weights` has to come from this model's
-    /// ``makeExpressionWeights()``.
-    public func setExpressions(_ weights: ExpressionWeights) {
-        guard let instance = vrmInstance else { return }
-        instance.setExpressions(weights)
-    }
-
-    public func expression(for key: ExpressionKey) -> CGFloat {
-        CGFloat(vrmInstance?.expression(for: key) ?? 0)
-    }
-
-    /// The expressions the model offers, each paired with the name it states them
-    /// under.
-    ///
-    /// A VRM 0.x model's blend shape groups come in its own order; a VRM 1.0
-    /// model's presets come first, then its custom expressions by name.
-    public var availableExpressions: [ExpressionInfo] {
-        vrmInstance?.availableExpressions ?? []
-    }
-
-    public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
-        guard let instance = vrmInstance else { return }
-        instance.firstPersonRenderMode = mode
     }
 
     override func apply(_ output: GLTFFrameOutput) {

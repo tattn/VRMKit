@@ -26,12 +26,12 @@ struct InstanceOutputTests {
         #expect(!first.skins.isEmpty)
         #expect(!first.visibility.isEmpty)
 
-        entity.setExpressions([.preset(.aa): 1])
+        instance.setExpressions([.preset(.aa): 1])
         let morphed = reader.takeChanges()
         #expect(morphed.morphWeights.values.contains { $0.contains(1) })
         #expect(morphed.skins.isEmpty)
 
-        let head = try #require(entity.humanoid.node(for: .head).flatMap(entity.nodeIndex(of:)))
+        let head = try #require(instance.node(for: .head))
         entity.pose?.setLocalRotation(simd_quatf(angle: 0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
         entity.update(deltaTime: 1.0 / 60)
         #expect(!reader.takeChanges().skins.isEmpty)
@@ -44,7 +44,7 @@ struct InstanceOutputTests {
     func testAChangeBetweenFramesReachesTheEntity() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
-        let instance = try #require(entity.instance as? VRMInstance)
+        let instance = try #require(entity.instance)
         let node = try #require(entity.morphBindings.keys.first { instance.morphWeights(ofNode: $0) != nil })
         let mesh = try #require(entity.morphBindings[node]?.modelEntities.first?.deformedMesh)
 
@@ -62,7 +62,7 @@ struct InstanceOutputTests {
         let mesh = try #require(entity.deformedMeshes.first { $0.source.skin != nil })
         var reader = instance.makeOutputReader(solvesSkins: true)
         _ = reader.takeChanges()
-        let head = try #require(entity.humanoid.node(for: .head).flatMap(entity.nodeIndex(of:)))
+        let head = try #require(instance.node(for: .head))
 
         instance.pose.setLocalRotation(simd_quatf(angle: 0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
         var solved = mesh.jointTransforms
@@ -99,7 +99,7 @@ struct InstanceOutputTests {
             .first { $0.source === mesh.source })
         #expect(positions(of: copied) != rest)
 
-        let hips = try #require(entity.humanoid.node(for: .hips).flatMap(entity.nodeIndex(of:)))
+        let hips = try #require(entity.instance?.node(for: .hips))
         entity.pose?.setLocalTranslation(SIMD3(0, 0.2, 0), ofNode: hips)
         entity.isDeformationSuspended = false
         entity.updateSkinPose()
@@ -126,11 +126,11 @@ struct InstanceOutputTests {
     private func pose(_ entity: VRMEntity) {
         guard let pose = entity.pose else { return }
         for (bone, angle) in [(HumanoidBone.hips, Float(0.5)), (.leftUpperArm, 0.7)] {
-            guard let node = entity.humanoid.node(for: bone).flatMap(entity.nodeIndex(of:)) else { continue }
+            guard let node = entity.instance?.node(for: bone) else { continue }
             pose.setLocalRotation(pose.localTransform(ofNode: node).rotation * simd_quatf(angle: angle, axis: SIMD3(0, 0, 1)),
                                   ofNode: node)
         }
-        entity.setExpressions([.preset(.happy): 0.8, .preset(.aa): 0.5])
+        entity.instance?.setExpressions([.preset(.happy): 0.8, .preset(.aa): 0.5])
     }
 
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)

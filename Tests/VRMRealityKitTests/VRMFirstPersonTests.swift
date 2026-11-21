@@ -22,17 +22,18 @@ struct VRMFirstPersonTests {
         let data = try Self.seedSanSharingMeshZero(copyAnnotatedAs: "both")
         let vrmLoader = try VRMEntityLoader(withData: data, shaders: [])
         let vrmEntity = try await vrmLoader.loadEntity()
+        let instance = try #require(vrmEntity.instance)
         let node = try #require(vrmEntity.entity(forNodeAt: 0))
         let annotated = try #require(node.children.first)
         let copy = try #require(vrmEntity.entity(forNodeAt: Self.seedSanMeshCopyNodeIndex)?.children.first)
         #expect(annotated.isEnabled == true)
 
-        vrmEntity.setFirstPersonRenderMode(.firstPerson)
+        instance.firstPersonRenderMode = .firstPerson
         #expect(annotated.isEnabled == false)
         #expect(node.isEnabled == true)
         #expect(copy.isEnabled == true)
 
-        vrmEntity.setFirstPersonRenderMode(.thirdPerson)
+        instance.firstPersonRenderMode = .thirdPerson
         #expect(annotated.isEnabled == true)
         #expect(copy.isEnabled == true)
     }
@@ -108,6 +109,7 @@ struct VRMFirstPersonTests {
         // Alicia annotates every mesh `Auto`, hers being split head from body.
         let vrmLoader = try VRMEntityLoader(withData: VRMSampleAsset.aliciaSolid.data, shaders: [])
         let vrmEntity = try await vrmLoader.loadEntity()
+        let instance = try #require(vrmEntity.instance)
         let cut = TestSupport.firstPersonCuts(in: vrmEntity)
         func headlessIndexCount(of entity: ModelEntity) throws -> Int {
             TestSupport.triangleIndexCount(of: try #require(entity.gltfMeshGeometry), isFirstPerson: true)
@@ -121,11 +123,11 @@ struct VRMFirstPersonTests {
         #expect(headless > 0)
         #expect(headless < whole)
 
-        vrmEntity.setFirstPersonRenderMode(.firstPerson)
+        instance.firstPersonRenderMode = .firstPerson
         #expect(TestSupport.drawnTriangleIndexCount(of: trimmed) == headless)
         #expect(dropped.isEnabled == false)
 
-        vrmEntity.setFirstPersonRenderMode(.thirdPerson)
+        instance.firstPersonRenderMode = .thirdPerson
         #expect(TestSupport.drawnTriangleIndexCount(of: trimmed) == whole)
         #expect(dropped.isEnabled == true)
     }

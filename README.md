@@ -89,7 +89,7 @@ struct ContentView: View {
 }
 ```
 
-`loadEntity()` returns a `VRMEntity`, which drives expressions, humanoid bones, spring bones and animation.
+`loadEntity()` returns a `VRMEntity`, which draws the `VRMInstance` moving it (`model.instance`): expressions, humanoid bones, spring bones and animation are the instance's, and the entity shows whatever changes in it.
 
 Animations, skinning, constraints and spring bones update every frame automatically. To drive the timing yourself, set `isAutomaticUpdateEnabled = false` and call `update(deltaTime:)`. Spring bones step at a fixed rate, so they swing the same at every display refresh rate.
 
@@ -102,8 +102,8 @@ model.setUpdateHandler({ deltaTime in
 ```
 
 ```swift
-model.springBoneConfiguration.externalForce = SIMD3<Float>(1, 0, 0) // wind
-model.resetSpringBones() // after teleporting the model
+model.instance?.springBoneConfiguration.externalForce = SIMD3<Float>(1, 0, 0) // wind
+model.instance?.resetSpringBones() // after teleporting the model
 ```
 
 ## Expressions / blend shapes
@@ -111,10 +111,11 @@ model.resetSpringBones() // after teleporting the model
 <img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_joy.png" width="100px" alt="joy" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_angry.png" width="100px" alt="angry" /><img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_><.png" width="100px" alt="><" />
 
 ```swift
-model.setExpression(value: 1.0, for: .preset(.happy))
-model.setExpressions([.preset(.blink): 1.0, .custom("><"): 0.5])
+guard let instance = model.instance else { return }
+instance.setExpressions([.preset(.happy): 1.0])
+instance.setExpressions([.preset(.blink): 1.0, .custom("><"): 0.5])
 
-for expression in model.availableExpressions {
+for expression in instance.availableExpressions {
     print(expression.key, expression.name) // preset(.happy) Joy
 }
 ```
@@ -122,11 +123,11 @@ for expression in model.availableExpressions {
 A face tracker setting the face every frame looks each key up once and then sets the weights by handle, which hashes no key per frame. Expressions it leaves unset keep their weights:
 
 ```swift
-let jawOpen = model.expressionHandle(for: .custom("jawOpen"))
-var weights = model.makeExpressionWeights()
+let jawOpen = instance.expressionHandle(for: .custom("jawOpen"))
+var weights = instance.makeExpressionWeights()
 // every frame
 if let jawOpen { weights[jawOpen] = trackedJawOpen }
-model.setExpressions(weights)
+instance.setExpressions(weights)
 ```
 
 VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the expressions they stand for, so `joy` is set as `.happy`, and `ExpressionPreset.vrm0PresetName` spells it back the 0.x way. `setExpressions` applies several weights at once, which suits per-frame face tracking.
@@ -134,9 +135,9 @@ VRM 0.x and 1.0 share this API. A 0.x model's blend shape groups load as the exp
 ## Look at
 
 ```swift
-model.lookAtTarget = .position(SIMD3<Float>(0, 1.4, 1)) // a point in world space
-model.lookAtTarget = .angles(yaw: 15, pitch: -5)        // degrees from the head's forward
-model.lookAtTarget = nil                                // back to rest
+instance.lookAtTarget = .position(SIMD3<Float>(0, 1.4, 1)) // a point in world space
+instance.lookAtTarget = .angles(yaw: 15, pitch: -5)        // degrees from the head's forward
+instance.lookAtTarget = nil                                // back to rest
 ```
 
 The eyes stay on the target as either it or the model moves. VRM 0.x and 1.0 share this API, and the model decides whether the gaze turns its eye bones or weighs its look expressions.
@@ -144,7 +145,7 @@ The eyes stay on the target as either it or the model moves. VRM 0.x and 1.0 sha
 ## First person
 
 ```swift
-model.setFirstPersonRenderMode(.firstPerson) // a camera at the model's own eyes, as in VR
+instance.firstPersonRenderMode = .firstPerson // a camera at the model's own eyes, as in VR
 ```
 
 The model then draws what VRM's first-person settings show to its own eyes: a mesh annotated `auto` loses the triangles its head draws, so the body stays in view. The load cuts those triangles out of every such mesh. An app that only ever shows the model from outside can skip that work:
@@ -159,7 +160,7 @@ let loader = try VRMEntityLoader(named: "model.vrm", preparesFirstPerson: false)
 
 ```swift
 let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-if let pose = model.pose, let neck = model.humanoid.nodeIndex(for: .neck) {
+if let pose = model.pose, let neck = model.instance?.node(for: .neck) {
     pose.setLocalRotation(pose.localTransform(ofNode: neck).rotation * neckRotation, ofNode: neck)
 }
 ```
@@ -172,7 +173,7 @@ A `.vrma` file retargets onto any loaded model, VRM 1.0 and 0.x alike. It drives
 
 ```swift
 let animation = try VRMAnimation(named: "walk.vrma")
-let controller = try model.playAnimation(animation, loops: true)
+let controller = try instance.playAnimation(animation, loops: true)
 controller.speed = 2        // a negative speed plays backwards
 controller.isPaused = true  // holds the pose
 controller.seek(to: 0.5)

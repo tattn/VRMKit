@@ -23,7 +23,7 @@ struct VRMCompositionMotionTests {
         let entity = try await composed.loadEntity()
         let propeller = try #require(entity.entity(forNodeAt: composed.animatedNode))
         let ornament = try composed.ornament.map { try #require(entity.entity(forNodeAt: $0)) }
-        let head = try #require(entity.humanoid.node(for: .head))
+        let head = try #require(entity.entity(for: .head))
 
         #expect(entity.animations.count == 1)
         let controller = try entity.playAnimation(at: 0)
@@ -56,7 +56,7 @@ struct VRMCompositionMotionTests {
         let composed = try ComposedModel(model: model, springBoneChain: true)
         let entity = try await composed.loadEntity()
         let ornament = try composed.ornament.map { try #require(entity.entity(forNodeAt: $0)) }
-        let head = try #require(entity.humanoid.node(for: .head))
+        let head = try #require(entity.entity(for: .head))
 
         // The first frame settles the chain, so what follows is the swing.
         entity.update(deltaTime: 1.0 / 60.0)

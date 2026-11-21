@@ -378,8 +378,9 @@ struct MToonRenderingTests {
         let seedSan = TestSupport.seedSanData
         let vrmLoader = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try await vrmLoader.loadEntity()
+        let instance = try #require(vrmEntity.instance)
 
-        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 1])
 
         let parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11)
         #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0.25, 0)))
@@ -569,9 +570,10 @@ struct MToonRenderingTests {
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try await loader.loadEntity()
+        let instance = try #require(vrmEntity.instance)
 
         // The invalid bind is skipped while the valid one keeps working.
-        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 1])
         let parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 0)
         #expect(parameters.baseColor.x.isApproximatelyEqual(to: 0.5))
     }

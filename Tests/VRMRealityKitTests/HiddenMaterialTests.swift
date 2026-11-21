@@ -23,7 +23,7 @@ struct HiddenMaterialTests {
 
         entity.setMaterialsHidden(true, forMaterials: materials)
         #expect(!skinned.isEnabled)
-        entity.humanoid.node(for: .hips)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 1, 0))
+        entity.entity(for: .hips)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 1, 0))
         entity.invalidateSkinPose()
         entity.flushSkinPoseIfNeeded()
         #expect(skinned.deformedMesh?.isDeformationPending == false)

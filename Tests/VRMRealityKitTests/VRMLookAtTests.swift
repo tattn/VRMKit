@@ -16,7 +16,7 @@ struct VRMLookAtTests {
     /// which is where the eyes sit rather than where the head node does.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private static func target(yaw: Float, from entity: VRMEntity, offset: SIMD3<Float>) throws -> SIMD3<Float> {
-        let head = try #require(entity.humanoid.node(for: .head))
+        let head = try #require(entity.entity(for: .head))
         let origin = head.position(relativeTo: nil) + head.orientation(relativeTo: nil).act(offset)
         let forward = entity.vrm.forwardDirection
         let left = simd_cross(SIMD3<Float>(0, 1, 0), forward)
@@ -36,14 +36,15 @@ struct VRMLookAtTests {
     func testAVRM0BoneLookAtTurnsTheEyesThroughTheModelsCurves() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
-        let leftEye = try #require(entity.humanoid.node(for: .leftEye))
-        let rightEye = try #require(entity.humanoid.node(for: .rightEye))
+        let instance = try #require(entity.instance)
+        let leftEye = try #require(entity.entity(for: .leftEye))
+        let rightEye = try #require(entity.entity(for: .rightEye))
         let restLeft = leftEye.orientation
         let restRight = rightEye.orientation
 
-        entity.lookAtTarget = .position(try Self.target(yaw: 15,
-                                                        from: entity,
-                                                        offset: SIMD3(0, 0.06, 0)))
+        instance.lookAtTarget = .position(try Self.target(yaw: 15,
+                                                          from: entity,
+                                                          offset: SIMD3(0, 0.06, 0)))
 
         #expect(abs(Self.turn(of: leftEye, from: restLeft) - 5) < 0.05)
         #expect(abs(Self.turn(of: rightEye, from: restRight) - 5) < 0.05)
@@ -54,10 +55,10 @@ struct VRMLookAtTests {
         #expect(Self.turn(of: leftEye, from: restLeft) < 0.05)
 
         // Half the gaze, half the turn: the curve this model states is a straight line.
-        entity.lookAtTarget = .angles(yaw: 7.5, pitch: 0)
+        instance.lookAtTarget = .angles(yaw: 7.5, pitch: 0)
         #expect(abs(Self.turn(of: leftEye, from: restLeft) - 2.5) < 0.05)
 
-        entity.lookAtTarget = nil
+        instance.lookAtTarget = nil
         #expect(Self.turn(of: leftEye, from: restLeft) < 1e-3)
         #expect(Self.turn(of: rightEye, from: restRight) < 1e-3)
     }
@@ -68,21 +69,22 @@ struct VRMLookAtTests {
     func testAVRM1ExpressionLookAtWeighsTheLookExpressions() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
+        let instance = try #require(entity.instance)
 
         // Seed-san maps 90 degrees of gaze onto a full weight.
-        entity.lookAtTarget = .position(try Self.target(yaw: 45,
-                                                        from: entity,
-                                                        offset: SIMD3(0, 0.0776, 0.1007)))
+        instance.lookAtTarget = .position(try Self.target(yaw: 45,
+                                                          from: entity,
+                                                          offset: SIMD3(0, 0.0776, 0.1007)))
 
-        #expect(abs(entity.expression(for: .preset(.lookLeft)) - 0.5) < 0.01)
-        #expect(entity.expression(for: .preset(.lookRight)) == 0)
+        #expect(abs(instance.expression(for: .preset(.lookLeft)) - 0.5) < 0.01)
+        #expect(instance.expression(for: .preset(.lookRight)) == 0)
 
-        entity.lookAtTarget = .angles(yaw: 0, pitch: -90)
-        #expect(entity.expression(for: .preset(.lookLeft)) == 0)
-        #expect(entity.expression(for: .preset(.lookDown)) == 1)
+        instance.lookAtTarget = .angles(yaw: 0, pitch: -90)
+        #expect(instance.expression(for: .preset(.lookLeft)) == 0)
+        #expect(instance.expression(for: .preset(.lookDown)) == 1)
 
-        entity.lookAtTarget = nil
-        #expect(entity.expression(for: .preset(.lookDown)) == 0)
+        instance.lookAtTarget = nil
+        #expect(instance.expression(for: .preset(.lookDown)) == 0)
     }
 }
 #endif

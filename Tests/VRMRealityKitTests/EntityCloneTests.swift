@@ -40,16 +40,14 @@ struct EntityCloneTests {
             Issue.record("The clone lost the VRM it was copied from")
             return
         }
-        #expect(vrmEntity.humanoid.node(for: .neck) != nil)
-        #expect(clone.humanoid.node(for: .neck) == nil)
+        #expect(vrmEntity.entity(for: .neck) != nil)
+        #expect(clone.entity(for: .neck) == nil)
         // Material indices scope the runtime material setters, so a clone answers
         // none rather than indices those setters could not act on.
         #expect(!vrmEntity.materialIndices(under: vrmEntity).isEmpty)
         #expect(clone.materialIndices(under: clone).isEmpty)
         #expect(vrmEntity.materialIndices(under: clone).isEmpty)
-        #expect(throws: VRMError.self) {
-            try clone.playAnimation(try VRMAnimation(data: VRMASampleFixture.standard()))
-        }
+        #expect(clone.instance == nil)
         // The update system reaches the clone too, so updating it has to stay harmless.
         clone.update(deltaTime: 1.0 / 60.0)
     }
@@ -63,12 +61,13 @@ struct EntityCloneTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *), TestSupport.isMToonRenderingAvailable else { return }
         let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                                   shaders: TestSupport.noOutlineShaders).loadEntity()
+        let instance = try #require(vrmEntity.instance)
         let original = SIMD3<Float>(1, 0, 0)
         vrmEntity.setMToonLightDirection(original)
         // Seed-san's happy expression shifts the UV of material 11.
-        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 1])
         let copy = vrmEntity.snapshot()
-        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 0])
         #expect(try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0))
         #expect(try TestSupport.mtoonParameters(in: copy, materialIndex: 11).uvTransform.z.isApproximatelyEqual(to: 0.25))
         let index = try #require(vrmEntity.materialIndices(under: vrmEntity).sorted().first {
@@ -111,7 +110,7 @@ struct EntityCloneTests {
                                                   shaders: TestSupport.noOutlineShaders).loadEntity()
         let accessory = try await GLTFEntityLoader(withURL: GLTFSampleAsset.animatedMorphCube.url,
                                                    shaders: [MToonShader(source: .convertAll(MToonConversionStyle()))]).loadEntity()
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        let head = try #require(vrmEntity.entity(for: .head))
         head.addChild(accessory)
         let tint = SIMD3<Float>(0.2, 0.4, 0.6)
         accessory.setMToonLighting(direction: SIMD3(0, 0, 1), color: tint, ambient: .zero)
@@ -142,7 +141,7 @@ struct EntityCloneTests {
         let solved = TestSupport.jointRotations(in: vrmEntity)
 
         // Posed the way a caller drives a humanoid bone, without an update to solve it.
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        let head = try #require(vrmEntity.entity(for: .head))
         head.transform.rotation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(0, 1, 0))
         vrmEntity.invalidateSkinPose()
         #expect(TestSupport.jointRotations(in: vrmEntity) == solved)

@@ -25,7 +25,7 @@ struct VRMUpdateSystemTests {
         #expect(!pose.hasNodesMovedForSkinning)
         #expect(TestSupport.jointRotations(in: vrmEntity) == before)
 
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        let head = try #require(vrmEntity.entity(for: .head))
         head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
         #expect(TestSupport.jointRotations(in: vrmEntity) != before)
@@ -54,9 +54,10 @@ struct VRMUpdateSystemTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         func posedRotations(invalidate: (VRMEntity, Entity) -> Void) async throws -> [SIMD4<Float>] {
             let vrmEntity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
-            vrmEntity.resetSpringBones()
+            let instance = try #require(vrmEntity.instance)
+            instance.resetSpringBones()
             vrmEntity.update(deltaTime: 0)
-            let neck = try #require(vrmEntity.humanoid.node(for: .neck))
+            let neck = try #require(vrmEntity.entity(for: .neck))
             for step in 1...(moving ? 3 : 1) {
                 if moving {
                     vrmEntity.transform.translation = SIMD3<Float>(Float(step) * 0.1, 0, 0)
@@ -82,7 +83,7 @@ struct VRMUpdateSystemTests {
         let vrmEntity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
         vrmEntity.update(deltaTime: 1.0 / 60.0)
 
-        let hips = try #require(vrmEntity.humanoid.node(for: .hips))
+        let hips = try #require(vrmEntity.entity(for: .hips))
         let armatureRoot = try #require(hips.parent)
         let before = TestSupport.jointRotations(in: vrmEntity)
         #expect(!before.isEmpty)
@@ -99,8 +100,9 @@ struct VRMUpdateSystemTests {
     func testUpdateHandlersRunAtTheirStagesAndReachTheSkin() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
+        let instance = try #require(vrmEntity.instance)
         let pose = try #require(vrmEntity.pose)
-        let head = try #require(vrmEntity.humanoid.nodeIndex(for: .head))
+        let head = try #require(instance.node(for: .head))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
         let before = TestSupport.jointRotations(in: vrmEntity)
 
@@ -133,7 +135,7 @@ struct VRMUpdateSystemTests {
         let vrmEntity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
         var handled = false
         vrmEntity.setUpdateHandler({ _ in handled = true }, at: .afterAnimation)
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        let head = try #require(vrmEntity.entity(for: .head))
         head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         let before = TestSupport.jointRotations(in: vrmEntity)
 

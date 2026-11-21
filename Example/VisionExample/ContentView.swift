@@ -102,10 +102,10 @@ final class ImmersiveViewModel {
 
             // The arms are left to the VRM animation the view starts.
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            if let neck = vrmEntity.humanoid.node(for: .neck) {
+            if let neck = vrmEntity.entity(for: .neck) {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
             }
-            vrmEntity.setExpression(value: 1.0, for: .custom("><"))
+            vrmEntity.instance?.setExpressions([.custom("><"): 1.0])
             
             self.vrmEntity = vrmEntity
         } catch {
@@ -119,10 +119,10 @@ final class ImmersiveViewModel {
             vrmaController = nil
             return
         }
-        guard vrmaController == nil, let vrmEntity else { return }
+        guard vrmaController == nil, let instance = vrmEntity?.instance else { return }
         do {
             let animation = try loadedVRMAAnimation()
-            vrmaController = try vrmEntity.playAnimation(animation, loops: true)
+            vrmaController = try instance.playAnimation(animation, loops: true)
         } catch {
             print("VRMA Play Error: \(error)")
         }

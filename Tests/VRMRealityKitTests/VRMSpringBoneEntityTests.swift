@@ -19,7 +19,7 @@ struct VRMSpringBoneEntityTests {
 
         // Rotating a parent bone drags the spring chains, so spring bones write
         // new joint transforms during update().
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        let head = try #require(vrmEntity.entity(for: .head))
         head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         vrmEntity.invalidateSkinPose(for: [head])
         vrmEntity.update(deltaTime: 1.0 / 60.0)
@@ -60,7 +60,8 @@ struct VRMSpringBoneEntityTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                             shaders: []).loadEntity()
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        let instance = try #require(vrmEntity.instance)
+        let head = try #require(vrmEntity.entity(for: .head))
         func turnHead(by angle: Float) {
             head.transform.rotation = simd_quatf(angle: angle, axis: SIMD3<Float>(0, 1, 0)) * head.transform.rotation
             vrmEntity.invalidateSkinPose(for: [head])
@@ -77,7 +78,7 @@ struct VRMSpringBoneEntityTests {
         turnHead(by: .pi / 4)
         for _ in 0..<10 { vrmEntity.update(deltaTime: 1.0 / 60.0) }
 
-        vrmEntity.springBoneConfiguration.isPaused = true
+        instance.springBoneConfiguration.isPaused = true
         let held = localRotations()
         for _ in 0..<10 {
             turnHead(by: -.pi / 20)
@@ -85,7 +86,7 @@ struct VRMSpringBoneEntityTests {
         }
         #expect(localRotations() == held)
 
-        vrmEntity.springBoneConfiguration.isPaused = false
+        instance.springBoneConfiguration.isPaused = false
         for _ in 0..<10 { vrmEntity.update(deltaTime: 1.0 / 60.0) }
         #expect(localRotations() != held)
     }
@@ -112,7 +113,7 @@ struct VRMSpringBoneEntityTests {
         let joint = try #require(vrmEntity.entity(forNodeAt: jointNode))
         let rotation = joint.transform.rotation
 
-        let head = try #require(vrmEntity.humanoid.node(for: .head))
+        let head = try #require(vrmEntity.entity(for: .head))
         head.transform.rotation = simd_quatf(angle: .pi / 3, axis: SIMD3<Float>(1, 0, 0))
         vrmEntity.update(deltaTime: 1.0 / 60.0)
 

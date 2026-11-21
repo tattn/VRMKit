@@ -15,9 +15,10 @@ struct NodeEntitySynchronizationTests {
     func testNarrowedSynchronizationKeepsOnlyTheNamedNodesAndTheirAncestors() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
+        let instance = try #require(entity.instance)
         let pose = try #require(entity.pose)
         func index(_ bone: HumanoidBone) throws -> Int {
-            try #require(entity.humanoid.nodeIndex(for: bone))
+            try #require(instance.node(for: bone))
         }
         let head = try index(.head), hips = try index(.hips), toe = try index(.leftToes)
         entity.nodeEntitySynchronization = .nodes([head])
@@ -40,8 +41,9 @@ struct NodeEntitySynchronizationTests {
     func testWideningSynchronizationCatchesTheEntitiesUp() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
+        let instance = try #require(entity.instance)
         let pose = try #require(entity.pose)
-        let toe = try #require(entity.humanoid.nodeIndex(for: .leftToes))
+        let toe = try #require(instance.node(for: .leftToes))
         entity.nodeEntitySynchronization = .nodes([])
         let turn = simd_quatf(angle: 0.4, axis: SIMD3(1, 0, 0))
         pose.setLocalRotation(turn, ofNode: toe)
@@ -57,8 +59,9 @@ struct NodeEntitySynchronizationTests {
     func testACopyCarriesThePoseInItsNodeEntities() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
+        let instance = try #require(entity.instance)
         let pose = try #require(entity.pose)
-        let toe = try #require(entity.humanoid.nodeIndex(for: .leftToes))
+        let toe = try #require(instance.node(for: .leftToes))
         entity.nodeEntitySynchronization = .nodes([])
         let turn = simd_quatf(angle: 0.4, axis: SIMD3(1, 0, 0))
         pose.setLocalRotation(turn, ofNode: toe)

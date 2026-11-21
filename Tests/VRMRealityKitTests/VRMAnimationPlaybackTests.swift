@@ -34,7 +34,7 @@ struct VRMAnimationPlaybackTests {
     /// model aimed at nothing, which is also where a gaze of nothing lands.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func gaze(of entity: VRMEntity) -> SIMD2<Float> {
-        guard case .angles(let yaw, let pitch) = entity.lookAtTarget else { return .zero }
+        guard case .angles(let yaw, let pitch) = entity.instance?.lookAtTarget else { return .zero }
         return SIMD2(yaw, pitch)
     }
 
@@ -45,8 +45,9 @@ struct VRMAnimationPlaybackTests {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func posedRotations(_ write: ToeWrite) async throws -> [SIMD4<Float>] {
         let entity = try await TestSupport.sharedLoader(.staticSeedSanStandard).loadEntity()
-        try entity.playAnimation(fixture(), loops: true)
-        let toe = try #require(entity.humanoid.node(for: .leftToes))
+        let instance = try #require(entity.instance)
+        try instance.playAnimation(fixture(), loops: true)
+        let toe = try #require(entity.entity(for: .leftToes))
         let toeIndex = try #require(entity.nodeIndex(of: toe))
         let pose = try #require(entity.pose)
         for _ in 0..<4 {
@@ -78,16 +79,17 @@ struct VRMAnimationPlaybackTests {
     func testTheFixtureRetargetsOntoAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
-        let hips = try #require(entity.humanoid.node(for: .hips))
+        let instance = try #require(entity.instance)
+        let hips = try #require(entity.entity(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
         // The fixture's hips rest 1 m up, so the retarget scale is the target's
         // own rest hips height.
         let scale = worldPosition(of: hips, in: entity).y
         #expect(scale > 0)
-        let thumb = try #require(entity.humanoid.node(for: .leftThumbMetacarpal))
+        let thumb = try #require(entity.entity(for: .leftThumbMetacarpal))
         let thumbRest = thumb.transform.rotation
 
-        let controller = try entity.playAnimation(fixture())
+        let controller = try instance.playAnimation(fixture())
         #expect(controller.animation.duration.isApproximatelyEqual(to: 1.0))
         // Past the end, time clamps to it and the playback completes.
         entity.updateAnimations(deltaTime: 5)
@@ -104,15 +106,15 @@ struct VRMAnimationPlaybackTests {
 
         // happy holds 0.7, which Seed-san's own binary happy clip snaps to 1;
         // aa ramps to 1.5, which clamps to the spec's 0...1.
-        #expect(abs(entity.expression(for: .preset(.happy)) - 1.0) < 0.001)
-        #expect(abs(entity.expression(for: .preset(.aa)) - 1.0) < 0.001)
+        #expect(abs(instance.expression(for: .preset(.happy)) - 1.0) < 0.001)
+        #expect(abs(instance.expression(for: .preset(.aa)) - 1.0) < 0.001)
 
         // A `.vrma` states its gaze as the rotation of its look-at node, and a model whose
         // look-at weighs expressions takes it as those weights. The fixture ends 30° to
         // the model's own left, and Seed-san maps 90° onto 1.
         #expect(gaze(of: entity).isApproximatelyEqual(to: SIMD2(30, 0), tolerance: 0.01))
-        #expect(abs(entity.expression(for: .preset(.lookLeft)) - 1.0 / 3) < 0.001)
-        #expect(entity.expression(for: .preset(.lookRight)) == 0)
+        #expect(abs(instance.expression(for: .preset(.lookLeft)) - 1.0 / 3) < 0.001)
+        #expect(instance.expression(for: .preset(.lookRight)) == 0)
 
         #expect(abs(simd_dot(thumb.transform.rotation, thumbRest)) < 0.999, "the thumb channel did not pose the thumb")
 
@@ -120,7 +122,7 @@ struct VRMAnimationPlaybackTests {
         // finished animation still poses the model. Halfway up the ramp the non-binary
         // aa carries the partial weight, and the hips rotation slerps to 45°.
         controller.seek(to: 0.5)
-        #expect(abs(entity.expression(for: .preset(.aa)) - 0.75) < 0.001)
+        #expect(abs(instance.expression(for: .preset(.aa)) - 0.75) < 0.001)
         let halfway = worldRotation(of: hips, in: entity) * rest.inverse
         let expectedHalfway = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(1, 0, 0))
         #expect(abs(simd_dot(halfway, expectedHalfway)) > 0.999, "a finished animation no longer poses the hips")
@@ -135,19 +137,20 @@ struct VRMAnimationPlaybackTests {
     func testHipsTranslationTravelsThroughTheParentRestTransform() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
-        let hips = try #require(entity.humanoid.node(for: .hips))
+        let instance = try #require(entity.instance)
+        let hips = try #require(entity.entity(for: .hips))
         let restHeight = worldPosition(of: hips, in: entity).y
 
         let broken = try VRMAnimation(data: VRMASampleFixture.hipsWithTwoParents())
         #expect(throws: VRMError.self, "an animation whose hips have two parents was accepted") {
-            try entity.playAnimation(broken)
+            try instance.playAnimation(broken)
         }
 
         // Under a parent lifted 0.4 m and scaled 1.5×, the fixture's hips rest
         // 1.9 m up and hold [0, 1.9, 0.75] in model space.
         let animation = try VRMAnimation(data: VRMASampleFixture.hipsUnderTransformedParent(
             parentTranslation: [0, 0.4, 0], parentScale: 1.5))
-        try entity.playAnimation(animation)
+        try instance.playAnimation(animation)
         entity.updateAnimations(deltaTime: 0.5)
 
         // Retargeted, they stand at the target's own rest height, the rest of
@@ -162,21 +165,22 @@ struct VRMAnimationPlaybackTests {
     func testTheFixtureRetargetsOntoAVRM0ModelTurnedAround() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
-        let hips = try #require(entity.humanoid.node(for: .hips))
+        let instance = try #require(entity.instance)
+        let hips = try #require(entity.entity(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
         let scale = worldPosition(of: hips, in: entity).y
         // VRM 0.x spells the thumb chain proximal / intermediate / distal where VRM
         // 1.0 spells the same three joints metacarpal / proximal / distal, so the
         // fixture's metacarpal channel has to land on the first joint of the chain.
-        let thumb = try #require(entity.humanoid.node(for: .leftThumbMetacarpal))
-        #expect(thumb !== entity.humanoid.node(for: .leftThumbProximal))
+        let thumb = try #require(entity.entity(for: .leftThumbMetacarpal))
+        #expect(thumb !== entity.entity(for: .leftThumbProximal))
         let thumbRest = thumb.transform.rotation
         // Alicia is the model with eye bones.
-        let eyes = [HumanoidBone.leftEye, .rightEye].compactMap { entity.humanoid.node(for: $0) }
+        let eyes = [HumanoidBone.leftEye, .rightEye].compactMap { entity.entity(for: $0) }
         #expect(eyes.count == 2)
         let eyeRests = eyes.map(\.transform.rotation)
 
-        try entity.playAnimation(fixture())
+        try instance.playAnimation(fixture())
         entity.updateAnimations(deltaTime: 1.0)
 
         let delta = worldRotation(of: hips, in: entity) * rest.inverse
@@ -185,7 +189,7 @@ struct VRMAnimationPlaybackTests {
         let expectedPosition = SIMD3<Float>(0, scale, -0.5 * scale)
         #expect(worldPosition(of: hips, in: entity).isApproximatelyEqual(to: expectedPosition, tolerance: 0.002))
         // The 0.x model's Joy group is loaded as the happy expression.
-        #expect(abs(entity.expression(for: .preset(.happy)) - 0.7) < 0.01)
+        #expect(abs(instance.expression(for: .preset(.happy)) - 0.7) < 0.01)
         #expect(abs(simd_dot(thumb.transform.rotation, thumbRest)) < 0.999, "the thumb channel did not pose the thumb")
 
         // The gaze turns the eye bones the model's own curves state, the angles meaning
@@ -210,17 +214,18 @@ struct VRMAnimationPlaybackTests {
     func testOneNodeDrivesEveryExpressionNamingIt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
+        let instance = try #require(entity.instance)
 
-        try entity.playAnimation(try VRMAnimation(data: VRMASampleFixture.contestedExpressions()))
+        try instance.playAnimation(try VRMAnimation(data: VRMASampleFixture.contestedExpressions()))
         entity.updateAnimations(deltaTime: 0.5)
 
-        #expect(abs(entity.expression(for: .preset(.aa)) - 0.6) < 0.001)
-        #expect(abs(entity.expression(for: .preset(.ih)) - 0.6) < 0.001)
+        #expect(abs(instance.expression(for: .preset(.aa)) - 0.6) < 0.001)
+        #expect(abs(instance.expression(for: .preset(.ih)) - 0.6) < 0.001)
 
         // A file stating no gaze of its own says where the model looks through the look
         // expressions, which retarget like any other.
-        #expect(abs(entity.expression(for: .preset(.lookRight)) - 1) < 0.001)
-        #expect(entity.lookAtTarget == nil)
+        #expect(abs(instance.expression(for: .preset(.lookRight)) - 1) < 0.001)
+        #expect(instance.lookAtTarget == nil)
     }
 
     /// A stated gaze owns the look-at, so the look expressions a file carries as well
@@ -229,15 +234,16 @@ struct VRMAnimationPlaybackTests {
     func testAStatedGazeOutranksTheLookExpressionsBesideIt() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
+        let instance = try #require(entity.instance)
 
         // The gaze goes left; the expression track it comes with says right.
         let animation = try VRMAnimation(data: VRMASampleFixture.gazeAndLookExpression(yawDegrees: 45))
-        try entity.playAnimation(animation)
+        try instance.playAnimation(animation)
         entity.updateAnimations(deltaTime: 0.5)
 
         // Seed-san maps 90° of gaze onto a full weight.
-        #expect(abs(entity.expression(for: .preset(.lookLeft)) - 0.5) < 0.001)
-        #expect(entity.expression(for: .preset(.lookRight)) == 0)
+        #expect(abs(instance.expression(for: .preset(.lookLeft)) - 0.5) < 0.001)
+        #expect(instance.expression(for: .preset(.lookRight)) == 0)
     }
 
     /// A file stating no gaze leaves the model's own target alone, so playing one does
@@ -246,13 +252,14 @@ struct VRMAnimationPlaybackTests {
     func testAnAnimationWithoutAGazeLeavesTheTargetAlone() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
-        entity.lookAtTarget = .angles(yaw: 90, pitch: 0)
+        let instance = try #require(entity.instance)
+        instance.lookAtTarget = .angles(yaw: 90, pitch: 0)
 
-        try entity.playAnimation(try VRMAnimation(data: VRMASampleFixture.holdingPose(expressionWeight: 0.25)))
+        try instance.playAnimation(try VRMAnimation(data: VRMASampleFixture.holdingPose(expressionWeight: 0.25)))
         entity.updateAnimations(deltaTime: 0.5)
 
-        #expect(entity.lookAtTarget == .angles(yaw: 90, pitch: 0))
-        #expect(entity.expression(for: .preset(.lookLeft)) == 1)
+        #expect(instance.lookAtTarget == .angles(yaw: 90, pitch: 0))
+        #expect(instance.expression(for: .preset(.lookLeft)) == 1)
     }
 
     /// The three-vrm sample `.vrma`, whose skeleton rests with non-identity local
@@ -263,19 +270,20 @@ struct VRMAnimationPlaybackTests {
     func testTheThreeVRMSamplePlaysOnAVRM1Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
-        let arm = try #require(entity.humanoid.node(for: .rightUpperArm))
+        let instance = try #require(entity.instance)
+        let arm = try #require(entity.entity(for: .rightUpperArm))
         let rest = worldRotation(of: arm, in: entity)
 
-        let controller = try entity.playAnimation(try VRMAnimation(withURL: VRMASampleAsset.test.url))
+        let controller = try instance.playAnimation(try VRMAnimation(withURL: VRMASampleAsset.test.url))
         #expect(controller.animation.duration.isApproximatelyEqual(to: 3.0))
 
         entity.updateAnimations(deltaTime: 0.5)
         let swung = worldRotation(of: arm, in: entity) * rest.inverse
         #expect(abs(simd_dot(swung, simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(0, 0, 1)))) > 0.999)
-        #expect(abs(entity.expression(for: .preset(.happy))) < 0.001)
+        #expect(abs(instance.expression(for: .preset(.happy))) < 0.001)
 
         controller.seek(to: 1.5)
-        #expect(abs(entity.expression(for: .preset(.happy)) - 1.0) < 0.001)
+        #expect(abs(instance.expression(for: .preset(.happy)) - 1.0) < 0.001)
         // By then the arm is back at rest.
         let restored = worldRotation(of: arm, in: entity) * rest.inverse
         #expect(abs(restored.real) > 0.999)
@@ -284,7 +292,7 @@ struct VRMAnimationPlaybackTests {
         // Seed-san's look-at weighs that onto a full lookLeft.
         controller.seek(to: 2.5)
         #expect(gaze(of: entity).isApproximatelyEqual(to: SIMD2(90, 0), tolerance: 0.01))
-        #expect(abs(entity.expression(for: .preset(.lookLeft)) - 1.0) < 0.001)
+        #expect(abs(instance.expression(for: .preset(.lookLeft)) - 1.0) < 0.001)
     }
 
     /// The same sample on a VRM 0.x model: the arm swing turns around with the
@@ -293,16 +301,17 @@ struct VRMAnimationPlaybackTests {
     func testTheThreeVRMSamplePlaysOnAVRM0Model() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
-        let arm = try #require(entity.humanoid.node(for: .rightUpperArm))
+        let instance = try #require(entity.instance)
+        let arm = try #require(entity.entity(for: .rightUpperArm))
         let rest = worldRotation(of: arm, in: entity)
 
-        let controller = try entity.playAnimation(try VRMAnimation(withURL: VRMASampleAsset.test.url))
+        let controller = try instance.playAnimation(try VRMAnimation(withURL: VRMASampleAsset.test.url))
         entity.updateAnimations(deltaTime: 0.5)
         let swung = worldRotation(of: arm, in: entity) * rest.inverse
         #expect(abs(simd_dot(swung, simd_quatf(angle: -.pi / 2, axis: SIMD3<Float>(0, 0, 1)))) > 0.999)
 
         controller.seek(to: 1.5)
-        #expect(abs(entity.expression(for: .preset(.happy)) - 1.0) < 0.01)
+        #expect(abs(instance.expression(for: .preset(.happy)) - 1.0) < 0.01)
     }
 
     /// The bundled CC0 walk cycle, authored on neither model's skeleton, so it
@@ -311,15 +320,16 @@ struct VRMAnimationPlaybackTests {
     func testTheWalkCycleDrivesTheWholeBodyOfEitherModel(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: model.data, shaders: []).loadEntity()
+        let instance = try #require(entity.instance)
         // Every humanoid bone the model has, so the count below is of bones
         // that actually moved rather than of bones the animation declares.
-        let bones = Array(entity.humanoid.bones.values)
+        let bones = HumanoidBone.allCases.compactMap(entity.entity(for:))
         let restRotations = bones.map(\.transform.rotation)
-        let hips = try #require(entity.humanoid.node(for: .hips))
+        let hips = try #require(entity.entity(for: .hips))
         let restHeight = worldPosition(of: hips, in: entity).y
 
-        let controller = try entity.playAnimation(try VRMAnimation(withURL: VRMASampleAsset.walk.url),
-                                                  loops: true)
+        let controller = try instance.playAnimation(try VRMAnimation(withURL: VRMASampleAsset.walk.url),
+                                                    loops: true)
         #expect(controller.animation.duration.isApproximatelyEqual(to: 0.767, tolerance: 0.01))
 
         // A quarter into the cycle the pose is far from the rest one.
@@ -353,8 +363,9 @@ struct VRMAnimationPlaybackTests {
         var controller: GLTFAnimationPlaybackController?
         do {
             let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
+            let instance = try #require(entity.instance)
             loaded = entity
-            controller = try entity.playAnimation(fixture())
+            controller = try instance.playAnimation(fixture())
         }
 
         #expect(controller != nil)
@@ -367,23 +378,24 @@ struct VRMAnimationPlaybackTests {
     func testTheLastStartedAnimationKeepsOwningASharedExpression() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
+        let instance = try #require(entity.instance)
 
         // The standard fixture ramps `aa` 0 → 1 over its second...
-        try entity.playAnimation(fixture(), loops: true)
+        try instance.playAnimation(fixture(), loops: true)
         // ...while this one holds it at 0.25 from behind.
         let holding = try VRMAnimation(data: VRMASampleFixture.holdingPose(expressionWeight: 0.25))
-        let held = try entity.playAnimation(holding, loops: true)
+        let held = try instance.playAnimation(holding, loops: true)
 
         for _ in 0..<4 {
             entity.updateAnimations(deltaTime: 0.2)
-            #expect(abs(entity.expression(for: .preset(.aa)) - 0.25) < 0.001)
+            #expect(abs(instance.expression(for: .preset(.aa)) - 0.25) < 0.001)
         }
 
         // Once it stops, the ramp underneath drives the expression again: it
         // stands at 0.8 s of its second, where `aa` has passed 0.25 long ago.
         held.stop()
         entity.updateAnimations(deltaTime: 0)
-        #expect(entity.expression(for: .preset(.aa)) > 0.25)
+        #expect(instance.expression(for: .preset(.aa)) > 0.25)
     }
 
     /// Pausing holds the pose against the animations the paused one outranks,
@@ -392,15 +404,16 @@ struct VRMAnimationPlaybackTests {
     func testAPausedAnimationKeepsHoldingItsTargets() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
-        let hips = try #require(entity.humanoid.node(for: .hips))
+        let instance = try #require(entity.instance)
+        let hips = try #require(entity.entity(for: .hips))
         let rest = worldRotation(of: hips, in: entity)
 
-        try entity.playAnimation(fixture(), loops: true)
+        try instance.playAnimation(fixture(), loops: true)
         // 90° around +Z on the hips, and `aa` at 0.25, both started last.
         let quarter = sin(Float.pi / 4)
         let holding = try VRMAnimation(data: VRMASampleFixture.holdingPose(hipsRotation: [0, 0, quarter, quarter],
                                                                           expressionWeight: 0.25))
-        let held = try entity.playAnimation(holding, loops: true)
+        let held = try instance.playAnimation(holding, loops: true)
         held.isPaused = true
 
         for _ in 0..<4 {
@@ -408,7 +421,7 @@ struct VRMAnimationPlaybackTests {
             #expect(held.time.isApproximatelyEqual(to: 0, tolerance: 0.001))
             let delta = worldRotation(of: hips, in: entity) * rest.inverse
             #expect(abs(simd_dot(delta, simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(0, 0, 1)))) > 0.999)
-            #expect(abs(entity.expression(for: .preset(.aa)) - 0.25) < 0.001)
+            #expect(abs(instance.expression(for: .preset(.aa)) - 0.25) < 0.001)
         }
     }
 
@@ -418,14 +431,15 @@ struct VRMAnimationPlaybackTests {
     func testAnOptionalBoneTheModelLacksRotatesItsChildrenInstead(model: VRMSampleAsset) async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: model.data, shaders: []).loadEntity()
-        #expect(entity.humanoid.node(for: .upperChest) == nil)
+        let instance = try #require(entity.instance)
+        #expect(entity.entity(for: .upperChest) == nil)
         let bones = try [HumanoidBone.neck, .leftShoulder, .rightShoulder].map {
-            try #require(entity.humanoid.node(for: $0))
+            try #require(entity.entity(for: $0))
         }
         let rests = bones.map { worldRotation(of: $0, in: entity) }
 
         let animation = try VRMAnimation(data: VRMASampleFixture.rotatingUpperChest())
-        try entity.playAnimation(animation)
+        try instance.playAnimation(animation)
         entity.updateAnimations(deltaTime: 0.5)
 
         // A VRM 0.x model faces the other way, so its whole animation turns with it.

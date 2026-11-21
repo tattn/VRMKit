@@ -39,7 +39,8 @@ struct ExpressionCostBenchmark {
     func inspectExpressions() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data).loadEntity()
-        let available = entity.availableExpressions
+        let instance = try #require(entity.instance)
+        let available = instance.availableExpressions
         print("BENCH seedSan expressions: \(available.count)")
         print("BENCH   presets: \(available.filter(\.key.isPreset).count)"
               + "  custom: \(available.filter { !$0.key.isPreset }.count)")
@@ -50,10 +51,11 @@ struct ExpressionCostBenchmark {
     func benchmarkPerFrameWeights() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data).loadEntity()
+        let instance = try #require(entity.instance)
         entity.isAutomaticUpdateEnabled = false
 
         // Everything the model offers, all of which moves every frame.
-        let ownKeys = entity.availableExpressions.map(\.key)
+        let ownKeys = instance.availableExpressions.map(\.key)
         // What a tracker hands over: the same keys plus the ARKit names this model
         // does not carry, which still have to be looked up and rejected.
         let trackedKeys = ownKeys + Self.perfectSyncNames.map { ExpressionKey.custom($0) }
@@ -72,15 +74,16 @@ struct ExpressionCostBenchmark {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func microsecondsPerFrame(drivingHandlesOf entity: VRMEntity, keys: [ExpressionKey], frames requested: Int = 2000) -> Double {
         let frames = ProcessInfo.processInfo.environment["VRMKIT_BENCH_FRAMES"].flatMap(Int.init) ?? requested
-        let handles = keys.compactMap(entity.expressionHandle(for:))
-        var weights = entity.makeExpressionWeights()
+        guard let instance = entity.instance else { return 0 }
+        let handles = keys.compactMap(instance.expressionHandle(for:))
+        var weights = instance.makeExpressionWeights()
 
         func frame(_ index: Int) {
             let base = Float(index % 100) / 100
             for (offset, handle) in handles.enumerated() {
                 weights[handle] = min(1, base + Float(offset % 7) / 100)
             }
-            entity.setExpressions(weights)
+            instance.setExpressions(weights)
         }
 
         for index in 0..<(frames / 4) { frame(index) }
@@ -95,13 +98,14 @@ struct ExpressionCostBenchmark {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func microsecondsPerFrame(holding entity: VRMEntity, keys: [ExpressionKey], frames requested: Int = 4000) -> Double {
         let frames = ProcessInfo.processInfo.environment["VRMKIT_BENCH_FRAMES"].flatMap(Int.init) ?? requested
-        var weights: [ExpressionKey: CGFloat] = [:]
+        guard let instance = entity.instance else { return 0 }
+        var weights: [ExpressionKey: Float] = [:]
         weights.reserveCapacity(keys.count)
-        for (offset, key) in keys.enumerated() { weights[key] = CGFloat(offset % 7) / 100 }
+        for (offset, key) in keys.enumerated() { weights[key] = Float(offset % 7) / 100 }
 
-        for _ in 0..<(frames / 4) { entity.setExpressions(weights) }
+        for _ in 0..<(frames / 4) { instance.setExpressions(weights) }
         let start = CFAbsoluteTimeGetCurrent()
-        for _ in 0..<frames { entity.setExpressions(weights) }
+        for _ in 0..<frames { instance.setExpressions(weights) }
         return (CFAbsoluteTimeGetCurrent() - start) * 1_000_000 / Double(frames)
     }
 
@@ -111,15 +115,16 @@ struct ExpressionCostBenchmark {
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     private func microsecondsPerFrame(driving entity: VRMEntity, keys: [ExpressionKey], frames requested: Int = 2000) -> Double {
         let frames = ProcessInfo.processInfo.environment["VRMKIT_BENCH_FRAMES"].flatMap(Int.init) ?? requested
-        var weights: [ExpressionKey: CGFloat] = [:]
+        guard let instance = entity.instance else { return 0 }
+        var weights: [ExpressionKey: Float] = [:]
         weights.reserveCapacity(keys.count)
 
         func frame(_ index: Int) {
-            let base = CGFloat(index % 100) / 100
+            let base = Float(index % 100) / 100
             for (offset, key) in keys.enumerated() {
-                weights[key] = min(1, base + CGFloat(offset % 7) / 100)
+                weights[key] = min(1, base + Float(offset % 7) / 100)
             }
-            entity.setExpressions(weights)
+            instance.setExpressions(weights)
         }
 
         for index in 0..<(frames / 4) { frame(index) }

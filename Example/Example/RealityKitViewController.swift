@@ -107,9 +107,9 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
     }
 
     private func playVRMA() {
-        guard let loadedEntity else { return }
+        guard let instance = loadedEntity?.instance else { return }
         do {
-            vrmaController = try loadedEntity.playAnimation(loadedVRMAAnimation(), loops: true)
+            vrmaController = try instance.playAnimation(loadedVRMAAnimation(), loops: true)
         } catch {
             print(error)
         }
@@ -165,10 +165,12 @@ final class RealityKitViewController: UIViewController, UIGestureRecognizerDeleg
 
             // The arms are left to the VRM animation started below.
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            if let neck = vrmEntity.humanoid.node(for: .neck) {
+            if let neck = vrmEntity.entity(for: .neck) {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
             }
-            expressionControl.attach(to: vrmEntity)
+            if let instance = vrmEntity.instance {
+                expressionControl.attach(to: instance)
+            }
 
             loadedEntity = vrmEntity
             loadedAnchor = anchor

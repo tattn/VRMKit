@@ -73,7 +73,6 @@ final class GLTFSceneBuilder {
     }
 
     struct BuiltScene {
-        let nodes: [Entity?]
         let meshes: [Int: [SceneMesh]]
     }
 
@@ -121,7 +120,7 @@ final class GLTFSceneBuilder {
             root.addChild(try self.node(withNodeIndex: node))
         }
         root.setNodeEntities(nodes)
-        return BuiltScene(nodes: nodes, meshes: sceneMeshes)
+        return BuiltScene(meshes: sceneMeshes)
     }
 
     /// Fails the load when the file requires an extension this renderer does not

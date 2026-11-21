@@ -769,6 +769,7 @@ struct GLTFEntityLoaderTests {
         }
 
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
+        let instance = try #require(vrmEntity.instance)
         let clip = try #require(VRMExpressionPlan(vrm: vrmEntity.vrm).clips.first { clip in
             clip.morphBinds.contains { $0.weight > 0 }
         })
@@ -782,7 +783,7 @@ struct GLTFEntityLoaderTests {
         #expect(!meshes.isEmpty)
         #expect(meshes.allSatisfy { TestSupport.isDescendant($0, of: vrmEntity) })
 
-        vrmEntity.setExpression(value: 1, for: clip.key)
+        instance.setExpressions([clip.key: 1])
         // The weight lands on the entities the bind resolved to, not on some other
         // copy of the same mesh.
         #expect(meshes.allSatisfy { TestSupport.morphWeight(in: $0, targetIndex: binding.index) == 1 })
@@ -804,6 +805,7 @@ struct GLTFEntityLoaderTests {
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
 
         let firstScene = try await loader.loadEntity(withSceneIndex: 0)
+        let firstSceneInstance = try #require(firstScene.instance)
         let secondScene = try await loader.loadEntity(withSceneIndex: 1)
 
         #expect(firstScene !== secondScene)
@@ -818,7 +820,7 @@ struct GLTFEntityLoaderTests {
         #expect(firstModels.isDisjoint(with: secondModels))
 
         // Each scene drives its own runtime state.
-        firstScene.setExpression(value: 1, for: .preset(.happy))
+        firstSceneInstance.setExpressions([.preset(.happy): 1])
         #expect(TestSupport.morphWeight(in: firstScene, targetIndex: 33) == 1)
         #expect(TestSupport.morphWeight(in: secondScene, targetIndex: 33) == 0)
     }

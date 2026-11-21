@@ -134,7 +134,7 @@ struct MToonOutlineTests {
         }
 
         let restPose = pose(of: hidden)
-        entity.humanoid.node(for: .neck)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 0, 1))
+        entity.entity(for: .neck)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 0, 1))
         entity.invalidateSkinPose()
         entity.updateSkinPose()
         #expect(pose(of: hidden) != restPose)

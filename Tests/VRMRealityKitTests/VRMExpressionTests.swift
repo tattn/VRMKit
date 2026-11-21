@@ -18,25 +18,27 @@ struct VRMExpressionTests {
     func testWeightsSetByHandleMatchWeightsSetByKey() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let byKey = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
+        let byKeyInstance = try #require(byKey.instance)
         let byHandle = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
-        #expect(byHandle.expressionHandle(for: .custom("happy")) == byHandle.expressionHandle(for: .preset(.happy)))
-        #expect(byHandle.expressionHandle(for: .custom("notAnExpression")) == nil)
+        let byHandleInstance = try #require(byHandle.instance)
+        #expect(byHandleInstance.expressionHandle(for: .custom("happy")) == byHandleInstance.expressionHandle(for: .preset(.happy)))
+        #expect(byHandleInstance.expressionHandle(for: .custom("notAnExpression")) == nil)
 
-        var weights = byHandle.makeExpressionWeights()
+        var weights = byHandleInstance.makeExpressionWeights()
         for (key, value) in [(ExpressionKey.preset(.aa), Float(0.6)), (.preset(.blink), 1), (.preset(.relaxed), 0.3)] {
-            weights[try #require(byHandle.expressionHandle(for: key))] = value
-            byKey.setExpression(value: CGFloat(value), for: key)
+            weights[try #require(byHandleInstance.expressionHandle(for: key))] = value
+            byKeyInstance.setExpressions([key: value])
         }
-        byHandle.setExpressions(weights)
+        byHandleInstance.setExpressions(weights)
         #expect(TestSupport.morphWeights(in: byHandle) == TestSupport.morphWeights(in: byKey))
-        #expect(byHandle.expression(for: .preset(.aa)) == byKey.expression(for: .preset(.aa)))
+        #expect(byHandleInstance.expression(for: .preset(.aa)) == byKeyInstance.expression(for: .preset(.aa)))
 
         // Only what is set lands: an expression left unset keeps its weight.
         weights.reset()
-        weights[try #require(byHandle.expressionHandle(for: .preset(.aa)))] = 0
-        byHandle.setExpressions(weights)
-        #expect(byHandle.expression(for: .preset(.aa)) == 0)
-        #expect(byHandle.expression(for: .preset(.blink)) == 1)
+        weights[try #require(byHandleInstance.expressionHandle(for: .preset(.aa)))] = 0
+        byHandleInstance.setExpressions(weights)
+        #expect(byHandleInstance.expression(for: .preset(.aa)) == 0)
+        #expect(byHandleInstance.expression(for: .preset(.blink)) == 1)
     }
 
     @Test
@@ -44,23 +46,24 @@ struct VRMExpressionTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         // Seed-san's `relaxed` declares overrideBlink / overrideLookAt = block.
         let vrmEntity = try await TestSupport.sharedLoader(.seedSanStandard).loadEntity()
+        let instance = try #require(vrmEntity.instance)
 
-        vrmEntity.setExpression(value: 1, for: .preset(.blink))
-        vrmEntity.setExpression(value: 1, for: .preset(.lookUp))
-        vrmEntity.setExpression(value: 1, for: .preset(.aa))
+        instance.setExpressions([.preset(.blink): 1])
+        instance.setExpressions([.preset(.lookUp): 1])
+        instance.setExpressions([.preset(.aa): 1])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1) == 1)
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 39) == 1)
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 25) == 1)
 
-        vrmEntity.setExpression(value: 1, for: .preset(.relaxed))
+        instance.setExpressions([.preset(.relaxed): 1])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1) == 0)
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 39) == 0)
         // overrideMouth is `none`, so mouth expressions keep their weight.
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 25) == 1)
         // The input weights themselves are untouched by the override.
-        #expect(vrmEntity.expression(for: .preset(.blink)) == 1)
+        #expect(instance.expression(for: .preset(.blink)) == 1)
 
-        vrmEntity.setExpression(value: 0, for: .preset(.relaxed))
+        instance.setExpressions([.preset(.relaxed): 0])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1) == 1)
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 39) == 1)
     }
@@ -71,17 +74,18 @@ struct VRMExpressionTests {
     func testVRM0BlendShapeGroupsSharingAMorphTargetAccumulate() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
+        let instance = try #require(vrmEntity.instance)
 
-        vrmEntity.setExpression(value: 0.25, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 0.25])
         #expect(try #require(TestSupport.morphWeight(in: vrmEntity, targetIndex: 38)).isApproximatelyEqual(to: 0.25))
 
-        vrmEntity.setExpression(value: 0.5, for: .preset(.relaxed))
+        instance.setExpressions([.preset(.relaxed): 0.5])
         #expect(try #require(TestSupport.morphWeight(in: vrmEntity, targetIndex: 38)).isApproximatelyEqual(to: 0.75))
         // Joy's own targets keep the weight Joy gave them.
         #expect(try #require(TestSupport.morphWeight(in: vrmEntity, targetIndex: 14)).isApproximatelyEqual(to: 0.25))
 
         // Releasing one group takes back its share alone.
-        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 0])
         #expect(try #require(TestSupport.morphWeight(in: vrmEntity, targetIndex: 38)).isApproximatelyEqual(to: 0.5))
         #expect(try #require(TestSupport.morphWeight(in: vrmEntity, targetIndex: 14)).isApproximatelyEqual(to: 0))
     }
@@ -102,15 +106,16 @@ struct VRMExpressionTests {
             }
         }
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: []).loadEntity()
+        let instance = try #require(vrmEntity.instance)
 
-        vrmEntity.setExpressions([.preset(.blink): 1, .preset(.happy): 0.5])
+        instance.setExpressions([.preset(.blink): 1, .preset(.happy): 0.5])
         #expect(try #require(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1)).isApproximatelyEqual(to: 0.5))
 
-        vrmEntity.setExpression(value: 0.5, for: .preset(.sad))
+        instance.setExpressions([.preset(.sad): 0.5])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1) == 0)
 
         // Past saturation the weight stays at 0 rather than going negative.
-        vrmEntity.setExpressions([.preset(.happy): 1, .preset(.sad): 1])
+        instance.setExpressions([.preset(.happy): 1, .preset(.sad): 1])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1) == 0)
     }
 
@@ -131,12 +136,13 @@ struct VRMExpressionTests {
             preset["happy"] = .object(happy)
         }
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: []).loadEntity()
+        let instance = try #require(vrmEntity.instance)
 
-        vrmEntity.setExpression(value: 1, for: .preset(.blink))
+        instance.setExpressions([.preset(.blink): 1])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1) == 1)
 
         // A 0.25 blend would leave 0.75 on a non-binary expression.
-        vrmEntity.setExpression(value: 0.25, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 0.25])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 1) == 0)
     }
 
@@ -153,8 +159,9 @@ struct VRMExpressionTests {
             preset["blink"] = .object(blink)
         }
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: []).loadEntity()
+        let instance = try #require(vrmEntity.instance)
 
-        vrmEntity.setExpressions([.preset(.blink): 1, .preset(.blinkLeft): 1])
+        instance.setExpressions([.preset(.blink): 1, .preset(.blinkLeft): 1])
 
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: 2) == 1)
     }
@@ -168,32 +175,33 @@ struct VRMExpressionTests {
         let seedSan = TestSupport.seedSanData
         let loader = try VRMEntityLoader(withData: seedSan, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try await loader.loadEntity()
+        let instance = try #require(vrmEntity.instance)
 
         // `angry` is binary and carries a textureTransformBind on material 11, so it
         // only takes effect above half.
-        vrmEntity.setExpression(value: 0.5, for: .preset(.angry))
+        instance.setExpressions([.preset(.angry): 0.5])
         var parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11)
         #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0, 0)))
-        #expect(vrmEntity.expression(for: .preset(.angry)) == 0)
+        #expect(instance.expression(for: .preset(.angry)) == 0)
 
-        vrmEntity.setExpression(value: 0.51, for: .preset(.angry))
+        instance.setExpressions([.preset(.angry): 0.51])
         parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11)
         #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0.5, 0)))
-        #expect(vrmEntity.expression(for: .preset(.angry)) == 1)
+        #expect(instance.expression(for: .preset(.angry)) == 1)
 
-        vrmEntity.setExpressions([.preset(.happy): 1, .preset(.angry): 1])
+        instance.setExpressions([.preset(.happy): 1, .preset(.angry): 1])
         parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11)
         #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0.75, 0)))
-        #expect(vrmEntity.expression(for: .preset(.happy)) == 1)
-        #expect(vrmEntity.expression(for: .preset(.angry)) == 1)
+        #expect(instance.expression(for: .preset(.happy)) == 1)
+        #expect(instance.expression(for: .preset(.angry)) == 1)
 
-        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 0])
         parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11)
         #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0.5, 0)))
-        #expect(vrmEntity.expression(for: .preset(.happy)) == 0)
-        #expect(vrmEntity.expression(for: .preset(.angry)) == 1)
+        #expect(instance.expression(for: .preset(.happy)) == 0)
+        #expect(instance.expression(for: .preset(.angry)) == 1)
 
-        vrmEntity.setExpression(value: 0, for: .preset(.angry))
+        instance.setExpressions([.preset(.angry): 0])
         parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 11)
         #expect(parameters.uvTransform.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 0, 0)))
     }
@@ -232,12 +240,13 @@ struct VRMExpressionTests {
 
         let loader = try VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders)
         let vrmEntity = try await loader.loadEntity()
-        vrmEntity.setExpression(value: 1, for: .preset(.happy))
-        vrmEntity.setExpression(value: 1, for: .preset(.angry))
+        let instance = try #require(vrmEntity.instance)
+        instance.setExpressions([.preset(.happy): 1])
+        instance.setExpressions([.preset(.angry): 1])
         var parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 0)
         #expect(parameters.baseColor.isApproximatelyEqual(to: SIMD4<Float>(0.8, 0.6, 1, 1)))
 
-        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 0])
         parameters = try TestSupport.mtoonParameters(in: vrmEntity, materialIndex: 0)
         #expect(parameters.baseColor.isApproximatelyEqual(to: SIMD4<Float>(1, 0.6, 1, 1)))
     }
@@ -250,28 +259,29 @@ struct VRMExpressionTests {
     func testExpressionsKeepReachingTheirTargetsAcrossAMeshVariantSwitch() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let vrmEntity = try await TestSupport.sharedLoader(.aliciaSolidStandard).loadEntity()
+        let instance = try #require(vrmEntity.instance)
         // An expression whose morph target can be read back, taken in the order the
         // model states its expressions: a dictionary's order differs between runs.
         var driven: (key: ExpressionKey, target: Int)?
         let clips = VRMExpressionPlan(vrm: vrmEntity.vrm).clips
-        for expression in vrmEntity.availableExpressions {
+        for expression in instance.availableExpressions {
             guard let clip = clips.last(where: { $0.key == expression.key }),
                   let binding = clip.morphBinds.first(where: { $0.weight == 1 }) else { continue }
-            vrmEntity.setExpression(value: 1, for: expression.key)
+            instance.setExpressions([expression.key: 1])
             if TestSupport.morphWeight(in: vrmEntity, targetIndex: binding.index) == 1 {
                 driven = (expression.key, binding.index)
                 break
             }
-            vrmEntity.setExpression(value: 0, for: expression.key)
+            instance.setExpressions([expression.key: 0])
         }
         let (key, target) = try #require(driven)
 
-        vrmEntity.setFirstPersonRenderMode(.firstPerson)
-        vrmEntity.setExpression(value: 0.5, for: key)
+        instance.firstPersonRenderMode = .firstPerson
+        instance.setExpressions([key: 0.5])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: target) == 0.5)
 
-        vrmEntity.setFirstPersonRenderMode(.thirdPerson)
-        vrmEntity.setExpression(value: 1, for: key)
+        instance.firstPersonRenderMode = .thirdPerson
+        instance.setExpressions([key: 1])
         #expect(TestSupport.morphWeight(in: vrmEntity, targetIndex: target) == 1)
     }
 }

@@ -124,7 +124,7 @@ final class ContentViewModel {
     private var vrmaController: GLTFAnimationPlaybackController?
 
     var availableExpressions: [ExpressionInfo] {
-        vrmEntity?.availableExpressions.exampleEmotions ?? []
+        vrmEntity?.instance?.availableExpressions.exampleEmotions ?? []
     }
 
     func makeRenderRootEntity() -> Entity {
@@ -168,7 +168,7 @@ final class ContentViewModel {
 
             // The arms are left to the VRM animation started below.
             let neckRotation = simd_quatf(angle: 20 * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
-            if let neck = nextVRMEntity.humanoid.node(for: .neck) {
+            if let neck = nextVRMEntity.entity(for: .neck) {
                 neck.transform.rotation = neck.transform.rotation * neckRotation
             }
             apply(expression, replacing: nil, to: nextVRMEntity)
@@ -205,10 +205,10 @@ final class ContentViewModel {
     }
 
     private func startVRMAPlayback() {
-        guard vrmaController == nil, let vrmEntity else { return }
+        guard vrmaController == nil, let instance = vrmEntity?.instance else { return }
         do {
             let animation = try loadedVRMAAnimation()
-            vrmaController = try vrmEntity.playAnimation(animation, loops: true)
+            vrmaController = try instance.playAnimation(animation, loops: true)
         } catch {
             errorMessage = error.localizedDescription
             print("VRMA Play Error: \(error)")
@@ -276,11 +276,11 @@ final class ContentViewModel {
     private func apply(_ expression: ExpressionKey,
                        replacing previous: ExpressionKey?,
                        to vrmEntity: VRMEntity) {
-        var weights: [ExpressionKey: CGFloat] = [expression: 1.0]
+        var weights: [ExpressionKey: Float] = [expression: 1.0]
         if let previous, previous != expression {
             weights[previous] = 0.0
         }
-        vrmEntity.setExpressions(weights)
+        vrmEntity.instance?.setExpressions(weights)
     }
 }
 

@@ -146,7 +146,7 @@ struct RealityKitCostBenchmark {
         // frame does: write the bones, then let the model solve constraints, gaze,
         // spring bones and the skin.
         let drivenAttached = try await load()
-        let bones = HumanoidBone.allCases.compactMap { drivenAttached.humanoid.node(for: $0) }
+        let bones = HumanoidBone.allCases.compactMap { drivenAttached.entity(for: $0) }
         var tick: Float = 0
         print(String(format: "BENCH driven  attached: %.3f ms/frame (bones %d)",
                      try millisecondsPerFrame(rendering: drivenAttached, frames: 200, warmup: 60) {
@@ -274,7 +274,7 @@ struct RealityKitCostBenchmark {
 
         /// A head that keeps moving, as a tracker delivering a new sample every frame poses it.
         func headDriver(_ entity: VRMEntity) throws -> (Entity, () -> simd_quatf) {
-            let head = try #require(entity.humanoid.node(for: .head))
+            let head = try #require(entity.entity(for: .head))
             let rest = head.transform.rotation
             var tick: Float = 0
             return (head, {
@@ -333,7 +333,7 @@ struct RealityKitCostBenchmark {
         // What an app running IK pays: every humanoid bone written every frame, differing
         // only in whether it can say which bones it wrote.
         func boneDriver(_ entity: VRMEntity) -> ([Entity], () -> simd_quatf) {
-            let bones = HumanoidBone.allCases.compactMap { entity.humanoid.node(for: $0) }
+            let bones = HumanoidBone.allCases.compactMap { entity.entity(for: $0) }
             var tick: Float = 0
             return (bones, {
                 tick += 0.01
@@ -380,7 +380,7 @@ struct RealityKitCostBenchmark {
         // assigning members one at a time is a get-modify-set, and a world-transform
         // invalidation of the subtree, per member.
         let resting = try await loadSettled()
-        let restBones = HumanoidBone.allCases.compactMap { resting.humanoid.node(for: $0) }
+        let restBones = HumanoidBone.allCases.compactMap { resting.entity(for: $0) }
         let restPoses = restBones.map(\.transform)
         report("rest 2 writes", microsecondsPerUpdate {
             for (bone, rest) in zip(restBones, restPoses) {

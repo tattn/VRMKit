@@ -152,18 +152,19 @@ struct MaterialShaderChainTests {
 
         let shader = TintShader()
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: [shader]).loadEntity()
+        let instance = try #require(vrmEntity.instance)
         // Material bindings register while meshes build, so the first state per
         // index is the one the entity holds.
         let state = try #require(shader.createdStates.first { $0.materialIndex == 0 }?.state)
         #expect(state.flushCount == 0)
 
-        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 1])
         #expect(state.currentColor.isApproximatelyEqual(to: target))
         #expect(state.flushCount == 1)
         #expect(state.applyCount >= 1)
 
         // Releasing the expression writes the baseline back through the state.
-        vrmEntity.setExpression(value: 0, for: .preset(.happy))
+        instance.setExpressions([.preset(.happy): 0])
         #expect(state.currentColor.isApproximatelyEqual(to: SIMD4<Float>(1, 1, 1, 1)))
         #expect(state.flushCount == 2)
     }
@@ -268,7 +269,8 @@ struct MaterialShaderChainTests {
 
         let vrmEntity = try await VRMEntityLoader(withData: TestSupport.seedSanData,
                                                   shaders: [ColorOnlyShader()]).loadEntity()
-        vrmEntity.setExpression(value: 1, for: .preset(.happy))
+        let instance = try #require(vrmEntity.instance)
+        instance.setExpressions([.preset(.happy): 1])
 
         let transforms = TestSupport.materials(ofMaterial: 11, in: vrmEntity)
             .compactMap { ($0 as? UnlitMaterial)?.textureCoordinateTransform }

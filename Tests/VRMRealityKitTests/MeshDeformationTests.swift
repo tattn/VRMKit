@@ -31,7 +31,7 @@ struct MeshDeformationTests {
         }
         let rest = vertices(of: siblings[0])
 
-        entity.humanoid.node(for: .hips)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 1, 0))
+        entity.entity(for: .hips)?.transform.rotation *= simd_quatf(angle: 0.5, axis: SIMD3<Float>(0, 1, 0))
         entity.invalidateSkinPose()
         entity.flushDeformation()
         try waitForDeformation()
