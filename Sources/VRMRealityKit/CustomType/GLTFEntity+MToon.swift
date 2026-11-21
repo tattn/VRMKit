@@ -31,16 +31,6 @@ extension GLTFEntity {
         updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setLightDirection(normalized) }
     }
 
-    /// See ``setMToonLighting(direction:color:ambient:)``.
-    public func setMToonLightColor(_ color: SIMD3<Float>) {
-        updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setLightColor(color) }
-    }
-
-    /// See ``setMToonLighting(direction:color:ambient:)``.
-    public func setMToonAmbientColor(_ color: SIMD3<Float>) {
-        updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setAmbientColor(color) }
-    }
-
     private static func normalizedMToonLightDirection(_ direction: SIMD3<Float>) -> SIMD3<Float> {
         let length = simd_length(direction)
         return length > 0.001 ? direction / length : MToonMaterialParameters.defaultLightDirection

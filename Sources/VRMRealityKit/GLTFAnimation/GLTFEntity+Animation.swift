@@ -12,12 +12,12 @@ struct GLTFAnimationPlaybackComponent: Component {}
 /// Advances the running glTF animations of every ``GLTFEntity`` once per render frame. A
 /// ``VRMEntity`` advances its own as the first step of ``VRMEntity/update(deltaTime:)``.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-public struct GLTFAnimationSystem: System {
+struct GLTFAnimationSystem: System {
     private static let query = EntityQuery(where: .has(GLTFAnimationPlaybackComponent.self))
 
-    public init(scene: Scene) {}
+    init(scene: Scene) {}
 
-    public func update(context: SceneUpdateContext) {
+    func update(context: SceneUpdateContext) {
         for entity in context.entities(matching: Self.query, updatingSystemWhen: .rendering) {
             guard let gltf = entity as? GLTFEntity, !(gltf is VRMEntity) else { continue }
             gltf.updateAnimations(deltaTime: context.deltaTime)
@@ -65,14 +65,9 @@ extension GLTFEntity {
         flushDeformation()
     }
 
-    /// Stops every running glTF animation, holding the current pose.
-    public func stopAnimations() {
-        instance?.stopAnimations()
-    }
-
     /// Advances the running glTF animations by one frame and skins the result.
     ///
-    /// ``GLTFAnimationSystem`` calls this once per render frame. Call it yourself only for a
+    /// RealityKit's update calls this once per render frame. Call it yourself only for a
     /// scene that RealityKit does not update. A ``VRMEntity`` advances its animations in
     /// ``VRMEntity/update(deltaTime:)``, so call that instead.
     public func updateAnimations(deltaTime: TimeInterval) {

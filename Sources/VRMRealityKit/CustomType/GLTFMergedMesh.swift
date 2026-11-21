@@ -18,15 +18,12 @@ struct GLTFMaterialSlotsComponent: Component {
 /// one mesh at one entity.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 struct GLTFMergedMeshComponent: Component {
-    /// The visibility each slot was built with, which a release restores.
-    let initiallyVisibleSlots: [Bool]
     var visibleSlots: [Bool]
     /// Slots RealityKit leaves undrawn whether visible or not (``GLTFEntity/setMaterialsHidden(_:forMaterials:)``).
     var hiddenSlots: Set<Int> = []
     var isFirstPerson = false
 
     init(initiallyVisibleSlots: [Bool]) {
-        self.initiallyVisibleSlots = initiallyVisibleSlots
         visibleSlots = initiallyVisibleSlots
     }
 }
@@ -58,18 +55,6 @@ extension ModelEntity {
     /// ``setMergedSlotVisibility(_:slots:)`` over every slot.
     func setMergedVisibility(_ isVisible: Bool) {
         setMergedSlotVisibility(isVisible, slots: mergedMesh?.visibleSlots.indices ?? 0..<0)
-    }
-
-    /// Puts every slot back to the visibility it was built with.
-    func resetMergedVisibility() {
-        guard var merged = mergedMesh else { return }
-        guard merged.visibleSlots != merged.initiallyVisibleSlots else { return }
-        merged.visibleSlots = merged.initiallyVisibleSlots
-        applyMergedMesh(merged)
-    }
-
-    func initialMergedSlotVisibility(at slot: Int) -> Bool {
-        mergedMesh?.initiallyVisibleSlots[safe: slot] ?? true
     }
 
     /// Hides the given material slots whatever their visibility says, or shows them as it says.

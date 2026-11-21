@@ -83,7 +83,7 @@ struct EntityCloneTests {
         copy.setMToonLightDirection(relit)
         #expect(copy.mtoonParameters(forMaterialIndex: index)?.lightDirection == relit)
         #expect(vrmEntity.mtoonParameters(forMaterialIndex: index)?.lightDirection == original)
-        vrmEntity.setMToonLightColor(SIMD3(0.5, 0.5, 0.5))
+        vrmEntity.setMToonLighting(direction: original, color: SIMD3(0.5, 0.5, 0.5), ambient: .zero)
         #expect(copy.mtoonParameters(forMaterialIndex: index)?.lightColor == SIMD4(1, 1, 1, 1))
 
 #if !os(visionOS)
@@ -114,7 +114,7 @@ struct EntityCloneTests {
         let head = try #require(vrmEntity.humanoid.node(for: .head))
         head.addChild(accessory)
         let tint = SIMD3<Float>(0.2, 0.4, 0.6)
-        accessory.setMToonLightColor(tint)
+        accessory.setMToonLighting(direction: SIMD3(0, 0, 1), color: tint, ambient: .zero)
         let accessoryIndex = try #require(accessory.materialIndices(under: accessory).first)
         let accessoryBase = try #require(accessory.mtoonParameters(forMaterialIndex: accessoryIndex)?.baseColor)
 
@@ -128,7 +128,7 @@ struct EntityCloneTests {
         #expect(copiedAccessory.materialIndices(under: copiedAccessory) == [accessoryIndex])
 
         // and takes lighting on its own from there
-        copiedAccessory.setMToonLightColor(SIMD3(1, 1, 1))
+        copiedAccessory.setMToonLighting(direction: SIMD3(0, 0, 1), color: SIMD3(1, 1, 1), ambient: .zero)
         #expect(accessory.mtoonParameters(forMaterialIndex: accessoryIndex)?.lightColor == SIMD4(tint, 1))
     }
 

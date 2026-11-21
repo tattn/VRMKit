@@ -287,9 +287,9 @@ struct MToonRenderingTests {
         let vrmEntity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let writesBefore = mtoonParameterWriteCounts(in: vrmEntity)
 
-        vrmEntity.setMToonLightDirection(SIMD3<Float>(0, 0, -2))
-        vrmEntity.setMToonLightColor(SIMD3<Float>(0.8, 0.7, 0.6))
-        vrmEntity.setMToonAmbientColor(SIMD3<Float>(0.05, 0.1, 0.15))
+        vrmEntity.setMToonLighting(direction: SIMD3<Float>(0, 0, -2),
+                                   color: SIMD3<Float>(0.8, 0.7, 0.6),
+                                   ambient: SIMD3<Float>(0.05, 0.1, 0.15))
 
         var checkedStates = 0
         for index in vrmEntity.materialStates.keys {

@@ -178,8 +178,10 @@ MToon materials render by default on iOS and macOS. visionOS falls back to Unlit
 
 ```swift
 model.setMToonLightDirection(SIMD3<Float>(0, 0, -1))
-model.setMToonLightColor(SIMD3<Float>(1, 1, 1))
-model.setMToonAmbientColor(SIMD3<Float>(0.1, 0.1, 0.1))
+// The direction, the light color and the ambient color in one write.
+model.setMToonLighting(direction: SIMD3<Float>(0, 0, -1),
+                       color: SIMD3<Float>(1, 1, 1),
+                       ambient: SIMD3<Float>(0.1, 0.1, 0.1))
 ```
 
 ### Material shaders
@@ -237,12 +239,11 @@ entity.updateMaterialStates(MToonAnimatableMaterialState.self) { $0.setUserParam
 
 ### Passes and draw order
 
-A pass can be built hidden and shown later with `setPassEnabled`, for the whole model or for the materials under a node. `resetPassEnabled` restores what the shader built.
+A pass can be built hidden and shown later with `setPassEnabled`, for the whole model or for the materials under a node.
 
 ```swift
 let selection = entity.materialIndices(under: selectedNode)
 entity.setPassEnabled(true, named: "highlight", forMaterials: selection)
-entity.resetPassEnabled(named: "highlight", forMaterials: selection)
 ```
 
 A pass whose geometry modifier moves vertices outside the mesh's bounds sets `applyBoundsBudget` to receive the room the loader widened the culling bounds by.

@@ -98,10 +98,6 @@ public final class GLTFAnimationPlaybackController {
         player?.pruneCompleted()
     }
 
-    func markComplete() {
-        isComplete = true
-    }
-
     func advance(deltaTime: TimeInterval, output: inout GLTFAnimationOutput) {
         guard !isComplete else { return }
         let duration = animation.duration
@@ -199,14 +195,6 @@ package final class GLTFAnimationPlayer {
         }
         pass(output)
         didSeek?()
-    }
-
-    /// Ends every running animation, holding the current pose.
-    package func stopAll() {
-        for controller in controllers {
-            controller.markComplete()
-        }
-        pruneCompleted()
     }
 
     func pruneCompleted() {

@@ -19,8 +19,8 @@ struct GLTFComponent: Component {
 /// The glTF node a loaded entity was built from, identified by array index:
 /// `name` is optional and may repeat.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-public struct GLTFNodeComponent: Component {
-    public let nodeIndex: Int
+struct GLTFNodeComponent: Component {
+    let nodeIndex: Int
 }
 
 /// Marks a model entity as an additional render pass of its glTF materials, such as
@@ -61,7 +61,7 @@ public class GLTFEntity: Entity {
     }
 
     /// Index into `gltf.scenes` this entity graph was built from.
-    public var sceneIndex: Int {
+    var sceneIndex: Int {
         guard let index = components[GLTFComponent.self]?.sceneIndex else {
             preconditionFailure("This GLTFEntity carries no document. Load it with GLTFEntityLoader.")
         }
@@ -101,7 +101,7 @@ public class GLTFEntity: Entity {
     /// Whether this entity carries the bindings the animation runtime drives. A
     /// `clone(recursive:)` copy carries none, since they would point at the original's
     /// entities: load the scene again to get one.
-    public var hasRuntimeBindings: Bool { nodeEntities != nil }
+    var hasRuntimeBindings: Bool { nodeEntities != nil }
 
     /// The entity built for the glTF node at `index`, or nil when the index is out of
     /// range or the node is not part of this scene.
@@ -500,20 +500,6 @@ public class GLTFEntity: Entity {
         for materialIndex in materials {
             forEachPassSlot(named: name, ofMaterial: materialIndex) { passEntity, slot in
                 passEntity.setMergedSlotVisibility(isEnabled, slots: [slot])
-            }
-        }
-    }
-
-    /// Puts the slots of the pass called `name` back to the visibility its shader built it
-    /// with, undoing ``setPassEnabled(_:named:forMaterials:)``.
-    public func resetPassEnabled(named name: String, forMaterials materials: Set<Int>? = nil) {
-        guard let materials else {
-            forEachPass(named: name) { $0.resetMergedVisibility() }
-            return
-        }
-        for materialIndex in materials {
-            forEachPassSlot(named: name, ofMaterial: materialIndex) { passEntity, slot in
-                passEntity.setMergedSlotVisibility(passEntity.initialMergedSlotVisibility(at: slot), slots: [slot])
             }
         }
     }

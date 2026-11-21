@@ -107,7 +107,7 @@ public final class GLTFAsset: Sendable {
     }
 
     /// A pose of the nodes at rest, for one model built from the asset to move.
-    public func makePose() -> GLTFPose {
+    func makePose() -> GLTFPose {
         GLTFPose(children: nodes.map(\.children), locals: nodes.map(\.restTransform))
     }
 

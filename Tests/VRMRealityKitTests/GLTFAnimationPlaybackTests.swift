@@ -241,12 +241,13 @@ struct GLTFAnimationPlaybackTests {
         }
 
         let first = try entity.playAnimation(at: 0, loops: true)   // holds 0.25
-        try entity.playAnimation(at: 1, loops: true)               // holds 0.75, started last
+        let second = try entity.playAnimation(at: 1, loops: true)  // holds 0.75, started last
         first.seek(to: 0.5)
         #expect(try weight().isApproximatelyEqual(to: 0.75))
 
         // The seek still poses the model once nothing outranks it any more.
-        entity.stopAnimations()
+        first.stop()
+        second.stop()
         first.seek(to: 0.5)
         #expect(try weight().isApproximatelyEqual(to: 0.25))
     }

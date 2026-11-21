@@ -113,11 +113,6 @@ public class GLTFInstance {
                                      speed: speed)
     }
 
-    /// Stops every running animation, holding the current pose.
-    public func stopAnimations() {
-        animationPlayer.stopAll()
-    }
-
     private func animationRuntime(at index: Int) throws -> GLTFAnimationRuntime {
         if let cached = animationRuntimes[index] { return cached }
         let runtime = try GLTFAnimationRuntime(animation: try asset.document.gltf.load(\.animations, at: index),
@@ -164,15 +159,11 @@ public class GLTFInstance {
         return takeOutput()
     }
 
-    /// What changed since the last output, which this then forgets.
-    public func takeOutput() -> GLTFFrameOutput {
-        takeOutput(solvingSkins: true)
-    }
-
-    /// ``takeOutput()``, leaving the skins to the next output that solves them when not
-    /// `solvingSkins`: for what changes between frame updates, such as an expression set from
-    /// outside, so that a pose moved meanwhile is solved once, with the frame.
-    package func takeOutput(solvingSkins: Bool) -> GLTFFrameOutput {
+    /// What changed since the last output, which this then forgets. The skins are left to
+    /// the next output that solves them when not `solvingSkins`: for what changes between
+    /// frame updates, such as an expression set from outside, so that a pose moved
+    /// meanwhile is solved once, with the frame.
+    package func takeOutput(solvingSkins: Bool = true) -> GLTFFrameOutput {
         var output = GLTFFrameOutput()
         for node in changedMorphNodes {
             output.morphWeights[node] = morphWeights[node]
@@ -195,7 +186,7 @@ public class GLTFInstance {
 
     /// Everything the instance draws with as it stands, as an output in which all of it
     /// changed, skins included: for a renderer starting to draw a model that has been moving.
-    /// What the next ``takeOutput()`` hands back stays as it is.
+    /// What the next update hands back stays as it is.
     public func currentOutput() -> GLTFFrameOutput {
         var output = GLTFFrameOutput()
         output.morphWeights = morphWeights
@@ -213,7 +204,7 @@ public class GLTFInstance {
         .compactMap { node, mesh in asset.meshes[mesh].skinIndex.map { (node, $0) } }
 
     /// The skin of every node drawing a skinned mesh, as posed.
-    public func skinPoses() -> [GLTFFrameOutput.SkinPose] {
+    private func skinPoses() -> [GLTFFrameOutput.SkinPose] {
         skinnedNodes.map { node, skinIndex in
             let skin = asset.skins[skinIndex]
             var matrices: [simd_float4x4] = []

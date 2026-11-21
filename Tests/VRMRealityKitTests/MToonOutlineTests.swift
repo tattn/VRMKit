@@ -141,10 +141,10 @@ struct MToonOutlineTests {
     }
 
     /// The runtime API reaches every MToon material of a VRM, and hiding the
-    /// outlines leaves the main passes rendering. A reset goes back to the
-    /// visibility the shader built the pass with, for its materials alone.
+    /// outlines leaves the main passes rendering. Showing them again reaches the
+    /// materials named alone.
     @Test
-    func testRuntimeOutlineVisibilityLeavesMainPassesAloneAndResetsToWhatTheShaderBuilt() async throws {
+    func testRuntimeOutlineVisibilityLeavesMainPassesAlone() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let outlines = outlineEntities(in: entity)
@@ -158,11 +158,11 @@ struct MToonOutlineTests {
         #expect(!mainPasses.isEmpty)
         #expect(mainPasses.allSatisfy { $0.isEnabled })
 
-        entity.resetPassEnabled(named: MToonShader.outlinePassName, forMaterials: [0])
+        entity.setPassEnabled(true, named: MToonShader.outlinePassName, forMaterials: [0])
         #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
         #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { !$0 })
 
-        entity.resetPassEnabled(named: MToonShader.outlinePassName)
+        entity.setPassEnabled(true, named: MToonShader.outlinePassName)
         #expect(outlineSlotVisibility(in: entity).allSatisfy { $0 })
     }
 
@@ -186,7 +186,7 @@ struct MToonOutlineTests {
 
     // MARK: - Pass visibility by material
 
-    /// A material set reaches those materials alone, and a reset puts them back.
+    /// A material set reaches those materials alone, and showing them puts them back.
     /// Materials that draw no such pass are skipped, an empty selection included.
     /// The unit is the material, so selecting a subtree whose material is shared
     /// reaches everywhere that material draws.
@@ -219,7 +219,7 @@ struct MToonOutlineTests {
         #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { !$0 })
         #expect(outlineSlotVisibility(in: entity, materialIndex: 1).allSatisfy { $0 })
 
-        entity.resetPassEnabled(named: MToonShader.outlinePassName, forMaterials: selection)
+        entity.setPassEnabled(true, named: MToonShader.outlinePassName, forMaterials: selection)
         #expect(outlineSlotVisibility(in: entity, materialIndex: 0).allSatisfy { $0 })
     }
 #endif
