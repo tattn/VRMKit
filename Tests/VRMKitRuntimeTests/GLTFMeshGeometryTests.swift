@@ -1,6 +1,7 @@
 import Foundation
 import SIMDCompat
 import Testing
+import VRMKit
 @testable import VRMKitRuntime
 
 /// The primitives of one mesh laid out as one vertex array: one slot each, attributes a
@@ -8,14 +9,23 @@ import Testing
 @Suite
 struct GLTFMeshGeometryTests {
     private func primitive(positions: [SIMD3<Float>],
-                           blendShapeOffsets: [[SIMD3<Float>]] = [],
+                           blendShapes: GLTFPrimitiveBlendShapes = GLTFPrimitiveBlendShapes(),
                            firstPersonMask: FirstPersonPrimitiveMask = .whole) -> GLTFPreparedPrimitive {
         var geometry = GLTFPrimitiveGeometry()
         geometry.positions = positions
         geometry.indices = Array(0..<UInt32(positions.count))
-        geometry.blendShapeOffsets = blendShapeOffsets
+        geometry.blendShapes = blendShapes
         return GLTFPreparedPrimitive(geometry: geometry, cutsHead: false, firstPersonMask: firstPersonMask,
                                      jointInfluences: nil)
+    }
+
+    /// A target's deltas as a document stores them: tightly packed floats.
+    private func deltas(_ offsets: [SIMD3<Float>]) throws -> AccessorReader {
+        let bytes = offsets.flatMap { [$0.x, $0.y, $0.z] }.withUnsafeBytes { Data($0) }
+        let accessor = try JSONDecoder().decode(GLTF.Accessor.self, from: Data("""
+            {"bufferView": 0, "componentType": 5126, "count": \(offsets.count), "type": "VEC3"}
+            """.utf8))
+        return try AccessorReader(accessor: accessor) { _ in (bytes, nil) }
     }
 
     @Test
@@ -47,10 +57,10 @@ struct GLTFMeshGeometryTests {
             primitives: [
                 primitive(positions: [SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0)]),
                 primitive(positions: [SIMD3(0, 0, 1), SIMD3(1, 0, 1), SIMD3(0, 1, 1)],
-                          blendShapeOffsets: [
-                              [SIMD3(1, 2, 3), SIMD3(4, 5, 6), SIMD3(7, 8, 9)],
-                              [SIMD3(-1, 0, 0), SIMD3(0, -1, 0), SIMD3(0, 0, -1)],
-                          ]),
+                          blendShapes: GLTFPrimitiveBlendShapes(targets: [
+                              try deltas([SIMD3(1, 2, 3), SIMD3(4, 5, 6), SIMD3(7, 8, 9)]),
+                              try deltas([SIMD3(-1, 0, 0), SIMD3(0, -1, 0), SIMD3(0, 0, -1)]),
+                          ])),
             ],
             isSkinned: false,
             blendShapeTargetCount: 2
@@ -67,5 +77,25 @@ struct GLTFMeshGeometryTests {
             == [.zero, .zero, .zero, SIMD3(-1, 0, 0), SIMD3(0, -1, 0), SIMD3(0, 0, -1)])
         #expect(geometry.blendShapeOffsets(forTarget: 2).isEmpty)
         #expect(geometry.slots.map(\.hasBlendShapes) == [false, true])
+    }
+
+    /// A primitive drawing part of a vertex buffer it shares reads each target's deltas for
+    /// the vertices it draws only, and a target without deltas leaves them zero.
+    @Test
+    func testMorphDeltasAreReadForTheVerticesAPrimitiveDraws() throws {
+        let geometry = GLTFMeshGeometry(
+            primitives: [
+                primitive(positions: [SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0)],
+                          blendShapes: GLTFPrimitiveBlendShapes(
+                              targets: [nil, try deltas([SIMD3(1, 0, 0), SIMD3(2, 0, 0), SIMD3(3, 0, 0), SIMD3(4, 0, 0)])],
+                              sources: [3, 0, 2]
+                          )),
+            ],
+            isSkinned: false,
+            blendShapeTargetCount: 2
+        )
+
+        #expect(geometry.blendShapeOffsets(forTarget: 0) == [.zero, .zero, .zero])
+        #expect(geometry.blendShapeOffsets(forTarget: 1) == [SIMD3(4, 0, 0), SIMD3(1, 0, 0), SIMD3(3, 0, 0)])
     }
 }

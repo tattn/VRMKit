@@ -61,24 +61,10 @@ package extension GLTF.Accessor {
         }
     }
 
-    /// The accessor's elements as tightly packed data: any buffer view stride is
-    /// removed, an accessor without a buffer view yields the zeroes the spec
-    /// defines for it, and a sparse substitution is applied on top.
-    func packedData(bufferView provider: BufferViewProvider) throws -> Data {
-        let vectorSize = try unpaddedVectorSize()
-        var data = try packedBaseData(vectorSize: vectorSize, provider: provider)
-        if let sparse {
-            try apply(sparse, vectorSize: vectorSize, provider: provider, to: &data)
-        }
-        return data
-    }
-}
-
-private extension GLTF.Accessor {
     /// The element size, rejecting the matrix layouts glTF pads. MAT2 / MAT3
     /// columns are aligned to 4 bytes, so with small component types an element
     /// is wider than its components, a layout no VRM asset uses and one the
-    /// readers above would mis-slice.
+    /// readers would mis-slice.
     func unpaddedVectorSize() throws -> Int {
         let (componentsPerVector, bytesPerComponent, vectorSize) = components()
         let columnCount: Int
@@ -95,87 +81,5 @@ private extension GLTF.Accessor {
             )
         }
         return vectorSize
-    }
-
-    func packedBaseData(vectorSize: Int, provider: BufferViewProvider) throws -> Data {
-        guard let bufferView else {
-            return try Data(zeroedElementCount: count, elementSize: vectorSize)
-        }
-        let source = try provider(bufferView)
-        return try source.bufferView.subdata(offset: byteOffset,
-                                             size: vectorSize,
-                                             stride: source.stride ?? vectorSize,
-                                             count: count)
-    }
-
-    func apply(_ sparse: Sparse,
-               vectorSize: Int,
-               provider: BufferViewProvider,
-               to data: inout Data) throws {
-        guard sparse.count > 0 else { return }
-        let indices = try sparseIndices(sparse, provider: provider)
-        if let outOfRange = indices.first(where: { $0 < 0 || $0 >= count }) {
-            throw VRMError._dataInconsistent(
-                "sparse index \(outOfRange) is out of range for \(count) accessor elements"
-            )
-        }
-        // Strictly increasing indices are what makes the substitution below
-        // unambiguous: repeated ones would leave the element they overlap on
-        // depending on the copy order.
-        guard zip(indices, indices.dropFirst()).allSatisfy({ $0 < $1 }) else {
-            throw VRMError._dataInconsistent("sparse indices must be strictly increasing")
-        }
-        let values = try sparseValues(sparse, vectorSize: vectorSize, provider: provider)
-        data.withUnsafeMutableBytes { rawDst in
-            guard let dst = rawDst.bindMemory(to: UInt8.self).baseAddress else { return }
-            values.withUnsafeBytes { rawSrc in
-                guard let src = rawSrc.bindMemory(to: UInt8.self).baseAddress else { return }
-                for (position, index) in indices.enumerated() {
-                    dst.advanced(by: index * vectorSize)
-                        .update(from: src.advanced(by: position * vectorSize), count: vectorSize)
-                }
-            }
-        }
-    }
-
-    func sparseIndices(_ sparse: Sparse, provider: BufferViewProvider) throws -> [Int] {
-        switch sparse.indices.componentType {
-        case .unsignedByte, .unsignedShort, .unsignedInt: break
-        case .byte, .short, .float:
-            throw VRMError._dataInconsistent(
-                "sparse indices cannot use \(sparse.indices.componentType) components"
-            )
-        }
-        let source = try provider(sparse.indices.bufferView)
-        let bytesPerIndex = bytes(of: sparse.indices.componentType)
-        let indexData = try source.bufferView.subdata(offset: sparse.indices.byteOffset,
-                                                      size: bytesPerIndex,
-                                                      stride: source.stride ?? bytesPerIndex,
-                                                      count: sparse.count)
-        var indices: [Int] = []
-        indices.reserveCapacity(sparse.count)
-        indexData.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            for i in 0..<sparse.count {
-                let offset = i * bytesPerIndex
-                switch sparse.indices.componentType {
-                case .unsignedByte:
-                    indices.append(Int(base.load(fromByteOffset: offset, as: UInt8.self)))
-                case .unsignedShort:
-                    indices.append(Int(base.loadUnaligned(fromByteOffset: offset, as: UInt16.self)))
-                default:
-                    indices.append(Int(base.loadUnaligned(fromByteOffset: offset, as: UInt32.self)))
-                }
-            }
-        }
-        return indices
-    }
-
-    func sparseValues(_ sparse: Sparse, vectorSize: Int, provider: BufferViewProvider) throws -> Data {
-        let source = try provider(sparse.values.bufferView)
-        return try source.bufferView.subdata(offset: sparse.values.byteOffset,
-                                             size: vectorSize,
-                                             stride: source.stride ?? vectorSize,
-                                             count: sparse.count)
     }
 }

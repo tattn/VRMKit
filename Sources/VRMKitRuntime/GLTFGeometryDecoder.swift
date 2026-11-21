@@ -24,9 +24,7 @@ package struct GLTFPrimitiveGeometry: Sendable {
     package var bitangents: [SIMD3<Float>] = []
     package var texcoords: [SIMD2<Float>] = []
     package var indices: [UInt32] = []
-    /// POSITION deltas per morph target. The deformation kernel morphs positions
-    /// only, so nothing else is read.
-    package var blendShapeOffsets: [[SIMD3<Float>]] = []
+    package var blendShapes = GLTFPrimitiveBlendShapes()
     /// Empty for an unskinned primitive.
     package var joints: [SIMD4<UInt32>] = []
     package var weights: [SIMD4<Float>] = []
@@ -34,36 +32,24 @@ package struct GLTFPrimitiveGeometry: Sendable {
     package var warnings: [GLTFGeometryWarning] = []
 
     package var isSkinned: Bool { !joints.isEmpty }
+}
 
-    /// Removes the vertices no triangle references and renumbers the indices, keeping
-    /// the vertices in first-use order. The deformation kernel skins and morphs every
-    /// vertex in the buffer, drawn or not, and orphans are common: a VRM 0.x export
-    /// shares one vertex buffer across the primitives of a mesh, so each primitive decodes
-    /// every vertex of the mesh to draw its own slice. The `AliciaSolid` fixture decodes
-    /// 80,169 vertices that way for 21,995 drawn. Merged or baked exports also leave hidden
-    /// parts behind as unused vertices. Call it before the tangent frame is built.
-    package mutating func dropUnreferencedVertices() {
-        var renumbered = [UInt32](repeating: .max, count: positions.count)
-        var kept: [Int] = []
-        kept.reserveCapacity(positions.count)
-        for index in indices where renumbered[Int(index)] == .max {
-            renumbered[Int(index)] = UInt32(kept.count)
-            kept.append(Int(index))
-        }
-        guard kept.count < positions.count else { return }
-        func gathered<Element>(_ values: [Element]) -> [Element] {
-            values.isEmpty ? values : kept.map { values[$0] }
-        }
-        positions = gathered(positions)
-        normals = gathered(normals)
-        tangents = gathered(tangents)
-        bitangents = gathered(bitangents)
-        texcoords = gathered(texcoords)
-        joints = gathered(joints)
-        weights = gathered(weights)
-        blendShapeOffsets = blendShapeOffsets.map(gathered)
-        indices = indices.map { renumbered[Int($0)] }
+/// A primitive's morph targets, left where the document stores them until a mesh lays out
+/// the buffer their deltas go to, so each delta is read once, straight into it.
+package struct GLTFPrimitiveBlendShapes: Sendable {
+    /// The POSITION deltas of each target, nil for a target that moves nothing. The
+    /// deformation kernel morphs positions only, so nothing else is read.
+    package var targets: [AccessorReader?]
+    /// The element of a target each vertex of the primitive reads, nil when vertex `i`
+    /// reads element `i`.
+    package var sources: [UInt32]?
+
+    package init(targets: [AccessorReader?] = [], sources: [UInt32]? = nil) {
+        self.targets = targets
+        self.sources = sources
     }
+
+    package var isEmpty: Bool { targets.isEmpty }
 }
 
 /// Turns a glTF primitive into the vertex buffers a renderer draws.
@@ -71,7 +57,7 @@ package struct GLTFPrimitiveGeometry: Sendable {
 /// Nothing here touches a renderer, which is what lets a load decode every primitive
 /// of a model at once.
 package struct GLTFGeometryDecoder: Sendable {
-    package let accessors: PackedAccessorCache
+    package let accessors: AccessorReaderCache
     /// Which UV set each material's textures are read from, resolved before the
     /// decode so that a primitive needs no material state of its own.
     package let texcoordSelections: [Int: TexcoordSelection]
@@ -81,7 +67,7 @@ package struct GLTFGeometryDecoder: Sendable {
     /// Each skin's glTF joint index to skeleton joint index mapping.
     package let jointIndexRemaps: [Int: [Int]]
 
-    package init(accessors: PackedAccessorCache,
+    package init(accessors: AccessorReaderCache,
                  texcoordSelections: [Int: TexcoordSelection],
                  materialsSamplingNormalTexture: Set<Int>,
                  jointIndexRemaps: [Int: [Int]]) {
@@ -92,6 +78,9 @@ package struct GLTFGeometryDecoder: Sendable {
     }
 
     /// Nil for a primitive this renderer draws nothing of.
+    ///
+    /// Every accessor is checked before any vertex is read, and the triangles are read first,
+    /// so that only the vertices they draw are read out of each attribute.
     package func decode(_ primitive: GLTF.Mesh.Primitive, skinIndex: Int?) throws -> GLTFPrimitiveGeometry? {
         guard Self.drawsTriangles(primitive.mode) else { return nil }
 
@@ -100,19 +89,22 @@ package struct GLTFGeometryDecoder: Sendable {
         guard let positionIndex = attributes[.POSITION] else {
             throw VRMError._dataInconsistent("POSITION attribute is missing")
         }
-        let positions = try vector3s(positionIndex)
+        let positions = try accessors.accessor(at: positionIndex)
+        try positions.validate(.VEC3)
+        let vertexCount = positions.count
 
         // glTF requires every vertex attribute to hold as many elements as POSITION.
-        func vertexAttribute<Element>(_ key: GLTF.Mesh.Primitive.AttributeKey,
-                                      _ read: (Int) throws -> [Element]) throws -> [Element]? {
+        func vertexAttribute(_ key: GLTF.Mesh.Primitive.AttributeKey,
+                             _ validate: (AccessorReader) throws -> Void) throws -> AccessorReader? {
             guard let accessorIndex = attributes[key] else { return nil }
-            let values = try read(accessorIndex)
-            guard values.count == positions.count else {
+            let reader = try accessors.accessor(at: accessorIndex)
+            try validate(reader)
+            guard reader.count == vertexCount else {
                 throw VRMError._dataInconsistent(
-                    "\(key) has \(values.count) elements but POSITION has \(positions.count)"
+                    "\(key) has \(reader.count) elements but POSITION has \(vertexCount)"
                 )
             }
-            return values
+            return reader
         }
 
         if attributes[.COLOR_0] != nil {
@@ -123,26 +115,26 @@ package struct GLTFGeometryDecoder: Sendable {
             ))
         }
 
-        let normals = try vertexAttribute(.NORMAL, vector3s)
+        let normals = try vertexAttribute(.NORMAL) { try $0.validate(.VEC3) }
         // A primitive without NORMAL is flat shaded, and glTF has its TANGENTs
         // ignored along with it: they were authored for the normals it omits.
-        let rawTangents = normals == nil ? nil : try vertexAttribute(.TANGENT, vector4s)
+        let rawTangents = normals == nil ? nil : try vertexAttribute(.TANGENT) { try $0.validate(.VEC4) }
         let texcoordKey = texcoordAttributeKey(forMaterialIndex: primitive.material,
                                                attributes: attributes,
                                                warnings: &geometry.warnings)
-        let texcoords = try vertexAttribute(texcoordKey, vector2s)
+        let texcoords = try vertexAttribute(texcoordKey) { try $0.validate(.VEC2) }
 
         // glTF requires every primitive of a skinned mesh to carry both skinning
         // attributes, so a missing one is a malformed asset, not an unskinned mesh.
+        var skinning: (joints: AccessorReader, weights: AccessorReader)?
         if let skinIndex {
-            guard let joints = try vertexAttribute(.JOINTS_0, jointIndices),
-                  let weights = try vertexAttribute(.WEIGHTS_0, jointWeights) else {
+            guard let joints = try vertexAttribute(.JOINTS_0, { try $0.validateJointIndices() }),
+                  let weights = try vertexAttribute(.WEIGHTS_0, { try $0.validateJointWeights() }) else {
                 throw VRMError._dataInconsistent(
                     "a primitive of a mesh skinned by skin \(skinIndex) has no JOINTS_0 / WEIGHTS_0 attribute"
                 )
             }
-            geometry.joints = joints
-            geometry.weights = weights
+            skinning = (joints, weights)
             geometry.jointIndexRemap = jointIndexRemaps[skinIndex] ?? []
 
             // glTF numbers further sets for a vertex weighted by more than the
@@ -156,67 +148,95 @@ package struct GLTFGeometryDecoder: Sendable {
             }
         }
 
-        var targetOffsets: [[SIMD3<Float>]] = []
-        if let targets = primitive.targets, !targets.isEmpty {
-            targetOffsets.reserveCapacity(targets.count)
-            for target in targets {
-                if let positionAccessor = target[.POSITION] {
-                    let offsets = try vector3s(positionAccessor)
-                    guard offsets.count == positions.count else {
-                        throw VRMError._dataInconsistent(
-                            "blend shape target count \(offsets.count) does not match vertex count \(positions.count)"
-                        )
-                    }
-                    targetOffsets.append(offsets)
-                } else {
-                    targetOffsets.append(Array(repeating: .zero, count: positions.count))
+        var targets: [AccessorReader?] = []
+        if let primitiveTargets = primitive.targets, !primitiveTargets.isEmpty {
+            targets.reserveCapacity(primitiveTargets.count)
+            for target in primitiveTargets {
+                guard let positionAccessor = target[.POSITION] else {
+                    targets.append(nil)
+                    continue
                 }
+                let deltas = try accessors.accessor(at: positionAccessor)
+                try deltas.validate(.VEC3)
+                guard deltas.count == vertexCount else {
+                    throw VRMError._dataInconsistent(
+                        "blend shape target count \(deltas.count) does not match vertex count \(vertexCount)"
+                    )
+                }
+                targets.append(deltas)
             }
         }
 
-        var indexData: [UInt32]
+        var indices: [UInt32]
         if let indicesAccessor = primitive.indices {
-            indexData = try indexValues(indicesAccessor)
+            indices = try indexValues(indicesAccessor)
         } else {
-            indexData = (0..<positions.count).map { UInt32($0) }
+            indices = (0..<vertexCount).map { UInt32($0) }
         }
-        indexData = try Self.triangulatedIndices(for: primitive.mode, indices: indexData)
-        if let maxIndex = indexData.max(), Int(maxIndex) >= positions.count {
+        indices = try Self.triangulatedIndices(for: primitive.mode, indices: indices)
+        if let maxIndex = indices.max(), Int(maxIndex) >= vertexCount {
             throw VRMError._dataInconsistent(
-                "triangle index \(maxIndex) is out of range for \(positions.count) vertices"
+                "triangle index \(maxIndex) is out of range for \(vertexCount) vertices"
             )
         }
 
-        geometry.positions = positions
-        geometry.texcoords = texcoords ?? []
+        let sources: [UInt32]?
         if normals == nil {
-            // Flat shading needs a normal per triangle corner, so every attribute
-            // is expanded along the triangle list and the index buffer with it.
-            let corners = indexData
-            func expanded<Element>(_ values: [Element]) -> [Element] {
-                values.isEmpty ? values : corners.map { values[Int($0)] }
-            }
-            geometry.positions = expanded(geometry.positions)
-            geometry.texcoords = expanded(geometry.texcoords)
-            geometry.joints = expanded(geometry.joints)
-            geometry.weights = expanded(geometry.weights)
-            targetOffsets = targetOffsets.map(expanded)
-            indexData = Array(0..<UInt32(geometry.positions.count))
+            // Flat shading needs a normal per triangle corner, so every attribute is read
+            // along the triangle list, which draws each corner once.
+            sources = indices
+            indices = Array(0..<UInt32(indices.count))
+        } else {
+            sources = Self.drawnVertices(renumbering: &indices, vertexCount: vertexCount)
         }
-        geometry.indices = indexData
-        geometry.blendShapeOffsets = targetOffsets
-        geometry.normals = normals ?? Self.flatNormals(positions: geometry.positions)
-        geometry.dropUnreferencedVertices()
 
-        let frame = tangentFrame(rawTangents: rawTangents,
-                                 positions: geometry.positions,
-                                 normals: geometry.normals,
-                                 texcoords: geometry.texcoords,
-                                 indices: geometry.indices,
-                                 materialIndex: primitive.material)
-        geometry.tangents = frame.tangents
-        geometry.bitangents = frame.bitangents
+        geometry.indices = indices
+        geometry.positions = try Self.vector3s(positions, at: sources)
+        geometry.normals = try normals.map { try Self.vector3s($0, at: sources) }
+            ?? Self.flatNormals(positions: geometry.positions)
+        geometry.texcoords = try texcoords.map { try Self.vector2s($0, at: sources) } ?? []
+        if let skinning {
+            geometry.joints = try skinning.joints.jointIndices(at: sources)
+            geometry.weights = try skinning.weights.jointWeights(at: sources)
+        }
+        geometry.blendShapes = GLTFPrimitiveBlendShapes(targets: targets, sources: sources)
+
+        // Nothing samples the basis unless the material has a normal map, so even
+        // authored TANGENTs are left unread without one.
+        if let material = primitive.material, materialsSamplingNormalTexture.contains(material) {
+            let frame = Self.tangentFrame(rawTangents: try rawTangents.map { try Self.vector4s($0, at: sources) },
+                                          positions: geometry.positions,
+                                          normals: geometry.normals,
+                                          texcoords: geometry.texcoords,
+                                          indices: geometry.indices)
+            geometry.tangents = frame.tangents
+            geometry.bitangents = frame.bitangents
+        }
         return geometry
+    }
+
+    /// The vertices `indices` draw, in the order they are first drawn, with `indices`
+    /// renumbered to them. Nil when they draw all `vertexCount`, which then keep their order.
+    ///
+    /// Only these are read: the deformation kernel skins and morphs every vertex in the
+    /// buffer, drawn or not, and orphans are common. A VRM 0.x export shares one vertex
+    /// buffer across the primitives of a mesh, each drawing its own slice of it: the
+    /// `AliciaSolid` fixture holds 80,169 vertices that way for 21,995 drawn. Merged or baked
+    /// exports also leave hidden parts behind as unused vertices.
+    ///
+    /// - Precondition: every index is below `vertexCount`.
+    package static func drawnVertices(renumbering indices: inout [UInt32], vertexCount: Int) -> [UInt32]? {
+        var renumbered = [UInt32](repeating: .max, count: vertexCount)
+        var drawn: [UInt32] = []
+        for index in indices where renumbered[Int(index)] == .max {
+            renumbered[Int(index)] = UInt32(drawn.count)
+            drawn.append(index)
+        }
+        guard drawn.count < vertexCount else { return nil }
+        for position in indices.indices {
+            indices[position] = renumbered[Int(indices[position])]
+        }
+        return drawn
     }
 
     /// Which UV set a material's textures sample, and whether they agree.
@@ -256,34 +276,26 @@ package struct GLTFGeometryDecoder: Sendable {
 
     /// UVs arrive V-flipped, with the origin bottom-left as RealityKit reads them rather
     /// than glTF's top-left. The generated tangent basis is derived from these UVs.
-    private func vector2s(_ accessorIndex: Int) throws -> [SIMD2<Float>] {
-        try accessors.floatElements(at: accessorIndex, type: .VEC2) {
+    private static func vector2s(_ reader: AccessorReader, at sources: [UInt32]?) throws -> [SIMD2<Float>] {
+        try reader.floatElements(.VEC2, at: sources) {
             SIMD2<Float>($0(0), 1.0 - $0(1))
         }
     }
 
-    private func vector3s(_ accessorIndex: Int) throws -> [SIMD3<Float>] {
-        try accessors.floatElements(at: accessorIndex, type: .VEC3) {
+    private static func vector3s(_ reader: AccessorReader, at sources: [UInt32]?) throws -> [SIMD3<Float>] {
+        try reader.floatElements(.VEC3, at: sources) {
             SIMD3<Float>($0(0), $0(1), $0(2))
         }
     }
 
-    private func vector4s(_ accessorIndex: Int) throws -> [SIMD4<Float>] {
-        try accessors.floatElements(at: accessorIndex, type: .VEC4) {
+    private static func vector4s(_ reader: AccessorReader, at sources: [UInt32]?) throws -> [SIMD4<Float>] {
+        try reader.floatElements(.VEC4, at: sources) {
             SIMD4<Float>($0(0), $0(1), $0(2), $0(3))
         }
     }
 
     private func indexValues(_ accessorIndex: Int) throws -> [UInt32] {
         try accessors.accessor(at: accessorIndex).unsignedElements(.SCALAR) { $0(0) }
-    }
-
-    private func jointIndices(_ accessorIndex: Int) throws -> [SIMD4<UInt32>] {
-        try accessors.accessor(at: accessorIndex).jointIndices()
-    }
-
-    private func jointWeights(_ accessorIndex: Int) throws -> [SIMD4<Float>] {
-        try accessors.accessor(at: accessorIndex).jointWeights()
     }
 
     // MARK: - Topology
@@ -376,18 +388,11 @@ package struct GLTFGeometryDecoder: Sendable {
 
     /// The tangent basis a normal map needs: glTF `TANGENT` when the primitive has
     /// one, otherwise derived from the UVs.
-    private func tangentFrame(rawTangents: [SIMD4<Float>]?,
-                              positions: [SIMD3<Float>],
-                              normals: [SIMD3<Float>],
-                              texcoords: [SIMD2<Float>],
-                              indices: [UInt32],
-                              materialIndex: Int?) -> TangentFrame {
-        // Nothing samples the basis unless the material has a normal map, so
-        // even authored TANGENTs are left unexpanded without one.
-        guard let materialIndex,
-              materialsSamplingNormalTexture.contains(materialIndex) else {
-            return .empty
-        }
+    private static func tangentFrame(rawTangents: [SIMD4<Float>]?,
+                                     positions: [SIMD3<Float>],
+                                     normals: [SIMD3<Float>],
+                                     texcoords: [SIMD2<Float>],
+                                     indices: [UInt32]) -> TangentFrame {
         if let rawTangents {
             // glTF stores handedness in w.
             var tangents = [SIMD3<Float>](repeating: .zero, count: positions.count)
@@ -403,10 +408,10 @@ package struct GLTFGeometryDecoder: Sendable {
         guard texcoords.count == positions.count else {
             return .empty
         }
-        return Self.generatedTangentFrame(positions: positions,
-                                          normals: normals,
-                                          texcoords: texcoords,
-                                          indices: indices)
+        return generatedTangentFrame(positions: positions,
+                                     normals: normals,
+                                     texcoords: texcoords,
+                                     indices: indices)
     }
 
     /// Per-triangle UV gradients accumulated per vertex, then orthonormalized

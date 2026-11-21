@@ -89,41 +89,16 @@ package extension Data {
         return nil
     }
 
-    /// The most an accessor with no bufferView may zero-fill. Nothing in the
-    /// document bounds the `count` such an accessor declares, and 64 MiB is a
-    /// million vertices of position and normal, far above what a real asset
-    /// zero-fills.
-    static let maximumZeroFilledByteCount = 1 << 26
-
-    /// All-zero data for a glTF accessor with no bufferView.
-    init(zeroedElementCount count: Int, elementSize: Int) throws {
-        guard count >= 0, elementSize > 0 else {
-            throw VRMError._dataInconsistent("invalid accessor size (count: \(count), size: \(elementSize))")
-        }
-        let byteCount = elementSize.multipliedReportingOverflow(by: count)
-        guard !byteCount.overflow else {
-            throw VRMError._dataInconsistent("accessor size overflows (count: \(count), size: \(elementSize))")
-        }
-        guard byteCount.partialValue <= Self.maximumZeroFilledByteCount else {
-            throw VRMError._dataInconsistent(
-                "an accessor with no bufferView asks to zero-fill \(byteCount.partialValue) bytes, "
-                + "past the \(Self.maximumZeroFilledByteCount) byte limit"
-            )
-        }
-        self.init(count: byteCount.partialValue)
-    }
-
-    /// Copies `count` elements of `size` bytes each, `stride` bytes apart, starting
-    /// at `offset`, throwing when the described range overruns the receiver. The
-    /// result is a `Data` of its own, so packed accessor bytes never carry the
-    /// buffer they were read out of.
-    func subdata(offset: Int, size: Int, stride: Int, count: Int) throws -> Data {
+    /// Checks that `count` elements of `size` bytes each, `stride` bytes apart from `offset`
+    /// on, lie inside the receiver. Offsets count from the receiver's start, which for a
+    /// buffer view is not the buffer's.
+    func validateElements(offset: Int, size: Int, stride: Int, count: Int) throws {
         guard offset >= 0, size > 0, count >= 0, stride >= size else {
             throw VRMError._dataInconsistent(
                 "invalid accessor layout (offset: \(offset), size: \(size), stride: \(stride), count: \(count))"
             )
         }
-        guard count > 0 else { return Data() }
+        guard count > 0 else { return }
         let packed = size.multipliedReportingOverflow(by: count)
         guard let requiredBytes = Int.accessorExtent(offset: offset, stride: stride, count: count, size: size),
               !packed.overflow else {
@@ -131,33 +106,11 @@ package extension Data {
                 "accessor extent overflows (offset: \(offset), size: \(size), stride: \(stride), count: \(count))"
             )
         }
-        let dataSize = packed.partialValue
         guard requiredBytes <= self.count else {
             throw VRMError._dataInconsistent(
                 "accessor needs \(requiredBytes) bytes but its buffer view holds \(self.count)"
             )
         }
-
-        if stride == size {
-            if startIndex == 0, offset == 0, dataSize == self.count { return self }
-            let start = startIndex + offset
-            return subdata(in: start..<start + dataSize)
-        }
-
-        var indexData = Data(count: dataSize)
-
-        indexData.withUnsafeMutableBytes { rawDst in
-            guard let dst = rawDst.bindMemory(to: UInt8.self).baseAddress else { return }
-            withUnsafeBytes { rawSrc in
-                guard let src = rawSrc.bindMemory(to: UInt8.self).baseAddress else { return }
-                for pos in 0..<count {
-                    let srcPos = stride * pos + offset
-                    let dstPos = size * pos
-                    dst.advanced(by: dstPos).update(from: src.advanced(by: srcPos), count: size)
-                }
-            }
-        }
-        return indexData
     }
 }
 

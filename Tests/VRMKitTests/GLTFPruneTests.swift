@@ -454,7 +454,7 @@ struct GLTFPruneTests {
     }
 
     private func packedData(of document: GLTFDocument, at index: Int) throws -> Data {
-        try document.gltf.load(\.accessors, at: index).packedData(bufferView: document.bufferViewProvider)
+        try document.packedElements(ofAccessorAt: index)
     }
 
     /// The node each humanoid bone names, by name rather than by index.

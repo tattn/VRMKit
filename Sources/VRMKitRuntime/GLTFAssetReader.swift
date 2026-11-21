@@ -49,7 +49,7 @@ package struct GLTFAssetReader: Sendable {
         let gltf = document.gltf
         let hierarchy = try GLTFNodeHierarchy.validatingStructure(of: gltf)
         self.hierarchy = hierarchy
-        let accessors = PackedAccessorCache(document: document)
+        let accessors = AccessorReaderCache(document: document)
         skins = try gltf.skins.map { try Self.skin($0, accessors: accessors, hierarchy: hierarchy) }
 
         var texcoordSelections: [Int: GLTFGeometryDecoder.TexcoordSelection] = [:]
@@ -374,7 +374,7 @@ package struct GLTFAssetReader: Sendable {
     // MARK: - Skins
 
     private static func skin(_ skin: GLTF.Skin,
-                             accessors: PackedAccessorCache,
+                             accessors: AccessorReaderCache,
                              hierarchy: GLTFNodeHierarchy) throws -> GLTFAsset.Skin {
         let (parentIndices, order, remap) = jointOrdering(of: skin, hierarchy: hierarchy)
 

@@ -6,41 +6,70 @@ import VRMTestSupport
 @Suite
 struct BinaryGLTFTests {
     @Test
-    func testSubdataCopiesTheRequestedElements() throws {
+    func testReaderReadsTheElementsItsStrideSteps() throws {
         let data = Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        #expect(Array(try data.subdata(offset: 1, size: 2, stride: 4, count: 2)) == [1, 2, 5, 6])
-        #expect(Array(try data.subdata(offset: 2, size: 2, stride: 2, count: 3)) == [2, 3, 4, 5, 6, 7])
+        #expect(try bytes(#"{"bufferView": 0, "byteOffset": 1, "count": 2, "componentType": 5121, "type": "VEC2"}"#,
+                          in: data, stride: 4) == [[1, 2], [5, 6]])
+        #expect(try bytes(#"{"bufferView": 0, "byteOffset": 2, "count": 3, "componentType": 5121, "type": "VEC2"}"#,
+                          in: data) == [[2, 3], [4, 5], [6, 7]])
         // The last byte landing exactly on the end is still valid.
-        #expect(Array(try data.subdata(offset: 8, size: 2, stride: 2, count: 1)) == [8, 9])
+        #expect(try bytes(#"{"bufferView": 0, "byteOffset": 8, "count": 1, "componentType": 5121, "type": "VEC2"}"#,
+                          in: data) == [[8, 9]])
     }
 
     /// A buffer view is a slice of its buffer, so an accessor's offset counts from
     /// where the view starts, not the buffer.
     @Test
-    func testSubdataOfASliceCountsFromTheSliceStart() throws {
+    func testReaderOfASliceCountsFromTheSliceStart() throws {
         let view = Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])[4...]
 
-        #expect(Array(try view.subdata(offset: 1, size: 2, stride: 2, count: 2)) == [5, 6, 7, 8])
-        #expect(Array(try view.subdata(offset: 1, size: 1, stride: 2, count: 2)) == [5, 7])
+        #expect(try bytes(#"{"bufferView": 0, "byteOffset": 1, "count": 2, "componentType": 5121, "type": "VEC2"}"#,
+                          in: view) == [[5, 6], [7, 8]])
+        #expect(try bytes(#"{"bufferView": 0, "byteOffset": 1, "count": 2, "componentType": 5121, "type": "SCALAR"}"#,
+                          in: view, stride: 2) == [[5], [7]])
         // The view bounds the accessor: what the buffer holds past it is not part of
         // it, and the bytes before it are not addressable.
-        #expect(throws: (any Error).self) { try view.subdata(offset: 4, size: 4, stride: 4, count: 1) }
+        #expect(throws: (any Error).self) {
+            try bytes(#"{"bufferView": 0, "byteOffset": 4, "count": 1, "componentType": 5125, "type": "SCALAR"}"#,
+                      in: view)
+        }
+    }
+
+    /// Reads only the elements asked for, in the order asked, substituting the sparse ones.
+    @Test
+    func testReaderGathersElementsThroughASparseSubstitution() throws {
+        let reader = try AccessorReader(accessor: accessor("""
+            {"bufferView": 0, "count": 4, "componentType": 5121, "type": "SCALAR",
+             "sparse": {"count": 2,
+                        "indices": {"bufferView": 1, "componentType": 5121},
+                        "values": {"bufferView": 2}}}
+            """)) { ([Data([10, 11, 12, 13]), Data([1, 3]), Data([21, 23])][$0], nil) }
+
+        #expect(try reader.unsignedElements(.SCALAR) { $0(0) } == [10, 21, 12, 23])
+        #expect(try reader.unsignedElements(.SCALAR, at: [3, 0, 3, 2]) { $0(0) } == [23, 10, 23, 12])
+    }
+
+    private func bytes(_ json: String, in view: Data, stride: Int? = nil) throws -> [[UInt32]] {
+        let accessor = try accessor(json)
+        let components = numberOfComponents(of: accessor.type)
+        return try AccessorReader(accessor: accessor) { _ in (view, stride) }
+            .unsignedElements(accessor.type) { component in (0..<components).map(component) }
     }
 
     /// An accessor that overruns its buffer view fails the load rather than reading
     /// out of bounds, and the extent computation must not trap: a hostile glTF can name
     /// counts and strides whose product overflows Int.
     @Test
-    func testSubdataRejectsRangesBeyondTheBuffer() {
+    func testElementsBeyondTheBufferAreRejected() {
         let data = Data([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        #expect(throws: (any Error).self) { try data.subdata(offset: 0, size: 4, stride: 4, count: 3) }
-        #expect(throws: (any Error).self) { try data.subdata(offset: 9, size: 2, stride: 2, count: 1) }
-        #expect(throws: (any Error).self) { try data.subdata(offset: 8, size: 2, stride: 4, count: 2) }
-        #expect(throws: (any Error).self) { try data.subdata(offset: -1, size: 2, stride: 2, count: 1) }
-        #expect(throws: (any Error).self) { try data.subdata(offset: 0, size: 8, stride: 8, count: .max) }
-        #expect(throws: (any Error).self) { try data.subdata(offset: .max, size: 1, stride: 1, count: 2) }
-        #expect(throws: (any Error).self) { try data.subdata(offset: 0, size: .max, stride: .max, count: 3) }
-        #expect(throws: (any Error).self) { try data.subdata(offset: .max - 1, size: 4, stride: 4, count: 1) }
+        #expect(throws: (any Error).self) { try data.validateElements(offset: 0, size: 4, stride: 4, count: 3) }
+        #expect(throws: (any Error).self) { try data.validateElements(offset: 9, size: 2, stride: 2, count: 1) }
+        #expect(throws: (any Error).self) { try data.validateElements(offset: 8, size: 2, stride: 4, count: 2) }
+        #expect(throws: (any Error).self) { try data.validateElements(offset: -1, size: 2, stride: 2, count: 1) }
+        #expect(throws: (any Error).self) { try data.validateElements(offset: 0, size: 8, stride: 8, count: .max) }
+        #expect(throws: (any Error).self) { try data.validateElements(offset: .max, size: 1, stride: 1, count: 2) }
+        #expect(throws: (any Error).self) { try data.validateElements(offset: 0, size: .max, stride: .max, count: 3) }
+        #expect(throws: (any Error).self) { try data.validateElements(offset: .max - 1, size: 4, stride: 4, count: 1) }
     }
 
     /// A buffer view that overruns its buffer, or names one the file does not have,
@@ -252,11 +281,13 @@ struct BinaryGLTFTests {
     @Test
     func testRejectsMatrixAccessorsWhoseColumnsArePadded() throws {
         let padded = try accessor(#"{"bufferView": 0, "count": 1, "componentType": 5121, "type": "MAT3"}"#)
-        #expect(throws: (any Error).self) { try padded.packedData(bufferView: { _ in (Data(repeating: 0, count: 48), nil) }) }
+        #expect(throws: (any Error).self) {
+            try AccessorReader(accessor: padded) { _ in (Data(repeating: 0, count: 48), nil) }
+        }
 
         let unpadded = try accessor(#"{"bufferView": 0, "count": 1, "componentType": 5126, "type": "MAT4"}"#)
-        let data = try unpadded.packedData(bufferView: { _ in (Data(repeating: 0, count: 64), nil) })
-        #expect(data.count == 64)
+        let reader = try AccessorReader(accessor: unpadded) { _ in (Data(repeating: 0, count: 64), nil) }
+        #expect(try reader.float4x4Elements().count == 1)
     }
 
     /// Sparse indices substitute elements by position, so the spec requires them strictly
@@ -272,9 +303,9 @@ struct BinaryGLTFTests {
         func provider(indices: [UInt8]) -> BufferViewProvider {
             { $0 == 0 ? (Data(indices), nil) : (Data(repeating: 1, count: 8), nil) }
         }
-        #expect(throws: (any Error).self) { try sparse.packedData(bufferView: provider(indices: [2, 2])) }
-        #expect(throws: (any Error).self) { try sparse.packedData(bufferView: provider(indices: [2, 1])) }
-        #expect(throws: Never.self) { try sparse.packedData(bufferView: provider(indices: [1, 2])) }
+        #expect(throws: (any Error).self) { try AccessorReader(accessor: sparse, bufferView: provider(indices: [2, 2])) }
+        #expect(throws: (any Error).self) { try AccessorReader(accessor: sparse, bufferView: provider(indices: [2, 1])) }
+        #expect(throws: Never.self) { try AccessorReader(accessor: sparse, bufferView: provider(indices: [1, 2])) }
     }
 
     private func accessor(_ json: String) throws -> GLTF.Accessor {
@@ -282,14 +313,20 @@ struct BinaryGLTFTests {
     }
 
     @Test
-    func testZeroedAccessorDataRejectsOverflowingSizes() throws {
-        #expect(throws: (any Error).self) { try Data(zeroedElementCount: .max, elementSize: 12) }
-        #expect(throws: (any Error).self) { try Data(zeroedElementCount: -1, elementSize: 12) }
+    func testZeroFilledAccessorRejectsOverflowingSizes() throws {
+        func zeroFilled(count: Int) throws -> AccessorReader {
+            try AccessorReader(accessor: accessor(#"{"count": \#(count), "componentType": 5126, "type": "VEC3"}"#)) { _ in
+                Issue.record("an accessor without a buffer view reads none")
+                return (Data(), nil)
+            }
+        }
+        #expect(throws: (any Error).self) { try zeroFilled(count: .max) }
+        #expect(throws: (any Error).self) { try zeroFilled(count: -1) }
         // Nothing in the file bounds what such an accessor asks for, so the limit is what
         // stops a two-line glTF allocating a device out of memory.
         #expect(throws: (any Error).self) {
-            try Data(zeroedElementCount: Data.maximumZeroFilledByteCount / 12 + 1, elementSize: 12)
+            try zeroFilled(count: AccessorReader.maximumZeroFilledByteCount / 12 + 1)
         }
-        #expect(try Data(zeroedElementCount: 3, elementSize: 4).count == 12)
+        #expect(try zeroFilled(count: 3).floatComponents() == Array(repeating: 0, count: 9))
     }
 }

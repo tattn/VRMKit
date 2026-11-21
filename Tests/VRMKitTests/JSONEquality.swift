@@ -64,10 +64,23 @@ func expectSameAccessors(_ lhs: GLTFDocument,
                          indices: [Int]? = nil,
                          sourceLocation: SourceLocation = #_sourceLocation) throws {
     for index in indices ?? Array(lhs.gltf.accessors.indices) {
-        let expected = try (try lhs.gltf.load(\.accessors, at: index))
-            .packedData(bufferView: lhs.bufferViewProvider)
-        let actual = try (try rhs.gltf.load(\.accessors, at: index + offset))
-            .packedData(bufferView: rhs.bufferViewProvider)
+        let expected = try lhs.packedElements(ofAccessorAt: index)
+        let actual = try rhs.packedElements(ofAccessorAt: index + offset)
         #expect(expected == actual, "accessor \(index)", sourceLocation: sourceLocation)
+    }
+}
+
+extension GLTFDocument {
+    /// What the accessor at `index` reads, its elements packed one after another.
+    func packedElements(ofAccessorAt index: Int) throws -> Data {
+        let reader = try AccessorReader(accessor: gltf.load(\.accessors, at: index), bufferView: bufferViewProvider)
+        let size = reader.accessor.components().vectorSize
+        return reader.withElements { elements in
+            var data = Data(capacity: size * reader.count)
+            for element in 0..<reader.count {
+                data.append(elements[element].assumingMemoryBound(to: UInt8.self), count: size)
+            }
+            return data
+        }
     }
 }

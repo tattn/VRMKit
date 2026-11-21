@@ -9,12 +9,12 @@ import VRMKit
 /// Decodes animation accessors into typed keyframe values, off a cache: exporters
 /// routinely share one input accessor across many samplers.
 package final class GLTFAnimationDecoder {
-    private let accessors: PackedAccessorCache
+    private let accessors: AccessorReaderCache
     private let nodes: [GLTF.Node]
     private var inputTimes: [Int: [Float]] = [:]
 
     package init(document: GLTFDocument) {
-        accessors = PackedAccessorCache(document: document)
+        accessors = AccessorReaderCache(document: document)
         nodes = document.gltf.nodes
     }
 

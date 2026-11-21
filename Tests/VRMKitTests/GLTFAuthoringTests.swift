@@ -488,8 +488,8 @@ private extension GLTFDocument {
         return try packed(accessorAt: index).unsignedElements(.SCALAR) { $0(0) }
     }
 
-    private func packed(accessorAt index: Int) throws -> PackedAccessor {
+    private func packed(accessorAt index: Int) throws -> AccessorReader {
         let accessor = try #require(gltf.accessors[safe: index])
-        return try PackedAccessor(accessor: accessor, bufferView: bufferViewProvider)
+        return try AccessorReader(accessor: accessor, bufferView: bufferViewProvider)
     }
 }

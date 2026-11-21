@@ -157,18 +157,20 @@ extension GLTFMeshGeometry {
                               indexRange: indexStart..<indices.count,
                               firstPersonIndexRange: firstPersonIndexRange,
                               bounds: Self.bounds(of: positions[base..<base + count]),
-                              hasBlendShapes: !geometry.blendShapeOffsets.isEmpty))
+                              hasBlendShapes: !geometry.blendShapes.isEmpty))
         }
         indices.append(contentsOf: cuts)
 
         var blendShapeOffsetBuffer: GLTFBlendShapeOffsetBuffer?
         if blendShapeTargetCount > 0, vertexCount > 0 {
-            // A primitive without targets leaves its vertices' deltas at the zero the
-            // buffer starts with.
+            // A primitive without targets, or a target without deltas, leaves its vertices'
+            // deltas at the zero the buffer starts with.
             let buffer = GLTFBlendShapeOffsetBuffer(targetCount: blendShapeTargetCount, vertexCount: vertexCount)
             for (primitive, slot) in zip(primitives, slots) {
-                for (target, offsets) in primitive.geometry.blendShapeOffsets.enumerated() where target < blendShapeTargetCount {
-                    buffer.write(offsets, target: target, firstVertex: slot.vertexRange.lowerBound)
+                let blendShapes = primitive.geometry.blendShapes
+                for (target, deltas) in blendShapes.targets.enumerated() where target < blendShapeTargetCount {
+                    guard let deltas else { continue }
+                    buffer.write(deltas, at: blendShapes.sources, target: target, firstVertex: slot.vertexRange.lowerBound)
                 }
             }
             blendShapeOffsetBuffer = buffer
@@ -265,14 +267,11 @@ public final class GLTFBlendShapeOffsetBuffer: @unchecked Sendable {
         return (0..<vertexCount).map { SIMD3(floats[$0 * 3], floats[$0 * 3 + 1], floats[$0 * 3 + 2]) }
     }
 
-    fileprivate func write(_ offsets: [SIMD3<Float>], target: Int, firstVertex: Int) {
+    /// Reads one target's deltas for the vertices from `firstVertex` on, one per source.
+    fileprivate func write(_ deltas: AccessorReader, at sources: [UInt32]?, target: Int, firstVertex: Int) {
         let floats = UnsafeMutableRawPointer(mutating: baseAddress)
             .advanced(by: (target * vertexCount + firstVertex) * 12)
             .assumingMemoryBound(to: Float.self)
-        for (index, offset) in offsets.enumerated() {
-            floats[index * 3] = offset.x
-            floats[index * 3 + 1] = offset.y
-            floats[index * 3 + 2] = offset.z
-        }
+        deltas.writeFloatComponents(at: sources, to: floats)
     }
 }

@@ -45,7 +45,7 @@ public struct VRMAnimation: Sendable {
 
     public init(document: GLTFDocument) throws {
         self.document = document
-        duration = document.gltf.animations.first.map(PackedAccessorCache(document: document).duration(of:)) ?? 0
+        duration = document.gltf.animations.first.map(AccessorReaderCache(document: document).duration(of:)) ?? 0
 
         let extensions = try document.gltf.rootExtensions()
         let vrma = try extensions["VRMC_vrm_animation"] ??? .keyNotFound("VRMC_vrm_animation")

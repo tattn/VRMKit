@@ -491,7 +491,7 @@ struct GLTFAnimationPlaybackTests {
 
     /// How a hand-written sampler stores its keyframes, against what the spec allows.
     enum SamplerStorageCase: CaseIterable {
-        /// The spec fixes a sampler input to FLOAT scalars. `PackedAccessor` converts
+        /// The spec fixes a sampler input to FLOAT scalars. `AccessorReader` converts
         /// integer components to Float just as happily, so only the decoder's own check
         /// keeps a malformed input out.
         case integerInput

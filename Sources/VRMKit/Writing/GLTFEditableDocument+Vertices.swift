@@ -77,7 +77,7 @@ extension GLTFEditableDocument {
         guard layout.type == .SCALAR, layout.sparse == nil, layout.bufferView != nil else {
             throw VRMError._dataInconsistent("accessor \(accessor) does not hold indices")
         }
-        return try packed(layout).unsignedElements(.SCALAR) { $0(0) }
+        return try reader(layout).unsignedElements(.SCALAR) { $0(0) }
     }
 
     // MARK: - Morph targets
@@ -147,12 +147,12 @@ extension GLTFEditableDocument {
 
     /// The values of a three-component accessor, whatever its component type and stride.
     private func vectors(ofAccessor index: Int) throws -> [SIMD3<Float>] {
-        try packed(accessor(index)).floatElements(.VEC3) { SIMD3($0(0), $0(1), $0(2)) }
+        try reader(accessor(index)).floatElements(.VEC3) { SIMD3($0(0), $0(1), $0(2)) }
     }
 
     /// The accessor's elements read out of the single buffer, as loading reads them.
-    private func packed(_ accessor: GLTF.Accessor) throws -> PackedAccessor {
-        try PackedAccessor(accessor: accessor) { index in
+    private func reader(_ accessor: GLTF.Accessor) throws -> AccessorReader {
+        try AccessorReader(accessor: accessor) { index in
             let view = try bufferView(index)
             return (try view.data(in: binary), view.byteStride)
         }
