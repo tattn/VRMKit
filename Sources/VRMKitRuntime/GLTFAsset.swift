@@ -129,9 +129,16 @@ public final class GLTFAsset: Sendable {
         return try await reader.asset(sceneIndex: sceneIndex ?? document.gltf.defaultSceneIndex())
     }
 
-    /// Reads a VRM's scene, with the first-person cut and VRM's morph target sharing.
-    public static func load(vrm: VRM) async throws -> GLTFAsset {
-        let reader = try GLTFAssetReader(document: vrm.document, profile: VRMAssetProfile(vrm: vrm))
+    /// Reads a VRM's scene, with VRM's morph target sharing.
+    ///
+    /// - Parameter preparesFirstPerson: whether to cut, out of every mesh VRM annotates
+    ///   `auto`, the triangles a first-person camera leaves out. The cut walks every skinned
+    ///   vertex and adds its triangles to the index buffers, so a renderer that never draws
+    ///   the model from its own eyes can leave it out; an `auto` mesh then draws whole in
+    ///   ``FirstPersonRenderMode/firstPerson`` too.
+    public static func load(vrm: VRM, preparesFirstPerson: Bool = true) async throws -> GLTFAsset {
+        let reader = try GLTFAssetReader(document: vrm.document,
+                                         profile: VRMAssetProfile(vrm: vrm, preparesFirstPerson: preparesFirstPerson))
         return try await reader.asset(sceneIndex: vrm.document.gltf.defaultSceneIndex())
     }
 }

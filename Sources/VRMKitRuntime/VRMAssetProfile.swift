@@ -13,10 +13,13 @@ import VRMKit
 /// and the spring bones, is ``VRMInstance``'s.
 package final class VRMAssetProfile: Sendable {
     package let vrm: VRM
+    /// Whether `auto` meshes are cut for a first-person camera.
+    package let preparesFirstPerson: Bool
     private let firstPersonPlan = Locked<VRMFirstPersonPlan?>(nil)
 
-    package init(vrm: VRM) {
+    package init(vrm: VRM, preparesFirstPerson: Bool) {
         self.vrm = vrm
+        self.preparesFirstPerson = preparesFirstPerson
     }
 
     /// The VRM extensions this implements, which is a question of the model's version:
@@ -93,12 +96,13 @@ package final class VRMAssetProfile: Sendable {
     }
 
     /// The joints of `skinIndex` whose triangles a first-person camera drops from the
-    /// mesh the node at `nodeIndex` draws.
+    /// mesh the node at `nodeIndex` draws. Empty when the first person is not prepared.
     package func headJoints(ofNodeAt nodeIndex: Int,
                             meshIndex: Int,
                             skinIndex: Int?,
                             hierarchy: GLTFNodeHierarchy) -> Set<UInt32> {
-        firstPerson(hierarchy: hierarchy).headJoints(ofNodeAt: nodeIndex,
+        guard preparesFirstPerson else { return [] }
+        return firstPerson(hierarchy: hierarchy).headJoints(ofNodeAt: nodeIndex,
                                                      meshIndex: meshIndex,
                                                      skinIndex: skinIndex)
     }

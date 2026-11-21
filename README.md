@@ -141,6 +141,18 @@ model.lookAtTarget = nil                                // back to rest
 
 The eyes stay on the target as either it or the model moves. VRM 0.x and 1.0 share this API, and the model decides whether the gaze turns its eye bones or weighs its look expressions.
 
+## First person
+
+```swift
+model.setFirstPersonRenderMode(.firstPerson) // a camera at the model's own eyes, as in VR
+```
+
+The model then draws what VRM's first-person settings show to its own eyes: a mesh annotated `auto` loses the triangles its head draws, so the body stays in view. The load cuts those triangles out of every such mesh. An app that only ever shows the model from outside can skip that work:
+
+```swift
+let loader = try VRMEntityLoader(named: "model.vrm", preparesFirstPerson: false)
+```
+
 ## Bone animation
 
 <img src="https://github.com/tattn/VRMKit/raw/main/.github/alicia_humanoid.png" width="200px" alt="Humanoid" />

@@ -51,6 +51,28 @@ struct GLTFAssetTests {
         #expect(cut.contains { $0.geometry.slots.contains { $0.firstPersonIndexRange != nil } })
     }
 
+    /// A renderer that never draws from the model's own eyes leaves the cut out, and draws
+    /// the same triangles in third person.
+    @Test
+    func testAVRMLoadedWithoutTheFirstPersonCarriesNoCut() async throws {
+        let vrm = try VRM(data: VRMSampleAsset.aliciaSolid.data)
+        let prepared = try await GLTFAsset.load(vrm: vrm)
+        let unprepared = try await GLTFAsset.load(vrm: vrm, preparesFirstPerson: false)
+
+        #expect(!unprepared.meshes.contains { $0.cutsHead })
+        #expect(!unprepared.meshes.contains { $0.geometry.slots.contains { $0.firstPersonIndexRange != nil } })
+        #expect(unprepared.meshes.map(\.geometry.indices.count).reduce(0, +)
+            < prepared.meshes.map(\.geometry.indices.count).reduce(0, +))
+        for (node, index) in unprepared.meshIndicesByNode {
+            let preparedMesh = try #require(prepared.mesh(drawnByNode: node))
+            #expect(thirdPersonTriangles(of: unprepared.meshes[index]) == thirdPersonTriangles(of: preparedMesh))
+        }
+    }
+
+    private func thirdPersonTriangles(of mesh: GLTFAsset.Mesh) -> [UInt32] {
+        mesh.geometry.slots.indices.flatMap { mesh.geometry.triangleIndices(ofSlot: $0) }
+    }
+
     @Test
     func testAPlainGLTFReadsItsSkinAndMorphTargets() async throws {
         let skinned = try await GLTFAsset.load(document: try GLTFDocument(withURL: GLTFSampleAsset.simpleSkin.url))

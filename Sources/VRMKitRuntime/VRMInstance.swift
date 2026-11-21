@@ -314,6 +314,8 @@ public final class VRMInstance: GLTFInstance {
 
     // MARK: - First person
 
+    /// Which camera the model draws for, as VRM's first-person settings ask. An `auto` mesh
+    /// is cut only if its asset was loaded preparing the first person.
     public var firstPersonRenderMode: FirstPersonRenderMode = .thirdPerson {
         didSet { visibilityChanged = visibilityChanged || firstPersonRenderMode != oldValue }
     }

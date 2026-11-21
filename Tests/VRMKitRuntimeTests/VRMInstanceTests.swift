@@ -76,6 +76,19 @@ struct VRMInstanceTests {
         #expect(model.takeOutput().visibility.isEmpty)
     }
 
+    /// Without the cut, an `auto` mesh draws whole for a first-person camera too.
+    @Test
+    func testTheFirstPersonViewOfAnUnpreparedModelCutsNothing() async throws {
+        let read = try await GLTFAsset.load(vrm: try VRM(data: VRMSampleAsset.aliciaSolid.data),
+                                            preparesFirstPerson: false)
+        let model = try VRMInstance(asset: read)
+        _ = model.takeOutput()
+        model.firstPersonRenderMode = .firstPerson
+        let output = model.takeOutput()
+        #expect(!output.visibility.isEmpty)
+        #expect(!output.visibility.values.contains(.firstPersonCut))
+    }
+
     /// A `.vrma` retargets onto the humanoid of the instance it plays on.
     @Test
     func testAVRMAnimationRetargetsOntoTheHumanoid() async throws {
