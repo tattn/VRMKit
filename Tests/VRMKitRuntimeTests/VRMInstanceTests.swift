@@ -123,6 +123,22 @@ struct VRMInstanceTests {
         #expect(copy.pose.localTransform(ofNode: head) != model.pose.localTransform(ofNode: head))
     }
 
+    /// A plain glTF instance snapshots its pose and morph weights.
+    @Test
+    func testASnapshotOfAPlainGLTFStandsAsItStood() async throws {
+        let asset = try await GLTFAsset.load(document: try GLTFDocument(withURL: GLTFSampleAsset.animatedMorphCube.url))
+        let model = try GLTFInstance(asset: asset)
+        let node = try #require(asset.meshIndicesByNode.keys.first { model.morphWeights(ofNode: $0) != nil })
+        let weights = try #require(model.morphWeights(ofNode: node)).map { _ in Float(0.5) }
+        model.setMorphWeights(weights, ofNode: node)
+        model.pose.setLocalTranslation(SIMD3(0, 1, 0), ofNode: node)
+
+        let copy = try model.snapshot()
+        #expect(!(copy is VRMInstance))
+        #expect(copy.morphWeights(ofNode: node) == weights)
+        #expect(copy.pose.localTransform(ofNode: node) == model.pose.localTransform(ofNode: node))
+    }
+
     @Test
     func testAPlainGLTFMovesWithoutTheVRMLayers() async throws {
         let asset = try await GLTFAsset.load(document: try GLTFDocument(withURL: GLTFSampleAsset.simpleSkin.url))

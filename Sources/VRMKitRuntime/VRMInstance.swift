@@ -367,23 +367,15 @@ public final class VRMInstance: GLTFInstance {
 
     /// Another instance of the same asset, standing as this one stands now: its pose, morph
     /// weights, expressions, gaze and first-person view. No animation runs on it.
-    public func snapshot() throws -> VRMInstance {
+    public override func snapshot() throws -> VRMInstance {
         let copy = try VRMInstance(asset: asset)
-        for node in 0..<pose.nodeCount {
-            copy.pose.setLocalTransform(pose.localTransform(ofNode: node), ofNode: node)
-        }
-        copy.pose.rootMatrix = pose.rootMatrix
-        copy.pose.rootRotation = pose.rootRotation
+        copyPose(to: copy)
         var weights: [ExpressionKey: Float] = [:]
         for info in availableExpressions {
             weights[info.key] = expression(for: info.key)
         }
         copy.setExpressions(weights)
-        for node in asset.meshIndicesByNode.keys {
-            if let morph = morphWeights(ofNode: node) {
-                copy.setMorphWeights(morph, ofNode: node)
-            }
-        }
+        copyMorphWeights(to: copy)
         copy.lookAtTarget = lookAtTarget
         copy.firstPersonRenderMode = firstPersonRenderMode
         return copy

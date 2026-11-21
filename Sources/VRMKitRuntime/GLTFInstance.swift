@@ -190,6 +190,31 @@ public class GLTFInstance {
         lastMorphChange = changeStamp
     }
 
+    // MARK: - Copies
+
+    /// Another instance of the same asset, standing as this one stands now: its pose and morph
+    /// weights. No animation runs on it.
+    public func snapshot() throws -> GLTFInstance {
+        let copy = try GLTFInstance(asset: asset)
+        copyPose(to: copy)
+        copyMorphWeights(to: copy)
+        return copy
+    }
+
+    func copyPose(to copy: GLTFInstance) {
+        for node in 0..<pose.nodeCount {
+            copy.pose.setLocalTransform(pose.localTransform(ofNode: node), ofNode: node)
+        }
+        copy.pose.rootMatrix = pose.rootMatrix
+        copy.pose.rootRotation = pose.rootRotation
+    }
+
+    func copyMorphWeights(to copy: GLTFInstance) {
+        for (slot, node) in morphNodes.enumerated() {
+            copy.setMorphWeights(morphWeightsBySlot[slot], ofNode: node)
+        }
+    }
+
     // MARK: - A frame
 
     /// Advances the running animations by `deltaTime`. What moved is read through a reader.
