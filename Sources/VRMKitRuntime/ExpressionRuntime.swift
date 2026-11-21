@@ -8,68 +8,19 @@ import VRMKit
 
 package typealias ExpressionMaterialColorType = VRM1.Expressions.Expression.MaterialColorBind.MaterialColorType
 
-/// A material colour one expression drives, named by its glTF material index.
-package struct ExpressionMaterialColorBinding {
-    package let material: Int
-    package let type: ExpressionMaterialColorType
-    package let targetValue: SIMD4<Float>
-    /// What the material was loaded with, which the expression moves away from
-    /// and every inactive expression puts back.
-    package let baseValue: SIMD4<Float>
-
-    package init(material: Int,
-                 type: ExpressionMaterialColorType,
-                 targetValue: SIMD4<Float>,
-                 baseValue: SIMD4<Float>) {
-        self.material = material
-        self.type = type
-        self.targetValue = targetValue
-        self.baseValue = baseValue
-    }
-}
-
-/// A texture transform one expression drives. The rotation is not part of the
-/// bind, so it rides along unchanged from the value the material was loaded with.
-package struct ExpressionTextureTransformBinding {
-    package let material: Int
-    package let baseScale: SIMD2<Float>
-    package let baseOffset: SIMD2<Float>
-    package let baseRotation: Float
-    package let targetScale: SIMD2<Float>
-    package let targetOffset: SIMD2<Float>
-
-    package init(material: Int,
-                 baseScale: SIMD2<Float>,
-                 baseOffset: SIMD2<Float>,
-                 baseRotation: Float,
-                 targetScale: SIMD2<Float>,
-                 targetOffset: SIMD2<Float>) {
-        self.material = material
-        self.baseScale = baseScale
-        self.baseOffset = baseOffset
-        self.baseRotation = baseRotation
-        self.targetScale = targetScale
-        self.targetOffset = targetOffset
-    }
-}
-
-/// How an ``ExpressionRuntime`` writes what it accumulated into the renderer,
-/// which is the one part of driving expressions the runtime leaves to it.
-package struct ExpressionApplier<Mesh: AnyObject> {
-    package let setMorphWeight: (_ weight: Float, _ targetIndex: Int, _ mesh: Mesh) -> Void
+/// How an ``ExpressionRuntime`` writes out what it accumulated, which is the one part
+/// of driving expressions it leaves to the model.
+package struct ExpressionApplier {
+    package let setMorphWeight: (_ weight: Float, _ targetIndex: Int, _ node: Int) -> Void
     package let setMaterialColor: (_ color: SIMD4<Float>, _ type: ExpressionMaterialColorType, _ material: Int) -> Void
     package let setTextureTransform: (_ scale: SIMD2<Float>, _ offset: SIMD2<Float>, _ rotation: Float, _ material: Int) -> Void
-    /// Called once per apply that wrote anything, for a renderer with a flush.
-    package let didApply: () -> Void
 
-    package init(setMorphWeight: @escaping (Float, Int, Mesh) -> Void,
+    package init(setMorphWeight: @escaping (Float, Int, Int) -> Void,
                  setMaterialColor: @escaping (SIMD4<Float>, ExpressionMaterialColorType, Int) -> Void,
-                 setTextureTransform: @escaping (SIMD2<Float>, SIMD2<Float>, Float, Int) -> Void,
-                 didApply: @escaping () -> Void = {}) {
+                 setTextureTransform: @escaping (SIMD2<Float>, SIMD2<Float>, Float, Int) -> Void) {
         self.setMorphWeight = setMorphWeight
         self.setMaterialColor = setMaterialColor
         self.setTextureTransform = setTextureTransform
-        self.didApply = didApply
     }
 }
 
@@ -114,9 +65,8 @@ public struct ExpressionWeights: Equatable, Sendable {
     }
 }
 
-/// What applying needs of one expression besides its clip, held outside the generic
-/// runtime so the per-frame loop touches no type generic over the mesh. Targets are
-/// indices into the runtime's target lists.
+/// What applying needs of one expression besides its clip. Targets are indices into the
+/// runtime's target lists.
 private struct ExpressionSlot {
     let overrideGroup: ExpressionOverrideGroup?
     let isBinary: Bool
@@ -125,9 +75,32 @@ private struct ExpressionSlot {
     var transforms: [(target: Int, scaleDelta: SIMD2<Float>, offsetDelta: SIMD2<Float>)] = []
 }
 
-/// The renderer-agnostic expression runtime: the clips a model states, the input
-/// weights a caller sets, and the accumulation VRM defines over them, ending in
-/// per-target values an ``ExpressionApplier`` writes out.
+/// A morph target of the mesh a node draws.
+private struct MorphTarget {
+    let node: Int
+    let index: Int
+}
+
+/// A material colour, with what the material was loaded with, which an expression
+/// moves away from and every inactive expression puts back.
+private struct ColorTarget {
+    let material: Int
+    let type: ExpressionMaterialColorType
+    let baseValue: SIMD4<Float>
+}
+
+/// A material's UV transform as loaded. The rotation is not part of a bind, so it
+/// rides along unchanged.
+private struct TransformTarget {
+    let material: Int
+    let baseScale: SIMD2<Float>
+    let baseOffset: SIMD2<Float>
+    let baseRotation: Float
+}
+
+/// The expression runtime: the clips a model states, the input weights a caller sets,
+/// and the accumulation VRM defines over them, ending in per-target values an
+/// ``ExpressionApplier`` writes out.
 ///
 /// Weights accumulate rather than overwrite where expressions overlap on a target, an
 /// active expression may suppress the blink / lookAt / mouth groups, and a value that did
@@ -136,14 +109,13 @@ private struct ExpressionSlot {
 /// Keys and targets are resolved to indices once at set-up: a face tracker hands over
 /// dozens of weights every frame, and hashing their keys and targets each time cost
 /// more than the accumulation itself.
-package final class ExpressionRuntime<Mesh: AnyObject> {
-    package private(set) var clips: [ExpressionKey: ExpressionClip<Mesh>] = [:]
-    /// The expressions the model offers, in the order the plan states them.
+package final class ExpressionRuntime {
+    /// The expressions the model offers, in the order it states them.
     package private(set) var availableExpressions: [ExpressionInfo] = []
 
     /// One per expression, in the order of `availableExpressions`.
     private var slots: [ExpressionSlot] = []
-    private var slotClips: [ExpressionClip<Mesh>] = []
+    private var slotClips: [VRMExpressionPlan.Clip] = []
     /// The slot each key drives. A custom key spelling a preset drives the preset,
     /// which is how VRM 0.x models predating the presets name theirs.
     private var slotsByKey: [ExpressionKey: Int] = [:]
@@ -152,9 +124,9 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
 
     // Every target any clip drives, once each, so applying the active clips can put
     // every untouched target back where it started.
-    private var morphTargets: [BlendShapeBinding<Mesh>] = []
-    private var colorTargets: [ExpressionMaterialColorBinding] = []
-    private var transformTargets: [ExpressionTextureTransformBinding] = []
+    private var morphTargets: [MorphTarget] = []
+    private var colorTargets: [ColorTarget] = []
+    private var transformTargets: [TransformTarget] = []
 
     // Values last written out, nil until the first write, so a value that did not move
     // is not written again.
@@ -171,13 +143,17 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
 
     package init() {}
 
-    /// Hands the runtime everything the model states, replacing what it had.
-    package func setUp(clips statedClips: [ExpressionClip<Mesh>],
-                       materialColorClips: [ExpressionKey: [ExpressionMaterialColorBinding]],
-                       textureTransformClips: [ExpressionKey: [ExpressionTextureTransformBinding]]) {
+    /// Hands the runtime the clips the model states, replacing what it had. `morphNodes`
+    /// names the nodes whose mesh a morph bind drives, and `baseColor` and `baseUVTransform`
+    /// what a material draws with before any expression moves it. A bind that will not
+    /// resolve is left out.
+    package func setUp(clips statedClips: [VRMExpressionPlan.Clip],
+                       morphNodes: (VRMExpressionPlan.MorphBind.Target) -> [Int],
+                       baseColor: (Int, ExpressionMaterialColorType) -> SIMD4<Float>?,
+                       baseUVTransform: (Int) -> (scale: SIMD2<Float>, offset: SIMD2<Float>, rotation: Float)?) {
         // Two clips sharing a key is malformed; the later one wins, in the place the
-        // first one took, so `clips` and `availableExpressions` stay the same set.
-        var stated: [ExpressionClip<Mesh>] = []
+        // first one took.
+        var stated: [VRMExpressionPlan.Clip] = []
         var positions: [ExpressionKey: Int] = [:]
         for clip in statedClips {
             if let position = positions[clip.key] {
@@ -187,7 +163,6 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
                 stated.append(clip)
             }
         }
-        clips = Dictionary(uniqueKeysWithValues: stated.map { ($0.key, $0) })
         availableExpressions = stated.map { ExpressionInfo(key: $0.key, name: $0.name) }
         slotClips = stated
 
@@ -198,7 +173,7 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
             }
         }
 
-        var morphTargetIndices: [ObjectIdentifier: [Int: Int]] = [:]
+        var morphTargetIndices: [Int: [Int: Int]] = [:]
         var colorTargetIndices: [Int: [ExpressionMaterialColorType: Int]] = [:]
         var transformTargetIndices: [Int: Int] = [:]
         morphTargets = []
@@ -206,44 +181,49 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
         transformTargets = []
         slots = stated.map { clip in
             var slot = ExpressionSlot(overrideGroup: clip.key.overrideGroup, isBinary: clip.isBinary)
-            for binding in clip.values {
-                let mesh = ObjectIdentifier(binding.mesh)
-                let target: Int
-                if let existing = morphTargetIndices[mesh]?[binding.index] {
-                    target = existing
-                    morphTargets[target] = binding
-                } else {
-                    target = morphTargets.count
-                    morphTargetIndices[mesh, default: [:]][binding.index] = target
-                    morphTargets.append(binding)
+            for bind in clip.morphBinds {
+                for node in morphNodes(bind.target) {
+                    let target: Int
+                    if let existing = morphTargetIndices[node]?[bind.index] {
+                        target = existing
+                    } else {
+                        target = morphTargets.count
+                        morphTargetIndices[node, default: [:]][bind.index] = target
+                        morphTargets.append(MorphTarget(node: node, index: bind.index))
+                    }
+                    slot.morphs.append((target, bind.weight))
                 }
-                slot.morphs.append((target, Float(binding.weight)))
             }
-            for binding in materialColorClips[clip.key] ?? [] {
+            for bind in clip.materialColorBinds {
                 let target: Int
-                if let existing = colorTargetIndices[binding.material]?[binding.type] {
+                if let existing = colorTargetIndices[bind.material]?[bind.type] {
                     target = existing
-                    colorTargets[target] = binding
-                } else {
+                } else if let baseValue = baseColor(bind.material, bind.type) {
                     target = colorTargets.count
-                    colorTargetIndices[binding.material, default: [:]][binding.type] = target
-                    colorTargets.append(binding)
-                }
-                slot.colors.append((target, binding.targetValue - binding.baseValue))
-            }
-            for binding in textureTransformClips[clip.key] ?? [] {
-                let target: Int
-                if let existing = transformTargetIndices[binding.material] {
-                    target = existing
-                    transformTargets[target] = binding
+                    colorTargetIndices[bind.material, default: [:]][bind.type] = target
+                    colorTargets.append(ColorTarget(material: bind.material, type: bind.type, baseValue: baseValue))
                 } else {
+                    continue
+                }
+                slot.colors.append((target, bind.targetValue - colorTargets[target].baseValue))
+            }
+            for bind in clip.textureTransformBinds {
+                let target: Int
+                if let existing = transformTargetIndices[bind.material] {
+                    target = existing
+                } else if let base = baseUVTransform(bind.material) {
                     target = transformTargets.count
-                    transformTargetIndices[binding.material] = target
-                    transformTargets.append(binding)
+                    transformTargetIndices[bind.material] = target
+                    transformTargets.append(TransformTarget(material: bind.material,
+                                                            baseScale: base.scale,
+                                                            baseOffset: base.offset,
+                                                            baseRotation: base.rotation))
+                } else {
+                    continue
                 }
                 slot.transforms.append((target,
-                                        binding.targetScale - binding.baseScale,
-                                        binding.targetOffset - binding.baseOffset))
+                                        bind.scale - transformTargets[target].baseScale,
+                                        bind.offset - transformTargets[target].baseOffset))
             }
             return slot
         }
@@ -258,42 +238,6 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
         scratchOffsets = transformTargets.map(\.baseOffset)
     }
 
-    /// Hands the runtime what the model states, resolving each bind to the renderer's
-    /// own meshes and materials. A bind that will not resolve is left out.
-    package func setUp(plan: VRMExpressionPlan,
-                       morphBindings: (VRMExpressionPlan.MorphBind) -> [BlendShapeBinding<Mesh>],
-                       materialColorBinding: (String, VRMExpressionPlan.MaterialColorBind) -> ExpressionMaterialColorBinding?,
-                       textureTransformBinding: (String, VRMExpressionPlan.TextureTransformBind) -> ExpressionTextureTransformBinding?) {
-        var clips: [ExpressionClip<Mesh>] = []
-        var materialColorClips: [ExpressionKey: [ExpressionMaterialColorBinding]] = [:]
-        var textureTransformClips: [ExpressionKey: [ExpressionTextureTransformBinding]] = [:]
-
-        for planned in plan.clips {
-            let clip = ExpressionClip(name: planned.name,
-                                      preset: planned.preset,
-                                      values: planned.morphBinds.flatMap(morphBindings),
-                                      isBinary: planned.isBinary,
-                                      binaryRounding: planned.binaryRounding,
-                                      overrideBlink: planned.overrideBlink,
-                                      overrideLookAt: planned.overrideLookAt,
-                                      overrideMouth: planned.overrideMouth)
-            clips.append(clip)
-
-            let colors = planned.materialColorBinds.compactMap { materialColorBinding(planned.name, $0) }
-            if !colors.isEmpty {
-                materialColorClips[clip.key] = colors
-            }
-            let transforms = planned.textureTransformBinds.compactMap { textureTransformBinding(planned.name, $0) }
-            if !transforms.isEmpty {
-                textureTransformClips[clip.key] = transforms
-            }
-        }
-
-        setUp(clips: clips,
-              materialColorClips: materialColorClips,
-              textureTransformClips: textureTransformClips)
-    }
-
     /// The handle `key` drives, a custom key spelling a preset driving the preset.
     package func handle(for key: ExpressionKey) -> ExpressionHandle? {
         slotsByKey[key].map(ExpressionHandle.init(slot:))
@@ -306,7 +250,7 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
         guard values.values.count == weights.count else { return false }
         var changed = false
         for slot in values.setSlots {
-            let weight = Float(slotClips[slot].normalizedWeight(Double(values.values[slot])))
+            let weight = slotClips[slot].normalizedWeight(values.values[slot])
             guard weight != weights[slot] else { continue }
             weights[slot] = weight
             changed = true
@@ -315,18 +259,18 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
     }
 
     /// The input weight `key` was last set to, before any override scales it.
-    package func weight(for key: ExpressionKey) -> Double {
+    package func weight(for key: ExpressionKey) -> Float {
         guard let slot = slotsByKey[key] else { return 0 }
-        return Double(weights[slot])
+        return weights[slot]
     }
 
     /// Records input weights, reporting whether any actually moved: nothing has
     /// to be applied when none did.
-    package func storeWeights<Value: BinaryFloatingPoint>(_ values: [ExpressionKey: Value]) -> Bool {
+    package func storeWeights(_ values: [ExpressionKey: Float]) -> Bool {
         var changed = false
         for (key, value) in values {
             guard let slot = slotsByKey[key] else { continue }
-            let weight = Float(slotClips[slot].normalizedWeight(Double(value)))
+            let weight = slotClips[slot].normalizedWeight(value)
             guard weight != weights[slot] else { continue }
             weights[slot] = weight
             changed = true
@@ -336,10 +280,10 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
 
     /// Accumulates every active expression and writes what moved through
     /// `applier`.
-    package func apply(with applier: ExpressionApplier<Mesh>) {
+    package func apply(with applier: ExpressionApplier) {
         var overrides = ExpressionOverrideStates()
         for (slot, weight) in weights.enumerated() where weight > 0 {
-            overrides.accumulate(slotClips[slot], weight: Double(weight), excluding: slots[slot].overrideGroup)
+            overrides.accumulate(slotClips[slot], weight: weight, excluding: slots[slot].overrideGroup)
         }
         let overridesAny = overrides.isSuppressingAnyGroup
 
@@ -360,7 +304,7 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
             // An overridden binary expression is suppressed outright rather than scaled,
             // having no partial state.
             if overridesAny, let group = slot.overrideGroup, overrides[group].isSuppressing {
-                weight = slot.isBinary ? 0 : weight * Float(overrides[group].factor)
+                weight = slot.isBinary ? 0 : weight * overrides[group].factor
                 guard weight > 0 else { continue }
             }
             for morph in slot.morphs {
@@ -375,16 +319,13 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
             }
         }
 
-        var wroteAnything = false
         for (target, weight) in scratchMorphWeights.enumerated() where appliedMorphWeights[target] != weight {
             appliedMorphWeights[target] = weight
-            wroteAnything = true
-            let binding = morphTargets[target]
-            applier.setMorphWeight(weight, binding.index, binding.mesh)
+            let morph = morphTargets[target]
+            applier.setMorphWeight(weight, morph.index, morph.node)
         }
         for (target, color) in scratchColors.enumerated() where appliedColors[target] != color {
             appliedColors[target] = color
-            wroteAnything = true
             let binding = colorTargets[target]
             applier.setMaterialColor(color, binding.type, binding.material)
         }
@@ -394,13 +335,8 @@ package final class ExpressionRuntime<Mesh: AnyObject> {
             let applied = SIMD4<Float>(scale.x, scale.y, offset.x, offset.y)
             guard appliedTransforms[target] != applied else { continue }
             appliedTransforms[target] = applied
-            wroteAnything = true
             let binding = transformTargets[target]
             applier.setTextureTransform(scale, offset, binding.baseRotation, binding.material)
-        }
-
-        if wroteAnything {
-            applier.didApply()
         }
     }
 }

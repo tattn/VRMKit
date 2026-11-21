@@ -1,23 +1,80 @@
 import SIMDCompat
 import VRMKit
 
+/// What a binary clip makes of a weight of exactly 0.5, which is the one point
+/// the two VRM versions disagree on.
+package enum BinaryWeightRounding {
+    /// VRM 0.x rounds a binary blend shape group to the nearest of 0 and 1.
+    case nearest
+    /// VRM 1.0 raises a binary expression only above 0.5.
+    case aboveHalf
+}
+
 /// Every expression a model offers, read off whichever VRM version states them and
-/// named by glTF index. A renderer resolves the indices to its own nodes and materials.
+/// named by glTF index.
 package struct VRMExpressionPlan {
     package let clips: [Clip]
 
-    /// One expression: how it accumulates, and what it drives.
+    /// One expression, a VRM 1.0 expression or the VRM 0.x blend shape group loaded as
+    /// one: how it accumulates, and what it drives.
     package struct Clip {
         package let name: String
         package let preset: ExpressionPreset?
         let isBinary: Bool
         let binaryRounding: BinaryWeightRounding
+        /// How this expression suppresses the blink / lookAt / mouth expressions
+        /// while it is active (VRMC_vrm `overrideBlink` / `overrideLookAt` / `overrideMouth`).
+        /// A VRM 0.x group declares none of these.
         let overrideBlink: ExpressionOverrideType
         let overrideLookAt: ExpressionOverrideType
         let overrideMouth: ExpressionOverrideType
-        let morphBinds: [MorphBind]
+        package let morphBinds: [MorphBind]
         let materialColorBinds: [MaterialColorBind]
         let textureTransformBinds: [TextureTransformBind]
+
+        package var key: ExpressionKey {
+            preset.map(ExpressionKey.preset) ?? .custom(name)
+        }
+
+        package init(name: String,
+                     preset: ExpressionPreset?,
+                     isBinary: Bool,
+                     binaryRounding: BinaryWeightRounding = .aboveHalf,
+                     overrideBlink: ExpressionOverrideType = .none,
+                     overrideLookAt: ExpressionOverrideType = .none,
+                     overrideMouth: ExpressionOverrideType = .none,
+                     morphBinds: [MorphBind] = [],
+                     materialColorBinds: [MaterialColorBind] = [],
+                     textureTransformBinds: [TextureTransformBind] = []) {
+            self.name = name
+            self.preset = preset
+            self.isBinary = isBinary
+            self.binaryRounding = binaryRounding
+            self.overrideBlink = overrideBlink
+            self.overrideLookAt = overrideLookAt
+            self.overrideMouth = overrideMouth
+            self.morphBinds = morphBinds
+            self.materialColorBinds = materialColorBinds
+            self.textureTransformBinds = textureTransformBinds
+        }
+
+        /// Clamps `value` to 0...1, resolving a binary clip to one of its ends.
+        func normalizedWeight(_ value: Float) -> Float {
+            let clamped = min(max(value, 0), 1)
+            guard isBinary else { return clamped }
+            switch binaryRounding {
+            case .nearest: return clamped.rounded()
+            case .aboveHalf: return clamped > 0.5 ? 1 : 0
+            }
+        }
+
+        func overrideType(for group: ExpressionOverrideGroup) -> ExpressionOverrideType {
+            switch group {
+            case .blink: return overrideBlink
+            case .lookAt: return overrideLookAt
+            case .mouth: return overrideMouth
+            }
+        }
     }
 
     /// One morph target the expression drives, weighted 0-1 whichever version wrote it.
@@ -31,7 +88,7 @@ package struct VRMExpressionPlan {
 
         package let target: Target
         package let index: Int
-        package let weight: Double
+        package let weight: Float
     }
 
     package struct MaterialColorBind {
@@ -61,14 +118,9 @@ package struct VRMExpressionPlan {
                  preset: group.expressionPreset,
                  isBinary: group.isBinary,
                  binaryRounding: .nearest,
-                 overrideBlink: .none,
-                 overrideLookAt: .none,
-                 overrideMouth: .none,
                  morphBinds: group.binds.map {
-                     MorphBind(target: .mesh($0.mesh), index: $0.index, weight: $0.weight / 100.0)
-                 },
-                 materialColorBinds: [],
-                 textureTransformBinds: [])
+                     MorphBind(target: .mesh($0.mesh), index: $0.index, weight: Float($0.weight / 100.0))
+                 })
         }
     }
 
@@ -77,12 +129,11 @@ package struct VRMExpressionPlan {
             Clip(name: clip.name,
                  preset: clip.preset,
                  isBinary: clip.expression.isBinary ?? false,
-                 binaryRounding: .aboveHalf,
                  overrideBlink: clip.expression.overrideBlink ?? .none,
                  overrideLookAt: clip.expression.overrideLookAt ?? .none,
                  overrideMouth: clip.expression.overrideMouth ?? .none,
                  morphBinds: (clip.expression.morphTargetBinds ?? []).map {
-                     MorphBind(target: .node($0.node), index: $0.index, weight: $0.weight)
+                     MorphBind(target: .node($0.node), index: $0.index, weight: Float($0.weight))
                  },
                  materialColorBinds: (clip.expression.materialColorBinds ?? []).map {
                      MaterialColorBind(material: $0.material, type: $0.type, targetValue: $0.targetValue)

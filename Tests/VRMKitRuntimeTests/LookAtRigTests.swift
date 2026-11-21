@@ -63,7 +63,7 @@ struct LookAtRigTests {
 
     /// The expression weights a solve produced, empty for one that turned bones or moved
     /// nothing.
-    private static func weights(_ result: LookAtResult) -> [ExpressionKey: Double] {
+    private static func weights(_ result: LookAtResult) -> [ExpressionKey: Float] {
         guard case .weights(let weights) = result else { return [:] }
         return weights
     }

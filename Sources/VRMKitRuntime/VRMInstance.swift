@@ -35,17 +35,8 @@ public final class VRMInstance: GLTFInstance {
         }
     }
 
-    /// A node drawing a mesh, as an expression's morph bind addresses it.
-    final class MorphNode {
-        let index: Int
-
-        init(index: Int) {
-            self.index = index
-        }
-    }
-
     private let humanoidNodes: [HumanoidBone: Int]
-    let expressions = ExpressionRuntime<MorphNode>()
+    private let expressions = ExpressionRuntime()
     private var springBones = SpringBoneRig<GLTFPoseNode>()
     private var nodeConstraints = NodeConstraintRig<GLTFPoseNode>()
     private var lookAt = LookAtRig<GLTFPoseNode>()
@@ -57,9 +48,9 @@ public final class VRMInstance: GLTFInstance {
     private var changedMaterials: Set<Int> = []
     private var visibilityChanged = true
 
-    private lazy var expressionApplier = ExpressionApplier<MorphNode>(
+    private lazy var expressionApplier = ExpressionApplier(
         setMorphWeight: { [unowned self] weight, target, node in
-            setMorphWeight(weight, forTarget: target, ofNode: node.index)
+            setMorphWeight(weight, forTarget: target, ofNode: node)
         },
         setMaterialColor: { [unowned self] color, type, material in
             materialValues[material, default: .init()].colors[type] = color
@@ -68,8 +59,7 @@ public final class VRMInstance: GLTFInstance {
         setTextureTransform: { [unowned self] scale, offset, rotation, material in
             materialValues[material, default: .init()].uvTransform = (scale, offset, rotation)
             changedMaterials.insert(material)
-        },
-        didApply: {}
+        }
     )
 
     /// - Throws: when the asset was not read from a VRM, or the model states a spring,
@@ -104,43 +94,18 @@ public final class VRMInstance: GLTFInstance {
     }
 
     private func setUpExpressions(materialBase: MaterialBase) {
-        var morphNodes: [Int: MorphNode] = [:]
-        for node in asset.meshIndicesByNode.keys where morphWeights(ofNode: node) != nil {
-            morphNodes[node] = MorphNode(index: node)
-        }
+        let morphNodes = asset.meshIndicesByNode.keys.filter { morphWeights(ofNode: $0) != nil }
         expressions.setUp(
-            plan: VRMExpressionPlan(vrm: vrm),
-            morphBindings: { bind in
-                switch bind.target {
-                case .mesh(let index):
-                    return morphNodes.values.filter { asset.nodes[$0.index].mesh == index }.map {
-                        BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)
-                    }
-                case .node(let index):
-                    return morphNodes[index].map {
-                        [BlendShapeBinding(mesh: $0, index: bind.index, weight: bind.weight)]
-                    } ?? []
+            clips: VRMExpressionPlan(vrm: vrm).clips,
+            morphNodes: { target in
+                switch target {
+                case .mesh(let index): morphNodes.filter { asset.nodes[$0].mesh == index }
+                case .node(let index): morphNodes.contains(index) ? [index] : []
                 }
             },
-            materialColorBinding: { _, bind in
-                // A malformed bind only invalidates itself.
-                materialBase.color(bind.material, bind.type).map {
-                    ExpressionMaterialColorBinding(material: bind.material,
-                                                   type: bind.type,
-                                                   targetValue: bind.targetValue,
-                                                   baseValue: $0)
-                }
-            },
-            textureTransformBinding: { _, bind in
-                materialBase.uvTransform(bind.material).map {
-                    ExpressionTextureTransformBinding(material: bind.material,
-                                                      baseScale: $0.scale,
-                                                      baseOffset: $0.offset,
-                                                      baseRotation: $0.rotation,
-                                                      targetScale: bind.scale,
-                                                      targetOffset: bind.offset)
-                }
-            }
+            // A malformed bind only invalidates itself.
+            baseColor: materialBase.color,
+            baseUVTransform: materialBase.uvTransform
         )
     }
 
@@ -299,7 +264,7 @@ public final class VRMInstance: GLTFInstance {
     }
 
     public func expression(for key: ExpressionKey) -> Float {
-        Float(expressions.weight(for: key))
+        expressions.weight(for: key)
     }
 
     // MARK: - Gaze

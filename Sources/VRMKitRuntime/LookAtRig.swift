@@ -31,7 +31,7 @@ package enum LookAtResult {
     /// An eye bone was turned, so a renderer knows its skin pose is stale.
     case posedBones
     /// The look-at expression weights to apply.
-    case weights([ExpressionKey: Double])
+    case weights([ExpressionKey: Float])
 }
 
 /// The gaze of one model: the angles from the eyes to what they follow, and the eye
@@ -172,8 +172,8 @@ package final class LookAtRig<Node: VRMRuntimeNode> where Node.RuntimeNode == No
 
     /// The four look-at expressions weighed for this gaze. Both eyes move together, so
     /// the horizontal gaze passes through the outer map whichever way it goes.
-    private func expressionWeights(_ plan: VRMLookAtPlan, yaw: Float, pitch: Float) -> [ExpressionKey: Double] {
-        func weight(_ value: Float) -> Double { Double(value.clamped(to: 0...1)) }
+    private func expressionWeights(_ plan: VRMLookAtPlan, yaw: Float, pitch: Float) -> [ExpressionKey: Float] {
+        func weight(_ value: Float) -> Float { value.clamped(to: 0...1) }
         return [
             .preset(.lookLeft): yaw > 0 ? weight(plan.horizontalOuter.map(yaw)) : 0,
             .preset(.lookRight): yaw < 0 ? weight(plan.horizontalOuter.map(-yaw)) : 0,

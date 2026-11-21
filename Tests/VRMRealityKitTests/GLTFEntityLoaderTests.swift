@@ -769,11 +769,15 @@ struct GLTFEntityLoaderTests {
         }
 
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
-        let clip = try #require(vrmEntity.vrmInstance?.expressions.clips.values.first { clip in
-            clip.values.contains { $0.weight > 0 }
+        let clip = try #require(VRMExpressionPlan(vrm: vrmEntity.vrm).clips.first { clip in
+            clip.morphBinds.contains { $0.weight > 0 }
         })
-        let binding = try #require(clip.values.first { $0.weight > 0 })
-        let meshes = try #require(vrmEntity.morphBindings[binding.mesh.index]?.modelEntities)
+        let binding = try #require(clip.morphBinds.first { $0.weight > 0 })
+        guard case .mesh(let meshIndex) = binding.target else {
+            throw VRMError.dataInconsistent("A VRM 0.x bind names a mesh")
+        }
+        let node = try #require(vrmEntity.gltf.nodes.firstIndex { $0.mesh == meshIndex })
+        let meshes = try #require(vrmEntity.morphBindings[node]?.modelEntities)
         // The bind resolved to entities of the scene, not to a clone template.
         #expect(!meshes.isEmpty)
         #expect(meshes.allSatisfy { TestSupport.isDescendant($0, of: vrmEntity) })
