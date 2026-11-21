@@ -238,7 +238,7 @@ struct RealityKitCostBenchmark {
 
         for (label, shaders, limit) in [
             ("outlines", GLTFEntityLoader.defaultShaders, nil),
-            ("no outlines", [MToonShader(outlinePass: .never)] as [any GLTFMaterialShader], nil),
+            ("no outlines", [OutlinelessMToonShader()] as [any GLTFMaterialShader], nil),
             ("2048 textures", GLTFEntityLoader.defaultShaders, 2048),
             ("1024 textures", GLTFEntityLoader.defaultShaders, 1024),
         ] {
@@ -410,7 +410,7 @@ struct RealityKitCostBenchmark {
         // Every skeleton is drawn by a model entity and its outline twin, each deforming a
         // mesh of its own: what the second mesh per skeleton costs.
         let bare = try await VRMEntityLoader(withData: VRMSampleAsset.seedSan.data,
-                                             shaders: [MToonShader(outlinePass: .never)]).loadEntity()
+                                             shaders: [OutlinelessMToonShader()]).loadEntity()
         bare.isAutomaticUpdateEnabled = false
         for _ in 0..<600 { bare.update(deltaTime: 1.0 / 60.0) }
         print("BENCH   (skin bindings: \(coarse.skinBindings.count) with outlines,"
@@ -435,6 +435,20 @@ struct RealityKitCostBenchmark {
         let start = CFAbsoluteTimeGetCurrent()
         for _ in 0..<frames { body() }
         return (CFAbsoluteTimeGetCurrent() - start) * 1_000_000 / Double(frames)
+    }
+}
+
+/// MToon with the passes it adds left out, which are its outlines.
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+private final class OutlinelessMToonShader: GLTFMaterialShader {
+    private let mtoon = MToonShader()
+
+    var supportedRequiredExtensions: Set<String> { mtoon.supportedRequiredExtensions }
+
+    func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
+        var shaded = try mtoon.makeMaterial(for: context)
+        shaded?.additionalPasses = []
+        return shaded
     }
 }
 #endif

@@ -34,12 +34,12 @@ enum TestSupport {
         MToonShaderLibraryLoader.resourceName != nil
     }
 
-    /// The default chain with MToon outlines disabled, for tests that inspect
+    /// The default chain with MToon's outline passes left out, for tests that inspect
     /// materials without outline siblings in the way.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
     @MainActor
     static var noOutlineShaders: [any GLTFMaterialShader] {
-        [MToonShader(outlinePass: .never)]
+        [OutlinelessMToonShader()]
     }
 
     static var seedSanData: Data { VRMSampleAsset.seedSan.data }
@@ -398,6 +398,20 @@ extension MaterialInspectingLoader {
 
     func sampler(withTextureIndex index: Int) throws -> MaterialParameters.Texture.Sampler {
         try inspector.sampler(withTextureIndex: index)
+    }
+}
+
+/// MToon with the passes it adds left out, which are its outlines.
+@available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
+final class OutlinelessMToonShader: GLTFMaterialShader {
+    private let mtoon = MToonShader()
+
+    var supportedRequiredExtensions: Set<String> { mtoon.supportedRequiredExtensions }
+
+    func makeMaterial(for context: GLTFMaterialShaderContext) throws -> GLTFShadedMaterial? {
+        var shaded = try mtoon.makeMaterial(for: context)
+        shaded?.additionalPasses = []
+        return shaded
     }
 }
 

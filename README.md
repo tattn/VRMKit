@@ -190,7 +190,6 @@ Both loaders take a chain of material shaders. Each material goes to the shaders
 
 ```swift
 // The default chain is [MToonShader()]: MToon with authored outlines.
-let noOutlines = try VRMEntityLoader(named: "model.vrm", shaders: [MToonShader(outlinePass: .never)])
 let noMToon = try VRMEntityLoader(named: "model.vrm", shaders: [])
 
 // Toon-shade a plain glTF, or a VRM whose materials are not MToon.
@@ -244,6 +243,7 @@ A pass can be built hidden and shown later with `setPassEnabled`, for the whole 
 ```swift
 let selection = entity.materialIndices(under: selectedNode)
 entity.setPassEnabled(true, named: "highlight", forMaterials: selection)
+entity.setPassEnabled(false, named: MToonShader.outlinePassName) // no MToon outlines
 ```
 
 A pass whose geometry modifier moves vertices outside the mesh's bounds sets `applyBoundsBudget` to receive the room the loader widened the culling bounds by.

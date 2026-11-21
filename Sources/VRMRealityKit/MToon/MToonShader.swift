@@ -34,22 +34,13 @@ public final class MToonShader: GLTFMaterialShader {
         public static var convertAll: Source { .convertAll(MToonConversionStyle()) }
     }
 
-    /// When an MToon material gets the sibling entity drawing its inverted-hull
-    /// outline. The pass set is fixed at load, and a pass can be hidden at runtime
-    /// with ``GLTFEntity/setPassEnabled(_:named:)``.
-    public enum OutlinePass: Sendable {
-        /// A pass for materials whose MToon data draws an outline. The default.
-        case automatic
-        /// No outline passes; even authored outlines are not drawn.
-        case never
-    }
-
     /// The ``GLTFShadedMaterial/Pass/name`` of the outline pass, so the mesh
-    /// "hair" is outlined by its sibling "hair_mtoonOutline".
+    /// "hair" is outlined by its sibling "hair_mtoonOutline". A material whose MToon
+    /// data draws an outline gets one at load, which
+    /// ``GLTFEntity/setPassEnabled(_:named:forMaterials:)`` hides at runtime.
     public static let outlinePassName = "mtoonOutline"
 
     public let source: Source
-    public let outlinePass: OutlinePass
     /// The Metal functions the material and its outline are drawn with.
     public let functions: MToonShaderFunctions
     /// How many rows each material leaves to the app through ``MToonAnimatableMaterialState/setUserParameter(_:at:)``,
@@ -58,11 +49,9 @@ public final class MToonShader: GLTFMaterialShader {
     public let userParameterCount: Int
 
     public init(source: Source = .authoredOnly,
-                outlinePass: OutlinePass = .automatic,
                 functions: MToonShaderFunctions = MToonShaderFunctions(),
                 userParameterCount: Int = 0) {
         self.source = source
-        self.outlinePass = outlinePass
         self.functions = functions
         self.userParameterCount = userParameterCount
     }
@@ -140,7 +129,7 @@ public final class MToonShader: GLTFMaterialShader {
                                                                          transparentWithZWrite: descriptor.transparentWithZWrite,
                                                                          offset: descriptor.renderQueueOffsetNumber),
                                         makeAnimatableState: { MToonAnimatableMaterialState(parameters: parameters) })
-        if outlinePass == .automatic, descriptor.hasOutline {
+        if descriptor.hasOutline {
             var pass = GLTFShadedMaterial.Pass(material: try customMToonOutlineMaterial(state, context: context),
                                                name: Self.outlinePassName)
             pass.applyBoundsBudget = Self.applyingOutlineBudget
