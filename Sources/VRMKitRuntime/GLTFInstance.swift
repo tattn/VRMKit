@@ -6,8 +6,8 @@ import Foundation
 import SIMDCompat
 import VRMKit
 
-/// What one update of an instance changed, for a renderer to draw: only what moved since
-/// the update before.
+/// What changed in an instance since one renderer last read it, for that renderer to draw
+/// (``GLTFOutputReader``).
 public struct GLTFFrameOutput: Sendable {
     /// The skin one node draws its mesh through, as posed: per joint, in the asset skin's
     /// order, the joint's transform in the space of the node drawing the mesh times its
@@ -53,20 +53,33 @@ public struct GLTFFrameOutput: Sendable {
 /// One model built from an asset, moving on its own: its pose, its animations and the
 /// morph weights its nodes draw with. It holds no renderer type and is bound to no actor:
 /// one owner drives it, from whichever thread that owner runs on.
+///
+/// A renderer reads what moved through a reader of its own (``makeOutputReader(solvesSkins:)``),
+/// so any number of renderers can draw one instance.
 public class GLTFInstance {
     public let asset: GLTFAsset
     public let pose: GLTFPose
-    /// Whether an update solves the skins into its output. A renderer skinning from
-    /// ``pose`` itself turns it off, and can turn it on again for another renderer drawing
-    /// the same instance: the two follow the pose's moves apart.
-    public var outputsSkins = true
 
     package let animationPlayer: GLTFAnimationPlayer
     private lazy var animationDecoder = GLTFAnimationDecoder(document: asset.document)
     private var animationRuntimes: [Int: GLTFAnimationRuntime] = [:]
-    private var morphWeights: [Int: [Float]] = [:]
-    private var changedMorphNodes: Set<Int> = []
-    private var hasOutputSkins = false
+    /// Every node drawing a mesh with morph targets, in node order, and per node its slot
+    /// among them, -1 for the others: a frame writes weights hundreds of times.
+    private let morphNodes: [Int]
+    private let morphSlotsByNode: [Int]
+    private var morphWeightsBySlot: [[Float]]
+    private var morphChangesBySlot: [UInt64]
+    private var lastMorphChange: UInt64 = 1
+
+    /// What a change is stamped with. A reader taking what changed closes it, so whatever
+    /// changes after is stamped later than anything that reader has read.
+    private(set) var changeStamp: UInt64 = 1
+    /// How deep the public calls changing what readers read are nested, so that only the
+    /// outermost one says so.
+    private var changeDepth = 0
+    /// Called once a call from outside has changed what readers read, after an update
+    /// included, for a renderer showing the instance as it stands.
+    package var didChange: (() -> Void)?
 
     public convenience init(asset: GLTFAsset) throws {
         self.init(asset: asset, pose: asset.makePose())
@@ -78,12 +91,20 @@ public class GLTFInstance {
         self.asset = asset
         self.pose = pose
         animationPlayer = GLTFAnimationPlayer(pose: pose)
-        for (node, mesh) in asset.meshIndicesByNode {
+        var morphNodes: [Int] = []
+        var morphWeights: [[Float]] = []
+        var morphSlots = [Int](repeating: -1, count: asset.nodes.count)
+        for (node, mesh) in asset.meshIndicesByNode.sorted(by: { $0.key < $1.key }) {
             let count = asset.meshes[mesh].geometry.blendShapeTargetCount
             guard count > 0 else { continue }
-            morphWeights[node] = asset.nodes[node].initialMorphWeights ?? Array(repeating: 0, count: count)
-            changedMorphNodes.insert(node)
+            morphSlots[node] = morphNodes.count
+            morphNodes.append(node)
+            morphWeights.append(asset.nodes[node].initialMorphWeights ?? Array(repeating: 0, count: count))
         }
+        self.morphNodes = morphNodes
+        morphSlotsByNode = morphSlots
+        morphWeightsBySlot = morphWeights
+        morphChangesBySlot = Array(repeating: changeStamp, count: morphNodes.count)
         animationPlayer.didApply = { [unowned self] output in
             didAnimate(output)
         }
@@ -104,19 +125,22 @@ public class GLTFInstance {
         guard animations.indices.contains(index) else {
             throw VRMError._dataInconsistent("animation index \(index) is out of range for \(animations.count) animations")
         }
-        return animationPlayer.start(animations[index],
-                                     runtime: try animationRuntime(at: index),
-                                     ownsRuntime: false,
-                                     loops: loops,
-                                     speed: speed)
+        let runtime = try animationRuntime(at: index)
+        return change {
+            animationPlayer.start(animations[index], runtime: runtime, ownsRuntime: false, loops: loops, speed: speed)
+        }
     }
 
     private func animationRuntime(at index: Int) throws -> GLTFAnimationRuntime {
         if let cached = animationRuntimes[index] { return cached }
+        var morphTargetCounts: [Int: Int] = [:]
+        for (slot, node) in morphNodes.enumerated() {
+            morphTargetCounts[node] = morphWeightsBySlot[slot].count
+        }
         let runtime = try GLTFAnimationRuntime(animation: try asset.document.gltf.load(\.animations, at: index),
                                                decoder: animationDecoder,
                                                posedNodes: Set(asset.nodes.indices),
-                                               morphTargetCounts: morphWeights.mapValues(\.count))
+                                               morphTargetCounts: morphTargetCounts)
         animationRuntimes[index] = runtime
         return runtime
     }
@@ -124,7 +148,7 @@ public class GLTFInstance {
     /// Passes on what the animations set beyond the pose.
     func didAnimate(_ output: GLTFAnimationOutput) {
         for (node, weights) in output.morphWeights {
-            setMorphWeights(weights, ofNode: node)
+            writeMorphWeights(weights, ofNode: node)
         }
     }
 
@@ -133,68 +157,91 @@ public class GLTFInstance {
     /// The weights of every morph target of the mesh the node draws. Nil for a node drawing
     /// no mesh with morph targets.
     public func morphWeights(ofNode node: Int) -> [Float]? {
-        morphWeights[node]
+        morphSlot(ofNode: node).map { morphWeightsBySlot[$0] }
     }
 
     /// Sets the weights of every morph target of the mesh the node draws.
     public func setMorphWeights(_ weights: [Float], ofNode node: Int) {
-        guard let current = morphWeights[node], current.count == weights.count, current != weights else { return }
-        morphWeights[node] = weights
-        changedMorphNodes.insert(node)
+        change { writeMorphWeights(weights, ofNode: node) }
+    }
+
+    private func writeMorphWeights(_ weights: [Float], ofNode node: Int) {
+        guard let slot = morphSlot(ofNode: node), morphWeightsBySlot[slot].count == weights.count,
+              morphWeightsBySlot[slot] != weights else { return }
+        morphWeightsBySlot[slot] = weights
+        stampMorph(slot)
     }
 
     func setMorphWeight(_ weight: Float, forTarget target: Int, ofNode node: Int) {
-        guard let current = morphWeights[node], current.indices.contains(target), current[target] != weight else { return }
-        morphWeights[node]?[target] = weight
-        changedMorphNodes.insert(node)
+        guard let slot = morphSlot(ofNode: node), morphWeightsBySlot[slot].indices.contains(target),
+              morphWeightsBySlot[slot][target] != weight else { return }
+        morphWeightsBySlot[slot][target] = weight
+        stampMorph(slot)
+    }
+
+    private func morphSlot(ofNode node: Int) -> Int? {
+        guard morphSlotsByNode.indices.contains(node) else { return nil }
+        let slot = morphSlotsByNode[node]
+        return slot < 0 ? nil : slot
+    }
+
+    private func stampMorph(_ slot: Int) {
+        morphChangesBySlot[slot] = changeStamp
+        lastMorphChange = changeStamp
     }
 
     // MARK: - A frame
 
-    /// Advances the running animations by `deltaTime` and returns what moved.
-    public func update(deltaTime: TimeInterval) -> GLTFFrameOutput {
-        animationPlayer.advance(deltaTime: max(0, deltaTime))
-        return takeOutput()
+    /// Advances the running animations by `deltaTime`. What moved is read through a reader.
+    public func update(deltaTime: TimeInterval) {
+        advanceAnimations(deltaTime: deltaTime)
     }
 
-    /// What changed since the last output, which this then forgets. The skins are left to
-    /// the next output that solves them when not `solvingSkins`: for what changes between
-    /// frame updates, such as an expression set from outside, so that a pose moved
-    /// meanwhile is solved once, with the frame.
-    package func takeOutput(solvingSkins: Bool = true) -> GLTFFrameOutput {
-        var output = GLTFFrameOutput()
-        for node in changedMorphNodes {
-            output.morphWeights[node] = morphWeights[node]
+    /// Advances the running animations alone, whatever else an update of a subclass moves.
+    package func advanceAnimations(deltaTime: TimeInterval) {
+        change { animationPlayer.advance(deltaTime: max(0, deltaTime)) }
+    }
+
+    /// Runs a call from outside that changes what readers read, then says so once, unless
+    /// it runs inside another such call.
+    func change<Result>(_ body: () throws -> Result) rethrows -> Result {
+        changeDepth += 1
+        defer {
+            changeDepth -= 1
+            if changeDepth == 0 { didChange?() }
         }
-        changedMorphNodes.removeAll(keepingCapacity: true)
-        if outputsSkins, solvingSkins {
-            // A moved node moves every joint below it, so any move solves every skin: a
-            // model's skins hold a few hundred joints at most.
-            if pose.takeHasMovedSinceSkinOutput() || !hasOutputSkins {
-                output.skins = skinPoses()
-                hasOutputSkins = true
+        return try body()
+    }
+
+    // MARK: - Readers
+
+    /// A reader of what moves in this instance, which takes everything first and then only
+    /// what changed since it last took. Each renderer drawing the instance keeps its own.
+    ///
+    /// - Parameter solvesSkins: whether the reader's outputs carry the skins, for a renderer
+    ///   skinning from them rather than from ``pose``. No skin is solved for an instance no
+    ///   such reader reads.
+    public func makeOutputReader(solvesSkins: Bool) -> GLTFOutputReader {
+        GLTFOutputReader(instance: self, solvesSkins: solvesSkins)
+    }
+
+    /// What changed since `stamp`, which this moves on to now.
+    func takeChanges(since stamp: inout UInt64) -> GLTFFrameOutput {
+        var output = GLTFFrameOutput()
+        let seen = stamp
+        stamp = changeStamp
+        changeStamp &+= 1
+        if lastMorphChange > seen {
+            for slot in morphNodes.indices where morphChangesBySlot[slot] > seen {
+                output.morphWeights[morphNodes[slot]] = morphWeightsBySlot[slot]
             }
         }
-        addOutput(to: &output)
+        addChanges(since: seen, to: &output)
         return output
     }
 
-    /// Adds what a subclass drives to an output.
-    func addOutput(to output: inout GLTFFrameOutput) {}
-
-    /// Everything the instance draws with as it stands, as an output in which all of it
-    /// changed, skins included: for a renderer starting to draw a model that has been moving.
-    /// What the next update hands back stays as it is.
-    public func currentOutput() -> GLTFFrameOutput {
-        var output = GLTFFrameOutput()
-        output.morphWeights = morphWeights
-        output.skins = skinPoses()
-        addCurrentOutput(to: &output)
-        return output
-    }
-
-    /// Adds all of what a subclass drives to an output.
-    func addCurrentOutput(to output: inout GLTFFrameOutput) {}
+    /// Adds what a subclass drives and has changed since `stamp` to an output.
+    func addChanges(since stamp: UInt64, to output: inout GLTFFrameOutput) {}
 
     /// Every node drawing a skinned mesh, in node order, with its skin.
     private lazy var skinnedNodes: [(node: Int, skinIndex: Int)] = asset.meshIndicesByNode
@@ -202,7 +249,7 @@ public class GLTFInstance {
         .compactMap { node, mesh in asset.meshes[mesh].skinIndex.map { (node, $0) } }
 
     /// The skin of every node drawing a skinned mesh, as posed.
-    private func skinPoses() -> [GLTFFrameOutput.SkinPose] {
+    func skinPoses() -> [GLTFFrameOutput.SkinPose] {
         skinnedNodes.map { node, skinIndex in
             let skin = asset.skins[skinIndex]
             var matrices: [simd_float4x4] = []
@@ -222,5 +269,38 @@ public class GLTFInstance {
             }
             return GLTFFrameOutput.SkinPose(nodeIndex: node, skinIndex: skinIndex, jointMatrices: matrices)
         }
+    }
+}
+
+/// One renderer's place in what an instance changes: every take hands back what changed
+/// since the take before, the first everything, whatever other readers of the instance take.
+///
+/// It holds its instance, which holds no reader, so a renderer stops reading by dropping it.
+public struct GLTFOutputReader {
+    public let instance: GLTFInstance
+    /// Whether the outputs carry the skins.
+    public let solvesSkins: Bool
+    private var stamp: UInt64 = 0
+    /// The pose's moves the skins were last solved at, nil before the first solve.
+    private var solvedPoseMoves: UInt64?
+
+    init(instance: GLTFInstance, solvesSkins: Bool) {
+        self.instance = instance
+        self.solvesSkins = solvesSkins
+    }
+
+    /// What changed since the last take: everything on the first. The skins come only when
+    /// ``solvesSkins``, all of them whenever any node has moved, since a moved node moves
+    /// every joint below it.
+    public mutating func takeChanges() -> GLTFFrameOutput {
+        var output = instance.takeChanges(since: &stamp)
+        if solvesSkins {
+            let moves = instance.pose.moveCount
+            if solvedPoseMoves != moves {
+                output.skins = instance.skinPoses()
+                solvedPoseMoves = moves
+            }
+        }
+        return output
     }
 }

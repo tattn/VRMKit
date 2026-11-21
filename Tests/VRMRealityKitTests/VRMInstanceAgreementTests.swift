@@ -26,7 +26,8 @@ struct VRMInstanceAgreementTests {
         instance.pose.setLocalRotation(turn, ofNode: head)
         entity.flushDeformation()
 
-        let instanceSkins = Dictionary(uniqueKeysWithValues: instance.takeOutput().skins.map { ($0.nodeIndex, $0) })
+        var reader = instance.makeOutputReader(solvesSkins: true)
+        let instanceSkins = Dictionary(uniqueKeysWithValues: reader.takeChanges().skins.map { ($0.nodeIndex, $0) })
         var compared = 0
         for modelEntity in entity.modelEntitiesInHierarchy {
             guard let mesh = modelEntity.deformedMesh, let jointCount = mesh.source.skin?.parentIndices.count,

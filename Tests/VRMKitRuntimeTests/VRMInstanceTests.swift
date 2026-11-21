@@ -5,9 +5,9 @@ import VRMKit
 import VRMTestSupport
 @testable import VRMKitRuntime
 
-/// A model built from an asset moves with no renderer: an update hands back what moved,
-/// the skins as posed, the morph weights and material values the expressions drive and how
-/// each mesh shows.
+/// A model built from an asset moves with no renderer: a reader hands back what moved, the
+/// skins as posed, the morph weights and material values the expressions drive and how each
+/// mesh shows.
 @Suite
 struct VRMInstanceTests {
     /// An asset is immutable, so the tests share one read per fixture and each builds its own instance.
@@ -19,11 +19,12 @@ struct VRMInstanceTests {
         return try VRMInstance(asset: read)
     }
 
-    /// The first output carries everything, and a frame where nothing moves carries nothing.
+    /// The first take carries everything, and one after nothing has moved carries nothing.
     @Test
-    func testTheFirstOutputCarriesEverythingAndAStillFrameNothing() async throws {
+    func testTheFirstTakeCarriesEverythingAndOneAfterNothing() async throws {
         let model = try await instance(.seedSan)
-        let first = model.takeOutput()
+        var reader = model.makeOutputReader(solvesSkins: true)
+        let first = reader.takeChanges()
         #expect(!first.skins.isEmpty)
         #expect(!first.morphWeights.isEmpty)
         #expect(!first.visibility.isEmpty)
@@ -31,7 +32,7 @@ struct VRMInstanceTests {
             #expect(skin.jointMatrices.count == model.asset.skins[skin.skinIndex].joints.count)
         }
 
-        let still = model.takeOutput()
+        let still = reader.takeChanges()
         #expect(still.skins.isEmpty)
         #expect(still.morphWeights.isEmpty)
         #expect(still.visibility.isEmpty)
@@ -40,10 +41,11 @@ struct VRMInstanceTests {
     @Test
     func testAnExpressionMovesTheMorphWeightsOfTheMeshesItBinds() async throws {
         let model = try await instance(.seedSan)
-        _ = model.takeOutput()
+        var reader = model.makeOutputReader(solvesSkins: true)
+        _ = reader.takeChanges()
         let key = try #require(model.availableExpressions.first { $0.key == .preset(.aa) }?.key)
         model.setExpressions([key: 1])
-        let output = model.takeOutput()
+        let output = reader.takeChanges()
         #expect(output.morphWeights.values.contains { $0.contains { $0 > 0 } })
         #expect(model.expression(for: key) == 1)
     }
@@ -52,12 +54,14 @@ struct VRMInstanceTests {
     @Test
     func testABonePosedInAnUpdateHandlerMovesItsJoint() async throws {
         let model = try await instance(.seedSan)
-        let first = model.takeOutput()
+        var reader = model.makeOutputReader(solvesSkins: true)
+        let first = reader.takeChanges()
         let head = try #require(model.node(for: .head))
         model.setUpdateHandler({ _ in
             model.pose.setLocalRotation(simd_quatf(angle: 0.5, axis: SIMD3(0, 1, 0)), ofNode: head)
         }, at: .afterAnimation)
-        let output = model.update(deltaTime: 1 / 60)
+        model.update(deltaTime: 1 / 60)
+        let output = reader.takeChanges()
         let skin = try #require(output.skins.first { model.asset.skins[$0.skinIndex].joints.contains(head) })
         let joint = try #require(model.asset.skins[skin.skinIndex].joints.firstIndex(of: head))
         let before = try #require(first.skins.first { $0.nodeIndex == skin.nodeIndex })
@@ -68,12 +72,13 @@ struct VRMInstanceTests {
     @Test
     func testTheFirstPersonViewCutsTheHeadOut() async throws {
         let model = try await instance(.aliciaSolid)
-        _ = model.takeOutput()
+        var reader = model.makeOutputReader(solvesSkins: false)
+        _ = reader.takeChanges()
         model.firstPersonRenderMode = .firstPerson
-        let output = model.takeOutput()
+        let output = reader.takeChanges()
         #expect(output.visibility.values.contains(.firstPersonCut))
         model.firstPersonRenderMode = .firstPerson
-        #expect(model.takeOutput().visibility.isEmpty)
+        #expect(reader.takeChanges().visibility.isEmpty)
     }
 
     /// Without the cut, an `auto` mesh draws whole for a first-person camera too.
@@ -82,9 +87,10 @@ struct VRMInstanceTests {
         let read = try await GLTFAsset.load(vrm: try VRM(data: VRMSampleAsset.aliciaSolid.data),
                                             preparesFirstPerson: false)
         let model = try VRMInstance(asset: read)
-        _ = model.takeOutput()
+        var reader = model.makeOutputReader(solvesSkins: false)
+        _ = reader.takeChanges()
         model.firstPersonRenderMode = .firstPerson
-        let output = model.takeOutput()
+        let output = reader.takeChanges()
         #expect(!output.visibility.isEmpty)
         #expect(!output.visibility.values.contains(.firstPersonCut))
     }
@@ -96,7 +102,7 @@ struct VRMInstanceTests {
         let hips = try #require(model.node(for: .hips))
         let rest = model.pose.localTransform(ofNode: hips)
         let controller = try model.playAnimation(try VRMAnimation(withURL: VRMASampleAsset.walk.url), loops: true)
-        _ = model.update(deltaTime: controller.animation.duration / 3)
+        model.update(deltaTime: controller.animation.duration / 3)
         let moved = model.pose.localTransform(ofNode: hips)
         #expect(moved.translation != rest.translation || moved.rotation != rest.rotation)
     }
@@ -121,6 +127,37 @@ struct VRMInstanceTests {
     func testAPlainGLTFMovesWithoutTheVRMLayers() async throws {
         let asset = try await GLTFAsset.load(document: try GLTFDocument(withURL: GLTFSampleAsset.simpleSkin.url))
         #expect(throws: VRMError.self) { try VRMInstance(asset: asset) }
-        #expect(!(try GLTFInstance(asset: asset)).takeOutput().skins.isEmpty)
+        var reader = try GLTFInstance(asset: asset).makeOutputReader(solvesSkins: true)
+        #expect(!reader.takeChanges().skins.isEmpty)
+    }
+
+    /// Readers follow one instance apart: what one takes, another still takes, and a change
+    /// between frames hands the skins of the frame after to each reader that solves them.
+    @Test
+    func testReadersFollowOneInstanceApart() async throws {
+        let model = try await instance(.seedSan)
+        var first = model.makeOutputReader(solvesSkins: true)
+        var second = model.makeOutputReader(solvesSkins: true)
+        var unskinned = model.makeOutputReader(solvesSkins: false)
+        _ = first.takeChanges()
+        #expect(unskinned.takeChanges().skins.isEmpty)
+
+        model.setExpressions([.preset(.aa): 1])
+        let changed = first.takeChanges()
+        #expect(!changed.morphWeights.isEmpty)
+        #expect(changed.skins.isEmpty)
+        #expect(!unskinned.takeChanges().morphWeights.isEmpty)
+
+        let head = try #require(model.node(for: .head))
+        model.pose.setLocalRotation(simd_quatf(angle: 0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
+        model.update(deltaTime: 1 / 60)
+        #expect(!first.takeChanges().skins.isEmpty)
+        #expect(first.takeChanges().skins.isEmpty)
+
+        // The second reader has taken nothing yet, so it takes everything, the expression included.
+        let late = second.takeChanges()
+        #expect(!late.skins.isEmpty)
+        #expect(late.morphWeights.values.contains { $0.contains(1) })
+        #expect(Set(late.visibility.keys) == Set(model.asset.meshIndicesByNode.keys))
     }
 }

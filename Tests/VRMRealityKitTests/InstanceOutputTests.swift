@@ -9,84 +9,69 @@ import VRMTestSupport
 @testable import VRMRealityKit
 
 /// An app drawing a model itself from the instance a ``GLTFEntity`` holds: it reads the vertex
-/// data from the asset and follows the outputs the entity draws, while the entity keeps its
-/// RealityKit meshes still.
+/// data from the asset and what moves through a reader of its own, while the entity draws from
+/// its own reader.
 @Suite
 @MainActor
 struct InstanceOutputTests {
-    /// The handler is given every output the entity draws, the expressions set between updates
-    /// included.
+    /// An app's reader takes what the entity draws, the expressions set between updates included,
+    /// and the skins only with the frame that moves the pose.
     @Test
-    func testTheOutputHandlerSeesWhatTheEntityDraws() async throws {
+    func testAnAppReaderTakesWhatTheEntityDraws() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
-        var outputs: [GLTFFrameOutput] = []
-        entity.setOutputHandler { outputs.append($0) }
-        entity.instance?.outputsSkins = true
+        let instance = try #require(entity.instance)
+        var reader = instance.makeOutputReader(solvesSkins: true)
+        let first = reader.takeChanges()
+        #expect(!first.skins.isEmpty)
+        #expect(!first.visibility.isEmpty)
 
-        // The skins come with the frame, not with a value set between frames.
         entity.setExpressions([.preset(.aa): 1])
-        let morphed = try #require(outputs.last)
+        let morphed = reader.takeChanges()
         #expect(morphed.morphWeights.values.contains { $0.contains(1) })
         #expect(morphed.skins.isEmpty)
 
         let head = try #require(entity.humanoid.node(for: .head).flatMap(entity.nodeIndex(of:)))
         entity.pose?.setLocalRotation(simd_quatf(angle: 0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
         entity.update(deltaTime: 1.0 / 60)
-        #expect(outputs.count == 2)
-        #expect(outputs.last?.skins.isEmpty == false)
-
-        entity.setOutputHandler(nil)
-        entity.setExpressions([.preset(.aa): 0])
-        #expect(outputs.count == 2)
+        #expect(!reader.takeChanges().skins.isEmpty)
+        #expect(reader.takeChanges().skins.isEmpty)
     }
 
-    /// The current output holds all of what the instance draws with, and leaves what the next
-    /// output hands back as it was.
+    /// An expression set on the instance between frames reaches the entity's meshes before any
+    /// update, as it reaches an app's reader.
     @Test
-    func testTheCurrentOutputHoldsEverything() async throws {
+    func testAChangeBetweenFramesReachesTheEntity() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
-        let instance = try #require(entity.instance)
-        let asset = instance.asset
-        entity.setExpressions([.preset(.happy): 1])
-        instance.outputsSkins = true
-        _ = instance.takeOutput()
-        let head = try #require(entity.humanoid.node(for: .head).flatMap(entity.nodeIndex(of:)))
-        instance.pose.setLocalRotation(simd_quatf(angle: 0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
+        let instance = try #require(entity.instance as? VRMInstance)
+        let node = try #require(entity.morphBindings.keys.first { instance.morphWeights(ofNode: $0) != nil })
+        let mesh = try #require(entity.morphBindings[node]?.modelEntities.first?.deformedMesh)
 
-        let current = instance.currentOutput()
-        let skinnedNodes = asset.meshIndicesByNode.filter { asset.meshes[$0.value].skinIndex != nil }.keys
-        let morphedNodes = asset.meshIndicesByNode.filter { asset.meshes[$0.value].geometry.blendShapeTargetCount > 0 }.keys
-        #expect(Set(current.skins.map(\.nodeIndex)) == Set(skinnedNodes))
-        #expect(Set(current.morphWeights.keys) == Set(morphedNodes))
-        #expect(Set(current.visibility.keys) == Set(asset.meshIndicesByNode.keys))
-        #expect(current.morphWeights.values.contains { $0.contains(1) })
-
-        // The head moved after the last output, which the next one still hands back.
-        #expect(!instance.takeOutput().skins.isEmpty)
+        instance.setExpressions([.preset(.aa): 1])
+        #expect(mesh.blendShapeWeights == instance.morphWeights(ofNode: node))
     }
 
-    /// An instance handing out its skins and the entity skinning from the pose follow one pose
+    /// The entity skinning from the pose and an app's reader solving the skins follow one pose
     /// apart: neither takes the other's moves.
     @Test
-    func testTheSkinOutputAndTheEntitySkinningFollowThePoseApart() async throws {
+    func testAReaderAndTheEntitySkinningFollowThePoseApart() async throws {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.sharedLoader(.seedSan).loadEntity()
         let instance = try #require(entity.instance)
         let mesh = try #require(entity.deformedMeshes.first { $0.source.skin != nil })
-        instance.outputsSkins = true
-        _ = instance.takeOutput()
+        var reader = instance.makeOutputReader(solvesSkins: true)
+        _ = reader.takeChanges()
         let head = try #require(entity.humanoid.node(for: .head).flatMap(entity.nodeIndex(of:)))
 
         instance.pose.setLocalRotation(simd_quatf(angle: 0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
         var solved = mesh.jointTransforms
         entity.flushDeformation()
         #expect(mesh.jointTransforms != solved)
-        #expect(!instance.takeOutput().skins.isEmpty)
+        #expect(!reader.takeChanges().skins.isEmpty)
 
         instance.pose.setLocalRotation(simd_quatf(angle: -0.3, axis: SIMD3(0, 1, 0)), ofNode: head)
-        #expect(!instance.takeOutput().skins.isEmpty)
+        #expect(!reader.takeChanges().skins.isEmpty)
         solved = mesh.jointTransforms
         entity.flushDeformation()
         #expect(mesh.jointTransforms != solved)
@@ -129,11 +114,11 @@ struct InstanceOutputTests {
         guard #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) else { return }
         let entity = try await TestSupport.loadEntity(.animatedMorphCube)
         let instance = try #require(entity.instance)
-        var outputs: [GLTFFrameOutput] = []
-        entity.setOutputHandler { outputs.append($0) }
+        var reader = instance.makeOutputReader(solvesSkins: false)
+        _ = reader.takeChanges()
         try entity.playAnimation(at: 0, loops: true)
         entity.updateAnimations(deltaTime: 0.5)
-        #expect(outputs.contains { !$0.morphWeights.isEmpty })
+        #expect(!reader.takeChanges().morphWeights.isEmpty)
         #expect(instance.animationPlayer.isPlaying)
     }
 

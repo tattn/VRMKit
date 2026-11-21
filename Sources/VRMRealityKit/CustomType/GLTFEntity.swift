@@ -137,12 +137,11 @@ public class GLTFEntity: Entity {
         deformedMeshes.append(mesh)
     }
 
-    /// Holds off skinning and morphing the meshes, for an app drawing the model elsewhere from
-    /// ``instance``'s output while this entity stays in the scene: the pose and weights move on,
+    /// Holds off skinning and morphing the meshes, for an app drawing the model elsewhere from a
+    /// reader of ``instance`` while this entity stays in the scene: the pose and weights move on,
     /// but no skeleton is solved and no vertex is written. `false` deforms what moved meanwhile
     /// on the next update, and ``snapshot()`` deforms before it copies either way.
     public var isDeformationSuspended = false
-
 
     private(set) var skinBindings: [SkinBinding] = []
 
@@ -209,13 +208,16 @@ public class GLTFEntity: Entity {
 
     // MARK: - Instance
 
-    /// What moves the model, posing ``pose``; this entity draws what it hands back. Nil on a
-    /// `clone(recursive:)` copy, which only renders.
+    /// What moves the model, posing ``pose``. Nil on a `clone(recursive:)` copy, which only
+    /// renders.
     ///
-    /// An app drawing the model itself reads the vertex data from its asset, and what moves
-    /// from the outputs this entity draws (``setOutputHandler(_:)``).
-    public private(set) var instance: GLTFInstance?
-    private var outputHandler: (@MainActor (GLTFFrameOutput) -> Void)?
+    /// The entity shows whatever changes in it, at once for a change made between frames, such as
+    /// an expression set. An app drawing the model itself reads the vertex data from its asset,
+    /// and what moves through a reader of its own (``GLTFInstance/makeOutputReader(solvesSkins:)``).
+    public var instance: GLTFInstance? { ownInstance }
+    private var ownInstance: GLTFInstance?
+    /// The entity skins from ``pose`` itself, so its reader solves no skin.
+    private var outputReader: GLTFOutputReader?
 
     /// Called once per entity, right after its node hierarchy is built.
     func setUpInstance(asset: GLTFAsset) throws {
@@ -227,43 +229,30 @@ public class GLTFEntity: Entity {
 
     /// Has `instance`, which poses ``pose``, move the model, and draws where it stands.
     func adoptInstance(_ instance: GLTFInstance) {
-        // The entity skins from the pose itself.
-        instance.outputsSkins = false
+        // Weak, since an app may keep the instance past this entity.
         let player = instance.animationPlayer
-        player.didSeek = { [unowned self] in
+        player.didSeek = { [weak self] in
             MainActor.assumeIsolated {
-                applyInstanceOutput()
-                flushDeformation()
+                self?.presentInstanceChanges()
+                self?.flushDeformation()
             }
         }
-        player.didFinish = { [unowned self] in
-            MainActor.assumeIsolated { components.remove(GLTFAnimationPlaybackComponent.self) }
+        player.didFinish = { [weak self] in
+            MainActor.assumeIsolated { _ = self?.components.remove(GLTFAnimationPlaybackComponent.self) }
         }
-        self.instance = instance
-        applyInstanceOutput()
+        instance.didChange = { [weak self] in
+            MainActor.assumeIsolated { self?.presentInstanceChanges() }
+        }
+        ownInstance = instance
+        outputReader = instance.makeOutputReader(solvesSkins: false)
+        presentInstanceChanges()
     }
 
-    /// Hands `handler` every output of ``instance`` this entity draws, as it draws it, in place
-    /// of the one set before; nil removes it. It is for an app drawing the model from the same
-    /// instance, which can start from ``GLTFInstance/currentOutput()`` and follow from here.
-    ///
-    /// An output drawn between frame updates, as for an expression set, carries no skins: the
-    /// next update's, or ``updateSkinPose()``'s, does.
-    public func setOutputHandler(_ handler: (@MainActor (GLTFFrameOutput) -> Void)?) {
-        outputHandler = handler
-    }
-
-    /// Draws what the instance changed outside a frame update, with the skins only when
-    /// `solvingSkins`: a value set from outside does not move the pose the frame solves.
-    func applyInstanceOutput(solvingSkins: Bool = true) {
-        guard let instance else { return }
-        present(instance.takeOutput(solvingSkins: solvingSkins))
-    }
-
-    /// Draws `output` and hands it on.
-    func present(_ output: GLTFFrameOutput) {
+    /// Draws what the instance changed since this entity last drew it. The meshes are deformed
+    /// at the next update, or by ``updateSkinPose()``.
+    func presentInstanceChanges() {
+        guard let output = outputReader?.takeChanges() else { return }
         apply(output)
-        outputHandler?(output)
     }
 
     /// Writes what an output moved onto the entities drawing it.
@@ -690,16 +679,14 @@ public class GLTFEntity: Entity {
         }
     }
 
-    /// Draws what ``instance`` changed since the last update, and solves the skinned meshes
-    /// against the joints as they stand, where they have moved since the last solve, and
-    /// submits their deformation.
+    /// Solves the skinned meshes against the joints as they stand, where they have moved since
+    /// the last solve, and submits their deformation with the morph weights ``instance`` holds.
     ///
     /// The update loop does this once a frame, so this is for a caller reading or copying
     /// the model between updates: a `clone(recursive: true)` taken while a joint has moved
     /// carries the mesh as the last solve left it, which is a pose the joints no longer
     /// describe. ``snapshot()`` does it for you.
     public func updateSkinPose() {
-        applyInstanceOutput()
         flushDeformation()
     }
 

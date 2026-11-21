@@ -44,23 +44,38 @@ public final class VRMInstance: GLTFInstance {
     /// The pose the document describes before any animation runs, which retargeting reads.
     private var restPose: GLTFRestPose?
     private var updateHandlers: [VRMUpdateStage: (TimeInterval) -> Void] = [:]
-    private var materialValues: [Int: GLTFFrameOutput.MaterialValues] = [:]
-    private var changedMaterials: Set<Int> = []
-    private var visibilityChanged = true
+
+    /// What expressions set on one material, and the stamp of its last change.
+    private struct MaterialEntry {
+        var values = GLTFFrameOutput.MaterialValues()
+        var changed: UInt64 = 0
+
+        mutating func change(at stamp: UInt64, _ body: (inout GLTFFrameOutput.MaterialValues) -> Void) {
+            body(&values)
+            changed = stamp
+        }
+    }
+
+    private var materialEntries: [Int: MaterialEntry] = [:]
+    private var lastMaterialChange: UInt64 = 0
+    private var visibilityChange: UInt64 = 1
 
     private lazy var expressionApplier = ExpressionApplier(
         setMorphWeight: { [unowned self] weight, target, node in
             setMorphWeight(weight, forTarget: target, ofNode: node)
         },
         setMaterialColor: { [unowned self] color, type, material in
-            materialValues[material, default: .init()].colors[type] = color
-            changedMaterials.insert(material)
+            changeMaterial(material) { $0.colors[type] = color }
         },
         setTextureTransform: { [unowned self] scale, offset, rotation, material in
-            materialValues[material, default: .init()].uvTransform = (scale, offset, rotation)
-            changedMaterials.insert(material)
+            changeMaterial(material) { $0.uvTransform = (scale, offset, rotation) }
         }
     )
+
+    private func changeMaterial(_ material: Int, _ body: (inout GLTFFrameOutput.MaterialValues) -> Void) {
+        materialEntries[material, default: MaterialEntry()].change(at: changeStamp, body)
+        lastMaterialChange = changeStamp
+    }
 
     /// - Throws: when the asset was not read from a VRM, or the model states a spring,
     ///   constraint or gaze its nodes cannot hold.
@@ -150,23 +165,23 @@ public final class VRMInstance: GLTFInstance {
     // MARK: - A frame
 
     /// Advances the model by one frame: its animations, the code set with
-    /// ``setUpdateHandler(_:at:)``, node constraints, the gaze and spring bones, in that order,
-    /// and returns what moved.
-    public override func update(deltaTime: TimeInterval) -> GLTFFrameOutput {
+    /// ``setUpdateHandler(_:at:)``, node constraints, the gaze and spring bones, in that order.
+    /// What moved is read through a reader.
+    public override func update(deltaTime: TimeInterval) {
         let deltaTime = max(0, deltaTime)
-        animationPlayer.advance(deltaTime: deltaTime)
-        updateHandlers[.afterAnimation]?(deltaTime)
-        followPose(deltaTime: deltaTime)
-        updateHandlers[.beforeSkinning]?(deltaTime)
-        return takeOutput()
+        change {
+            animationPlayer.advance(deltaTime: deltaTime)
+            updateHandlers[.afterAnimation]?(deltaTime)
+            followPose(deltaTime: deltaTime)
+            updateHandlers[.beforeSkinning]?(deltaTime)
+        }
     }
 
     /// Advances only what follows the pose: node constraints, the gaze and spring bones. No
     /// animation advances and no update handler runs, so a pose held still keeps its shape
     /// while its spring bones settle.
-    public func updateSecondaryMotion(deltaTime: TimeInterval) -> GLTFFrameOutput {
-        followPose(deltaTime: max(0, deltaTime))
-        return takeOutput()
+    public func updateSecondaryMotion(deltaTime: TimeInterval) {
+        change { followPose(deltaTime: max(0, deltaTime)) }
     }
 
     private func followPose(deltaTime: TimeInterval) {
@@ -193,20 +208,15 @@ public final class VRMInstance: GLTFInstance {
         }
     }
 
-    override func addOutput(to output: inout GLTFFrameOutput) {
-        for material in changedMaterials {
-            output.materialValues[material] = materialValues[material]
+    override func addChanges(since stamp: UInt64, to output: inout GLTFFrameOutput) {
+        if lastMaterialChange > stamp {
+            for (material, entry) in materialEntries where entry.changed > stamp {
+                output.materialValues[material] = entry.values
+            }
         }
-        changedMaterials.removeAll(keepingCapacity: true)
-        if visibilityChanged {
+        if visibilityChange > stamp {
             output.visibility = visibility()
-            visibilityChanged = false
         }
-    }
-
-    override func addCurrentOutput(to output: inout GLTFFrameOutput) {
-        output.materialValues = materialValues
-        output.visibility = visibility()
     }
 
     // MARK: - Animations
@@ -226,11 +236,13 @@ public final class VRMInstance: GLTFInstance {
         // Retargeting is specific to this (animation, model) pair, so it is built per
         // playback and owned by its controller.
         let runtime = try VRMAnimationRuntime(animation: animation, animationIndex: animationIndex, model: model)
-        return animationPlayer.start(GLTFAnimation(index: animationIndex, name: runtime.name, duration: runtime.duration),
-                                     runtime: runtime,
-                                     ownsRuntime: true,
-                                     loops: loops,
-                                     speed: speed)
+        return change {
+            animationPlayer.start(GLTFAnimation(index: animationIndex, name: runtime.name, duration: runtime.duration),
+                                  runtime: runtime,
+                                  ownsRuntime: true,
+                                  loops: loops,
+                                  speed: speed)
+        }
     }
 
     // MARK: - Expressions
@@ -243,7 +255,7 @@ public final class VRMInstance: GLTFInstance {
     /// Sets several expression weights and re-applies the result once.
     public func setExpressions(_ weights: [ExpressionKey: Float]) {
         guard expressions.storeWeights(weights) else { return }
-        expressions.apply(with: expressionApplier)
+        change { expressions.apply(with: expressionApplier) }
     }
 
     /// The handle to set `key` with in ``ExpressionWeights``, or nil when the model offers no
@@ -260,7 +272,7 @@ public final class VRMInstance: GLTFInstance {
     /// Sets the weights `weights` sets and re-applies the result once.
     public func setExpressions(_ weights: ExpressionWeights) {
         guard expressions.storeWeights(weights) else { return }
-        expressions.apply(with: expressionApplier)
+        change { expressions.apply(with: expressionApplier) }
     }
 
     public func expression(for key: ExpressionKey) -> Float {
@@ -270,12 +282,13 @@ public final class VRMInstance: GLTFInstance {
     // MARK: - Gaze
 
     /// What the eyes follow, nil to leave them at rest. A world-space position is measured
-    /// against ``GLTFPose/rootMatrix``.
+    /// against ``GLTFPose/rootMatrix``, and kept on as either it or the model moves. A model
+    /// stating no look-at keeps its eyes still whatever this is set to.
     public var lookAtTarget: LookAtTarget? {
         get { lookAt.target }
         set {
             lookAt.target = newValue
-            applyLookAt()
+            change { applyLookAt() }
         }
     }
 
@@ -317,7 +330,10 @@ public final class VRMInstance: GLTFInstance {
     /// Which camera the model draws for, as VRM's first-person settings ask. An `auto` mesh
     /// is cut only if its asset was loaded preparing the first person.
     public var firstPersonRenderMode: FirstPersonRenderMode = .thirdPerson {
-        didSet { visibilityChanged = visibilityChanged || firstPersonRenderMode != oldValue }
+        didSet {
+            guard firstPersonRenderMode != oldValue else { return }
+            change { visibilityChange = changeStamp }
+        }
     }
 
     /// How each node drawing a mesh draws it, as the model's first-person settings ask.

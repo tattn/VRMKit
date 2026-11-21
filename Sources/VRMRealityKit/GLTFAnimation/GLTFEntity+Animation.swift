@@ -56,7 +56,6 @@ extension GLTFEntity {
     /// first frame is already correct.
     func didStartPlayback() {
         components.set(GLTFAnimationPlaybackComponent())
-        applyInstanceOutput()
         flushDeformation()
     }
 
@@ -68,8 +67,7 @@ extension GLTFEntity {
     public func updateAnimations(deltaTime: TimeInterval) {
         adoptNodeEntitiesPosedFromOutside()
         if let instance, instance.animationPlayer.isPlaying {
-            instance.animationPlayer.advance(deltaTime: max(0, deltaTime))
-            present(instance.takeOutput())
+            instance.advanceAnimations(deltaTime: deltaTime)
         } else {
             // A clone inherits the marker component but not the instance.
             components.remove(GLTFAnimationPlaybackComponent.self)

@@ -168,7 +168,6 @@ public final class VRMEntity: GLTFEntity {
             guard let instance = vrmInstance else { return }
             refreshPoseRoot()
             instance.lookAtTarget = newValue
-            applyInstanceOutput(solvingSkins: false)
         }
     }
 
@@ -205,7 +204,7 @@ public final class VRMEntity: GLTFEntity {
         guard let instance = vrmInstance else { return }
         refreshPoseRoot()
         adoptNodeEntitiesPosedFromOutside()
-        present(instance.update(deltaTime: deltaTime))
+        instance.update(deltaTime: deltaTime)
         flushDeformation()
     }
 
@@ -216,7 +215,7 @@ public final class VRMEntity: GLTFEntity {
         guard let instance = vrmInstance else { return }
         refreshPoseRoot()
         adoptNodeEntitiesPosedFromOutside()
-        present(instance.updateSecondaryMotion(deltaTime: deltaTime))
+        instance.updateSecondaryMotion(deltaTime: deltaTime)
         flushDeformation()
     }
 
@@ -247,7 +246,6 @@ public final class VRMEntity: GLTFEntity {
     public func setExpressions(_ weights: [ExpressionKey: CGFloat]) {
         guard let instance = vrmInstance else { return }
         instance.setExpressions(weights.mapValues { Float($0) })
-        applyInstanceOutput(solvingSkins: false)
     }
 
     /// The handle to set `key` with in ``ExpressionWeights``, or nil when the model offers no such
@@ -268,7 +266,6 @@ public final class VRMEntity: GLTFEntity {
     public func setExpressions(_ weights: ExpressionWeights) {
         guard let instance = vrmInstance else { return }
         instance.setExpressions(weights)
-        applyInstanceOutput(solvingSkins: false)
     }
 
     public func expression(for key: ExpressionKey) -> CGFloat {
@@ -287,7 +284,6 @@ public final class VRMEntity: GLTFEntity {
     public func setFirstPersonRenderMode(_ mode: FirstPersonRenderMode) {
         guard let instance = vrmInstance else { return }
         instance.firstPersonRenderMode = mode
-        applyInstanceOutput(solvingSkins: false)
     }
 
     override func apply(_ output: GLTFFrameOutput) {
