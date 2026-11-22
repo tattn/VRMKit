@@ -34,9 +34,7 @@ extension VRMRuntimeNode {
     /// quaternion and its negation are the same rotation, so neither counts as a move.
     /// `tolerance` is the largest difference in a component that still counts as held.
     func setLocalRotationIfMoved(_ rotation: simd_quatf, tolerance: Float = 0) -> Bool {
-        let current = localRotation.vector
-        guard simd_reduce_max(simd_abs(current - rotation.vector)) > tolerance,
-              simd_reduce_max(simd_abs(current + rotation.vector)) > tolerance else { return false }
+        guard !localRotation.isSameRotation(as: rotation, tolerance: tolerance) else { return false }
         setLocalRotation(rotation)
         return true
     }
@@ -53,5 +51,14 @@ extension VRMRuntimeNode {
     func worldTransform(under parent: SpringBoneWorldTransform) -> SpringBoneWorldTransform {
         SpringBoneWorldTransform(matrix: parent.matrix * localMatrix,
                                  rotation: parent.rotation * localRotation)
+    }
+}
+
+extension simd_quatf {
+    /// Whether no component differs from `other` by more than `tolerance`. A quaternion
+    /// and its negation are the same rotation.
+    func isSameRotation(as other: simd_quatf, tolerance: Float) -> Bool {
+        simd_reduce_max(simd_abs(vector - other.vector)) <= tolerance
+            || simd_reduce_max(simd_abs(vector + other.vector)) <= tolerance
     }
 }

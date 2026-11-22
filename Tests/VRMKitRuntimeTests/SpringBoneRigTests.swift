@@ -370,11 +370,33 @@ struct SpringBoneRigTests {
         let rig = try Self.vrm1Rig(nodes)
         let rest = nodes[1].worldPosition
 
-        rig.update(deltaTime: 1.0 / 240.0)
+        for _ in 0..<3 { rig.update(deltaTime: 1.0 / 240.0) }
         #expect(nodes[1].worldPosition == rest)
 
-        for _ in 0..<3 { rig.update(deltaTime: 1.0 / 240.0) }
+        // The fourth completes the step, which the next shows part of.
+        for _ in 0..<2 { rig.update(deltaTime: 1.0 / 240.0) }
         #expect(nodes[1].worldPosition != rest)
+    }
+
+    /// A display drawing twice as fast as the fixed step shows the swing halfway between
+    /// two steps on the frames that take none, rather than holding the last step for two
+    /// frames and jumping to the next.
+    @Test
+    func testAFrameThatTakesNoStepShowsTheSwingBetweenTheLastTwo() throws {
+        let (_, nodes) = Self.chain(length: 2)
+        let rig = try Self.vrm1Rig(nodes)
+        // Ends on a frame that took a step, far enough in for the tail to be falling.
+        for _ in 0..<20 { rig.update(deltaTime: SpringBoneSimulation.step / 2) }
+
+        var heights: [Float] = []
+        for _ in 0..<6 {
+            rig.update(deltaTime: SpringBoneSimulation.step / 2)
+            heights.append(nodes[1].worldPosition.y)
+        }
+        let falls = zip(heights, heights.dropFirst()).map { $0 - $1 }
+        #expect(falls.allSatisfy { $0 > 0 })
+        // Holding a step for two frames would fall the whole way on every other frame.
+        #expect(try #require(falls.max()) < 1.5 * (try #require(falls.min())))
     }
 
     /// A hitch longer than the budgeted steps stalls the swing rather than replaying the
@@ -393,7 +415,7 @@ struct SpringBoneRigTests {
                 rig.update(deltaTime: 1.0 / 60.0)
             }
         }
-        #expect(try settled { $0.update(deltaTime: 10) } == budgeted)
+        #expect(simd_distance(try settled { $0.update(deltaTime: 10) }, budgeted) < 1e-4)
     }
 
     /// A reset starts the next update from the rest pose, so teleporting a model does not
@@ -477,6 +499,8 @@ struct SpringBoneRigTests {
         let rig = try Self.vrm1Rig(nodes)
 
         #expect(rig.update(deltaTime: 1.0 / 120.0) == false)
+        rig.update(deltaTime: 1.0 / 120.0)
+        // The step the second update took shows from the third on.
         #expect(rig.update(deltaTime: 1.0 / 120.0) == true)
 
         // A reset poses the chain back to rest; a rig with nothing to swing never poses.
@@ -493,7 +517,7 @@ struct SpringBoneRigTests {
     func testANodeSeveralSpringsNameIsSwungByTheFirstOnly() throws {
         let (rig, nodes) = try Self.build(springs: [[1, 2, 3], [2, 3, 4, 5], [1, 2, 3]])
         rig.configuration.externalForce = SIMD3(0, -1, 0)
-        rig.update(deltaTime: SpringBoneSimulation.step)
+        rig.update(deltaTime: SpringBoneSimulation.step * 1.5)
 
         // The second spring keeps only 4-5, and the third nothing.
         let posed = rig.posedNodes.map(ObjectIdentifier.init)

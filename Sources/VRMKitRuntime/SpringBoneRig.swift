@@ -70,6 +70,16 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         var mount = Mount.renderer
         /// A center of the joint's own, in place of the spring's (``setCenter(_:share:forJoint:)``).
         var partialCenter: PartialCenter?
+        /// Nil until the joint has stepped since its tail was last started.
+        var swing: Swing?
+    }
+
+    /// The local rotations a joint's last two steps swung it to, and the one between them
+    /// its node was last posed at.
+    private struct Swing {
+        var previous: simd_quatf
+        var current: simd_quatf
+        var posed: simd_quatf
     }
 
     /// A node that carries a share of its motion into a joint's tail, where a spring's
@@ -141,6 +151,8 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     /// The time not yet simulated when the renderer's state was last read, which is how far
     /// the steps were behind that state.
     private var accumulatorAtSample: TimeInterval = 0
+    /// Whether the last step turned a joint, so the time since has a swing to pose.
+    private var isSwinging = false
     /// Whether ``anchors`` and every ``Link/mount`` match the springs. They are found once
     /// the springs are all there: a spring added later may swing what an earlier one hangs off.
     private var areAnchorsResolved = false
@@ -211,7 +223,9 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
 
     /// Advances the simulation by `deltaTime`, in fixed steps. Time short of a step
     /// carries to the next update, so the swing does not depend on how often a
-    /// renderer draws.
+    /// renderer draws, and poses the joints that far from the step before the last
+    /// to the last: a frame that takes no step, or two, shows as much swing as the
+    /// time it spans, where posing the last step would hold the swing or jump it.
     ///
     /// Returns whether a joint was posed (``posedNodes``), so a renderer re-skins only
     /// the frames a step moved something in.
@@ -251,23 +265,62 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         let step = SpringBoneSimulation.step
         accumulator = min(max(0, accumulator + deltaTime),
                           step * TimeInterval(SpringBoneSimulation.maximumStepsPerUpdate))
-        guard accumulator >= step else { return !posedNodes.isEmpty }
+        guard accumulator >= step else {
+            if isSwinging {
+                poseBetweenSteps()
+            }
+            return !posedNodes.isEmpty
+        }
 
         // The renderer's state stands still within one update, so read it once however
         // many steps the frame takes, and spread what moved since the last read across them.
         sample(fresh: false)
+        resumeFromLastStep()
         let span = accumulator - accumulatorAtSample
         var stepEnd = -accumulatorAtSample
         while accumulator >= step {
             accumulator -= step
             stepEnd += step
+            isSwinging = false
             prepareStep(progress: Float(stepEnd / span))
             for index in springs.indices {
                 self.step(&springs[index], deltaTime: Float(step))
             }
         }
         accumulatorAtSample = accumulator
+        poseBetweenSteps()
         return !posedNodes.isEmpty
+    }
+
+    /// Puts every joint back at the rotation its last step swung it to, from the one it was
+    /// posed at: a spring hanging off another's joint steps from where that joint swung to.
+    private func resumeFromLastStep() {
+        for spring in springs {
+            for link in spring.links {
+                guard let swing = link.swing else { continue }
+                _ = link.node.setLocalRotationIfMoved(swing.current, tolerance: SpringBoneSimulation.restTolerance)
+            }
+        }
+    }
+
+    /// Poses every joint between its last two steps, as far along as the time not yet
+    /// simulated is into a step.
+    private func poseBetweenSteps() {
+        let progress = Float(accumulator / SpringBoneSimulation.step)
+        for springIndex in springs.indices {
+            for index in springs[springIndex].links.indices {
+                let link = springs[springIndex].links[index]
+                guard let swing = link.swing else { continue }
+                let rotation = simd_slerp(swing.previous, swing.current, progress)
+                _ = link.node.setLocalRotationIfMoved(rotation, tolerance: SpringBoneSimulation.restTolerance)
+                // The steps moved the node as well, so whether the pose moved is told from
+                // the rotation it was last posed at.
+                if !rotation.isSameRotation(as: swing.posed, tolerance: SpringBoneSimulation.restTolerance) {
+                    springs[springIndex].links[index].swing?.posed = rotation
+                    notePosed(link.node)
+                }
+            }
+        }
     }
 
     /// Reads where the anchors and colliders are. A fresh read forgets where they were, so
@@ -346,9 +399,21 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                                             colliders: springColliders,
                                             externalForce: configuration.externalForce)
                 spring.links[index].joint = joint
-                if link.node.setLocalRotationIfMoved(parentWorld.rotation.inverse * rotation,
-                                                     tolerance: SpringBoneSimulation.restTolerance) {
-                    notePosed(link.node)
+                let local = parentWorld.rotation.inverse * rotation
+                var swing = link.swing ?? Swing(previous: link.node.localRotation,
+                                                current: link.node.localRotation,
+                                                posed: link.node.localRotation)
+                swing.previous = swing.current
+                swing.current = local
+                spring.links[index].swing = swing
+                if !isSwinging,
+                   !swing.previous.isSameRotation(as: local, tolerance: SpringBoneSimulation.restTolerance) {
+                    isSwinging = true
+                }
+                // The node holds the step's rotation while the steps run, for the links
+                // below and the springs hanging off it, until the update poses it between
+                // the steps.
+                if link.node.setLocalRotationIfMoved(local, tolerance: SpringBoneSimulation.restTolerance) {
                     // Composed again from the rotation the joint was swung to, which its
                     // children hang off.
                     world = link.node.worldTransform(under: parentWorld)
@@ -358,8 +423,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         }
     }
 
-    /// A node is a joint of one spring only, so a step poses it at most once. The steps
-    /// of one update may list it again, which a renderer's invalidation absorbs.
+    /// A node is a joint of one spring only, so an update poses it at most once.
     private func notePosed(_ node: Node) {
         if posedNodes.last !== node {
             posedNodes.append(node)
@@ -369,6 +433,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     /// Starts every tail with no motion, where its joint points: at rest, the authored
     /// rotation, or else where the joint is now. A rotation it writes is noted in ``posedNodes``.
     private func restartTails(atRest: Bool) {
+        isSwinging = false
         sample(fresh: true)
         accumulatorAtSample = accumulator
         for springIndex in springs.indices {
@@ -386,6 +451,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
                                rotation: world.rotation,
                                center: link.partialCenter == nil ? center : nil)
                     springs[springIndex].links[index].joint = joint
+                    springs[springIndex].links[index].swing = nil
                 }
                 worlds.append(world)
             }
