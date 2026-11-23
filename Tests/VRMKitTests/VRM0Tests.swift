@@ -84,6 +84,33 @@ struct VRM0Tests {
         #expect(vrm.firstPerson?.meshAnnotations[0].mesh == 0)
     }
 
+    /// UniVRM writes a material value without its material name once the material is gone,
+    /// which changes nothing, and the rest of the expression still loads.
+    @Test
+    func testBlendShapeGroupSkipsAMaterialValueWithoutAMaterial() throws {
+        let data = try GLBRewriter.rewritingJSON(of: VRMSampleAsset.aliciaSolid.data) { json in
+            guard var extensions = json.object("extensions"),
+                  var vrm = extensions.object("VRM"),
+                  var master = vrm.object("blendShapeMaster") else {
+                throw GLBRewriter.Error.invalidJSON
+            }
+            var groups = master.objects("blendShapeGroups")
+            groups[1]["materialValues"] = .objects([
+                ["propertyName": .string("_Color"), "targetValue": .numbers([1, 0, 0, 1])],
+                ["materialName": .string("Alicia_face"), "propertyName": .string("_Color"),
+                 "targetValue": .numbers([0, 1, 0, 1])],
+            ])
+            master["blendShapeGroups"] = .objects(groups)
+            vrm["blendShapeMaster"] = .object(master)
+            extensions["VRM"] = .object(vrm)
+            json["extensions"] = .object(extensions)
+        }
+        let group = try VRM0(data: data).blendShapeMaster.blendShapeGroups[1]
+        #expect(group.materialValues.map(\.materialName) == ["Alicia_face"])
+        #expect(group.materialValues.first?.targetValue == [0, 1, 0, 1])
+        #expect(group.binds.count == vrm.blendShapeMaster.blendShapeGroups[1].binds.count)
+    }
+
     /// An annotation without its mesh annotates nothing, and the rest still load.
     @Test
     func testFirstPersonSkipsAnAnnotationWithoutAMesh() throws {

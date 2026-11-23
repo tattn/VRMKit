@@ -198,7 +198,15 @@ public extension VRM0 {
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 binds = try container.decodeIfPresent([Bind].self, forKey: .binds) ?? []
-                materialValues = try container.decodeIfPresent([MaterialValueBind].self, forKey: .materialValues) ?? []
+                // UniVRM leaves out the material name of a value whose material was removed, which changes no material.
+                materialValues = try container.decodeIfPresent([PartialMaterialValueBind].self, forKey: .materialValues)?
+                    .compactMap { value in
+                        value.materialName.map {
+                            MaterialValueBind(materialName: $0,
+                                              propertyName: value.propertyName ?? "",
+                                              targetValue: value.targetValue ?? [])
+                        }
+                    } ?? []
                 name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
                 presetName = try container.decodeIfPresent(String.self, forKey: .presetName) ?? ""
                 isBinary = try container.decodeIfPresent(Bool.self, forKey: .isBinary) ?? false
@@ -213,6 +221,11 @@ public extension VRM0 {
                 public let materialName: String
                 public let propertyName: String
                 public let targetValue: [Double]
+            }
+            private struct PartialMaterialValueBind: Decodable {
+                let materialName: String?
+                let propertyName: String?
+                let targetValue: [Double]?
             }
         }
     }
