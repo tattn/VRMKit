@@ -131,9 +131,8 @@ struct GLTFMeshAttributeTests {
         /// glTF defines `inverseBindMatrices` as one matrix per skin joint, and padding a
         /// short one with identities would bind the wrong rest pose.
         case shortInverseBindMatrices
-        /// A TRIANGLES primitive holds a multiple of three indices, and trimming the
-        /// remainder would draw a triangle list the file does not describe.
-        case partialTriangle
+        /// A TRIANGLES primitive with fewer indices than one triangle draws nothing.
+        case noWholeTriangle
         /// glTF stores `WEIGHTS_n` as floats or as normalized integers. An unnormalized
         /// integer accessor holds raw counts, not the 0...1 weights the joint influences
         /// are built from.
@@ -144,7 +143,7 @@ struct GLTFMeshAttributeTests {
             switch self {
             case .shortNormal, .signedJoints: nil
             case .shortInverseBindMatrices: "inverseBindMatrices"
-            case .partialTriangle: "TRIANGLES"
+            case .noWholeTriangle: "TRIANGLES"
             case .unnormalizedJointWeights: "WEIGHTS_0"
             }
         }
@@ -177,13 +176,12 @@ struct GLTFMeshAttributeTests {
                     throw VRMError.dataInconsistent("Missing Seed-san inverseBindMatrices accessor")
                 }
                 accessors[matricesIndex]["count"] = .int(count - 1)
-            case .partialTriangle:
+            case .noWholeTriangle:
                 guard let indicesIndex = primitive?.int("indices"),
-                      accessors.indices.contains(indicesIndex),
-                      let count = accessors[indicesIndex].int("count"), count > 3 else {
+                      accessors.indices.contains(indicesIndex) else {
                     throw VRMError.dataInconsistent("Missing Seed-san indices accessor")
                 }
-                accessors[indicesIndex]["count"] = .int(count - 1)
+                accessors[indicesIndex]["count"] = 2
             case .unnormalizedJointWeights:
                 guard let weightsIndex = attributes?.int("WEIGHTS_0"),
                       accessors.indices.contains(weightsIndex) else {
