@@ -22,4 +22,12 @@ struct GLTFGeometryCompactionTests {
         #expect(GLTFGeometryDecoder.drawnVertices(renumbering: &indices, vertexCount: 3) == nil)
         #expect(indices == [2, 1, 0])
     }
+
+    /// Indices left after the last whole triangle make no triangle.
+    @Test
+    func testTrianglesDropIndicesAfterTheLastTriangle() throws {
+        #expect(try GLTFGeometryDecoder.triangulatedIndices(for: .TRIANGLES, indices: [0, 1, 2, 3]) == [0, 1, 2])
+        #expect(try GLTFGeometryDecoder.triangulatedIndices(for: .TRIANGLES, indices: [0, 1, 2]) == [0, 1, 2])
+        #expect(throws: (any Error).self) { try GLTFGeometryDecoder.triangulatedIndices(for: .TRIANGLES, indices: [0, 1]) }
+    }
 }

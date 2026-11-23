@@ -311,12 +311,13 @@ package struct GLTFGeometryDecoder: Sendable {
                                             indices: [UInt32]) throws -> [UInt32] {
         switch mode {
         case .TRIANGLES:
-            guard !indices.isEmpty, indices.count.isMultiple(of: 3) else {
+            guard indices.count >= 3 else {
                 throw VRMError._dataInconsistent(
-                    "a TRIANGLES primitive needs a non-zero multiple of 3 indices, but has \(indices.count)"
+                    "a TRIANGLES primitive needs at least 3 indices, but has \(indices.count)"
                 )
             }
-            return indices
+            // Some exporters leave one or two indices after the last triangle. They make no triangle, so they are dropped as WebGL does.
+            return indices.count.isMultiple(of: 3) ? indices : Array(indices.prefix(indices.count - indices.count % 3))
         case .TRIANGLE_STRIP:
             guard indices.count >= 3 else {
                 throw VRMError._dataInconsistent(
