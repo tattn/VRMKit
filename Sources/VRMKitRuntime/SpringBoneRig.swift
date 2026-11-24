@@ -202,9 +202,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         guard share.isFinite, (0...1).contains(share) else {
             throw VRMError._invalidArgument("a center's share must be finite and in 0...1")
         }
-        guard let (springIndex, linkIndex) = springs.indices.lazy.compactMap({ springIndex in
-            self.springs[springIndex].links.firstIndex { $0.node === joint && $0.joint != nil }.map { (springIndex, $0) }
-        }).first else {
+        guard let (springIndex, linkIndex) = location(ofJoint: joint) else {
             throw VRMError._invalidArgument("the node is not a joint any spring swings")
         }
         guard let levelsUp = sequence(first: joint, next: { $0.runtimeParent }).dropFirst()
@@ -219,6 +217,27 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         areAnchorsResolved = false
         // The joint's tails are kept in the world rather than in the spring's center from now on.
         pendingReset = true
+    }
+
+    /// The local rotation the joint on `node` rests at, nil for a node no spring swings.
+    package func restRotation(ofJoint node: Node) -> simd_quatf? {
+        location(ofJoint: node).flatMap { springs[$0.spring].links[$0.link].joint?.restLocalRotation }
+    }
+
+    /// Moves where the joint on `node` rests, its tail turning along. Does nothing to a node no
+    /// spring swings.
+    package func setRestRotation(_ rotation: simd_quatf, ofJoint node: Node) {
+        guard let location = location(ofJoint: node) else { return }
+        springs[location.spring].links[location.link].joint?.setRest(rotation)
+    }
+
+    private func location(ofJoint node: Node) -> (spring: Int, link: Int)? {
+        for spring in springs.indices {
+            if let link = springs[spring].links.firstIndex(where: { $0.node === node && $0.joint != nil }) {
+                return (spring, link)
+            }
+        }
+        return nil
     }
 
     /// Advances the simulation by `deltaTime`, in fixed steps. Time short of a step

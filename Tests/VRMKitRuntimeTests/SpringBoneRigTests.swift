@@ -362,6 +362,29 @@ struct SpringBoneRigTests {
         try rig.setCenter(root, share: 0.5, forJoint: nodes[1])
     }
 
+    /// A moved rest turns the joint along in the step after it, rather than leaving the
+    /// stiffness to drag it there, and swings nothing by itself.
+    @Test
+    func testAMovedRestTurnsTheJointAlongAtOnce() throws {
+        let (_, nodes) = Self.chain(length: 2)
+        let rig = SpringBoneRig<TestRuntimeNode>()
+        let still = SpringBoneJointSetting(stiffnessForce: 1, gravityPower: 0, gravityDir: SIMD3(0, -1, 0),
+                                           dragForce: 0.4, hitRadius: 0)
+        rig.addVRM1Spring(center: nil, chain: nodes.map { (node: $0, setting: still) }, colliderGroups: [])
+        rig.update(deltaTime: 0)
+        let rest = try #require(rig.restRotation(ofJoint: nodes[0]))
+        let turned = simd_quatf(angle: 0.5, axis: SIMD3(0, 0, 1)) * rest
+
+        rig.setRestRotation(turned, ofJoint: nodes[0])
+        for _ in 0..<2 { rig.update(deltaTime: SpringBoneSimulation.step) }
+
+        #expect(simd_distance(nodes[0].localRotation.vector, turned.vector) < 1e-3)
+        rig.reset()
+        rig.update(deltaTime: SpringBoneSimulation.step)
+        #expect(simd_distance(nodes[0].localRotation.vector, turned.vector) < 1e-4)
+        #expect(rig.restRotation(ofJoint: nodes[1]) == nil)
+    }
+
     /// A frame shorter than one step carries into the next update rather than swinging
     /// a partial step of its own.
     @Test

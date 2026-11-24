@@ -325,6 +325,22 @@ public final class VRMInstance: GLTFInstance {
         try springBones.setCenter(pose.nodes[center], share: share, forJoint: pose.nodes[joint])
     }
 
+    /// The local rotation the spring-bone joint on `node` rests at, nil for a node no spring swings.
+    public func springBoneRestRotation(ofJoint node: Int) -> simd_quatf? {
+        guard pose.nodes.indices.contains(node) else { return nil }
+        return springBones.restRotation(ofJoint: pose.nodes[node])
+    }
+
+    /// Moves where the spring-bone joint on `node` rests to the local `rotation`, where the model
+    /// states it: the joint turns along at once and swings around its new rest. A rotation set on
+    /// the node itself is overwritten by the spring.
+    public func setSpringBoneRestRotation(_ rotation: simd_quatf, ofJoint node: Int) throws {
+        guard pose.nodes.indices.contains(node), springBones.restRotation(ofJoint: pose.nodes[node]) != nil else {
+            throw VRMError._invalidArgument("the node is not a joint any spring swings")
+        }
+        springBones.setRestRotation(rotation, ofJoint: pose.nodes[node])
+    }
+
     // MARK: - First person
 
     /// Which camera the model draws for, as VRM's first-person settings ask. An `auto` mesh

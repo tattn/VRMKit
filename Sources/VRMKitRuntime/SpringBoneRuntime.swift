@@ -262,7 +262,10 @@ package struct SpringBoneJoint {
     /// scaled joint swings the length it is drawn at.
     let boneLength: Float
 
-    private let initialLocalRotation: simd_quatf
+    /// The rotation the stiffness pulls back to: the authored one until ``setRest(_:)`` moves it.
+    private(set) var restLocalRotation: simd_quatf
+    /// How the rest turned since the last step, which the tail has yet to turn along with.
+    private var pendingRestTurn: simd_quatf?
     /// Both kept between frames in the center's space, or in world space for a joint
     /// without one.
     private var currentTail: SIMD3<Float>
@@ -279,13 +282,19 @@ package struct SpringBoneJoint {
         guard boneLength > Float.ulpOfOne, localTail.length_squared > Float.ulpOfOne else { return nil }
         self.boneAxis = localTail.normalized
         self.boneLength = boneLength
-        self.initialLocalRotation = initialLocalRotation
+        self.restLocalRotation = initialLocalRotation
         self.currentTail = center?.centered(worldTail) ?? worldTail
         self.prevTail = self.currentTail
     }
 
-    /// The rotation the joint's node was authored with, which a reset puts back.
-    var restLocalRotation: simd_quatf { initialLocalRotation }
+    /// Moves the rest, which a reset puts back, to the local `rotation`. The next step turns the
+    /// tail along, so that the joint follows at once and what swings it goes on around the new
+    /// rest, where the stiffness alone would drag it there late and ring.
+    mutating func setRest(_ rotation: simd_quatf) {
+        let turn = rotation * restLocalRotation.inverse
+        pendingRestTurn = pendingRestTurn.map { turn * $0 } ?? turn
+        restLocalRotation = rotation
+    }
 
     /// Puts the tail where the joint points when turned to the world `rotation`, carrying
     /// no motion into the next step: at rest, so a teleported model does not read the jump
@@ -293,6 +302,7 @@ package struct SpringBoneJoint {
     package mutating func hold(head: SIMD3<Float>,
                                rotation: simd_quatf,
                                center: SpringBoneCenter?) {
+        pendingRestTurn = nil
         let tail = head + (rotation * boneAxis) * boneLength
         currentTail = center?.centered(tail) ?? tail
         prevTail = currentTail
@@ -315,10 +325,16 @@ package struct SpringBoneJoint {
                                  center: SpringBoneCenter?,
                                  colliders: [SpringBoneCollider],
                                  externalForce: SIMD3<Float> = .zero) -> simd_quatf {
-        let restRotation = parentRotation * initialLocalRotation
+        let restRotation = parentRotation * restLocalRotation
         let restDirection = restRotation * boneAxis
-        let currentTail = center?.world(self.currentTail) ?? self.currentTail
-        let prevTail = center?.world(self.prevTail) ?? self.prevTail
+        var currentTail = center?.world(self.currentTail) ?? self.currentTail
+        var prevTail = center?.world(self.prevTail) ?? self.prevTail
+        if let restTurn = pendingRestTurn {
+            let turn = parentRotation * restTurn * parentRotation.inverse
+            currentTail = head + turn.act(currentTail - head)
+            prevTail = head + turn.act(prevTail - head)
+            pendingRestTurn = nil
+        }
 
         // Verlet integration: the tail carries on last frame's move, damped by the drag,
         // while the stiffness pulls it back to the rest pose.
