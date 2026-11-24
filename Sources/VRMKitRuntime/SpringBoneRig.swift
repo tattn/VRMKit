@@ -136,6 +136,7 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
     package var configuration = SpringBoneConfiguration()
 
     private var springs: [Spring] = []
+    private var jointsUnderNode: [ObjectIdentifier: [(spring: Int, link: Int)]] = [:]
     private var colliderEntries: [ColliderEntry] = []
     private var pendingReset = false
     /// Whether the tails have been put where the model is drawn. The rig is built where
@@ -224,11 +225,44 @@ package final class SpringBoneRig<Node: VRMRuntimeNode> where Node.RuntimeNode =
         location(ofJoint: node).flatMap { springs[$0.spring].links[$0.link].joint?.restLocalRotation }
     }
 
-    /// Moves where the joint on `node` rests, its tail turning along. Does nothing to a node no
-    /// spring swings.
+    /// Moves where the joint on `node` rests, what swings there and below turning along rather than
+    /// being dragged there late by the stiffness. Does nothing to a node no spring swings.
     package func setRestRotation(_ rotation: simd_quatf, ofJoint node: Node) {
-        guard let location = location(ofJoint: node) else { return }
-        springs[location.spring].links[location.link].joint?.setRest(rotation)
+        guard let location = location(ofJoint: node),
+              let rest = springs[location.spring].links[location.link].joint?.restLocalRotation else { return }
+        springs[location.spring].links[location.link].joint?.restLocalRotation = rotation
+        turnTails(under: node, by: rotation * rest.inverse)
+    }
+
+    /// Turns what swings at and below `node` by `turn`, in its parent's space, around `node`, so
+    /// that a turn of the node posed on purpose swings none of it.
+    package func turnTails(under node: Node, by turn: simd_quatf) {
+        let parentRotation = node.runtimeParent?.worldRotation ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        let worldTurn = parentRotation * turn * parentRotation.inverse
+        let pivot = node.worldPosition
+        for location in joints(under: node) {
+            let spring = springs[location.spring]
+            let center = spring.links[location.link].partialCenter == nil
+                ? spring.centerAnchor.flatMap { anchorSamples.indices.contains($0) ? anchorSamples[$0].currentCenter : nil }
+                : nil
+            springs[location.spring].links[location.link].joint?.turnTail(by: worldTurn, around: pivot, center: center)
+        }
+    }
+
+    /// Found once per node: one posed every frame would otherwise search the whole model as often.
+    private func joints(under node: Node) -> [(spring: Int, link: Int)] {
+        if let found = jointsUnderNode[ObjectIdentifier(node)] { return found }
+        var found: [(spring: Int, link: Int)] = []
+        for spring in springs.indices {
+            for link in springs[spring].links.indices where springs[spring].links[link].joint != nil {
+                let joint = springs[spring].links[link].node
+                if sequence(first: joint, next: { $0.runtimeParent }).contains(where: { $0 === node }) {
+                    found.append((spring, link))
+                }
+            }
+        }
+        jointsUnderNode[ObjectIdentifier(node)] = found
+        return found
     }
 
     private func location(ofJoint node: Node) -> (spring: Int, link: Int)? {
@@ -809,6 +843,7 @@ package extension SpringBoneRig {
     private func append(_ spring: Spring) {
         guard spring.links.contains(where: { $0.joint != nil }) else { return }
         springs.append(spring)
+        jointsUnderNode.removeAll()
         areAnchorsResolved = false
     }
 

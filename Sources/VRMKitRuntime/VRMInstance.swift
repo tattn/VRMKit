@@ -332,13 +332,20 @@ public final class VRMInstance: GLTFInstance {
     }
 
     /// Moves where the spring-bone joint on `node` rests to the local `rotation`, where the model
-    /// states it: the joint turns along at once and swings around its new rest. A rotation set on
+    /// states it: the joint and what swings below it turn along at once, and swing around the new rest. A rotation set on
     /// the node itself is overwritten by the spring.
     public func setSpringBoneRestRotation(_ rotation: simd_quatf, ofJoint node: Int) throws {
         guard pose.nodes.indices.contains(node), springBones.restRotation(ofJoint: pose.nodes[node]) != nil else {
             throw VRMError._invalidArgument("the node is not a joint any spring swings")
         }
         springBones.setRestRotation(rotation, ofJoint: pose.nodes[node])
+    }
+
+    /// Turns the spring bones at and below `node` by `turn`, in its parent's space, around `node`: for
+    /// a node posed on purpose that spring bones hang off, so that its turn swings none of them.
+    public func turnSpringBones(under node: Int, by turn: simd_quatf) {
+        guard pose.nodes.indices.contains(node) else { return }
+        springBones.turnTails(under: pose.nodes[node], by: turn)
     }
 
     // MARK: - First person

@@ -385,6 +385,31 @@ struct SpringBoneRigTests {
         #expect(rig.restRotation(ofJoint: nodes[1]) == nil)
     }
 
+    /// Turning a node along with what hangs off it swings none of it: the chain keeps its shape.
+    @Test(arguments: [true, false])
+    func testAChainKeepsItsShapeWhenTurnedOnPurpose(turnsTheFirstJoint: Bool) throws {
+        let (root, nodes) = Self.chain(length: 4)
+        let rig = SpringBoneRig<TestRuntimeNode>()
+        let still = SpringBoneJointSetting(stiffnessForce: 1, gravityPower: 0, gravityDir: SIMD3(0, -1, 0),
+                                           dragForce: 0.4, hitRadius: 0)
+        rig.addVRM1Spring(center: nil, chain: nodes.map { (node: $0, setting: still) }, colliderGroups: [])
+        for _ in 0..<2 { rig.update(deltaTime: SpringBoneSimulation.step) }
+        let turn = simd_quatf(angle: 0.5, axis: SIMD3(0, 1, 0))
+
+        if turnsTheFirstJoint {
+            rig.setRestRotation(turn * nodes[0].localRotation, ofJoint: nodes[0])
+        } else {
+            rig.turnTails(under: root, by: turn)
+            root.setLocalRotation(turn * root.localRotation)
+        }
+        for _ in 0..<2 {
+            rig.update(deltaTime: SpringBoneSimulation.step)
+            for node in nodes[1...2] {
+                #expect(abs(abs(node.localRotation.vector.w) - 1) < 1e-4)
+            }
+        }
+    }
+
     /// A frame shorter than one step carries into the next update rather than swinging
     /// a partial step of its own.
     @Test
