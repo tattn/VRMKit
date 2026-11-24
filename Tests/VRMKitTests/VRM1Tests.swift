@@ -60,6 +60,23 @@ struct VRM1Tests {
         #expect(!VRM1.SpringBone.supports(specVersion: vrm.springBone?.specVersion))
     }
 
+    /// UniVRM writes a collider group with no colliders, and a spring with no joints,
+    /// without the array.
+    @Test
+    func testAColliderGroupAndASpringWithoutTheirArraysAreEmpty() throws {
+        let bare = try VRMSampleAsset.seedSan.rewritingJSON { json in
+            var extensions = json.object("extensions") ?? [:]
+            var springBone = try #require(extensions.object("VRMC_springBone"))
+            springBone["colliderGroups"] = [["name": "empty"]]
+            springBone["springs"] = [["name": "empty"]]
+            extensions["VRMC_springBone"] = .object(springBone)
+            json["extensions"] = .object(extensions)
+        }
+        let springBone = try VRM1(data: bare).springBone
+        #expect(springBone?.colliderGroups?.map(\.colliders) == [[]])
+        #expect(springBone?.springs?.map(\.joints.count) == [0])
+    }
+
     
     @Test
     func testMeta() {

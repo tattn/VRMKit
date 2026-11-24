@@ -412,6 +412,18 @@ extension VRM1 {
             public let colliders: [Int]
             public let extensions: JSONValue?
             public let extras: JSONValue?
+
+            private enum CodingKeys: String, CodingKey {
+                case colliders, extensions, extras
+            }
+
+            // UniVRM leaves out the colliders of a group that has none.
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                colliders = try container.decodeIfPresent([Int].self, forKey: .colliders) ?? []
+                extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+                extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+            }
         }
 
         public struct Spring: Decodable, Sendable {
@@ -421,6 +433,21 @@ extension VRM1 {
             public let center: Int?
             public let extensions: JSONValue?
             public let extras: JSONValue?
+
+            private enum CodingKeys: String, CodingKey {
+                case name, joints, colliderGroups, center, extensions, extras
+            }
+
+            // UniVRM leaves out the joints of a spring that has none.
+            public init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                name = try container.decodeIfPresent(String.self, forKey: .name)
+                joints = try container.decodeIfPresent([Joint].self, forKey: .joints) ?? []
+                colliderGroups = try container.decodeIfPresent([Int].self, forKey: .colliderGroups)
+                center = try container.decodeIfPresent(Int.self, forKey: .center)
+                extensions = try container.decodeIfPresent(JSONValue.self, forKey: .extensions)
+                extras = try container.decodeIfPresent(JSONValue.self, forKey: .extras)
+            }
 
             public struct Joint: Decodable, Sendable {
                 public let node: Int
