@@ -88,6 +88,24 @@ public extension VRM0 {
             case otherPermissionUrl
             case licenseName, otherLicenseUrl
         }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            title = try container.decodeIfPresent(String.self, forKey: .title)
+            author = try container.decodeIfPresent(String.self, forKey: .author)
+            contactInformation = try container.decodeIfPresent(String.self, forKey: .contactInformation)
+            reference = try container.decodeIfPresent(String.self, forKey: .reference)
+            // A texture that is no index leaves the model without a thumbnail rather than failing the load.
+            texture = try? container.decodeIfPresent(Int.self, forKey: .texture)
+            version = try container.decodeIfPresent(String.self, forKey: .version)
+            allowedUserName = try container.decodeIfPresent(String.self, forKey: .allowedUserName)
+            violentUsage = try container.decodeIfPresent(String.self, forKey: .violentUsage)
+            sexualUsage = try container.decodeIfPresent(String.self, forKey: .sexualUsage)
+            commercialUsage = try container.decodeIfPresent(String.self, forKey: .commercialUsage)
+            otherPermissionUrl = try container.decodeIfPresent(String.self, forKey: .otherPermissionUrl)
+            licenseName = try container.decodeIfPresent(String.self, forKey: .licenseName)
+            otherLicenseUrl = try container.decodeIfPresent(String.self, forKey: .otherLicenseUrl)
+        }
     }
 
     struct MaterialProperty: Decodable, Sendable {

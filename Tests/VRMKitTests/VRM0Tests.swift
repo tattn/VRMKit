@@ -111,6 +111,26 @@ struct VRM0Tests {
         #expect(group.binds.count == vrm.blendShapeMaster.blendShapeGroups[1].binds.count)
     }
 
+    /// A thumbnail texture that is no index is left out, and the rest of the meta still loads.
+    @Test
+    func testMetaLeavesOutATextureThatIsNoIndex() throws {
+        let data = try GLBRewriter.rewritingJSON(of: VRMSampleAsset.aliciaSolid.data) { json in
+            guard var extensions = json.object("extensions"),
+                  var vrm = extensions.object("VRM"),
+                  var meta = vrm.object("meta") else {
+                throw GLBRewriter.Error.invalidJSON
+            }
+            meta["texture"] = .string("thumbnail")
+            vrm["meta"] = .object(meta)
+            extensions["VRM"] = .object(vrm)
+            json["extensions"] = .object(extensions)
+        }
+        let loaded = try VRM0(data: data)
+        #expect(loaded.meta.texture == nil)
+        #expect(loaded.meta.title == vrm.meta.title)
+        #expect(loaded.meta.violentUsage == vrm.meta.violentUsage)
+    }
+
     /// An annotation without its mesh annotates nothing, and the rest still load.
     @Test
     func testFirstPersonSkipsAnAnnotationWithoutAMesh() throws {
