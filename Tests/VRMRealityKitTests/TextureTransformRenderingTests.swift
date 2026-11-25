@@ -20,6 +20,7 @@ struct TextureTransformRenderingTests {
     /// The probe texture is 8x8 and each texel is rendered 8 pixels wide.
     private static let textureSize = 8
     private static let renderSize = 64
+    private static let maximumRenderAttempts = 3
 
     /// One `KHR_texture_transform`, with the matrix the extension defines.
     private struct UVTransform {
@@ -49,29 +50,20 @@ struct TextureTransformRenderingTests {
 
         // With no transform a rendered pixel shows the texel its own UV names,
         // which both checks the V flip and calibrates colour → texel below.
-        let identity = try await render(UVTransform())
-        var texelOfColour: [SIMD3<Float>: SIMD2<Int>] = [:]
-        let pixelsPerTexel = Self.renderSize / Self.textureSize
-        for row in 0..<Self.textureSize {
-            for column in 0..<Self.textureSize {
-                let pixel = identity[row * pixelsPerTexel + pixelsPerTexel / 2][column * pixelsPerTexel + pixelsPerTexel / 2]
-                texelOfColour[pixel] = SIMD2<Int>(column, row)
-            }
-        }
-        // The identity render doubles as the machine's capability check: the
-        // visionOS simulator hands back a blank frame wherever RealityKit's
-        // pipelines fail to compile.
-        let rendersEveryTexel = texelOfColour.count == Self.textureSize * Self.textureSize
+        let texelCount = Self.textureSize * Self.textureSize
+        let identity = try await render(UVTransform()) { Self.texelOfColour(in: $0).count == texelCount }
+        let texelOfColour = Self.texelOfColour(in: identity)
 #if os(visionOS)
-        guard rendersEveryTexel else { return }
+        guard texelOfColour.count == texelCount else { return }
+#endif
+        // Nothing below means anything without the calibration.
+        try #require(texelOfColour.count == texelCount, "the identity render must show every texel exactly once")
 
-        /// Whether a frame carries the probe at all. A pipeline that failed to compile
+        /// Whether a frame carries the probe at all. One whose pipeline failed to compile
         /// leaves the background, which is none of the probe's colours.
         func showsTheProbe(_ rendered: [[SIMD3<Float>]]) -> Bool {
             rendered.contains { row in row.contains { texelOfColour[$0] != nil } }
         }
-#endif
-        #expect(rendersEveryTexel, "the identity render must show every texel exactly once")
 
         let transforms: [(name: String, transform: UVTransform)] = [
             ("offset", UVTransform(offset: SIMD2<Float>(0.25, 0.5))),
@@ -85,10 +77,8 @@ struct TextureTransformRenderingTests {
         ]
 
         for (name, transform) in transforms {
-            let rendered = try await render(transform)
+            let rendered = try await render(transform, until: showsTheProbe)
 #if os(visionOS)
-            // One frame compiling is no promise for the next: the simulator fails a
-            // pipeline now and then, and only some of this test's frames come back.
             guard showsTheProbe(rendered) else { continue }
 #endif
             var checked = 0
@@ -119,12 +109,35 @@ struct TextureTransformRenderingTests {
         return index < 0 ? index + Self.textureSize : index
     }
 
-    /// Loads a one-quad glTF whose only material carries `transform`, and renders
-    /// it filling the viewport.
+    /// The texel each colour of an identity render stands for, from the pixel at the
+    /// middle of every texel.
+    private static func texelOfColour(in identity: [[SIMD3<Float>]]) -> [SIMD3<Float>: SIMD2<Int>] {
+        var texelOfColour: [SIMD3<Float>: SIMD2<Int>] = [:]
+        let pixelsPerTexel = renderSize / textureSize
+        for row in 0..<textureSize {
+            for column in 0..<textureSize {
+                let pixel = identity[row * pixelsPerTexel + pixelsPerTexel / 2][column * pixelsPerTexel + pixelsPerTexel / 2]
+                texelOfColour[pixel] = SIMD2<Int>(column, row)
+            }
+        }
+        return texelOfColour
+    }
+
+    /// Loads a one-quad glTF whose only material carries `transform`, and renders it
+    /// filling the viewport, again until `isDrawn` accepts the frame.
+    ///
+    /// RealityKit hands back a blank frame now and then on a CI machine, most of all on
+    /// the visionOS simulator. A frame that stays blank is returned for the caller to judge.
     @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-    private func render(_ transform: UVTransform) async throws -> [[SIMD3<Float>]] {
-        let entity = try await GLTFEntityLoader(withData: Self.quadGLTF(transform)).loadEntity()
-        return try OffscreenRenderer.render(entity, size: Self.renderSize)
+    private func render(_ transform: UVTransform,
+                        until isDrawn: ([[SIMD3<Float>]]) -> Bool) async throws -> [[SIMD3<Float>]] {
+        var attempts = 1
+        while true {
+            let entity = try await GLTFEntityLoader(withData: Self.quadGLTF(transform)).loadEntity()
+            let rendered = try OffscreenRenderer.render(entity, size: Self.renderSize)
+            if isDrawn(rendered) || attempts == Self.maximumRenderAttempts { return rendered }
+            attempts += 1
+        }
     }
 
     /// A glTF of a single unlit quad covering x, y in [-1, 1], textured with the
