@@ -263,7 +263,7 @@ struct VRMExpressionTests {
         // An expression whose morph target can be read back, taken in the order the
         // model states its expressions: a dictionary's order differs between runs.
         var driven: (key: ExpressionKey, target: Int)?
-        let clips = VRMExpressionPlan(vrm: vrmEntity.vrm).clips
+        let clips = vrmEntity.vrm.expressionClips
         for expression in instance.availableExpressions {
             guard let clip = clips.last(where: { $0.key == expression.key }),
                   let binding = clip.morphBinds.first(where: { $0.weight == 1 }) else { continue }

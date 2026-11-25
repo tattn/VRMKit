@@ -115,7 +115,7 @@ package final class ExpressionRuntime {
 
     /// One per expression, in the order of `availableExpressions`.
     private var slots: [ExpressionSlot] = []
-    private var slotClips: [VRMExpressionPlan.Clip] = []
+    private var slotClips: [VRMExpressionClip] = []
     /// The slot each key drives. A custom key spelling a preset drives the preset,
     /// which is how VRM 0.x models predating the presets name theirs.
     private var slotsByKey: [ExpressionKey: Int] = [:]
@@ -147,13 +147,13 @@ package final class ExpressionRuntime {
     /// names the nodes whose mesh a morph bind drives, and `baseColor` and `baseUVTransform`
     /// what a material draws with before any expression moves it. A bind that will not
     /// resolve is left out.
-    package func setUp(clips statedClips: [VRMExpressionPlan.Clip],
-                       morphNodes: (VRMExpressionPlan.MorphBind.Target) -> [Int],
+    package func setUp(clips statedClips: [VRMExpressionClip],
+                       morphNodes: (VRMExpressionClip.MorphBind.Target) -> [Int],
                        baseColor: (Int, ExpressionMaterialColorType) -> SIMD4<Float>?,
                        baseUVTransform: (Int) -> (scale: SIMD2<Float>, offset: SIMD2<Float>, rotation: Float)?) {
         // Two clips sharing a key is malformed; the later one wins, in the place the
         // first one took.
-        var stated: [VRMExpressionPlan.Clip] = []
+        var stated: [VRMExpressionClip] = []
         var positions: [ExpressionKey: Int] = [:]
         for clip in statedClips {
             if let position = positions[clip.key] {

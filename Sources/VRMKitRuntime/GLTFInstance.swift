@@ -99,7 +99,9 @@ public class GLTFInstance {
             guard count > 0 else { continue }
             morphSlots[node] = morphNodes.count
             morphNodes.append(node)
-            morphWeights.append(asset.nodes[node].initialMorphWeights ?? Array(repeating: 0, count: count))
+            // The targets added to the mesh come after those the document weighs.
+            let initial = asset.nodes[node].initialMorphWeights ?? []
+            morphWeights.append(initial + Array(repeating: 0, count: max(count - initial.count, 0)))
         }
         self.morphNodes = morphNodes
         morphSlotsByNode = morphSlots
@@ -134,8 +136,11 @@ public class GLTFInstance {
     private func animationRuntime(at index: Int) throws -> GLTFAnimationRuntime {
         if let cached = animationRuntimes[index] { return cached }
         var morphTargetCounts: [Int: Int] = [:]
-        for (slot, node) in morphNodes.enumerated() {
-            morphTargetCounts[node] = morphWeightsBySlot[slot].count
+        // A track weighs the targets the document declares, not those added to the mesh.
+        for node in morphNodes {
+            morphTargetCounts[node] = asset.nodes[node].mesh.flatMap {
+                asset.document.gltf.meshes[safe: $0]?.primitives.lazy.compactMap { $0.targets?.count }.max()
+            } ?? 0
         }
         let runtime = try GLTFAnimationRuntime(animation: try asset.document.gltf.load(\.animations, at: index),
                                                decoder: animationDecoder,
@@ -148,7 +153,8 @@ public class GLTFInstance {
     /// Passes on what the animations set beyond the pose.
     func didAnimate(_ output: GLTFAnimationOutput) {
         for (node, weights) in output.morphWeights {
-            writeMorphWeights(weights, ofNode: node)
+            guard let current = morphWeights(ofNode: node) else { continue }
+            writeMorphWeights(weights + current.dropFirst(weights.count), ofNode: node)
         }
     }
 

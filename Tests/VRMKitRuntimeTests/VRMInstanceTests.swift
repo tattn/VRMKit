@@ -50,6 +50,41 @@ struct VRMInstanceTests {
         #expect(model.expression(for: key) == 1)
     }
 
+    /// A target added to a mesh comes after its own, an added expression drives it, and what
+    /// the model states draws as before.
+    @Test
+    func testAnAddedExpressionDrivesAnAddedTarget() async throws {
+        let stated = try await Self.seedSan.value
+        let clip = try #require(stated.expressionClips.first { $0.key == .preset(.happy) && !$0.morphBinds.isEmpty })
+        let bind = try #require(clip.morphBinds.first)
+        guard case .node(let node) = bind.target else {
+            throw VRMError.dataInconsistent("A VRM 1.0 bind names a node")
+        }
+        let statedMesh = try #require(stated.mesh(drawnByNode: node))
+        let meshIndex = statedMesh.meshIndex
+        let targetCount = statedMesh.geometry.blendShapeTargetCount
+        let halved = VRMExpressionClip(name: "halved",
+                                       morphBinds: [.init(target: .node(node), index: targetCount, weight: 1)])
+        let additions = VRMAssetAdditions(expressions: [halved]) { mesh in
+            guard mesh.meshIndex == meshIndex else { return [] }
+            return [mesh.geometry.blendShapeOffsets(forTarget: bind.index).map { $0 * 0.5 }]
+        }
+        let asset = try await GLTFAsset.load(vrm: try #require(stated.vrm), additions: additions)
+        let geometry = try #require(asset.mesh(drawnByNode: node)).geometry
+        #expect(geometry.blendShapeTargetCount == targetCount + 1)
+        let offsets = statedMesh.geometry.blendShapeOffsets(forTarget: bind.index)
+        #expect(geometry.blendShapeOffsets(forTarget: bind.index) == offsets)
+        #expect(geometry.blendShapeOffsets(forTarget: targetCount) == offsets.map { $0 * 0.5 })
+        #expect(asset.expressionClips.map(\.name) == stated.expressionClips.map(\.name) + ["halved"])
+
+        let model = try VRMInstance(asset: asset)
+        model.setExpressions([.custom("halved"): 1])
+        let weights = try #require(model.morphWeights(ofNode: node))
+        #expect(weights.count == targetCount + 1)
+        #expect(weights.last == 1)
+        #expect(weights.dropLast().allSatisfy { $0 == 0 })
+    }
+
     /// A bone an update handler poses moves its joint in the skins the update hands back.
     @Test
     func testABonePosedInAnUpdateHandlerMovesItsJoint() async throws {

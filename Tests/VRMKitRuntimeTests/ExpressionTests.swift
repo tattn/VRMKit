@@ -37,8 +37,8 @@ struct ExpressionPresetTests {
 /// What the runtime makes of the clips a model states.
 @Suite
 struct ExpressionRuntimeTests {
-    private func clip(_ name: String, preset: ExpressionPreset? = nil) -> VRMExpressionPlan.Clip {
-        VRMExpressionPlan.Clip(name: name, preset: preset, isBinary: false)
+    private func clip(_ name: String, preset: ExpressionPreset? = nil) -> VRMExpressionClip {
+        VRMExpressionClip(name: name, preset: preset)
     }
 
     /// Two clips under one key is malformed, and whichever wins has to win everywhere:

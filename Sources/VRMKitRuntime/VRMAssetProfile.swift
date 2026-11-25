@@ -15,11 +15,14 @@ package final class VRMAssetProfile: Sendable {
     package let vrm: VRM
     /// Whether `auto` meshes are cut for a first-person camera.
     package let preparesFirstPerson: Bool
+    /// What the caller adds to what the document states.
+    package let additions: VRMAssetAdditions?
     private let firstPersonPlan = Locked<VRMFirstPersonPlan?>(nil)
 
-    package init(vrm: VRM, preparesFirstPerson: Bool) {
+    package init(vrm: VRM, preparesFirstPerson: Bool, additions: VRMAssetAdditions? = nil) {
         self.vrm = vrm
         self.preparesFirstPerson = preparesFirstPerson
+        self.additions = additions
     }
 
     /// The VRM extensions this implements, which is a question of the model's version:
@@ -93,6 +96,24 @@ package final class VRMAssetProfile: Sendable {
             primitive.targets = targets
             return primitive
         }
+    }
+
+    /// Every expression the model offers: the ones it states, then the added ones.
+    package var expressionClips: [VRMExpressionClip] {
+        vrm.expressionClips + (additions?.expressions ?? [])
+    }
+
+    /// `mesh` with the targets the caller adds to it.
+    package func adding(to mesh: GLTFAsset.Mesh) -> GLTFAsset.Mesh {
+        guard let additions else { return mesh }
+        let targets = additions.morphTargets(mesh)
+        guard !targets.isEmpty else { return mesh }
+        return GLTFAsset.Mesh(name: mesh.name,
+                              meshIndex: mesh.meshIndex,
+                              skinIndex: mesh.skinIndex,
+                              cutsHead: mesh.cutsHead,
+                              geometry: mesh.geometry.appending(blendShapeTargets: targets),
+                              materialIndices: mesh.materialIndices)
     }
 
     /// The joints of `skinIndex` whose triangles a first-person camera drops from the

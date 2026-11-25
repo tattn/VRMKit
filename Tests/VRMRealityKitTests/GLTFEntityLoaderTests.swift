@@ -770,7 +770,7 @@ struct GLTFEntityLoaderTests {
 
         let vrmEntity = try await VRMEntityLoader(withData: modified, shaders: TestSupport.noOutlineShaders).loadEntity()
         let instance = try #require(vrmEntity.instance)
-        let clip = try #require(VRMExpressionPlan(vrm: vrmEntity.vrm).clips.first { clip in
+        let clip = try #require(vrmEntity.vrm.expressionClips.first { clip in
             clip.morphBinds.contains { $0.weight > 0 }
         })
         let binding = try #require(clip.morphBinds.first { $0.weight > 0 })

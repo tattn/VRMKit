@@ -192,6 +192,42 @@ extension GLTFMeshGeometry {
         self.blendShapeOffsetBuffer = blendShapeOffsetBuffer
     }
 
+    /// The geometry with morph targets after its own.
+    func appending(blendShapeTargets targets: [[SIMD3<Float>]]) -> GLTFMeshGeometry {
+        guard !targets.isEmpty, vertexCount > 0 else { return self }
+        let buffer = GLTFBlendShapeOffsetBuffer(targetCount: blendShapeTargetCount + targets.count,
+                                                vertexCount: vertexCount)
+        if let blendShapeOffsetBuffer { buffer.copyTargets(of: blendShapeOffsetBuffer) }
+        for (index, offsets) in targets.enumerated() {
+            buffer.write(offsets, target: blendShapeTargetCount + index)
+        }
+        let slots = slots.map { slot in
+            Slot(vertexRange: slot.vertexRange,
+                 indexRange: slot.indexRange,
+                 firstPersonIndexRange: slot.firstPersonIndexRange,
+                 bounds: slot.bounds,
+                 hasBlendShapes: slot.hasBlendShapes || targets.contains { target in
+                     target.indices.clamped(to: slot.vertexRange).contains { target[$0] != .zero }
+                 })
+        }
+        return GLTFMeshGeometry(self, slots: slots, blendShapeOffsetBuffer: buffer)
+    }
+
+    private init(_ geometry: GLTFMeshGeometry, slots: [Slot], blendShapeOffsetBuffer: GLTFBlendShapeOffsetBuffer) {
+        positions = geometry.positions
+        normals = geometry.normals
+        tangents = geometry.tangents
+        bitangents = geometry.bitangents
+        texcoords = geometry.texcoords
+        indices = geometry.indices
+        self.slots = slots
+        jointIndices = geometry.jointIndices
+        jointWeights = geometry.jointWeights
+        blendShapeTargetCount = blendShapeOffsetBuffer.targetCount
+        bounds = geometry.bounds
+        self.blendShapeOffsetBuffer = blendShapeOffsetBuffer
+    }
+
     private static func bounds(of positions: ArraySlice<SIMD3<Float>>) -> GLTFBounds {
         guard var minimum = positions.first else { return GLTFBounds(min: .zero, max: .zero) }
         var maximum = minimum
@@ -265,6 +301,23 @@ public final class GLTFBlendShapeOffsetBuffer: @unchecked Sendable {
         guard (0..<targetCount).contains(target) else { return [] }
         let floats = baseAddress.advanced(by: target * vertexCount * 12).assumingMemoryBound(to: Float.self)
         return (0..<vertexCount).map { SIMD3(floats[$0 * 3], floats[$0 * 3 + 1], floats[$0 * 3 + 2]) }
+    }
+
+    /// Takes over the targets of `other`, which holds the same vertices and no more targets.
+    fileprivate func copyTargets(of other: GLTFBlendShapeOffsetBuffer) {
+        UnsafeMutableRawPointer(mutating: baseAddress).copyMemory(from: other.baseAddress, byteCount: other.byteCount)
+    }
+
+    /// Writes one target's deltas, zero for the vertices `offsets` does not reach.
+    fileprivate func write(_ offsets: [SIMD3<Float>], target: Int) {
+        let floats = UnsafeMutableRawPointer(mutating: baseAddress)
+            .advanced(by: target * vertexCount * 12)
+            .assumingMemoryBound(to: Float.self)
+        for (vertex, offset) in offsets.prefix(vertexCount).enumerated() {
+            floats[vertex * 3] = offset.x
+            floats[vertex * 3 + 1] = offset.y
+            floats[vertex * 3 + 2] = offset.z
+        }
     }
 
     /// Reads one target's deltas for the vertices from `firstVertex` on, one per source.

@@ -16,6 +16,9 @@ public final class GLTFAsset: Sendable {
     public let document: GLTFDocument
     /// The VRM the document is, read as one. Nil for a plain glTF.
     public let vrm: VRM?
+    /// Every expression the model offers: the ones the VRM states, then those added as it was
+    /// read (``VRMAssetAdditions``). Empty for a plain glTF.
+    public let expressionClips: [VRMExpressionClip]
     public let sceneIndex: Int
     /// The nodes the scene hangs off.
     public let rootNodes: [Int]
@@ -75,6 +78,7 @@ public final class GLTFAsset: Sendable {
 
     package init(document: GLTFDocument,
                  vrm: VRM?,
+                 expressionClips: [VRMExpressionClip],
                  hierarchy: GLTFNodeHierarchy,
                  sceneIndex: Int,
                  rootNodes: [Int],
@@ -86,6 +90,7 @@ public final class GLTFAsset: Sendable {
                  images: [GLTFImageSource]) {
         self.document = document
         self.vrm = vrm
+        self.expressionClips = expressionClips
         self.hierarchy = hierarchy
         self.sceneIndex = sceneIndex
         self.rootNodes = rootNodes
@@ -136,9 +141,13 @@ public final class GLTFAsset: Sendable {
     ///   vertex and adds its triangles to the index buffers, so a renderer that never draws
     ///   the model from its own eyes can leave it out; an `auto` mesh then draws whole in
     ///   ``FirstPersonRenderMode/firstPerson`` too.
-    public static func load(vrm: VRM, preparesFirstPerson: Bool = true) async throws -> GLTFAsset {
+    /// - Parameter additions: morph targets and expressions of the caller's own to read the
+    ///   model with.
+    public static func load(vrm: VRM, preparesFirstPerson: Bool = true,
+                            additions: VRMAssetAdditions? = nil) async throws -> GLTFAsset {
         let reader = try GLTFAssetReader(document: vrm.document,
-                                         profile: VRMAssetProfile(vrm: vrm, preparesFirstPerson: preparesFirstPerson))
+                                         profile: VRMAssetProfile(vrm: vrm, preparesFirstPerson: preparesFirstPerson,
+                                                                  additions: additions))
         return try await reader.asset(sceneIndex: vrm.document.gltf.defaultSceneIndex())
     }
 }

@@ -100,6 +100,7 @@ package struct GLTFAssetReader: Sendable {
         }
         return GLTFAsset(document: document,
                          vrm: profile?.vrm,
+                         expressionClips: profile?.expressionClips ?? [],
                          hierarchy: hierarchy,
                          sceneIndex: sceneIndex,
                          rootNodes: roots,
@@ -288,13 +289,13 @@ package struct GLTFAssetReader: Sendable {
         let geometry = GLTFMeshGeometry(primitives: drawable,
                                         isSkinned: isSkinned,
                                         blendShapeTargetCount: try morphTargetCount(ofMeshAt: key.meshIndex))
-        return BuiltMesh(mesh: GLTFAsset.Mesh(name: gltfMesh.name ?? "mesh_\(key.meshIndex)",
-                                              meshIndex: key.meshIndex,
-                                              skinIndex: isSkinned ? key.skinIndex : nil,
-                                              cutsHead: key.cutsHead,
-                                              geometry: geometry,
-                                              materialIndices: materialIndices),
-                         warnings: warnings)
+        let mesh = GLTFAsset.Mesh(name: gltfMesh.name ?? "mesh_\(key.meshIndex)",
+                                  meshIndex: key.meshIndex,
+                                  skinIndex: isSkinned ? key.skinIndex : nil,
+                                  cutsHead: key.cutsHead,
+                                  geometry: geometry,
+                                  materialIndices: materialIndices)
+        return BuiltMesh(mesh: profile?.adding(to: mesh) ?? mesh, warnings: warnings)
     }
 
     /// The number of morph targets the mesh at `index` renders with, one per weight in

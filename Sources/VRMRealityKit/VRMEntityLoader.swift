@@ -30,24 +30,30 @@ public final class VRMEntityLoader {
     /// See ``GLTFEntityLoader/compensatesToneMapping``.
     public let compensatesToneMapping: Bool
 
-    /// See ``GLTFAsset/load(vrm:preparesFirstPerson:)``.
+    /// See ``GLTFAsset/load(vrm:preparesFirstPerson:additions:)``.
     public let preparesFirstPerson: Bool
+
+    /// See ``GLTFAsset/load(vrm:preparesFirstPerson:additions:)``.
+    public let additions: VRMAssetAdditions?
 
     public init(vrm: VRM,
                 shaders: [any GLTFMaterialShader] = GLTFEntityLoader.defaultShaders,
                 maxTextureDimension: Int? = nil,
                 outputColorSpace: GLTFOutputColorSpace = .displayP3,
                 compensatesToneMapping: Bool = true,
-                preparesFirstPerson: Bool = true) {
+                preparesFirstPerson: Bool = true,
+                additions: VRMAssetAdditions? = nil) {
         self.vrm = vrm
         self.shaders = shaders
         self.maxTextureDimension = maxTextureDimension
         self.outputColorSpace = outputColorSpace
         self.compensatesToneMapping = compensatesToneMapping
         self.preparesFirstPerson = preparesFirstPerson
+        self.additions = additions
         self.resources = GLTFResourceCache(document: vrm.document,
                                            shaders: shaders,
-                                           profile: VRMAssetProfile(vrm: vrm, preparesFirstPerson: preparesFirstPerson),
+                                           profile: VRMAssetProfile(vrm: vrm, preparesFirstPerson: preparesFirstPerson,
+                                                                    additions: additions),
                                            materialFallback: Self.fallbackMaterial,
                                            maxTextureDimension: maxTextureDimension,
                                            outputColorSpace: outputColorSpace,
@@ -71,11 +77,13 @@ public final class VRMEntityLoader {
                             maxTextureDimension: Int? = nil,
                             outputColorSpace: GLTFOutputColorSpace = .displayP3,
                             compensatesToneMapping: Bool = true,
-                            preparesFirstPerson: Bool = true) throws {
+                            preparesFirstPerson: Bool = true,
+                            additions: VRMAssetAdditions? = nil) throws {
         self.init(vrm: try VRM(withURL: url), shaders: shaders, maxTextureDimension: maxTextureDimension,
                   outputColorSpace: outputColorSpace,
                   compensatesToneMapping: compensatesToneMapping,
-                  preparesFirstPerson: preparesFirstPerson)
+                  preparesFirstPerson: preparesFirstPerson,
+                  additions: additions)
     }
 
     /// Loads a bundled VRM resource.
@@ -84,11 +92,13 @@ public final class VRMEntityLoader {
                             maxTextureDimension: Int? = nil,
                             outputColorSpace: GLTFOutputColorSpace = .displayP3,
                             compensatesToneMapping: Bool = true,
-                            preparesFirstPerson: Bool = true) throws {
+                            preparesFirstPerson: Bool = true,
+                            additions: VRMAssetAdditions? = nil) throws {
         self.init(vrm: try VRM(named: named), shaders: shaders, maxTextureDimension: maxTextureDimension,
                   outputColorSpace: outputColorSpace,
                   compensatesToneMapping: compensatesToneMapping,
-                  preparesFirstPerson: preparesFirstPerson)
+                  preparesFirstPerson: preparesFirstPerson,
+                  additions: additions)
     }
 
     /// Loads a VRM from in-memory data, resolving external resources against `rootDirectory`.
@@ -98,11 +108,13 @@ public final class VRMEntityLoader {
                             maxTextureDimension: Int? = nil,
                             outputColorSpace: GLTFOutputColorSpace = .displayP3,
                             compensatesToneMapping: Bool = true,
-                            preparesFirstPerson: Bool = true) throws {
+                            preparesFirstPerson: Bool = true,
+                            additions: VRMAssetAdditions? = nil) throws {
         self.init(vrm: try VRM(data: data, rootDirectory: rootDirectory), shaders: shaders,
                   maxTextureDimension: maxTextureDimension, outputColorSpace: outputColorSpace,
                   compensatesToneMapping: compensatesToneMapping,
-                  preparesFirstPerson: preparesFirstPerson)
+                  preparesFirstPerson: preparesFirstPerson,
+                  additions: additions)
     }
 
     /// The glTF and VRM extensions this loader implements, to satisfy `extensionsRequired`.

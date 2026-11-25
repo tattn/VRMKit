@@ -111,7 +111,7 @@ public final class VRMInstance: GLTFInstance {
     private func setUpExpressions(materialBase: MaterialBase) {
         let morphNodes = asset.meshIndicesByNode.keys.filter { morphWeights(ofNode: $0) != nil }
         expressions.setUp(
-            clips: VRMExpressionPlan(vrm: vrm).clips,
+            clips: asset.expressionClips,
             morphNodes: { target in
                 switch target {
                 case .mesh(let index): morphNodes.filter { asset.nodes[$0].mesh == index }

@@ -57,7 +57,7 @@ package struct ExpressionOverrideStates {
 
     /// Accumulates `clip`'s overrides of every group but its own kind: a blink
     /// expression's `overrideBlink` is invalid.
-    package mutating func accumulate(_ clip: VRMExpressionPlan.Clip,
+    package mutating func accumulate(_ clip: VRMExpressionClip,
                                      weight: Float,
                                      excluding ownGroup: ExpressionOverrideGroup?) {
         for group in ExpressionOverrideGroup.allCases where group != ownGroup {
